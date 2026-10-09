@@ -639,3 +639,197 @@ def _tmp() -> Path:
     import tempfile
 
     return Path(tempfile.mkdtemp(prefix="dragonbyte-romsurface-"))
+
+
+# --- the windowed lane: the page renders, it does not decide -------------------
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+@pytest.fixture
+def rom_page(qapp, tmp_path, profile, index, monkeypatch):
+    """The ROM destination inside the real shell, over the synthetic image.
+
+    The index loader is replaced with the fixture index so this lane proves the
+    page and nothing about the local atlas artifact; the artifact's own load is
+    measured by `load_index` in the headless lane.
+    """
+    from tools.dragonbyte import rompage
+    from tools.dragonbyte.shell import Shell
+
+    monkeypatch.setattr(
+        rompage, "load_index", lambda profile, directory=None: (index, "")
+    )
+    session = _session(tmp_path, profile)
+    shell = Shell(session, tmp_path / "config")
+    shell.show_destination("rom")
+    yield shell._rom_page, shell, session
+    shell.close()
+
+
+def test_the_rom_destination_shows_the_surface_and_the_other_five_do_not(rom_page):
+    from tools.dragonbyte.rompage import RomPage
+
+    page, shell, _session_ = rom_page
+    rows = range_rows(page._surface)
+
+    assert isinstance(page, RomPage)
+    assert shell._page_stack.currentWidget() is page
+    assert page._model.rowCount() == len(rows)
+    assert [
+        page._model.data(page._model.index(0, column))
+        for column in range(page._model.columnCount())
+    ] == [
+        f"0x{rows[0].address:08X}",
+        f"0x{rows[0].span.size:06X}",
+        rows[0].classification,
+        rows[0].confidence.value,
+        rows[0].owner_text,
+        rows[0].preview.hex(),
+    ]
+    for candidate in ("maps", "entities", "scripts_text", "graphics", "data"):
+        shell.show_destination(candidate)
+        assert not isinstance(shell._pages[candidate], RomPage)
+    shell.show_destination("rom")
+
+
+def test_the_strip_is_the_model_ownership_answer_for_the_selection(rom_page):
+    page, _shell, _session_ = rom_page
+
+    assert page._strip.text() == ownership(page._surface, page._caret).text()
+    assert "no semantic owner known" in page._strip.text()
+
+
+def test_go_to_address_moves_one_selection_shared_by_both_views(rom_page):
+    page, _shell, _session_ = rom_page
+
+    page._goto.setText("0x08000400")
+    page._goto_button.click()
+
+    assert page._caret == 0x400
+    assert "read as an image address" in page._message.text()
+    assert page._model.data(page._model.index(0, 0)) == "0x08000000"
+    page._views.setCurrentText("Bytes")
+    assert page._caret == 0x400
+    assert page._model.data(page._model.index(0, 0)) == "0x08000400"
+    assert page._strip.text() == ownership(page._surface, 0x400).text()
+
+
+def test_go_to_address_refuses_a_number_outside_the_image_with_its_reason(rom_page):
+    page, _shell, _session_ = rom_page
+
+    page._goto.setText("0x09999999")
+    page._on_go()
+
+    assert "outside" in page._message.text()
+    assert page._caret == 0
+
+
+def test_open_bytes_opens_the_proven_extent_and_is_disabled_without_one(rom_page):
+    page, _shell, _session_ = rom_page
+
+    assert page._open_button.isEnabled()
+    assert "byte(s) at file offset" in page._open_button.toolTip()
+    page._on_open_bytes()
+    assert page._views.currentText() == "Bytes"
+    assert page._caret == 0
+
+
+def test_open_bytes_is_disabled_and_states_its_reason_with_no_rom(qapp, tmp_path):
+    from tools.dragonbyte.shell import Shell
+
+    shell = Shell(Session(), tmp_path / "config")
+    shell.show_destination("rom")
+    page = shell._rom_page
+
+    assert not page._open_button.isEnabled()
+    assert "Open a ROM first" in page._open_button.toolTip()
+    assert "No ROM is open" in page._strip.text()
+    assert page._model.rowCount() == 0
+    shell.close()
+
+
+def test_a_write_from_the_page_is_one_journal_entry_and_one_undo(
+    rom_page, monkeypatch
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    page, shell, session = rom_page
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Yes),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        staticmethod(lambda *args, **kwargs: QMessageBox.StandardButton.Ok),
+    )
+    page._goto.setText("0x08000400")
+    page._on_go()
+    page._write_hex.setText("A1 B2")
+    page._write_button.click()
+
+    assert session.journal.depth == 1
+    assert page._surface.overlay == frozenset({0x400, 0x401})
+    assert page._surface.current_bytes(0x400, 2) == b"\xA1\xB2"
+    page._views.setCurrentText("Bytes")
+    changed = page._model.data(page._model.index(0, 4))
+    assert "+00" in changed and "+01" in changed
+    assert page._model.data(page._model.index(0, 2)).startswith("a1b2")
+
+    shell.undo_edit()
+    assert session.journal.depth == 0
+    assert page._surface.overlay == frozenset()
+    assert page._model.data(page._model.index(0, 2)).startswith("ffff")
+
+
+def test_raw_search_lists_the_hits_with_the_index_classification(rom_page):
+    page, _shell, _session_ = rom_page
+
+    page._find.setText("ffff")
+    page._find_button.click()
+
+    assert page._views.currentText() == "Find results"
+    assert page._model.rowCount() == len(page._hits)
+    assert page._model.data(page._model.index(0, 0)) == "0x08000400"
+    assert page._model.data(page._model.index(0, 2)) == VERIFIED_FREE
+    assert "hit(s)" in page._message.text()
+
+
+def test_a_search_pattern_that_is_not_hex_is_refused_with_its_reason(rom_page):
+    page, _shell, _session_ = rom_page
+
+    page._find.setText("not hex")
+    page._on_find()
+
+    assert "hex byte pattern" in page._message.text()
+    assert page._views.currentText() == "Ranges"
+
+
+def test_the_page_holds_no_rom_semantics_of_its_own():
+    """`rompage` renders the model: it reads no SDK module and no address space."""
+    import ast
+
+    source = (REPOSITORY_ROOT / "tools/dragonbyte/rompage.py").read_text(
+        encoding="utf-8"
+    )
+    imported = {
+        node.module or ""
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom)
+    } | {
+        alias.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    assert not [name for name in imported if name.startswith("tools.webfoot")], imported

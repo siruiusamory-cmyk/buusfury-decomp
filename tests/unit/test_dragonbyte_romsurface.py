@@ -895,7 +895,8 @@ def test_the_write_gate_is_open_once_the_index_has_answered(index, profile):
     gate = write_gate(surface)
 
     assert gate.available
-    assert "build" in gate.reason
+    assert "saved with the project" in gate.reason
+    assert "no build path applies it" in gate.reason
 
 
 def test_the_strip_and_the_write_path_use_one_ownership_floor(
@@ -1046,14 +1047,18 @@ def test_the_write_controls_are_disabled_with_their_reason_without_an_index(
     _close(shell, session)
 
 
-def test_the_page_says_a_raw_write_is_journal_local(rom_page):
+def test_the_page_says_no_build_applies_a_raw_write_yet(rom_page):
+    """No string implies a build applies a raw write, because none does."""
     page, _shell, _session_ = rom_page
 
     note = page._write_note.text()
 
-    assert "journal-local" in note
-    assert "build" in note
+    assert "saved with the project" in note
+    assert "shown in this surface" in note
+    assert "build path applies it" in note.lower()
+    assert "takes effect" not in note
     assert page._write_note.isVisibleTo(page)
+    assert "build path applies it" in page._write_button.toolTip().lower()
 
 
 def test_the_range_view_headers_name_both_spellings(rom_page):
@@ -1116,3 +1121,96 @@ def test_the_canonical_rom_byte_the_gate_protects_is_refused_by_the_real_index(
     assert "atlas:seed:scripts.item_use.pool" in session.raw_write_problem(
         LEAK_OFFSET, b"\x01", atlas=index.atlas
     )
+
+
+# --- the delta review: identity, honesty, and the boundary --------------------
+
+
+def _one_object_index(identity: str, offset: int) -> RangeIndex:
+    """A tiny index whose only owner sits at one offset, for the race test."""
+    proof = Provenance("synthetic", "0" * 64, "late-answer fixture")
+    atlas = Atlas(
+        "synthetic",
+        "0" * 64,
+        IMAGE_SIZE,
+        CoverageMap(
+            (
+                CoverageSpan(
+                    _span(0, IMAGE_SIZE), UNKNOWN, Confidence.UNKNOWN, proof
+                ),
+            ),
+            IMAGE_SIZE,
+        ),
+        (
+            AtlasObject(
+                identity, _span(offset, 0x40), "pointer-table",
+                Confidence.CONFIRMED, proof,
+            ),
+        ),
+    )
+    return RangeIndex(atlas)
+
+
+def test_a_late_index_answer_for_another_image_is_ignored(
+    qapp, tmp_path, profile, monkeypatch
+):
+    """The reviewer's race: A's answer must not be installed while B is open.
+
+    A is slow and B is instant, so B's answer is delivered first and A's lands
+    after it. The last-delivered answer must not be the one that wins.
+    """
+    import time
+
+    from tools.dragonbyte import rompage
+    from tools.dragonbyte.shell import Shell
+
+    first = _one_object_index("image:a", 0x100)
+    second = _one_object_index("image:b", 0x200)
+    calls: list[int] = []
+
+    def slow(profile, directory=None):
+        call = len(calls)
+        calls.append(call)
+        if call == 0:
+            time.sleep(1.0)
+        return (first if call == 0 else second), ""
+
+    monkeypatch.setattr(rompage, "load_index", slow)
+    session = _session(tmp_path, profile)
+    shell = Shell(session, tmp_path / "config")
+    shell.show_destination("rom")
+    page = shell._rom_page
+
+    session.rom_path = tmp_path / "second.gba"
+    session.base_image = IMAGE
+    page.refresh()
+    deadline = time.monotonic() + 20
+    while len(calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(calls) == 2, "the second image started its own parse"
+
+    _settle(page)
+    assert calls == [0, 1]
+    assert page._index is second, "the answer for the replaced image was installed"
+    assert ownership(page._surface, 0x200).owners == ("image:b",)
+    assert ownership(page._surface, 0x100).owners == ()
+    assert write_gate(page._surface).available
+    assert session.raw_write_problem(
+        0x100, b"\x01", atlas=page._surface.index.atlas
+    ) == "", "the gate must consult the current image's atlas"
+    assert "image:a" in session.raw_write_problem(
+        0x100, b"\x01", atlas=first.atlas
+    )
+    _close(shell, session)
+
+
+def test_range_rows_skip_spans_the_open_image_does_not_have(index, profile):
+    """An index for a larger image must not raise an address outside this one."""
+    smaller = IMAGE[:0x180]
+    surface = surface_for(smaller, profile, _journal(), index=index)
+
+    rows = range_rows(surface)
+
+    assert rows, "the spans inside the image are still rendered"
+    assert all(row.span.start.value < len(smaller) for row in rows)
+    assert [row.span.start.value for row in rows] == [0, 0x100]

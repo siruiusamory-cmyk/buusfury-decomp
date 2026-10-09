@@ -92,17 +92,23 @@ _BYTE_HEADERS = (
 _SEARCH_HEADERS = ("Address", "File offset", "Classification", "Confidence", "Owner")
 
 #: Said where the user writes, because it is the one thing a write here does not
-#: do: no build path reads the project's raw byte document yet.
+#: do: no build path reads the project's raw byte document, so the write is not
+#: in any image yet and must not be described as if it were.
 JOURNAL_LOCAL = (
-    "A raw write here is journal-local: it is saved with the project and reaches "
-    "an image only when a build applies it."
+    "A raw write is saved with the project and shown in this surface. No build "
+    "path applies it to an image yet."
 )
 
 
 class _IndexSignals(QObject):
-    """The worker's one answer, delivered on the thread that owns the page."""
+    """The worker's one answer, delivered on the thread that owns the page.
 
-    finished = Signal(object, str)
+    The request token travels with it: the parse takes seconds, an image can be
+    replaced while it runs, and an answer for the previous image must never be
+    installed over the current one.
+    """
+
+    finished = Signal(int, object, str)
 
 
 class _IndexTask(QRunnable):
@@ -115,18 +121,19 @@ class _IndexTask(QRunnable):
     thread death that would leave the page loading forever.
     """
 
-    def __init__(self, profile, directory) -> None:
+    def __init__(self, profile, directory, token: int, signals) -> None:
         super().__init__()
-        self.signals = _IndexSignals()
+        self.signals = signals
         self._profile = profile
         self._directory = directory
+        self._token = token
 
     def run(self) -> None:
         try:
             index, problem = load_index(self._profile, self._directory)
         except Exception as exc:  # a worker boundary: report, never die silently
             index, problem = None, f"the range index could not be loaded: {exc}"
-        self.signals.finished.emit(index, problem)
+        self.signals.finished.emit(self._token, index, problem)
 
 
 class _RowsModel(QAbstractTableModel):
@@ -192,6 +199,14 @@ class RomPage(QWidget):
         self._index_loading = False
         self._index_attempted = False
         self._index_for = None
+        #: The one token an index answer must carry to be installed: it moves
+        #: every time a parse starts, so a late answer for another image cannot.
+        self._index_request = 0
+        #: The signal source and the tasks, both owned by the page rather than by
+        #: a task: a parse can outlive the request that started it, and a worker
+        #: whose signal object has been collected dies at its own emit.
+        self._index_signals = _IndexSignals(self)
+        self._index_tasks: list = []
         self._index_task = None
         self._pool = QThreadPool.globalInstance()
         self._surface = None
@@ -316,6 +331,7 @@ class RomPage(QWidget):
         self._find.returnPressed.connect(self._on_find)
         self._open_button.clicked.connect(self._on_open_bytes)
         self._write_button.clicked.connect(self._on_write)
+        self._index_signals.finished.connect(self._index_ready)
         self._table.selectionModel().currentRowChanged.connect(self._on_row_changed)
 
     def set_write_handler(self, handler) -> None:
@@ -400,17 +416,28 @@ class RomPage(QWidget):
             return
         self._index_attempted = True
         self._index_for = self._session.rom_path
+        self._index_request += 1
         self._index = None
         self._index_problem = "the range index is still loading"
         self._index_loading = True
         self._reset_search()
-        task = _IndexTask(self._session.profile, None)
-        task.signals.finished.connect(self._index_ready)
-        self._index_task = task
+        task = _IndexTask(
+            self._session.profile, None, self._index_request, self._index_signals
+        )
+        self._index_tasks.append(task)
         self._pool.start(task)
 
-    def _index_ready(self, index, problem: str) -> None:
-        """The worker's answer: hold it, say so, and re-render."""
+    def _index_ready(self, token: int, index, problem: str) -> None:
+        """The worker's answer, if it is still the answer for the open image.
+
+        A parse that started for another image is dropped here rather than
+        installed: its owners, its classification and its bytes are all claims
+        about bytes that are not open any more, and accepting them would bind
+        every owner the strip shows and every claimed-bytes refusal to the wrong
+        evidence.
+        """
+        if token != self._index_request:
+            return
         self._index = index
         self._index_problem = problem
         self._index_loading = False

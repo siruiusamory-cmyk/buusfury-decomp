@@ -26,8 +26,8 @@ owner known` rather than leaving a blank.
 *What changed?* The overlay is a set of file offsets: the project's own pending
 edits before a build, and exactly the manifest's change set after one. A set and
 not a count, because "how many bytes changed" cannot answer "which". Those
-pending edits are journal-local: they reach an image only when a build applies
-them, and nothing here claims otherwise.
+pending edits are saved with the project and shown here; no build path applies
+them to an image yet, and nothing here claims otherwise.
 
 *May these bytes be opened or written?* An extent is proven or it is not, and a
 write is offered only while the range index is loaded, because without it the
@@ -273,11 +273,10 @@ class RomSurface:
     def current_bytes(self, offset: int, size: int) -> bytes:
         """The base bytes with the project's pending raw writes applied.
 
-        These bytes are journal-local: they are what a build would emit for this
-        range once it applies the project's raw document, and no artifact on disk
-        holds them yet. A pending semantic edit is not materialized here at all:
-        it has no byte value until a build produces one, and the ownership strip
-        says so rather than showing a base value the project has replaced.
+        These bytes are saved with the project and shown here; no build path
+        applies them to an image yet. A pending semantic edit is not materialized
+        at all: it has no byte value until a build produces one, and the ownership
+        strip says so rather than showing a base value the project has replaced.
         """
         window = bytearray(self.canonical_bytes(offset, size))
         for written_at, value in self.pending.items():
@@ -496,18 +495,25 @@ def range_rows(surface: RomSurface) -> tuple[RangeRow, ...]:
     The rows are the atlas's own coverage partition, so they tile the image
     exactly once and no second partition is invented here. Ownership is the same
     floor the write path uses, so an owner shown here is an owner a raw write
-    would be refused by. Empty when no index is loaded; `surface.index_problem`
-    then says why.
+    would be refused by. A span that starts outside the open image is skipped:
+    the index can describe a larger image than the bytes that are open. Empty
+    when no index is loaded; `surface.index_problem` then says why.
     """
     if surface.index is None:
         return ()
+    size = surface.image_size
     rows = []
     for span in surface.index.atlas.coverage.spans:
+        # An index can describe a larger image than the bytes actually open, and
+        # an address outside the image is not a row: it is a claim about bytes
+        # that are not here.
+        if span.range.start.value >= size:
+            continue
         owners, shapes = surface.owners_of(surface.index.spans_overlapping(span.range))
         rows.append(
             RangeRow(
                 span=span.range,
-                address=image_address(span.range.start.value, surface.image_size),
+                address=image_address(span.range.start.value, size),
                 classification=span.classification,
                 confidence=span.confidence,
                 owners=owners,
@@ -815,7 +821,7 @@ def write_gate(surface: RomSurface) -> WriteGate:
         )
     return WriteGate(
         True,
-        "Write the new bytes at the selection. The change is confirmed first, is "
-        "owned by raw:<image address>, and takes effect with the project's next "
-        "build.",
+        "Write the new bytes at the selection. The change is confirmed first and "
+        "is owned by raw:<image address>. It is saved with the project and shown "
+        "in this surface; no build path applies it to an image yet.",
     )

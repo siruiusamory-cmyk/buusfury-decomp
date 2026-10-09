@@ -90,13 +90,16 @@ party records are set to the widest value each field's own mode uses:
 | strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields |
 
 Records 0..4 are set from `BASE_STAT_NAMES` order (Goku, Gohan, Goten, Trunks, Vegeta).
-Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. That roster split
-is an **inference, not a verified fact**: `tools/webfoot/formats/stat_tables.py:80-86` labels
-the names INFERRED, and `:77` calls all nine records "playable characters". No source in this
-repository establishes that fusions derive from the base records or that Hercule is
-unplayable. The five-record choice is therefore a bounded decision, recorded here so the
-playtest can falsify it; the fusion records are left at retail values, which is the
-conservative side of that uncertainty.
+Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. The record order
+itself is now **externally confirmed**, and the earlier inference about names is corrected:
+the external Data Crystal RAM map (fetched through the Wayback mirror) names the current
+character index at `0x03001068` as `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta,
+5=Gotenks, 6=Vegito, 7=Gogeta, 8=Videl`, and the per-character block stride is `0x68`. That
+matches this table's record order for the first eight and shows the ninth is **Videl**, not
+Hercule, which agrees with `tools/webfoot/formats/stat_tables.py:77` calling all nine records
+playable. The five-record split of the boost is therefore a scope decision inside a confirmed
+nine-character roster, not a claim about which records are characters. Records 5 to 8 stay at
+retail values, the conservative side.
 
 The builder refuses a byte that its own field table does not account for. That catches a write
 outside the table. It cannot catch a wrong offset or width inside the table, because the table
@@ -168,7 +171,7 @@ Nothing. The boost lane is frozen at `6d7a56c6` pending review.
 
 | item | state |
 | --- | --- |
-| the Bandana starting item | **NOT IMPLEMENTED, and no ROM-data route was located.** The gear names sit in the proven text pointer table `0x06BCE8` (1,534 entries, 4 bytes each, identity by index), where "Geromantium Bandana" is index 428 and the plain "Bandana" is index 518; consecutive name/description pairs there are what read as an 8-byte record. The 83-record item table at `0x3BD2F8` names no bandana, and the project's own census records the inventory as runtime state with no located ROM structure (`docs/research/ROM_EDITOR_SYSTEM_CENSUS.md:152`, `ROM_EDITOR_COVERAGE_LEDGER.md:384`). A separate read-only pass over the public reconstruction repository (the `buusfury-decomp-rb` sibling checkout) returned **UNSUPPORTED** on every one of these questions: that repository is a repackaging harness whose ten verbatim ROM ranges plus header regions are 98.568 percent of the image and are never disassembled (`docs/REFERENCE_AUDIT.md:49-68` there), and it contains no code for the stat consumer, no level comparison, and no starting-inventory initializer. Granting the Bandana therefore needs a located initializer or a script route, and inventing one would be a fallback, which this project refuses. The open route is the Ghidra program `/baserom.gba`, which holds the analyzed image |
+| the Bandana starting item | **NOT IMPLEMENTED.** The gear names sit in a general name table of 8-byte records at `0x06BCE8` (name pointer, then description pointer): index 428 is "Geromantium Bandana" and index 518 is "Bandana", described as "Only a really vicious criminal would wear something like this." That table continues into room names immediately after index 518, so it is a shared name table and not an item-only one. The 83-record item table at `0x3BD2F8` names no bandana and runs item ids 0..82, its names resolving through that same table at four entries per item. Two facts measured on the hardware image in this pass (see the completion record beside this one): the inventory slots are 8-byte records of a count word and an id word whose top nibble is a flag, and the item-add routine `0x08004448` refuses silently at 250 entries and stores `id & 0x0FFFFFFF`. **The unresolved mechanism is the id arithmetic by which the game names an id through `0x06BCE8`, and therefore the Bandana's own id.** Without it, choosing an id or an insertion point would be invention, so no bandana code was written |
 | zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
 | latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
 | the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |

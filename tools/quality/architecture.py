@@ -23,6 +23,7 @@ file may live once the project has decided to contain it.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -39,6 +40,13 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 #: The directory that ships as the product. Everything else is either support
 #: tooling, documentation, tests, or repository configuration.
 SHIPPING_ROOT = "tools/webfoot"
+
+#: The desktop application. It presents the shipping package, so it may use it.
+PRODUCT_ROOT = "tools/dragonbyte"
+
+#: The beta desktop package. It is reference for the application, never a
+#: dependency of it: what it proved lives in the SDK or in the application.
+BETA_ROOT = "tools.webfoot.workbench"
 
 #: Top-level directories a tracked file may live under. A new top-level
 #: directory is a deliberate decision, so it is listed here rather than inferred.
@@ -268,6 +276,113 @@ def _rule_no_test_imports_in_production(files: list[str]) -> list[dict]:
     return findings
 
 
+def _module_name(name: str) -> str:
+    """The dotted module name of a tracked Python file."""
+    path = name[: -len(".py")]
+    if path.endswith("/__init__"):
+        path = path[: -len("/__init__")]
+    return path.replace("/", ".")
+
+
+def _imported_modules(name: str, tree: ast.AST) -> list[tuple[str, int]]:
+    """Every module a file imports, as ``(dotted name, line)`` pairs.
+
+    A relative import is resolved against the file's own package, so a spelling
+    that never writes the target's name still resolves to it. A name imported
+    FROM a package resolves to the package joined with that name, so
+    ``from tools.webfoot import workbench`` counts as importing
+    ``tools.webfoot.workbench``.
+    """
+    module = _module_name(name)
+    package = (
+        module if name.endswith("/__init__.py") else module.rsplit(".", 1)[0]
+    )
+    found: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend((alias.name, node.lineno) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                parts = package.split(".")
+                # Level 1 is the file's own package; each further level climbs one.
+                climb = node.level - 1
+                parts = parts[: len(parts) - climb] if climb else parts
+                target = ".".join(part for part in parts if part)
+                if node.module:
+                    target = f"{target}.{node.module}" if target else node.module
+            else:
+                target = node.module or ""
+            if not target:
+                continue
+            found.append((target, node.lineno))
+            found.extend(
+                (f"{target}.{alias.name}", node.lineno) for alias in node.names
+            )
+    return found
+
+
+def _rule_import_direction(files: list[str]) -> list[dict]:
+    """The import direction between the application and the shipping package.
+
+    One edge each way, and both are load-bearing:
+
+    * nothing under the shipping package imports the application, because the
+      SDK does not depend on the thing that presents it;
+    * the application never imports the beta desktop package, because the beta
+      is reference rather than a dependency.
+
+    The file is parsed, so a module name inside a comment or a string can
+    neither satisfy the rule nor trip it. The ceiling that follows from parsing
+    is a name assembled at run time: an import built from a variable, a
+    concatenation or a call is outside what a parse can see.
+    """
+    # The roots above are paths; an import names a module, so the forbidden
+    # side of each edge is the dotted spelling of the same root.
+    directions = (
+        (
+            SHIPPING_ROOT,
+            PRODUCT_ROOT.replace("/", "."),
+            "the shipping package must not import the application",
+        ),
+        (
+            PRODUCT_ROOT,
+            BETA_ROOT.replace("/", "."),
+            "the application must not import the beta desktop package",
+        ),
+    )
+    findings = []
+    for name in files:
+        if not name.endswith(".py"):
+            continue
+        match = next(
+            (
+                (forbidden, detail)
+                for root, forbidden, detail in directions
+                if name == root or name.startswith(root + "/")
+            ),
+            None,
+        )
+        if match is None:
+            continue
+        forbidden, detail = match
+        try:
+            source = (REPOSITORY_ROOT / name).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        for imported, line in _imported_modules(name, tree):
+            if imported == forbidden or imported.startswith(forbidden + "."):
+                findings.append(
+                    {
+                        "rule": "import-direction",
+                        "path": name,
+                        "line": line,
+                        "detail": detail,
+                    }
+                )
+    return findings
+
+
 def _observation_large_modules(files: list[str], limit: int = 100_000) -> list[dict]:
     """A very large module is worth a reviewer's attention, never a failure."""
     observations = []
@@ -299,6 +414,7 @@ RULES = (
     _rule_no_local_state_tracked,
     _rule_site_and_sdk_are_separate,
     _rule_no_test_imports_in_production,
+    _rule_import_direction,
 )
 
 

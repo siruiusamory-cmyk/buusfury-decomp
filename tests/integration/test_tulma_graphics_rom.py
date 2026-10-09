@@ -37,6 +37,7 @@ import pytest
 from tools.export.png import encode_rgba
 from tools.research import apply_tulma_graphics as tg
 from tools.webfoot.formats import sprite_graphics as sg
+from tools.webfoot.formats import webfoot_lz as wl
 
 CANONICAL_SHA1 = "f1c4b07554d2a3b1ad2f325307051e775ce68087"
 #: Retail Chi-Chi's sprite id: the character the foundation displays as "Bulma".
@@ -153,6 +154,83 @@ def _sprite_containers(image: bytes, character_index: int) -> set[int]:
                     image, _offset(image, animation.pointer_for(frame, direction)))
                 found.update(piece.graphics_pointer for piece in record.pieces)
     return found
+
+
+def _coherence(pixels: bytes, side: int) -> float:
+    """Mean absolute difference between horizontally adjacent pixels. Lower is smoother."""
+    total = 0
+    count = 0
+    for y in range(side):
+        row = pixels[y * side:(y + 1) * side]
+        for x in range(side - 1):
+            total += abs(row[x] - row[x + 1])
+            count += 1
+    return total / count
+
+
+def _portrait_offsets(image: bytes, limit: int) -> list[int]:
+    """File offsets of portrait slots holding a full-size raster, in slot order."""
+    array = _offset(image, tg.PORTRAIT_ARRAY_ADDRESS)
+    found: list[int] = []
+    for slot in range(64):
+        word = array + 4 * slot
+        if word + 4 > len(image):
+            break
+        pointer = tg.read_u32(image, word)
+        if not 0x08000000 <= pointer < 0x08000000 + len(image):
+            continue
+        offset = _offset(image, pointer)
+        if wl.unpack(image, offset).declared_size != tg.PORTRAIT_SIDE * tg.PORTRAIT_SIDE:
+            continue
+        found.append(offset)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def test_a_portrait_payload_is_linear_and_a_sprite_payload_is_tiled():
+    """The format claim, measured against retail art and not against the writer's encoder.
+
+    A pack-then-unpack check passes on whichever format the writer assumed, so it cannot
+    settle this; that is why the same retail bytes are read BOTH ways here. A portrait is a
+    smooth image, so the linear reading must be far more coherent than reading the same bytes
+    as 8x8 swizzled tiles, and a sprite payload must show the reverse. This is the only place
+    the format can be settled, because only the retail image carries art whose shape is known.
+    """
+    rom = _rom_path()
+    image = Path(rom).read_bytes()
+    side = tg.PORTRAIT_SIDE
+
+    portraits = _portrait_offsets(image, 6)
+    assert portraits, "no portrait slot holds a full-size raster in this image"
+    for offset in portraits:
+        payload = wl.unpack(image, offset).data
+        linear = _coherence(bytes(payload), side)
+        tiled = _coherence(sg.decode_graphic(image, offset, side, side,
+                                             colour_256=True).pixels, side)
+        assert linear < tiled, (
+            f"the portrait at {offset:#x} reads more coherently as tiles "
+            f"({tiled:.2f} against {linear:.2f} linear), so it is not a linear raster"
+        )
+
+    donor = _donor(image)
+    sprite_offset = _offset(image, donor[(tg.SHEET_SLOTS[0][0], 0, 0)][0])
+    sprite_payload = wl.unpack(image, sprite_offset).data
+    sprite_linear = _coherence(_linear_reading(sprite_payload, tg.FRAME_WIDTH, tg.FRAME_HEIGHT),
+                               tg.FRAME_WIDTH)
+    sprite_tiled = _coherence(sg.decode_graphic(image, sprite_offset, tg.FRAME_WIDTH,
+                                                tg.FRAME_HEIGHT, colour_256=True).pixels,
+                              tg.FRAME_WIDTH)
+    assert sprite_tiled < sprite_linear, (
+        "a sprite container reads more coherently as a linear raster, so it is not tiles"
+    )
+
+
+def _linear_reading(payload: bytes, width: int, height: int) -> bytes:
+    """The same bytes read as a plain row-major raster, for comparison with the tile reading."""
+    needed = width * height
+    assert len(payload) >= needed, "payload is smaller than the raster it would be read as"
+    return bytes(payload[:needed])
 
 
 def test_the_writer_rewrites_every_facing_and_leaves_chi_chi_alone(tmp_path):

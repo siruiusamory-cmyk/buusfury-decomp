@@ -7,6 +7,7 @@ write is checked without a ROM and without the private artwork.
 
 from __future__ import annotations
 
+import os
 import struct
 
 import pytest
@@ -14,6 +15,7 @@ import pytest
 from tools.research import apply_tulma_dialogue as td
 from tools.webfoot.formats import webfoot_lz as wl
 from tools.webfoot.handles import pack_handle
+from tools.webfoot.write import WriteError
 
 #: The synthetic layout keeps each region clear of the others: the record words that name a
 #: record must live OUTSIDE the container's payload, exactly as they do in the real image, or
@@ -182,3 +184,34 @@ def test_run_writes_the_image_and_a_report(tmp_path):
     assert report["output_sha256"] == td.sha256((tmp_path / "out.gba").read_bytes())
     assert report["verification"]["read_back"]["tulma"] == td.TARGETS[1]["new_text"]
     assert (tmp_path / "report.json").exists()
+
+
+def test_run_refuses_to_write_over_its_own_input(tmp_path):
+    """The source-alias rule: a source is an input on every path and an output on none."""
+    base = _image()
+    path = tmp_path / "base.gba"
+    path.write_bytes(base)
+    with pytest.raises(WriteError, match="same file"):
+        td.run(path, td.sha256(base), path, tmp_path / "report.json")
+    assert path.read_bytes() == base
+
+
+def test_run_refuses_a_hard_link_of_its_own_input(tmp_path):
+    """A hard link is the same file, so it must be refused by identity and not by name."""
+    base = _image()
+    path = tmp_path / "base.gba"
+    path.write_bytes(base)
+    alias = tmp_path / "candidate.gba"
+    os.link(path, alias)
+    with pytest.raises(WriteError, match="same file"):
+        td.run(path, td.sha256(base), alias, tmp_path / "report.json")
+    assert path.read_bytes() == base
+
+
+def test_run_refuses_a_report_that_is_its_own_input(tmp_path):
+    base = _image()
+    path = tmp_path / "base.gba"
+    path.write_bytes(base)
+    with pytest.raises(WriteError, match="same file"):
+        td.run(path, td.sha256(base), tmp_path / "out.gba", path)
+    assert path.read_bytes() == base

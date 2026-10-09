@@ -88,8 +88,10 @@ Provenance was measured, not assumed:
 Placement rule: a re-encoded payload is written in place when it fits the container's
 measured packed extent, and appended above the end of the image otherwise, with the word
 that names it rewritten in the same batch. The packer is not competitive (median 1.06x), so
-22 of 23 payloads had to move; the original payload bytes are left byte-intact in every
-case, so a reference this writer did not discover still reaches the art it always reached.
+22 of 23 payloads had to move. An appended payload leaves the bytes it replaced untouched, so
+a reference this writer did not discover still reaches the art it always reached. The one
+in-place payload does overwrite the region it occupied; that is why the diff confinement
+check exists, and no other sprite names it.
 
 **A defect this ticket found and fixed, and the guard that now prevents it.** The first
 implementation repointed one piece word per container. Nine of the donor's containers are
@@ -110,6 +112,17 @@ shares the writer's assumption cannot see a wrong assumption. The fix is a dedic
 `plan_portrait`, which packs the raster straight, and a check that compares the raw payload
 rather than an unswizzled reading of it. A unit test asserts the bytes actually written and
 that they are not the swizzled alternative.
+
+**What that check does and does not establish, corrected after review.** The raw-payload
+comparison is a pack-then-unpack check: it establishes that the payload written is the raster
+the writer holds, and it does NOT establish that a linear raster is the correct format,
+because pack-then-unpack passes on whatever format the writer assumed. The format itself is
+settled elsewhere, against retail art rather than against the writer:
+`tests/integration/test_tulma_graphics_rom.py::test_a_portrait_payload_is_linear_and_a_sprite_payload_is_tiled`
+reads the same retail bytes both ways and requires the linear reading of a portrait to be
+more coherent than the tile reading, and the reverse for a sprite container. That test cannot
+be satisfied by any assumption the writer makes, which is what makes it a check rather than a
+restatement.
 
 ## 5. Static verification
 
@@ -136,9 +149,28 @@ that they are not the swizzled alternative.
    `tests/integration/test_tulma_graphics_rom.py` runs the writer over the canonical image
    with sheets it derives from that image, so the whole path is exercised without carrying a
    pixel of anyone's art, and asserts each of the four properties above plus the refusal of a
-   facing that is not the mirror of its pair, and that the portrait payload is written as the
-   linear raster and not as the swizzled alternative. Both files pass: 23 tests.
-7. **A red test that is not this ticket's.** `tests/integration/test_graphics_rom.py::test_`
+   facing that is not the mirror of its pair. **Corrected after review:** that integration
+   file does NOT assert that the portrait payload is written linear; what asserts the format
+   is the separate retail-data test named in section 4, which needs no writer at all.
+   Correcting this record is not the same as the earlier claim being true: the integration
+   file's portrait coverage is the end-to-end write, and the format claim lives in the test
+   that reads retail art both ways.
+7. **One command per artefact, and one invocation.** Both writers and the session analyser
+   take an explicit base with an expected digest. They run either as a module
+   (`python -m tools.research.apply_tulma_graphics ...`) or directly as
+   (`python tools/research/apply_tulma_graphics.py ...`); the earlier revision worked only
+   as a module, because it put `tools/` on the import path instead of the repository root.
+   The graphics writer reproduces `ef939dcd...` and the dialogue writer reproduces
+   `a4c12a95...` byte-for-byte after the source-alias fix, which is what makes the fix
+   behaviour preserving rather than merely green.
+8. **Source safety.** Both writers refuse a destination that is the base or any filesystem
+   alias of it, including a hard link, through `tools.webfoot.write.ensure_not_source_alias`,
+   and they stage the image and the report through sibling temporary files and rename them
+   into place. The guard runs before anything is parsed, so a refusal leaves the base
+   byte-identical. **This is the review's blocking finding B1**, and the reason it matters
+   here rather than in theory: this machine's canonical image is an NTFS hard link shared
+   across worktrees, so an `--out` naming it would have written the verified input in place.
+9. **A red test that is not this ticket's.** `tests/integration/test_graphics_rom.py::test_`
    `verified_graphics_pointers_join_the_common_reference_graph` fails on this baseline with
    11,304 references against an expectation of 11,302. It fails when run alone, it reads
    only the canonical image and the tracked SDK, and the file was last changed before later
@@ -230,10 +262,12 @@ than that is a separate ticket, filed with this evidence.
 
 ## 8. Not claimed
 
-- Runtime observation IS claimed, for the states section 6 names and no others: the sprite was
-  drawn in session 6, the portrait in session 8, and the two dialogue lines in session
-  `tulma001-dialogue-2`. Nothing here claims a state that was not on a screen in one of those
-  sessions, and no cutscene beyond the one that was played.
+- Runtime observation IS claimed, and split by what backs it. Capture-backed, for the states
+  section 6 names: the sprite in session 6 and the portrait in session 8, both re-inspected by
+  the reviewer. Owner-attested only: the two dialogue lines in session
+  `tulma001-dialogue-2`, whose instrument run captured no gameplay (section 9).
+  Nothing here claims a state that was not on a screen in one of those sessions, and no
+  cutscene beyond the one that was played.
 - No claim about directions beyond the donor's own cell order: the sheets are read
   direction-major, `cell = direction * frames_per_facing + frame`, which is the convention
   `sprite_identity.SourceSheet.slot_cell_index` states, and the walk proves it for this donor
@@ -298,10 +332,19 @@ is expected because they cover the same bytes; and no record anywhere still hold
 wording. The image diff is 120 bytes: 116 in the re-laid text region and 4 in the two handle
 words. The container's packed size and the table word are unchanged.
 
-**Runtime confirmation.** Session `tulma001-dialogue-2` on the final candidate
-`a4c12a95`: both lines read as written, in the right characters' mouths, with the portrait from
-section 6 beside them. The owner confirmed it on screen.
+**Runtime confirmation, and exactly what backs it.** Owner-attested on screen: the owner
+played session `tulma001-dialogue-2` on the final candidate `a4c12a95` and confirmed that both
+lines read as written, in the right characters' mouths, with the portrait from section 6
+beside them. **Corrected after review:** the instrument did not capture that scene. That run
+ended `all-settles-captured` at frame 4666 with all twelve settles reporting `map=nil`, and
+its last settle is the title screen, so no capture holds the dialogue or any gameplay. The
+static proof stands on its own (the exhaustive record comparison above); the *visible* claim
+rests on the owner's word, not on a capture, and this record says so rather than implying an
+instrument captured it. The sprite and portrait claims in section 6 are a different case:
+those captures exist and were re-inspected by the reviewer.
 
 **Not claimed for this expansion.** The wording of any other line, any record's length or
 handle beyond these two, who speaks a line (that is the scene's actor, not the text record),
-which portrait a scene shows, or any scene other than the one played.
+which portrait a scene shows, or any scene other than the one played. Also not established:
+whether the two enclosing scene views, which now carry the 15 units of padding in place of the
+shorter old wording, are ever displayed as continuous text.

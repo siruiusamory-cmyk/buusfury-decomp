@@ -30,8 +30,10 @@ never the palette.
 PLACEMENT RULE. A re-encoded payload is written in place when it fits the container's
 measured packed extent; otherwise it is appended above the end of the image and the one
 word that names it is rewritten - the piece's `+0x08` for a sprite container, the array
-slot for a portrait. The original payload bytes stay byte-intact in both cases, so a
-reference this writer did not discover still reaches intact art.
+slot for a portrait. An appended payload leaves the bytes it replaces untouched, so a
+reference this writer did not discover still reaches intact art. An in-place payload
+overwrites the region it occupied, which is why `verify` confines the diff to the spans
+this report attributes to a named owner.
 
 WHY NOT `write.plan_changes`. It requires every change to lie inside the base image, so it
 cannot express an append, and its generated-image path is canonical-plus-16-MiB. The
@@ -46,14 +48,16 @@ import argparse
 import hashlib
 import json
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from tools.webfoot.formats import rgb_png  # noqa: E402
 from tools.webfoot.formats import sprite_graphics as sg  # noqa: E402
 from tools.webfoot.formats import webfoot_lz as wl  # noqa: E402
+from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
 
 #: config/roms.yaml actor_sprites.character_table_address.
 REGISTRY_TABLE_ADDRESS = 0x086B6BDC
@@ -547,8 +551,31 @@ def verify_reopen(out: bytes, assets: Path, expected: dict[int, bytes]) -> dict:
     return {"sprite_containers_reopened": len(named)}
 
 
+def _write_staged(path: Path, data: bytes) -> None:
+    """Write through a sibling temporary file, then rename, so a reader never sees a partial.
+
+    The precedent is `apply_friend_v3_text_edits.py`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".",
+                                     suffix=".partial", delete=False) as handle:
+        staged = Path(handle.name)
+        try:
+            handle.write(data)
+        except BaseException:
+            handle.close()
+            staged.unlink(missing_ok=True)
+            raise
+    staged.replace(path)
+
+
 def run(base_path: Path, expect_sha256: str, assets: Path, out_path: Path,
         report_path: Path) -> dict:
+    # First and total, before anything is read for writing: a source is an input on every path
+    # and an output on none, and a hard link of the canonical image is the same file.
+    ensure_not_source_alias(base_path, out_path)
+    ensure_not_source_alias(base_path, report_path)
+    ensure_not_source_alias(out_path, report_path)
     data = base_path.read_bytes()
     digest = sha256(data)
     if digest != expect_sha256.lower():
@@ -581,8 +608,11 @@ def run(base_path: Path, expect_sha256: str, assets: Path, out_path: Path,
     out = apply(data, plan)
     reopen = verify_reopen(out, assets, placed)
     portrait_now = portrait_record.get("new_offset", portrait_record["container_offset"])
-    # The portrait is compared as its own format: the raw payload, not an unswizzled
-    # reading of it. Comparing it through the sprite decoder would agree with the bug.
+    # This compares the raw payload, so no swizzle step sits between the art and the check.
+    # It establishes that the payload written IS the raster this writer holds; it does NOT
+    # establish that a linear raster is the right format, because pack-then-unpack agrees
+    # with whatever format the writer assumed. The format is checked against retail data in
+    # tests/integration/test_tulma_graphics_rom.py, which is the only place it can be.
     if wl.unpack(out, portrait_now).data != portrait_raster:
         raise TulmaGraphicsError("the portrait container does not hold the art placed")
     reopen["portrait_container_offset"] = portrait_now
@@ -609,9 +639,11 @@ def run(base_path: Path, expect_sha256: str, assets: Path, out_path: Path,
         "diff": verify(data, out, plan),
         "reopen": reopen,
     }
-    out_path.write_bytes(out)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
-                           encoding="utf-8")
+    _write_staged(out_path, out)
+    _write_staged(report_path,
+                  (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+    if sha256(base_path.read_bytes()) != digest:
+        raise TulmaGraphicsError("the base image changed during the build")
     return report
 
 
@@ -625,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = run(args.base, args.expect_sha256, args.assets, args.out, args.report)
-    except TulmaGraphicsError as exc:
+    except (TulmaGraphicsError, WriteError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     print(f"output  {report['output_sha256']}  {report['output_size']} bytes")

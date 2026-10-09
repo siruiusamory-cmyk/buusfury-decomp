@@ -22,7 +22,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from tools.webfoot.formats import webfoot_lz as wl  # noqa: E402
 

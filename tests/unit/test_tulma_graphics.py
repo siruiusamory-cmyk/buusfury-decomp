@@ -8,6 +8,7 @@ refuses a stale base, an overlap and any byte outside a declared span.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from tools.export.png import encode_rgba
 from tools.research import apply_tulma_graphics as tg
 from tools.webfoot.formats import sprite_graphics as sg
 from tools.webfoot.formats import webfoot_lz as wl
+from tools.webfoot.write import WriteError
 
 PALETTE_OFFSET = 0x40
 
@@ -244,3 +246,31 @@ def test_a_declared_span_beyond_the_base_is_still_attributed():
     report = tg.verify(b"abcd", b"abcd\xff\xffXY", plan)
     assert report["changed_bytes_outside"] == 0
     assert report["appended_bytes"] == 4
+
+
+def test_run_refuses_to_write_over_its_own_input(tmp_path):
+    """The source-alias rule, checked before anything is parsed, so it cannot be bypassed."""
+    base = tmp_path / "base.gba"
+    base.write_bytes(b"not an image")
+    with pytest.raises(WriteError, match="same file"):
+        tg.run(base, "00" * 32, tmp_path / "assets", base, tmp_path / "report.json")
+    assert base.read_bytes() == b"not an image"
+
+
+def test_run_refuses_a_hard_link_of_its_own_input(tmp_path):
+    """A hard link is the same file, so the refusal is by identity and not by spelling."""
+    base = tmp_path / "base.gba"
+    base.write_bytes(b"not an image")
+    alias = tmp_path / "candidate.gba"
+    os.link(base, alias)
+    with pytest.raises(WriteError, match="same file"):
+        tg.run(base, "00" * 32, tmp_path / "assets", alias, tmp_path / "report.json")
+    assert base.read_bytes() == b"not an image"
+
+
+def test_run_refuses_a_report_that_is_its_own_input(tmp_path):
+    base = tmp_path / "base.gba"
+    base.write_bytes(b"not an image")
+    with pytest.raises(WriteError, match="same file"):
+        tg.run(base, "00" * 32, tmp_path / "assets", tmp_path / "out.gba", base)
+    assert base.read_bytes() == b"not an image"

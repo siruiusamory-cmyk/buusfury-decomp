@@ -32,13 +32,15 @@ import hashlib
 import json
 import struct
 import sys
+import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from tools.webfoot.compressed_dialogue import dialogue_record_inventory  # noqa: E402
 from tools.webfoot.formats import webfoot_lz as wl  # noqa: E402
 from tools.webfoot.handles import pack_handle  # noqa: E402
+from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
 
 #: The literal word that names this image's dialogue container table. On a post-splice image
 #: the retail literal at 0x7B5B64 no longer points at the live table; this one does.
@@ -254,7 +256,31 @@ def verify(base: bytes, out: bytes, planned: dict) -> dict:
     }
 
 
+def _write_staged(path: Path, data: bytes) -> None:
+    """Write through a sibling temporary file, then rename, so a partial write is visible.
+
+    The precedent is `apply_friend_v3_text_edits.py`: the output appears whole or not at all,
+    so a reader never sees a half-written image.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".",
+                                     suffix=".partial", delete=False) as handle:
+        staged = Path(handle.name)
+        try:
+            handle.write(data)
+        except BaseException:
+            handle.close()
+            staged.unlink(missing_ok=True)
+            raise
+    staged.replace(path)
+
+
 def run(base_path: Path, expect_sha256: str, out_path: Path, report_path: Path) -> dict:
+    # First and total, before anything is read for writing: a source is an input on every path
+    # and an output on none, and a hard link of the canonical image is the same file.
+    ensure_not_source_alias(base_path, out_path)
+    ensure_not_source_alias(base_path, report_path)
+    ensure_not_source_alias(out_path, report_path)
     base = base_path.read_bytes()
     digest = sha256(base)
     if digest != expect_sha256.lower():
@@ -281,9 +307,11 @@ def run(base_path: Path, expect_sha256: str, out_path: Path, report_path: Path) 
                       "new_text": t["new_text"]} for t in TARGETS],
         "verification": verify(base, out, planned),
     }
-    out_path.write_bytes(out)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
-                           encoding="utf-8")
+    _write_staged(out_path, out)
+    _write_staged(report_path,
+                  (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+    if sha256(base_path.read_bytes()) != digest:
+        raise TulmaDialogueError("the base image changed during the build")
     return report
 
 
@@ -296,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = run(args.base, args.expect_sha256, args.out, args.report)
-    except TulmaDialogueError as exc:
+    except (TulmaDialogueError, WriteError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     print(f"output {report['output_sha256']}  {report['output_size']} bytes")

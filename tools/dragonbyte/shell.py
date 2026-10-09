@@ -11,6 +11,9 @@ Every destination's centre page is a statement rather than an editor: this step
 builds the foundation, and a page that implied editing worked would be a false
 claim. The four global actions are present, disabled and each carries the reason
 it is not available; a control that cannot act says so instead of pretending.
+Save, Undo and Redo are real actions, and what they can do is the session's
+answer rather than a decision taken here: this window renders the availability of
+edits and never computes one.
 """
 
 from __future__ import annotations
@@ -70,6 +73,11 @@ GLOBAL_ACTIONS: tuple[tuple[str, str], ...] = (
         "release step.",
     ),
 )
+
+#: The edit actions, in the order they sit in the action bar. They are real
+#: actions rather than placeholders: what they can do is the session's answer,
+#: never a decision taken here.
+EDIT_ACTIONS: tuple[str, ...] = ("Save", "Undo", "Redo")
 
 
 class _FoundationPage(QWidget):
@@ -193,6 +201,25 @@ class Shell(QMainWindow):
             action.setStatusTip(reason)
             self._global_actions[label] = action
 
+        # The platform's own standard keys, so a menu-less action still answers
+        # the combination a user already knows.
+        shortcuts = {
+            "Save": QKeySequence.StandardKey.Save,
+            "Undo": QKeySequence.StandardKey.Undo,
+            "Redo": QKeySequence.StandardKey.Redo,
+        }
+        slots = {
+            "Save": self.save_project,
+            "Undo": self.undo_edit,
+            "Redo": self.redo_edit,
+        }
+        self._edit_actions: dict[str, QAction] = {}
+        for label in EDIT_ACTIONS:
+            action = QAction(label, self)
+            action.setShortcut(shortcuts[label])
+            action.triggered.connect(slots[label])
+            self._edit_actions[label] = action
+
     def _build_menus(self) -> None:
         """File, View and Help. The four global actions are not repeated here."""
         file_menu = self.menuBar().addMenu("&File")
@@ -227,16 +254,25 @@ class Shell(QMainWindow):
         bar.addWidget(self._identity_label)
         bar.addWidget(self._spacer())
         for label, reason in GLOBAL_ACTIONS:
-            action = self._global_actions[label]
-            bar.addAction(action)
-            button = bar.widgetForAction(action)
-            if button is not None:
-                # The reason travels with the control as well as with the action,
-                # so a keyboard or screen-reader user gets it from the control.
-                button.setToolTip(reason)
-                button.setAccessibleName(f"{label}. {reason}")
+            self._place_action(bar, self._global_actions[label], label, reason)
+        # The edit actions share the row group with the global ones: the same
+        # treatment, so a disabled control states its reason here too.
+        for label in EDIT_ACTIONS:
+            self._place_action(bar, self._edit_actions[label], label, "")
         self._action_bar = bar
         self.addToolBar(bar)
+
+    def _place_action(
+        self, bar: QToolBar, action: QAction, label: str, reason: str
+    ) -> None:
+        """Add one action to a bar and let its button carry the reason."""
+        bar.addAction(action)
+        button = bar.widgetForAction(action)
+        if button is not None:
+            # The reason travels with the control as well as with the action,
+            # so a keyboard or screen-reader user gets it from the control.
+            button.setToolTip(reason)
+            button.setAccessibleName(f"{label}. {reason}" if reason else label)
 
     def _build_destination_strip(self) -> None:
         """Six destinations, one rule between the groups, then history."""
@@ -356,14 +392,89 @@ class Shell(QMainWindow):
         if not chosen:
             return
         directory = Path(chosen)
+        if not self._settle_unsaved_changes():
+            return
         try:
-            self._session.open_project(directory)
+            self._session.open_project(directory, discard_unsaved=True)
         except SessionError as exc:
             self._report_failure("Open Project", str(exc))
             return
         self._settings.last_directory = str(directory)
         self._refresh_identity()
         self._refresh_status()
+
+    def save_project(self) -> None:
+        """Write the unsaved edits. A refusal or a failure changes nothing."""
+        try:
+            self._session.save_project()
+        except SessionError as exc:
+            self._report_failure("Save", str(exc))
+            return
+        self._refresh_status()
+
+    def undo_edit(self) -> None:
+        """Step the project back one edit. A refusal changes nothing."""
+        try:
+            self._session.undo_edit()
+        except SessionError as exc:
+            self._report_failure("Undo", str(exc))
+            return
+        self._refresh_status()
+
+    def redo_edit(self) -> None:
+        """Step the project forward one edit. A refusal changes nothing."""
+        try:
+            self._session.redo_edit()
+        except SessionError as exc:
+            self._report_failure("Redo", str(exc))
+            return
+        self._refresh_status()
+
+    def _unsaved_changes_question(self) -> str:
+        """What an unsaved-changes question says, and nothing it cannot measure.
+
+        The count and the affected documents are what the journal holds. The byte
+        ranges the product spec also asks for are owed when the range index exists
+        (S4); they are left out rather than guessed, because a count a user cannot
+        trust is worse than a shorter question.
+        """
+        journal = self._session.journal
+        edits = journal.edits()
+        targets = ", ".join(sorted({entry.target for entry in edits}))
+        return (
+            f"{journal.depth} unsaved edit(s) to {targets} would be lost.\n\n"
+            "Discard replaces the project's authored files and the edits they "
+            "carry with the project as it was last read from disk."
+        )
+
+    def _settle_unsaved_changes(self) -> bool:
+        """Ask about unsaved edits. Returns False when the caller must stop.
+
+        One question for both callers - closing the window and replacing the
+        project - so the destructive step cannot be reached two different ways.
+        """
+        if not self._session.journal.is_dirty:
+            return True
+        answer = QMessageBox.warning(
+            self,
+            "Unsaved changes",
+            self._unsaved_changes_question(),
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        try:
+            self._session.save_project()
+        except SessionError as exc:
+            self._report_failure("Save", str(exc))
+            return False
+        self._refresh_status()
+        return True
 
     def show_about(self) -> None:
         """The window's state and the state rules, from their one authority."""
@@ -377,7 +488,14 @@ class Shell(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
-        """Persist the window's geometry and the last directory, then close."""
+        """Ask about unsaved edits, then persist the window and close.
+
+        A declined save keeps the window open: closing on a failed write would
+        destroy the edits the write existed to keep.
+        """
+        if not self._settle_unsaved_changes():
+            event.ignore()
+            return
         self._settings.geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
         self._settings.save(self._config_directory)
         event.accept()
@@ -398,8 +516,30 @@ class Shell(QMainWindow):
         label = active.label if active is not None else "no destination"
         rom = "ROM open" if self._session.has_rom else "no ROM"
         project = "project open" if self._session.has_project else "no project"
+        if self._session.has_project and self._session.journal.is_dirty:
+            project = "project open, unsaved changes"
         self._status_state.setText(f"{label}   |   {rom}   |   {project}")
         self._status_message.setText(self._status_text)
+        self._refresh_edit_actions()
+
+    def _refresh_edit_actions(self) -> None:
+        """Render the session's answer about Save, Undo and Redo.
+
+        The enabled state and the reason both come from `edit_availability`, so a
+        button and its action can never disagree with the session or with each
+        other - and nothing here decides either one.
+        """
+        availability = self._session.edit_availability()
+        for label in EDIT_ACTIONS:
+            enabled, reason = availability[label]
+            action = self._edit_actions[label]
+            action.setEnabled(enabled)
+            action.setToolTip(reason)
+            action.setStatusTip(reason)
+            button = self._action_bar.widgetForAction(action)
+            if button is not None:
+                button.setToolTip(reason)
+                button.setAccessibleName(f"{label}. {reason}")
 
     def _refresh_identity(self) -> None:
         self._identity_label.setText(

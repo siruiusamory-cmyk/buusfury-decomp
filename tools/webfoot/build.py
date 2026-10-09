@@ -48,9 +48,9 @@ from .project import (
     PROJECT_FORMAT_VERSION,
     ProjectMeta,
     ProjectValidationError,
-    RawByteDocumentError,
     StatProject,
     raw_byte_changes,
+    raw_byte_no_op_problems,
     read_project,
     read_raw_bytes,
     write_project,
@@ -1254,31 +1254,32 @@ def _check_dialogues(project: StatProject, profile: RomProfile,
 def _check_raw_bytes(
     project_dir: str | Path, image: bytes | None
 ) -> list[str]:
-    """Report the raw byte document's own problems, before anything is emitted.
+    """Report the raw byte document's problems, resolved against the image.
 
     LOG1-RAW-WRITE-BUILD-001. A raw write is a change like any other, and this is
     its half of the fail-closed ordering every other subsystem already has: the
     document is read, every write is resolved against the canonical image, and a
-    malformed document or a write outside the image is a named problem here rather
-    than a build that refuses with a library error or, worse, an image that omits
-    the write and reports success.
+    write that reaches outside the image, or one that is already the image's own
+    bytes and so changes nothing, is a named problem here rather than a build that
+    quietly leaves it out.
+
+    A MALFORMED document does not reach this function's problem list: the reader
+    itself raises `RawByteDocumentError`, and both callers let that raise, so a
+    build that cannot read the document stops before anything is emitted instead
+    of reading it as "this project authors no raw byte". Both paths are
+    fail-closed, which is the property that matters; this function does not claim
+    the reader's own refusals.
 
     A `None` image means the caller has no canonical bytes to resolve against; the
     document is then read for its own shape alone, which is still a stronger
     answer than skipping it.
     """
     if image is None:
-        try:
-            read_raw_bytes(project_dir)
-        except RawByteDocumentError as exc:
-            return [f"authored raw bytes: {exc}"]
+        read_raw_bytes(project_dir)
         return []
-    try:
-        edits = read_raw_bytes(project_dir)
-        raw_byte_changes(edits, image)
-    except RawByteDocumentError as exc:
-        return [f"authored raw bytes: {exc}"]
-    return []
+    edits = read_raw_bytes(project_dir)
+    raw_byte_changes(edits, image)
+    return raw_byte_no_op_problems(edits, image)
 
 
 def _identity_order(identity: object) -> int:

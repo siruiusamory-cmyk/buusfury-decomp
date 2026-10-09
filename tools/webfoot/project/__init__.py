@@ -68,6 +68,7 @@ from .rawbytes import (
     RawByteDocumentError,
     RawByteEdits,
     raw_byte_changes,
+    raw_byte_no_op_problems,
     read_raw_bytes,
 )
 
@@ -115,6 +116,7 @@ __all__ = [
     "parse_object_template_identity",
     "parse_transition_creation_identity",
     "raw_byte_changes",
+    "raw_byte_no_op_problems",
     "read_project",
     "read_raw_bytes",
     "remove_authored_placement",

@@ -26,9 +26,13 @@ never becomes "no output may live in a directory holding a ROM", which would
 refuse the ordinary release workflow and is not what the owner asked for.
 
 The protected set has two sources and no third: the caller's own input, which
-needs no policy to be protected, and the repository's protected input directories,
-read from the tracked ignore rules so the policy keeps one statement instead of a
-second list here that could disagree with it.
+needs no policy to be protected, and the directories listed in
+:data:`PROTECTED_INPUT_DIRECTORIES`. That tuple is the authoritative list; the
+tracked ignore rules are consulted only to confirm a listed name is still
+declared there, so a directory dropped from the ignore file stops being protected
+and a newly ignored one is not protected until it is listed. A parser that tried
+to infer the set from the ignore file alone could not tell an input directory from
+an output one, because `build/` is ignored as output.
 """
 
 from __future__ import annotations
@@ -43,11 +47,25 @@ from .write import WriteError
 #: directory covers the ROMs and the bare name covers a symlink or junction to it.
 IGNORE_FILE = ".gitignore"
 
-#: The ignored directories this rule treats as protected ROM inputs. ROM-input
+#: The directories this rule treats as protected ROM inputs. ROM-input
 #: directories only: `build/` is ignored as generated OUTPUT and is a legal place
 #: to emit an image, so protecting it here would forbid the activity the ignore
 #: rule exists to keep out of version control.
-PROTECTED_INPUT_DIRECTORIES = ("roms", "extracted", "dump", "stock", "exports")
+#:
+#: This tuple is the AUTHORITATIVE set. The tracked ignore rules are consulted only
+#: to confirm each name is still declared there, so a directory removed from
+#: `IGNORE_FILE` stops being protected. The reverse direction is deliberately not
+#: supported: a newly ignored directory is not protected until it is listed here,
+#: because "ignored" also covers output directories and no parser can tell the two
+#: apart. Adding a name is a one-line decision, and that is the point.
+PROTECTED_INPUT_DIRECTORIES = (
+    "roms",
+    "extracted",
+    "dump",
+    "dumps",
+    "stock",
+    "exports",
+)
 
 #: One protected-input index per checkout root. A destination check runs on every
 #: emitted image, and the walk below covers every file in `roms/`, so it is

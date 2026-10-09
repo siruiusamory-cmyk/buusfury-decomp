@@ -109,9 +109,13 @@ def raw_byte_changes(edits: RawByteEdits, image: bytes) -> list[ByteChange]:
     `image` is the CANONICAL base the write is applied to, and every value here is
     what the image holds rather than what the document claims: the owner is the
     image address the write lands at, and the bytes it replaces are the image's
-    own. A write that reaches outside the image, or one whose authored bytes are
-    already the image's bytes, is refused or dropped as the reason states - never
-    omitted silently.
+    own. A write that reaches outside the image is refused.
+
+    A write whose authored bytes are already the image's bytes mints no change,
+    because the manifest would otherwise describe a write that is not one. That
+    case is not silent: :func:`raw_byte_no_op_problems` states it to the person
+    building, and `build` refuses on it, so an authored entry that does nothing is
+    reported rather than quietly left out of the plan.
 
     The overlap guard is not restated here. These changes go into the one plan
     `build_project` already forms, so a raw write that meets a semantic edit's
@@ -119,8 +123,7 @@ def raw_byte_changes(edits: RawByteEdits, image: bytes) -> list[ByteChange]:
     domains.
     """
     changes: list[ByteChange] = []
-    for offset in sorted(edits.bytes_by_offset):
-        new = edits.bytes_by_offset[offset]
+    for offset, new in sorted(edits.bytes_by_offset.items()):
         if offset < 0 or offset + len(new) > len(image):
             raise RawByteDocumentError(
                 f"raw byte write at 0x{offset:06X} for {len(new)} byte(s) is not "
@@ -128,8 +131,6 @@ def raw_byte_changes(edits: RawByteEdits, image: bytes) -> list[ByteChange]:
             )
         old = image[offset : offset + len(new)]
         if old == new:
-            # An authored write equal to the base changes no byte, so it mints no
-            # change: the manifest would have to report a write that is not one.
             continue
         changes.append(
             ByteChange(
@@ -141,3 +142,22 @@ def raw_byte_changes(edits: RawByteEdits, image: bytes) -> list[ByteChange]:
             )
         )
     return changes
+
+
+def raw_byte_no_op_problems(edits: RawByteEdits, image: bytes) -> list[str]:
+    """Every authored raw write whose bytes are already the image's, named.
+
+    A no-op entry cannot become a change, but dropping it without a word would
+    leave a person believing an authored write shipped. It is a validation problem
+    instead, so the answer is one line naming the offset rather than silence.
+    """
+    problems: list[str] = []
+    for offset, new in sorted(edits.bytes_by_offset.items()):
+        if offset < 0 or offset + len(new) > len(image):
+            continue  # already a bounds problem, reported by `raw_byte_changes`
+        if image[offset : offset + len(new)] == new:
+            problems.append(
+                f"raw byte write at 0x{offset:06X} is already those bytes, so it "
+                "changes nothing; remove it or author different bytes"
+            )
+    return problems

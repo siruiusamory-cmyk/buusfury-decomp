@@ -1362,6 +1362,11 @@ def emit_image(
 
     manifest_destination = Path(manifest_path) if manifest_path is not None else None
     if manifest_destination is not None:
+        # The provenance document is a destination this module writes, so it
+        # answers the same destination policy the image does, for the reason the
+        # policy gives: it is the PATH that is protected, not the bytes. Without
+        # this a manifest was created inside a protected ROM input directory.
+        refuse_rom_destination(source, manifest_destination)
         if paths_are_the_same_file(manifest_destination, source) or (
             paths_are_the_same_file(manifest_destination, destination)
         ):

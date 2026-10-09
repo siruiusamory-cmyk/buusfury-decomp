@@ -389,7 +389,9 @@ answers *which edit changed these bytes*, not merely *these bytes differ*.
   every value an even-length hex string, and that every write lies inside the
   canonical image. A document that cannot be read is refused, never read as "this
   project authors no raw byte", because that reading would emit the canonical
-  bytes while reporting success;
+  bytes while reporting success. An entry that changes nothing is refused with its
+  offset named, for the same reason: it cannot become a change, and dropping it
+  silently would leave a person believing an authored write shipped;
 - records the ROM lacks, and records the project omits;
 - for text: identity key form and range, encodability (unsupported characters,
   malformed `{08:XX}` tokens, embedded NULs), whether the encoded text fits its
@@ -427,7 +429,15 @@ pass:
   and cannot be written independently of it;
 - the destination resolves inside a protected input directory, **including one
   reached through a directory junction or symlink**, because the destination is
-  resolved before it is compared.
+  resolved before it is compared. The provenance manifest is a destination this
+  path writes, so it is held to the same rule as the image.
+
+The protected directory names are `destination.PROTECTED_INPUT_DIRECTORIES`: that
+tuple is authoritative, and the tracked ignore rules are consulted only to confirm
+a listed name is still declared there. A name dropped from the ignore file stops
+being protected; a newly ignored directory is not protected until it is listed,
+because `build/` is ignored as generated output and no parser can tell an input
+directory from an output one.
 
 What is not refused: a distinct derivative whose directory merely contains a ROM.
 A directory holding an input is not itself an input, and an output chosen outside

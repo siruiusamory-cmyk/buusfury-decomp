@@ -279,16 +279,45 @@ def test_emit_image_refuses_a_hardlink_of_a_protected_rom(checkout: Path, tmp_pa
     assert alias.read_bytes() == base
 
 
+def test_emit_image_refuses_a_manifest_destination_in_the_protected_directory(
+    checkout: Path, tmp_path: Path
+):
+    """The policy is about the path, so it covers the provenance document too.
+
+    Measured before this was closed: `emit_image` guarded the image destination but
+    not the manifest destination, so an explicitly redirected manifest was created
+    inside a protected ROM input directory. No ROM could be destroyed through it -
+    an existing file there is refused by the overwrite rule - but the rule this
+    module states was not true of that path.
+    """
+    base = _rom(checkout).read_bytes()
+    plan = _plan_for(base)
+    refused_manifest = checkout / "roms" / "provenance.json"
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        emit_image(
+            _rom(checkout),
+            tmp_path / "derivative.gba",
+            plan,
+            manifest_path=refused_manifest,
+        )
+
+    assert not refused_manifest.exists()
+
+
 def test_emit_image_still_writes_a_legitimate_derivative(checkout: Path, tmp_path: Path):
     base = _rom(checkout).read_bytes()
     plan = _plan_for(base)
     output = tmp_path / "derivative.gba"
+    manifest_path = tmp_path / "derivative.json"
 
-    manifest = emit_image(_rom(checkout), output, plan)
+    manifest = emit_image(_rom(checkout), output, plan, manifest_path=manifest_path)
 
     assert output.exists()
     assert output.read_bytes()[4] == base[4] ^ 0xFF
     assert manifest.output_sha256 == _digest(output.read_bytes())
+    # The legitimate companion is still published where the caller asked.
+    assert manifest_path.exists()
 
 
 def test_save_authored_image_refuses_the_protected_pathname(checkout: Path):

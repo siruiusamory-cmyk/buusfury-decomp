@@ -1,4 +1,4 @@
-﻿"""ROM-gated proofs: an authored raw byte reaches the emitted image. LOG1-RAW-WRITE-BUILD-001.
+"""ROM-gated proofs: an authored raw byte reaches the emitted image. LOG1-RAW-WRITE-BUILD-001.
 
 The one claim this ticket exists to make good, and the one that cannot be
 demonstrated on synthetic data:
@@ -34,7 +34,7 @@ from tests.rom_support import (
 from tools.dragonbyte.rawbytes import RawEdits, write_raw_document
 from tools.webfoot.build import build_project, extract_project, validate_project
 from tools.webfoot.profile import RomProfileCatalog
-from tools.webfoot.project import ProjectValidationError
+from tools.webfoot.project import ProjectValidationError, RawByteDocumentError
 from tools.webfoot.write import ByteChange, OverlappingChangeError
 
 CANONICAL_SHA256 = CANONICAL_ROM_SHA256
@@ -164,6 +164,7 @@ def test_the_manifest_names_the_raw_edit_and_its_offset(
     assert change["old"] == CANONICAL_AT_RAW_OFFSET.hex()
     assert change["new"] == RAW_NEW.hex()
     assert change["owner"] == f"raw:0x{0x08000000 + RAW_OFFSET:08X}"
+    assert change["reason"] == "raw byte write"
     assert document["changed_byte_count"] == len(RAW_NEW)
 
     published = result.manifest_path.read_text(encoding="utf-8")
@@ -195,11 +196,12 @@ def test_a_raw_edit_and_a_semantic_edit_share_one_plan(
 def test_a_raw_write_outside_the_image_is_refused_before_any_output(
     tmp_path: Path, project: Path, mutable_rom: Path, catalog: RomProfileCatalog
 ):
+    """A write past canonical EOF is refused by the reader, before any output."""
     image_size = mutable_rom.stat().st_size
     _author_raw(project, image_size - 1, b"\xAA\xBB")
     output = tmp_path / "out.gba"
 
-    with pytest.raises(ProjectValidationError, match="is not inside the"):
+    with pytest.raises(RawByteDocumentError, match="is not inside the"):
         _build(project, str(mutable_rom), catalog, output)
 
     assert not output.exists()
@@ -321,16 +323,21 @@ def test_a_stale_raw_write_is_refused_rather_than_applied(
 # every fixture this file mutates.
 
 
-def test_validate_reports_the_raw_problem_and_writes_nothing(
+def test_validate_refuses_a_write_outside_the_image_and_writes_nothing(
     tmp_path: Path, project: Path, mutable_rom: Path, catalog: RomProfileCatalog
 ):
+    """`validate` refuses it too, with the reader's own reason, before any output.
+
+    The reader raises rather than returning a problem, and `validate` lets that
+    raise: a document it cannot read is a refusal, not a project that authors no
+    raw byte.
+    """
     image_size = mutable_rom.stat().st_size
     _author_raw(project, image_size - 1, b"\xAA\xBB")
 
-    report = validate_project(project, str(mutable_rom), catalog)
+    with pytest.raises(RawByteDocumentError, match="is not inside the 8388608-byte"):
+        validate_project(project, str(mutable_rom), catalog)
 
-    assert not report.passed
-    assert any("authored raw bytes" in problem for problem in report.problems)
     assert_canonical_unchanged()
 
 
@@ -350,15 +357,24 @@ def test_a_raw_build_is_deterministic_and_leaves_the_canonical_rom_untouched(
     assert_canonical_unchanged()
 
 
-def test_a_write_equal_to_the_canonical_bytes_is_reported_as_no_change(
+def test_a_write_equal_to_the_canonical_bytes_is_refused_as_a_no_op(
     tmp_path: Path, project: Path, mutable_rom: Path, catalog: RomProfileCatalog
 ):
-    """An authored write that changes nothing is not an edit, and says so."""
+    """An authored write that changes nothing is refused, and says why.
+
+    It cannot become a change, and dropping it without a word would leave a person
+    believing an authored write shipped, so it is a named validation problem and no
+    image is emitted.
+    """
     _author_raw(project, RAW_OFFSET, CANONICAL_AT_RAW_OFFSET)
 
     output = tmp_path / "out.gba"
-    result = _build(project, str(mutable_rom), catalog, output)
 
-    assert result.manifest.to_json()["changes"] == []
-    assert output.read_bytes() == canonical_rom_bytes()
+    with pytest.raises(ProjectValidationError, match="is already those bytes"):
+        _build(project, str(mutable_rom), catalog, output)
+
+    assert not output.exists()
+    report = validate_project(project, str(mutable_rom), catalog)
+    assert not report.passed
+    assert any("is already those bytes" in problem for problem in report.problems)
     assert_canonical_unchanged()

@@ -37,7 +37,7 @@ from .rawbytes import (
     claimed_by,
     write_raw_document,
 )
-from . import dataedits
+from . import dataedits, mapedits
 
 
 class JournalError(Exception):
@@ -182,6 +182,15 @@ DOCUMENT_ADAPTERS: dict[str, _DocumentAdapter] = {
         install=dataedits.install,
         validate=dataedits.validate,
         write=dataedits.write,
+    ),
+    # The Maps destination's two authored documents, registered for the same
+    # reason and in the same shape: this registry is the one list a target must
+    # appear in to be reversible at all.
+    mapedits.MAPS_TARGET: _DocumentAdapter(
+        read=mapedits.read,
+        install=mapedits.install,
+        validate=mapedits.validate,
+        write=mapedits.write,
     ),
 }
 

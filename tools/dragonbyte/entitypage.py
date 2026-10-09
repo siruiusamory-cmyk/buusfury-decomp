@@ -220,10 +220,16 @@ class EntityPage(QWidget):
         """The byte effect of this destination's pending edits, for the ROM page.
 
         Asked on every ROM render, so it is a read of the journal-backed project
-        rather than a cached value that could lag one undo behind. Where there is
-        nothing to answer with, this returns nothing and `refresh` states the
-        reason on the page: a silent empty answer is the shape of provider
-        boundary this ticket was told not to add a fourth of.
+        rather than a cached value that could lag one undo behind.
+
+        This method swallows nothing, and this is what it actually answers with:
+        it returns nothing in exactly two cases - no surface for the open image,
+        and no open project - and `refresh` states that reason on the page. A
+        raise from the SDK is not caught here. It reaches
+        `Shell._pending_bytes`, whose existing `except Exception` boundary
+        contributes nothing for this provider, so in that case the surface would
+        be silent rather than stating a reason. That boundary is carried by the
+        shell, not added by this destination.
         """
         surface = self._surface
         if surface is None or self._session.project is None:
@@ -353,7 +359,7 @@ class EntityPage(QWidget):
     def _behaviour_cells(self, row: es.BehaviourRow) -> tuple[str, ...]:
         return (
             row.identity,
-            row.handler,
+            row.handler or "not declared",
             row.attachment or "no script",
             f"{row.placements}",
             f"0x{row.file_offset:06X}",
@@ -454,9 +460,9 @@ class EntityPage(QWidget):
         )
         self._detail.setText(
             f"{row.identity} | file offset 0x{row.file_offset:06X} | {row.size} bytes | "
-            f"handler {row.handler} at 0x{row.handler_address:08X} | attachment "
-            f"{row.attachment or 'none'} | {row.placements} placement(s) of this map"
-            f" | {row.note}"
+            f"handler {row.handler or 'not declared'} at 0x{row.handler_address:08X} | "
+            f"attachment {row.attachment or 'none'} | {row.placements} placement(s) "
+            f"of this map | {row.note}"
         )
         self._publish_selection(
             InspectorContext(

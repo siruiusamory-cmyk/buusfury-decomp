@@ -24,7 +24,7 @@ from tools.webfoot.build import extract_project
 from tools.webfoot.catalog import load_catalog
 from tools.webfoot.formats import map_placements as mp
 from tools.webfoot.maps import MapIdentity, PlacementIdentity, load_maps
-from tools.webfoot.placement_events import PlacementEvents
+from tools.webfoot.placement_events import Descriptor, PlacementEvents
 from tools.webfoot.project import read_project
 from tools.webfoot.rom import identify_rom
 
@@ -268,6 +268,34 @@ def test_a_behaviour_row_carries_the_handler_the_sdk_names(surface, project):
         assert row.attachment == (descriptor.event or "")
         assert row.size == len(descriptor.record.to_bytes())
         assert "not editable here" in row.note
+
+
+def test_an_undeclared_handler_states_the_reason_instead_of_raising(surface):
+    """The handler table is a verified subset, so a raw outside it is not a raise."""
+    descriptor = Descriptor(
+        identity="undeclared/descriptor",
+        record=mp.DescriptorRecord(handler_pointer_raw=0x08004219, payload_raw=0),
+        file_offset=0,
+        placements=("map:0010/placement:0000",),
+        event=None,
+    )
+
+    class _Undeclared:
+        def descriptor_of(self, placement):
+            return descriptor
+
+    rows = replace(surface, events=_Undeclared()).behaviours(PLACED_MAP, None)
+
+    print("\nMODEL | a descriptor whose handler the table does not declare")
+    for row in rows:
+        print(f"  {row.identity}  handler={row.handler!r}  {row.note}")
+
+    assert rows
+    row = rows[0]
+    assert row.handler == ""
+    assert row.handler_address == 0x08004219
+    assert "verified handler table does not declare" in row.note
+    assert "unknown" in row.note
 
 
 def test_without_the_descriptor_contract_the_reason_is_stated_not_hidden(surface):

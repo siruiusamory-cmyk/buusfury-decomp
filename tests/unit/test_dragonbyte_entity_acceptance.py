@@ -24,7 +24,7 @@ import hashlib
 import json
 import os
 import shutil
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -40,6 +40,8 @@ from tools.dragonbyte.session import Session  # noqa: E402
 from tools.dragonbyte.shell import Shell  # noqa: E402
 from tools.webfoot.build import build_project, extract_project  # noqa: E402
 from tools.webfoot.catalog import load_catalog  # noqa: E402
+from tools.webfoot.formats import map_placements as mp  # noqa: E402
+from tools.webfoot.placement_events import Descriptor  # noqa: E402
 from tools.webfoot.project import read_project  # noqa: E402
 from tools.webfoot.rom import identify_rom  # noqa: E402
 
@@ -411,6 +413,43 @@ def test_clause_4_a_behaviour_row_states_why_it_is_read_only(armed):
     assert page._open.isEnabled()
     assert "not editable here" in row.note
     assert row.attachment in page._detail.text()
+
+
+def test_clause_4_an_undeclared_handler_states_a_reason_through_the_page(armed):
+    """A handler raw outside the verified table must not reach the page as a raise."""
+    page, _shell, _session, _project_dir = armed
+    _choose_map(page, PLACED_MAP)
+    page._modes.setCurrentText("Behaviours")
+
+    descriptor = Descriptor(
+        identity="undeclared/descriptor",
+        record=mp.DescriptorRecord(handler_pointer_raw=0x08004219, payload_raw=0),
+        file_offset=0,
+        placements=(f"map:{PLACED_MAP:04d}/placement:0000",),
+        event=None,
+    )
+
+    class _Undeclared:
+        def descriptor_of(self, placement):
+            return descriptor
+
+    page._surface = replace(page._surface, events=_Undeclared())
+    page.refresh()
+
+    row = page._rows[0]
+    handler_cell = page._model.data(page._model.index(0, 1))
+
+    print("\nCLAUSE 4 | a behaviour row whose handler the table does not declare")
+    print(f"  handler cell  {handler_cell!r}")
+    print(f"  reason        {row.note}")
+    print(f"  apply         {page._apply.isEnabled()}")
+
+    assert page._model.rowCount() == 1
+    assert row.handler == ""
+    assert handler_cell == "not declared"
+    assert "verified handler table does not declare" in row.note
+    assert "does not declare" in page._detail.text()
+    assert not page._apply.isEnabled()
 
 
 def test_clause_4_a_placement_with_no_project_states_its_reason(

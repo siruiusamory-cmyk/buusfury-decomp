@@ -274,19 +274,21 @@ class EntitySurface:
         )
         for descriptor in ordered:
             attachment, attachment_note = self._attachment(descriptor)
+            handler, handler_note = self._handler(descriptor)
             note = (
                 "a canonical descriptor is not editable here: the project "
                 "attaches a behaviour by authoring a placement clone"
             )
-            if attachment_note:
-                note = f"{note}. {attachment_note}"
+            for reason in (attachment_note, handler_note):
+                if reason:
+                    note = f"{note}. {reason}"
             prefix = f"map:{map_index:04d}/"
             rows.append(
                 BehaviourRow(
                     identity=descriptor.identity,
                     file_offset=descriptor.file_offset,
                     size=len(descriptor.record.to_bytes()),
-                    handler=mp.HANDLERS[descriptor.record.handler_pointer_raw],
+                    handler=handler,
                     handler_address=descriptor.record.handler_pointer_raw,
                     attachment=attachment,
                     placements=sum(
@@ -394,6 +396,22 @@ class EntitySurface:
             "it dispatches the script handler and the verified descriptor "
             "contract does not cover it, so no attachment is decoded for it"
         )
+
+    @staticmethod
+    def _handler(descriptor: Any) -> tuple[str, str]:
+        """The SDK's name for one descriptor's handler, and the reason when none.
+
+        The table is a verified subset, so a raw outside it is not an error to
+        raise on and not a name to invent: the row carries the reason instead.
+        """
+        raw = descriptor.record.handler_pointer_raw
+        name = mp.HANDLERS.get(raw)
+        if name is None:
+            return "", (
+                f"it dispatches handler 0x{raw:08X}, which the verified handler "
+                "table does not declare, so its handler family is unknown"
+            )
+        return name, ""
 
     @staticmethod
     def _authored_placements(project: Any | None, map_index: int) -> Mapping[int, Any]:

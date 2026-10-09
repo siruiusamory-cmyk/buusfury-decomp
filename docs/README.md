@@ -31,6 +31,8 @@ The index for everything under `docs/`. Start with the root
 | [`relocation.md`](relocation.md) | Trust boundaries, limitations and APIs of the relocation layer. |
 | [`rom-profiles.md`](rom-profiles.md) | Supported images and how identity is configured. |
 | [`release-artefacts.md`](release-artefacts.md) | What a user receives: the built image, the distributable patch, version and build identity, the packaging foundation, and what must never be distributed. |
+| [`product/DRAGONBYTE_Z_PRODUCT_SPEC.md`](product/DRAGONBYTE_Z_PRODUCT_SPEC.md) | The design of the DragonByte Z desktop application: destinations, navigation, the ROM surface, the edit and undo model, and the support vocabulary. |
+| [`product/DRAGONBYTE_Z_IMPLEMENTATION_ROADMAP.md`](product/DRAGONBYTE_Z_IMPLEMENTATION_ROADMAP.md) | The ordered steps from the current master to V1.0, with the acceptance proof each step owes. |
 
 ## Reverse engineering
 

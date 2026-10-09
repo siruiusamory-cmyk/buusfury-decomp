@@ -56,8 +56,9 @@ DESTINATIONS: tuple[Destination, ...] = (
         label="Scripts & Text",
         group=SEMANTIC,
         foundation_summary=(
-            "Script families, event resources, dialogue records and string "
-            "tables are not implemented in the foundation build."
+            "Script families and roots, the event resource corpus, the seven "
+            "spoken-dialogue containers and the 1,534-slot string table, as two "
+            "text systems that are never one."
         ),
     ),
     Destination(

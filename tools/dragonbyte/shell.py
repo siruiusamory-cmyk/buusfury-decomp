@@ -50,6 +50,7 @@ from .rawbytes import raw_owner
 from .rompage import RomPage
 from .session import Session, SessionError
 from .settings import Settings
+from .textpage import TextPage
 
 #: The three destinations whose pages are built rather than stated. Named here
 #: because the shell builds these pages differently, and the registry remains the
@@ -57,6 +58,7 @@ from .settings import Settings
 DATA_DESTINATION = "data"
 MAPS_DESTINATION = "maps"
 ENTITY_DESTINATION = "entities"
+TEXT_DESTINATION = "scripts_text"
 
 #: The window's starting size. A narrower window is allowed; this is what a user
 #: sees first, with the centre editor and the inspector both usable.
@@ -168,6 +170,10 @@ class Shell(QMainWindow):
         #: same one `apply_edit`, and the ROM page asks it for their byte effect
         #: beside the Data and Maps pages'.
         self._entity_page: EntityPage | None = None
+        #: The Scripts & Text destination's page: scripts and event resources as
+        #: read-only records, and the two text systems as separate editing worlds.
+        #: Its edits go through the same one `apply_edit`.
+        self._text_page: TextPage | None = None
         self._inspector = InspectorPane()
         self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
         for candidate in DESTINATIONS:
@@ -196,6 +202,13 @@ class Shell(QMainWindow):
                 entity_page.set_selection_handler(self._inspector.set_context)
                 self._entity_page = entity_page
                 page = entity_page
+            elif candidate.id == TEXT_DESTINATION:
+                text_page = TextPage(self._session)
+                text_page.set_edit_handler(self.apply_edit)
+                text_page.set_open_bytes_handler(self.open_rom_at)
+                text_page.set_selection_handler(self._inspector.set_context)
+                self._text_page = text_page
+                page = text_page
             else:
                 page = _FoundationPage(candidate)
             self._pages[candidate.id] = page
@@ -205,6 +218,7 @@ class Shell(QMainWindow):
             self._data_page is not None
             or self._map_page is not None
             or self._entity_page is not None
+            or self._text_page is not None
         ):
             # One journal, several views: the ROM page shows an edit's bytes because
             # the page that made it is the only thing that knows how to encode
@@ -693,6 +707,10 @@ class Shell(QMainWindow):
             # The Entities destination renders the project's placements, by the
             # same rule again.
             self._entity_page.refresh()
+        if self._text_page is not None and current is self._text_page:
+            # The Scripts & Text destination renders the project's strings and the
+            # dialogue document, by the same rule again.
+            self._text_page.refresh()
 
     def _pending_bytes(self) -> dict[int, bytes]:
         """Every open destination's byte effect, merged for the ROM surface.
@@ -703,7 +721,12 @@ class Shell(QMainWindow):
         rather than stopping the surface from rendering.
         """
         merged: dict[int, bytes] = {}
-        for page in (self._data_page, self._map_page, self._entity_page):
+        for page in (
+            self._data_page,
+            self._map_page,
+            self._entity_page,
+            self._text_page,
+        ):
             if page is None:
                 continue
             try:

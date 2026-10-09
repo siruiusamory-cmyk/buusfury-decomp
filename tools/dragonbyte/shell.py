@@ -42,6 +42,7 @@ from tools.webfoot.release_identity import release_identity
 from . import diagnostics, theme
 from .datapage import DataPage
 from .destination import DESTINATIONS, ROM, Destination, destination
+from .entitypage import EntityPage
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
 from .mappage import MapPage
@@ -50,11 +51,12 @@ from .rompage import RomPage
 from .session import Session, SessionError
 from .settings import Settings
 
-#: The two destinations whose pages are built rather than stated. Named here
+#: The three destinations whose pages are built rather than stated. Named here
 #: because the shell builds these pages differently, and the registry remains the
 #: authority on their labels, their groups and their strip positions.
 DATA_DESTINATION = "data"
 MAPS_DESTINATION = "maps"
+ENTITY_DESTINATION = "entities"
 
 #: The window's starting size. A narrower window is allowed; this is what a user
 #: sees first, with the centre editor and the inspector both usable.
@@ -161,6 +163,11 @@ class Shell(QMainWindow):
         #: edits go through the same one `apply_edit`, and the ROM page asks it
         #: for the byte effect of those edits beside the Data page's.
         self._map_page: MapPage | None = None
+        #: The Entities destination's page: a map's placements, the behaviours they
+        #: name and the object families the census records. Its edits go through the
+        #: same one `apply_edit`, and the ROM page asks it for their byte effect
+        #: beside the Data and Maps pages'.
+        self._entity_page: EntityPage | None = None
         self._inspector = InspectorPane()
         self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
         for candidate in DESTINATIONS:
@@ -182,15 +189,24 @@ class Shell(QMainWindow):
                 data_page.set_selection_handler(self._inspector.set_context)
                 self._data_page = data_page
                 page = data_page
+            elif candidate.id == ENTITY_DESTINATION:
+                entity_page = EntityPage(self._session)
+                entity_page.set_edit_handler(self.apply_edit)
+                entity_page.set_open_bytes_handler(self.open_rom_at)
+                entity_page.set_selection_handler(self._inspector.set_context)
+                self._entity_page = entity_page
+                page = entity_page
             else:
                 page = _FoundationPage(candidate)
             self._pages[candidate.id] = page
             self._page_stack.addWidget(page)
 
         if self._rom_page is not None and (
-            self._data_page is not None or self._map_page is not None
+            self._data_page is not None
+            or self._map_page is not None
+            or self._entity_page is not None
         ):
-            # One journal, two views: the ROM page shows an edit's bytes because
+            # One journal, several views: the ROM page shows an edit's bytes because
             # the page that made it is the only thing that knows how to encode
             # them, and each is asked rather than duplicated.
             self._rom_page.set_pending_provider(self._pending_bytes)
@@ -673,6 +689,10 @@ class Shell(QMainWindow):
             # The Maps destination renders the map's cells and warps, by the
             # same rule again.
             self._map_page.refresh()
+        if self._entity_page is not None and current is self._entity_page:
+            # The Entities destination renders the project's placements, by the
+            # same rule again.
+            self._entity_page.refresh()
 
     def _pending_bytes(self) -> dict[int, bytes]:
         """Every open destination's byte effect, merged for the ROM surface.
@@ -683,7 +703,7 @@ class Shell(QMainWindow):
         rather than stopping the surface from rendering.
         """
         merged: dict[int, bytes] = {}
-        for page in (self._data_page, self._map_page):
+        for page in (self._data_page, self._map_page, self._entity_page):
             if page is None:
                 continue
             try:

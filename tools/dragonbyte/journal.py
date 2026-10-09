@@ -105,8 +105,10 @@ def _validate_dialogues(project: StatProject, payload: object) -> None:
 
     Two layers, by what can be known here:
 
-    * the structure of the document - a non-empty mapping of string targets to
-      string text, which is what ``_read_dialogues`` requires of the file;
+    * the structure of the document - a mapping of string targets to string text.
+      An EMPTY mapping is a legitimate authored state, not a refusal: the SDK's own
+      writer removes the optional document for it, and ``read_project`` reads that
+      absence back as "this project authors no dialogue";
     * the per-value checks ``validate_dialogue_replacement`` applies WITHOUT an
       image (it needs a registered target and a profile, so it cannot be called
       from a journal that holds neither): the reserved token window, through
@@ -121,8 +123,6 @@ def _validate_dialogues(project: StatProject, payload: object) -> None:
         raise JournalError(
             "A dialogue replacement document is a mapping of record names to text."
         )
-    if not payload:
-        raise JournalError("A dialogue replacement must name at least one record.")
     for target, text in payload.items():
         if not isinstance(target, str) or not target:
             raise JournalError("A dialogue record name must be a non-empty string.")
@@ -329,6 +329,18 @@ class EditJournal:
         The checkpoint moves only when every write has succeeded - a failure leaves
         the last real checkpoint in place and names the document it failed on,
         because claiming a save that did not happen is the defect this prevents.
+
+        That guarantee holds only while the caller keeps its side of it: the
+        project handed in must be the project this cursor's payloads produced. A
+        document mutated outside `apply` would be written and then reported clean,
+        so an edit that bypasses the journal is a defect no checkpoint can detect.
+
+        Each document is replaced on its own, so a failure on the second leaves the
+        first written while the checkpoint correctly stays put: multi-document
+        atomicity is the ceiling here, and it is measured by
+        `test_a_partial_multi_document_save_writes_what_it_can_and_holds_the_checkpoint`.
+        When a second adapter lands, order the writes so the one most likely to
+        fail goes first, or move the set into the SDK's single `write_project`.
         """
         for target in self._committed_targets():
             adapter = DOCUMENT_ADAPTERS[target]

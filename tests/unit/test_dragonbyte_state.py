@@ -536,35 +536,109 @@ def test_a_save_after_undoing_every_edit_persists_a_non_empty_base_state(tmp_pat
     assert journal.saved_revision == journal.current_revision == 0
 
 
-def test_an_empty_document_is_refused_and_removing_the_document_is_a_write(
-    project_dir,
-):
+def test_clearing_every_replacement_is_an_edit_the_sdk_supports(project_dir):
+    """The empty mapping, all four ways it has to work.
+
+    An empty mapping is a legitimate authored state rather than a refusal: the
+    SDK's writer removes the optional document for it and ``read_project`` reads
+    that absence back as "this project authors no dialogue". Refusing it would
+    permanently block the clear-every-replacement edit a later dialogue surface
+    needs, so this pins the whole path: apply, undo, save, reload.
+    """
     journal = EditJournal()
-    project = journal.apply(
-        read_project(project_dir),
+    base = read_project(project_dir)
+    assert base.dialogues == {}
+
+    # (a) the empty mapping is accepted and install produces an empty mapping.
+    cleared = journal.apply(
+        base, kind=EditKind.SEMANTIC, target=DIALOGUES, after={}
+    )
+    assert cleared.dialogues == {}
+
+    # Then fill it, so undo and the save below have something real to restore.
+    filled = journal.apply(
+        cleared,
         kind=EditKind.SEMANTIC,
         target=DIALOGUES,
         after={"goku-greeting": "Hello."},
     )
-    journal.save(project_dir, project)
+    journal.save(project_dir, filled)
     document = project_dir / "dialogue" / "replacements.toml"
     assert document.is_file()
 
-    # An empty [dialogue] table is a document `read_project` rejects, so it is
-    # refused at validate rather than written and then found unloadable.
-    with pytest.raises(JournalError):
-        journal.apply(
-            read_project(project_dir),
-            kind=EditKind.SEMANTIC,
-            target=DIALOGUES,
-            after={},
-        )
+    # Apply the empty mapping again over a one-entry base: accepted, installed.
+    emptied = journal.apply(
+        filled, kind=EditKind.SEMANTIC, target=DIALOGUES, after={}
+    )
+    assert emptied.dialogues == {}
+
+    # (b) undo restores the base mapping, and a save writes it back.
+    restored = journal.undo(emptied)
+    assert restored.dialogues == {"goku-greeting": "Hello."}
+    journal.save(project_dir, restored)
     assert read_project(project_dir).dialogues == {"goku-greeting": "Hello."}
 
-    # The removal itself is the SDK writer's behaviour for an empty mapping, which
-    # is why it is exercised through the writer here and through a Save above.
-    write_dialogue_replacements(project_dir, {})
+    # (c) a save with the empty mapping at the cursor removes the document, and
+    # (d) the project is still one `read_project` accepts.
+    journal.save(project_dir, journal.redo(restored))
     assert not document.exists()
+    assert read_project(project_dir).dialogues == {}
+    assert read_project(project_dir).meta.name == base.meta.name
+
+
+def test_a_partial_multi_document_save_writes_what_it_can_and_holds_the_checkpoint(
+    project_dir, monkeypatch
+):
+    """The multi-document ceiling, measured rather than asserted.
+
+    The second adapter registered here exists only to exercise the path a Save
+    takes once the committed history names more than one document, which no
+    registered configuration reaches today: each document is replaced on its own,
+    so a failure on the second leaves the first written while the checkpoint
+    correctly stays put.
+    """
+    second = "test-only-document"
+    assert second not in journal_module.DOCUMENT_ADAPTERS
+
+    def refuse(_directory, _payload):
+        raise OSError("the second document cannot be written")
+
+    monkeypatch.setitem(
+        journal_module.DOCUMENT_ADAPTERS,
+        second,
+        journal_module._DocumentAdapter(
+            read=lambda project: project.graphics_overrides,
+            install=lambda project, payload: replace(
+                project, graphics_overrides=payload
+            ),
+            validate=lambda _project, _payload: None,
+            write=refuse,
+        ),
+    )
+
+    journal = EditJournal()
+    # The dialogues edit is committed first, so its write is guaranteed to have
+    # happened by the time the second document refuses.
+    project = journal.apply(
+        read_project(project_dir), kind=EditKind.SEMANTIC, target=DIALOGUES, after={"a": "A."}
+    )
+    project = journal.apply(
+        project,
+        kind=EditKind.STRUCTURAL,
+        target=second,
+        after=project_model.GraphicsOverrides(),
+    )
+    assert journal._committed_targets() == [DIALOGUES, second]
+
+    with pytest.raises(JournalError) as refusal:
+        journal.save(project_dir, project)
+
+    assert second in str(refusal.value)
+    assert journal.saved_revision == 0
+    assert journal.is_dirty is True
+    # The dialogues document really was written, because it was reached first.
+    assert read_project(project_dir).dialogues == {"a": "A."}
+    assert not (project_dir / "graphics" / "overrides.toml").exists()
 
 
 # --- 15. the fail-closed path for an unregistered document --------------------

@@ -22,12 +22,17 @@ Four layers, each with a different tolerance for being wrong:
 
 No database, no index cache: whole-image passes over this ROM cost about a
 second, so the atlas lives in memory and serializes to deterministic JSONL.
+
+`RangeIndex` (S4) is the query surface over those layers: which owners claim
+these bytes, which ranges one owner claims, and how many bytes nobody owns. It
+is derived from the atlas, so it is not a second partition and it has no
+classification vocabulary of its own.
 """
 
 from __future__ import annotations
 
-from bisect import bisect_right
-from dataclasses import dataclass
+from bisect import bisect_left, bisect_right
+from dataclasses import dataclass, field
 from enum import Enum
 import json
 from typing import Iterable, Iterator
@@ -592,6 +597,313 @@ def unknowns(atlas: Atlas, limit: int | None = None) -> tuple[CoverageSpan, ...]
 def objects_of_kind(atlas: Atlas, kind: str) -> tuple[AtlasObject, ...]:
     return tuple(sorted((o for o in atlas.objects if o.kind == kind),
                         key=lambda o: o.range.start.value))
+
+
+# --- The owner range index ---------------------------------------------------
+#
+# S4 (DRAGONBYTE-Z-OWNER-RANGE-INDEX-001). "What owns these bytes" is answered
+# from the atlas, never from a second scan: the classification and confidence of
+# a byte are read out of `atlas.coverage` (layer A), and an owner is an
+# `AtlasObject` identity (layer B) or a declared extent the caller supplies. The
+# index adds no vocabulary: a byte nobody owns keeps its atlas classification,
+# so an unowned byte reads `UNKNOWN` rather than a word this module invented.
+
+#: The provenance of a declared extent. It is a different kind of claim from a
+#: located object, so it is named rather than left blank.
+DECLARED_EXTENT = "declared-extent"
+
+
+def _unknown_bytes(atlas: Atlas, bound: RomRange) -> int:
+    """Bytes of `bound` whose atlas classification is one of the unknowns.
+
+    The one place a count of this kind is computed, so `unknowns()`' whole-image
+    total and a scan's total over one range cannot be two different calculations
+    of the same number.
+    """
+    counted = 0
+    for span in atlas.coverage.overlapping(bound):
+        if span.classification in UNKNOWN_CLASSIFICATIONS:
+            counted += min(span.range.end, bound.end) - max(span.range.start.value,
+                                                            bound.start.value)
+    return counted
+
+
+@dataclass(frozen=True, slots=True)
+class OwnerSpan:
+    """One extent one owner claims, as the index derived it.
+
+    `source` is `atlas-object` or `declared-extent`, which lets a caller tell a
+    located structure from an extent a configuration vouches for.
+    """
+
+    range: RomRange
+    owner: str
+    source: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.range, RomRange):
+            raise AtlasError("owner span requires a typed RomRange")
+        try:
+            require_name(self.owner)
+        except LayoutError as exc:
+            raise AtlasError(f"owner span owner: {exc}") from exc
+        if self.source not in ("atlas-object", DECLARED_EXTENT):
+            raise AtlasError(f"unknown owner span source {self.source!r}")
+
+    def to_json(self) -> dict:
+        return {"file_offset": self.range.start.value, "size": self.range.size,
+                "owner": self.owner, "source": self.source}
+
+
+@dataclass(frozen=True, slots=True)
+class RangeIndex:
+    """Range to owners, owner to ranges, over one validated `Atlas`.
+
+    `declared` are extents a configuration vouches for, as `(range, owner)`
+    pairs, in the order the atlas counts them. They are extents, not a partition:
+    a declared table and an atlas object may cover the same byte, and both are
+    reported. Declared extents are not wrapped in `AtlasObject` because that
+    layer's identities, kinds and confidences are the atlas's to declare.
+    """
+
+    atlas: Atlas
+    declared: tuple[tuple[RomRange, str], ...] = ()
+    _spans: tuple[OwnerSpan, ...] = ()
+    _starts: tuple[int, ...] = ()
+    _reaches: tuple[int, ...] = ()
+    _by_owner: dict[str, tuple[OwnerSpan, ...]] = field(default_factory=dict)
+    _edge_starts: tuple[tuple[int, int], ...] = ()
+    _edge_reaches: tuple[tuple[int, int], ...] = ()
+    _targets: tuple[int, ...] = ()
+    _target_positions: tuple[int, ...] = ()
+
+    def __post_init__(self) -> None:
+        spans: list[OwnerSpan] = [
+            OwnerSpan(object.range, object.identity, "atlas-object")
+            for object in self.atlas.objects]
+        for extent, owner in self.declared:
+            try:
+                extent.validate(self.atlas.image_size)
+            except LayoutError as exc:
+                raise AtlasError(f"declared extent for {owner!r} out of image: {exc}") from exc
+            spans.append(OwnerSpan(extent, owner, DECLARED_EXTENT))
+        spans.sort(key=lambda span: (span.range.start.value, span.range.size, span.owner))
+        reaches: list[int] = []
+        furthest = 0
+        for span in spans:
+            furthest = max(furthest, span.range.end)
+            reaches.append(furthest)
+        by_owner: dict[str, list[OwnerSpan]] = {}
+        for span in spans:
+            by_owner.setdefault(span.owner, []).append(span)
+        # Reference candidates, so the reference half of a query does not scan
+        # every edge in the atlas. Targets and sources are each kept in an array
+        # parallel to a start-sorted position array, the source side carrying the
+        # prefix maximum of the ends.
+        positions = sorted(range(len(self.atlas.references)),
+                           key=lambda index: (self.atlas.references[index].source.value,
+                                              self.atlas.references[index].source_range.size))
+        edge_starts: list[int] = []
+        edge_reaches: list[int] = []
+        furthest = 0
+        for index in positions:
+            edge_starts.append(self.atlas.references[index].source.value)
+            furthest = max(furthest, self.atlas.references[index].source_range.end)
+            edge_reaches.append(furthest)
+        targeted = sorted(
+            (ref.target.value, index)
+            for index, ref in enumerate(self.atlas.references)
+            if isinstance(ref, AtlasReference))
+        object.__setattr__(self, "_spans", tuple(spans))
+        object.__setattr__(self, "_starts", tuple(s.range.start.value for s in spans))
+        object.__setattr__(self, "_reaches", tuple(reaches))
+        object.__setattr__(self, "_by_owner", {owner: tuple(claimed)
+                                               for owner, claimed in by_owner.items()})
+        object.__setattr__(self, "_edge_starts", tuple(
+            (value, positions[at]) for at, value in enumerate(edge_starts)))
+        object.__setattr__(self, "_edge_reaches", tuple(
+            (value, positions[at]) for at, value in enumerate(edge_reaches)))
+        object.__setattr__(self, "_targets", tuple(value for value, _ in targeted))
+        object.__setattr__(self, "_target_positions", tuple(index for _, index in targeted))
+
+    def _references_in_range(self, wanted: RomRange) -> tuple:
+        """`refs_from` and `refs_to` for `wanted`, in one pass over candidates.
+
+        The answer is `in_range`'s reference half: an edge sourced in the range or
+        targeted in it, each reported once. Candidate selection is the same
+        bisect bound the owner half uses, so this resolves an edge only when a
+        source or a target could land here.
+        """
+        edges = self.atlas.references
+        # ASSUMPTION: candidates come back in descending source order, which
+        # equals atlas order only while a reference field is 4 bytes wide and
+        # sources are pairwise disjoint (every reference today). A wider or
+        # unaligned field lets two sources share a byte, and then the two
+        # orders differ and this must sort the way `in_range` does.
+        by_source = tuple(index for index in
+                          (self._edge_starts[at][1] for at in
+                           range(bisect_left(self._edge_starts, (wanted.end, -1)) - 1,
+                                 bisect_right(self._edge_reaches,
+                                              (wanted.start.value, len(edges))) - 1,
+                                 -1))
+                          if edges[index].source_range.overlaps(wanted))
+        first, last = (bisect_left(self._targets, wanted.start.value),
+                       bisect_left(self._targets, wanted.end))
+        by_target = tuple(index for index in
+                          (self._target_positions[position]
+                           for position in range(first, last))
+                          if isinstance(edges[index], AtlasReference)
+                          and wanted.contains(edges[index].target))
+        return tuple(edges[index] for index in dict.fromkeys(by_source + by_target))
+
+    def _hits(self, start: int, end: int) -> Iterator[int]:
+        """Indices of every span that could intersect [start, end), descending.
+
+        `_starts` bounds the candidate set on the left and the prefix maximum of
+        the ends on the right, so neither a long span that begins earlier nor a
+        short one that begins later is missed. The caller still tests the exact
+        predicate it wants; a candidate is not yet an answer.
+        """
+        index = bisect_left(self._starts, end) - 1
+        floor = bisect_right(self._reaches, start)
+        while index >= floor:
+            yield index
+            index -= 1
+
+    @property
+    def spans(self) -> tuple[OwnerSpan, ...]:
+        """Every claimed extent, in offset order."""
+        return self._spans
+
+    def spans_at(self, offset: FileOffset) -> tuple[OwnerSpan, ...]:
+        """Every extent claiming one byte. Empty means nobody owns it.
+
+        A point outside the image is not refused, unlike a range: it answers
+        "nobody owns this" for the one-byte question, where `spans_overlapping`
+        has a whole range to justify.
+        """
+        if not isinstance(offset, FileOffset):
+            raise AtlasError("a range index lookup requires a typed FileOffset")
+        return tuple(reversed([self._spans[index]
+                               for index in self._hits(offset.value, offset.value + 1)
+                               if self._spans[index].range.contains(offset)]))
+
+    def spans_overlapping(self, wanted: RomRange) -> tuple[OwnerSpan, ...]:
+        """Every extent intersecting `wanted`, in offset order."""
+        if not isinstance(wanted, RomRange):
+            raise AtlasError("a range index lookup requires a typed RomRange")
+        wanted.validate(self.atlas.image_size)
+        return tuple(reversed([self._spans[index]
+                               for index in self._hits(wanted.start.value, wanted.end)
+                               if self._spans[index].range.overlaps(wanted)]))
+
+    def owners_of(self, range: RomRange) -> tuple[str, ...]:
+        """The distinct owners claiming any byte of `range`. Empty means unowned."""
+        return tuple(sorted({span.owner for span in self.spans_overlapping(range)}))
+
+    def ranges_of(self, owner: str) -> tuple[RomRange, ...]:
+        """Every extent `owner` claims. Empty means the index does not know it."""
+        return tuple(item.range for item in self._by_owner.get(owner, ()))
+
+    def spans_of(self, owner: str) -> tuple[OwnerSpan, ...]:
+        """Every extent `owner` claims, with the source each one came from."""
+        return self._by_owner.get(owner, ())
+
+    def at(self, offset: FileOffset) -> dict:
+        """Everything the index knows about one byte.
+
+        Every field is the atlas's own answer: the classification and confidence
+        come from the coverage span containing the byte, the owners are the
+        extents claiming it, and the references are `in_range`'s reference half
+        for the same one-byte range. `owners` empty is an answer, not a gap: the
+        byte is unowned and still carries its atlas classification.
+        """
+        point = RomRange(offset, 1)
+        spans = self.spans_at(offset)
+        coverage = self.atlas.coverage.at(offset)
+        return {
+            "offset": offset,
+            "classification": coverage.classification,
+            "confidence": coverage.confidence,
+            "spans": spans,
+            "owners": tuple(sorted({span.owner for span in spans})),
+            "references": self._references_in_range(point),
+        }
+
+    def owner_bytes(self) -> tuple[tuple[str, int], ...]:
+        """The owner leaderboard: claimed bytes per owner, largest first.
+
+        Ranges are summed as the index derived them, so an owner of two
+        overlapping extents counts those bytes twice; the leaderboard ranks
+        owners, and `overview`'s byte totals are what stay exact-once.
+        """
+        totals: dict[str, int] = {}
+        for span in self._spans:
+            totals[span.owner] = totals.get(span.owner, 0) + span.range.size
+        return tuple(sorted(totals.items(), key=lambda item: (-item[1], item[0])))
+
+    def overview(self) -> dict:
+        """Unowned bytes and byte totals per atlas classification.
+
+        `unowned_bytes` counts the bytes `unknowns()` ranks, and the table sums
+        the atlas's own coverage spans by classification, so this reports the
+        atlas's vocabulary and partition rather than a second of either.
+        """
+        by_classification: dict[str, int] = {}
+        for span in self.atlas.coverage.spans:
+            by_classification[span.classification] = (
+                by_classification.get(span.classification, 0) + span.range.size)
+        return {
+            "image_size": self.atlas.image_size,
+            "coverage_spans": len(self.atlas.coverage.spans),
+            "owners": len(self.owner_bytes()),
+            "objects": len(self.atlas.objects),
+            "declared_extents": len(self.declared),
+            "unowned_bytes": _unknown_bytes(self.atlas,
+                                            _range(0, self.atlas.image_size)),
+            "by_classification": tuple(sorted(by_classification.items(),
+                                              key=lambda item: (-item[1], item[0]))),
+        }
+
+    def scan(self, wanted: RomRange) -> dict:
+        """Every owner in a range, the way `search_text` returns every phrase hit.
+
+        One entry per distinct owner intersecting `wanted`, each carrying the
+        lowest byte that owner claims INSIDE `wanted`, the classification and
+        confidence `at` reports for that byte, the owner's own extents, and the
+        references intersecting it. A range no owner claims yields `hits: ()` and
+        an `unowned_bytes` count, so `UNKNOWN` is a first-class answer with a
+        number rather than a silence.
+
+        A hit inside a compressed container would also report the container's
+        offset and the offset within its decoded stream; that half needs the
+        decoded container index and is not built here.
+        """
+        wanted.validate(self.atlas.image_size)
+        hits = []
+        for owner in self.owners_of(wanted):
+            claimed = self.spans_of(owner)
+            inside = min(max(item.range.start.value, wanted.start.value)
+                         for item in claimed if item.range.overlaps(wanted))
+            point = self.at(FileOffset(inside))
+            hits.append({
+                "owner": owner,
+                "file_offset": inside,
+                "classification": point["classification"],
+                "confidence": point["confidence"],
+                "spans": claimed,
+                "references": self.references(owner),
+            })
+        return {"range": wanted, "owners": len(hits), "hits": tuple(hits),
+                "unowned_bytes": _unknown_bytes(self.atlas, wanted)}
+
+    def references(self, owner: str) -> tuple:
+        """Every reference intersecting any extent `owner` claims."""
+        edges = []
+        for claimed in self.ranges_of(owner):
+            edges.extend(refs_from(self.atlas, claimed))
+            edges.extend(refs_to(self.atlas, claimed))
+        return tuple(dict.fromkeys(edges))
 
 
 # --- Text search ------------------------------------------------------------

@@ -8,10 +8,9 @@ from .allocation import (Addressability, Allocation, AllocationKind, AllocationR
                          allocate)
 from .binary import FileOffset
 from .document import RomDocument
-from .layout import AnchorId, LayoutError, OwnedRegion, ReferenceClass, RomRange
-from .write import (ByteChange, GeneratedAllocationProvenance, ReferenceRewrite,
-                    RelocationProvenance, WriteManifest, WritePlan, apply_plan,
-                    emit_image, plan_changes)
+from .layout import AnchorId, LayoutError, OwnedRegion, ReferenceClass
+from .write import (ByteChange, ReferenceRewrite, RelocationProvenance, WriteManifest,
+                    WritePlan, apply_plan, emit_image, plan_changes)
 
 
 #: Which semantic allocation kind a relocatable anchor kind asks for. The
@@ -124,12 +123,12 @@ class RelocationResult:
 
     def to_json(self) -> dict:
         from hashlib import sha256
-        # An expanded batch publishes a grown image, not the canonical one, so the
-        # manifest's output block describes the artefact the plan would emit.
-        output = (self.plan.generated_image.materialize(self.document.image)
-                  if self.plan.generated_image is not None else self.document.image)
+        # `document` carries the image this plan would publish, which for a grown
+        # batch is the generated image and is therefore longer than the canonical
+        # input. The manifest's output block describes that artefact.
+        image = self.document.image
         manifest = WriteManifest(self.plan.base_profile_id, self.plan.base_sha256,
-            sha256(output).hexdigest(), len(output),
+            sha256(image).hexdigest(), len(image),
             self.plan.effective_changes, relocations=self.plan.relocations,
             generated_image=self.plan.generated_image,
             generated_allocations=self.plan.generated_allocations)
@@ -280,10 +279,11 @@ def plan_relocation(document: RomDocument, requests: Iterable[RelocationRequest]
                         base_sha256=document.profile.sha256, relocations=tuple(provenance),
                         generated_image=generated_image,
                         generated_allocations=tuple(generated))
-    # A grown batch's output document is the generated image WITH the changes
-    # applied: an expanded destination does not exist in the canonical bytes at
-    # all. `plan_changes` already validated every change against that image, so
-    # this is the same materialize-then-overwrite `apply_plan` performs.
+    # The published image. An expanded destination does not exist in the canonical
+    # bytes at all, so a grown batch materializes the generated image first and
+    # then overwrites it. `plan_changes` already validated every change against
+    # that image, which is why this is the same materialize-then-overwrite
+    # `apply_plan` performs rather than a second, unchecked write.
     output = apply_plan(document.image, plan)
     if generated_image is not None:
         grown = bytearray(generated_image.materialize(document.image))
@@ -291,9 +291,10 @@ def plan_relocation(document: RomDocument, requests: Iterable[RelocationRequest]
             grown[change.offset:change.end] = change.new
         output = bytes(grown)
     # `RomDocument.validate` ties the image length to the profile's measured
-    # canonical size. The generated image is deliberately longer, so the proposed
-    # document states that size; the canonical identity was already re-verified
-    # against the profile above, and a generated image is not a new trusted base.
+    # canonical size, and a generated image is deliberately longer. The document
+    # carries the image the plan would publish and a profile stating that size;
+    # the canonical identity was re-verified against the profile above, and a
+    # generated image is not a new trusted base.
     proposed = RomDocument(output,
                            document.profile if len(output) == document.profile.size
                            else replace(document.profile, size=len(output)),

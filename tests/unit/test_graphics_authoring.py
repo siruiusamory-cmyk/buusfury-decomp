@@ -665,10 +665,14 @@ def test_a_candidate_consumer_withdraws_relocatability_for_that_graphic():
 
 
 def test_allocator_exhaustion_is_reported_and_nothing_is_planned():
-    image, profile, document, sprites = _corpus(payload_sizes={0: 0x60})
-    # No free region and no expansion: there is nowhere legitimate to go.
-    _, bare, _ = _world(free=False, expansion=False)
-    sprites.profile = bare
+    image, _, _, sprites = _corpus(payload_sizes={0: 0x60})
+    # No free region and no expansion: there is nowhere legitimate to go. The
+    # graph and the profile are rebuilt together rather than the profile being
+    # swapped afterwards, because the shared relocation engine re-verifies the
+    # document's own profile as its trusted base.
+    _, _, bare_document = _world(free=False, expansion=False)
+    sprites._document = bare_document
+    sprites.profile = bare_document.profile
     identity = _identity(0)
     with pytest.raises(InsufficientSpaceError):
         ga.plan_graphic_overrides(image, None, {identity: _override(identity)},

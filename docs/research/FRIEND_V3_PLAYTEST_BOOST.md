@@ -90,17 +90,25 @@ retail values**:
 | hp, ep | +0x02, +0x04 | unchanged | both are u16 and the engine reads them as signed. Writing 0xFFFF made a live character read HP -1 and EP -5 with energy attacks disabled, observed on a cold boot; see the completion record beside this one |
 | strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields; 255 reads correctly in game |
 
-Records 0..4 are set from `BASE_STAT_NAMES` order (Goku, Gohan, Goten, Trunks, Vegeta).
-Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. The record order
-itself is now **externally confirmed**, and the earlier inference about names is corrected:
-the external Data Crystal RAM map (fetched through the Wayback mirror) names the current
-character index at `0x03001068` as `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta,
-5=Gotenks, 6=Vegito, 7=Gogeta, 8=Videl`, and the per-character block stride is `0x68`. That
-matches this table's record order for the first eight and shows the ninth is **Videl**, not
-Hercule, which agrees with `tools/webfoot/formats/stat_tables.py:77` calling all nine records
-playable. The five-record split of the boost is therefore a scope decision inside a confirmed
-nine-character roster, not a claim about which records are characters. Records 5 to 8 stay at
-retail values, the conservative side.
+Records 0..4 are set, and records 5..8 are deliberately untouched. Two separate things are
+known about identity, and they must not be confused:
+
+- **The record order** `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta, 5=Gotenks, 6=Vegito,
+  7=Gogeta, 8=Videl`, with a per-character block stride of `0x68`, comes from the external Data
+  Crystal RAM map. It is an external source, not a measurement of this image. It agrees with
+  `tools/webfoot/formats/stat_tables.py:77` calling all nine records playable, and it puts
+  Videl in the ninth record where `BASE_STAT_NAMES` says Hercule.
+- **The name-to-record mapping** is contradicted at runtime. On a cold boot of the first
+  consolidated image, the character the game displayed for a boosted record was named YAMCHA,
+  which is not in `BASE_STAT_NAMES`. Since only records 0..4 were modified, the mapping is
+  wrong for at least one of them. Whether the order itself is wrong is **not** established: this
+  is a character-swap build whose foundation already rewrites records 0, 1 and 4 against
+  canonical and whose story text renames characters, so a correctly ordered record carrying a
+  renamed character fits the same observation.
+
+The consequence that matters for the playtest: **which characters receive the boost is
+unknown.** Records 5..8 keep their values, the conservative side. See the completion record
+beside this one for the screen that showed it and for the one measurement that would settle it.
 
 The builder refuses a byte that its own field table does not account for. That catches a write
 outside the table. It cannot catch a wrong offset or width inside the table, because the table
@@ -113,9 +121,9 @@ the reviewer, not by the assertion.
 | --- | --- |
 | `tests/unit/test_friend_v3_playtest_boost.py` | **8 passed** |
 | related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **175 passed**; captured to ignored `build/review/related-suites.log` |
-| changed-byte census on the delivered image | 45 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
+| changed-byte census on the delivered image | 25 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
 | foundation re-run through the toolkit | reproduces `ef939dcd` then `a4c12a95` byte for byte |
-| boost re-run on the reproduced foundation | reproduces `6d7a56c6` byte for byte |
+| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, and reproduced `6d7a56c6` before the hp and ep fields were dropped |
 | canonical ROM digest after every run | `940ad5f0...` unchanged |
 
 Not yet performed, and not claimed: independent review of the frozen candidate, GitLab CI,
@@ -206,12 +214,12 @@ note the frame, the last text box, and whether the music continued.
 | step | what to check | pass condition |
 | --- | --- | --- |
 | 0 | pre-flight | the loaded image is `6d7a56c6...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
-| 1 | new game, first stat screen | every party member reads **level 200**; hp and ep at the boosted maximum; four combat stats at 255 |
+| 1 | new game, first stat screen | the boosted party reads **level 200**, with STR, POW, END and SPD at 255, and hp and ep at their ordinary starting values, never negative |
 | 2 | first combat encounter | damage taken is small relative to the boosted hp; no freeze, no graphical glitch in the HUD |
 | 3 | first shop and item use | items still buyable and usable; the inventory screen renders the party's techniques unchanged |
 | 4 | first quest-gated door or NPC | the gate opens on the same trigger as retail. A gate that requires a level or a specific item is the case this boost does not address: record it, do not route around it silently |
 | 5 | each chapter in order | chapter completes; no freeze; the party remains at boosted stats; check the quest log after each chapter |
-| 6 | every fusion moment | Gotenks, Vegito and Gogeta still transform and still fight; their records were deliberately left at retail values, so a fusion that is *weaker* than its parts is expected and is not a defect |
+| 6 | every fusion moment | Gotenks, Vegito and Gogeta still transform and still fight; their records were deliberately left untouched, so a fusion that is *weaker* than its parts is expected and is not a defect |
 | 7 | dialogue-heavy scenes | text matches the friend build (Tulma, Great Soyman), no truncated or missing line |
 | 8 | scans and biographies | the screens open and read consistently |
 | 9 | Dragon Ball and story progression | every collectible and story trigger reached in order; no sequence break |

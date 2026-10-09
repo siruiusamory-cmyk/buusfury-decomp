@@ -154,6 +154,16 @@ def test_the_map_switch_lists_every_map_of_the_open_image(map_page):
     assert page._surface.map_rows()[0].identity == "map:0000"
 
 
+def test_the_summary_shows_the_maps_identity_and_its_published_name(map_page):
+    page, _shell, _session_ = map_page
+
+    _select_map(page, DOORED_MAP)
+    assert "Map 0033 - Snakeway" in page._summary.text()
+
+    _select_map(page, 0)
+    assert page._summary.text().startswith("Map 0000:")
+
+
 def test_the_layout_table_renders_the_models_own_cells(map_page):
     page, _shell, _session_ = map_page
     layer, row = _first_paintable(page)
@@ -236,6 +246,44 @@ def test_the_change_the_page_committed_is_visible_in_the_rom_surface(map_page):
     assert rom._surface.current_bytes(row.offset, 4) != rom._surface.canonical_bytes(
         row.offset, 4
     )
+
+
+def test_a_chunk_the_sdk_refuses_commits_nothing_and_states_the_reason(map_page):
+    """Ordinal 0 is a removal, so it is offered only where one exists."""
+    page, _shell, session = map_page
+    _layer, row = _first_paintable(page)
+
+    assert not row.revertable
+    assert row.field.minimum == 1
+
+    page._value.setText("0")
+    page._apply.click()
+
+    assert session.journal.depth == 0
+    assert session.project.layout.cells() == {}
+    assert page._surface.changes(session.project) == ()
+    assert page._surface.pending_bytes(session.project) == {}
+    assert "outside the supported range" in page._message.text()
+
+
+def test_zero_on_an_authored_cell_is_the_revert_and_has_a_byte_effect(map_page):
+    page, _shell, session = map_page
+    layer, row = _first_paintable(page)
+
+    page._value.setText(str(layer.chunk_count))
+    page._apply.click()
+    assert session.journal.depth == 1
+    assert page._caret_row().revertable
+    assert page._caret_row().field.minimum == 0
+    assert page._surface.pending_bytes(session.project)
+
+    page._value.setText("0")
+    page._apply.click()
+
+    assert session.journal.depth == 2
+    assert session.project.layout.cells() == {}
+    assert page._surface.changes(session.project) == ()
+    assert page._surface.pending_bytes(session.project) == {}
 
 
 def test_the_rom_surface_is_asked_for_every_open_destinations_bytes(map_page):

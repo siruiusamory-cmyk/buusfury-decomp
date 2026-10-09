@@ -321,7 +321,10 @@ class MapPage(QWidget):
 
     def _layer_summary(self, layers) -> str:
         paintable = sum(1 for layer in layers if layer.editable)
-        note = f"{len(layers)} layer slot(s), {paintable} paintable in this build"
+        note = (
+            f"{self._map_caption()}: {len(layers)} layer slot(s), "
+            f"{paintable} paintable in this build"
+        )
         if self._session.project is None:
             return f"{note}. Open a project to paint a cell."
         return note
@@ -329,12 +332,17 @@ class MapPage(QWidget):
     def _warp_summary(self, rows) -> str:
         if self._surface.transitions is None:
             return self._surface.transitions_problem or "no transition corpus here"
-        note = f"{len(rows)} transition(s) out of this map"
+        note = f"{self._map_caption()}: {len(rows)} transition(s) out of this map"
         if not rows:
             return f"{note}; this map declares none in this image"
         if self._session.project is None:
             return f"{note}. Open a project to retarget one."
         return note
+
+    def _map_caption(self) -> str:
+        """The selected map's friendly identity: its id, and its name where it publishes one."""
+        name = self._surface.map_name(self._map_index)
+        return f"Map {self._map_index:04d}" + (f" - {name}" if name else "")
 
     def _records_message(self, rows) -> str:
         if self._session.project is None:

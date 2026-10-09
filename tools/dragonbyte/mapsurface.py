@@ -38,7 +38,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
-from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
+from tools.webfoot.binary import FileOffset
 from tools.webfoot.layout import RomRange
 from tools.webfoot.map_paint import (
     MapPaintError,
@@ -67,6 +67,7 @@ from tools.webfoot.rom import RomIdentification
 from tools.webfoot.write import ByteChange
 
 from .datasurface import FieldValue
+from .romsurface import image_address
 
 #: The Maps destination's journal target. One target for the whole destination:
 #: layout and warps are one authored subsystem, and a second target would give a
@@ -94,7 +95,6 @@ class MapRow:
     size: int
     address: int
     warps: int
-    note: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,20 +148,25 @@ class CellRow:
     def field(self) -> FieldValue:
         """The one editable field: this cell's chunk.
 
-        0 is the honest spelling of "this cell carries no chunk", which is both
-        the canonical null pointer and the authored removal the SDK's
-        `set_layout_cells` writes as ``None``.
+        0 is the honest spelling of "this cell carries no authored chunk", and it
+        is offered only where there is something to remove. On a cell the open
+        project does not author there is no such edit: the SDK refuses ordinal 0,
+        and storing the removal anyway would claim a change with no bytes behind
+        it.
         """
         return FieldValue(
             name="chunk",
             value=0 if self.ordinal is None else self.ordinal,
-            minimum=0,
+            minimum=0 if self.revertable else 1,
             maximum=self.maximum,
         )
 
     #: How many chunks the cell's layer offers, filled in by the surface so the
     #: row can state its own range without carrying the whole vocabulary again.
     maximum: int = 0
+    #: Whether the open project authors a value for this cell, which is what
+    #: makes 0 a real revert rather than an edit with nothing behind it.
+    revertable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,7 +241,7 @@ class MapSurface:
                     label=f"Map {index:04d}",
                     file_offset=entry.file_offset,
                     size=len(entry.original_bytes),
-                    address=entry.file_offset + GBA_ROM_BASE,
+                    address=image_address(entry.file_offset, len(self.image)),
                     warps=warps.get(index, 0),
                 )
             )
@@ -252,10 +257,6 @@ class MapSurface:
             return self.painter().target(map_index).name or ""
         except MapPaintError:
             return ""
-
-    def label_for(self, map_index: int) -> str:
-        name = self.map_name(map_index)
-        return f"Map {map_index:04d}" + (f" - {name}" if name else "")
 
     # -- reading: layout ------------------------------------------------------
 
@@ -354,6 +355,7 @@ class MapSurface:
                         else f"this project paints chunk {value} here"
                     ),
                     maximum=maximum,
+                    revertable=value is not None,
                 )
             )
         return tuple(rows)

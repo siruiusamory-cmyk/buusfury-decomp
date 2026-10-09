@@ -222,6 +222,24 @@ def test_the_cell_change_is_visible_as_bytes_for_the_rom_surface(surface, projec
     assert surface.image[row.offset : row.offset + 4] != pending[row.offset]
 
 
+def test_the_chunk_zero_is_offered_only_where_it_is_a_real_revert(surface, project):
+    """0 removes an authored chunk, so it is no choice on a cell with none."""
+    layer, cells = _first_paintable(surface, project)
+    row = cells[0]
+
+    assert not row.revertable
+    assert row.field.minimum == 1
+    assert row.field.maximum == layer.chunk_count
+    assert row.field.range_text == f"1..{layer.chunk_count}"
+
+    edited = ms.with_layout_cell(project, row, layer.chunk_count)
+    reread = surface.cells(layer.map_index, layer.slot, edited)[0]
+
+    assert reread.revertable
+    assert reread.field.minimum == 0
+    assert reread.field.range_text == f"0..{layer.chunk_count}"
+
+
 def test_a_cell_set_back_to_its_chunk_removes_the_authored_edit(surface, project):
     layer, cells = _first_paintable(surface, project)
     row = cells[0]

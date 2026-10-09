@@ -131,11 +131,20 @@ def _choose_mode(page, label: str) -> None:
     page._modes.setCurrentText(label)
     assert page._mode == {text: identifier for identifier, text in textpage.MODES}[label]
 
-def _select(page, predicate):
-    row = next(item for item in page._rows if predicate(item))
-    page._table.selectRow(page._rows.index(row))
-    assert page._caret == row.identity
+
+def _point_at(page, row):
+    """Put the page's caret on one row, without a Qt selection round trip."""
+    page._caret = row.identity
+    page._render_editor()
     return row
+
+
+def _select(page, predicate):
+    return _point_at(page, next(item for item in page._rows if predicate(item)))
+
+
+def _select_at(page, position: int):
+    return _point_at(page, page._rows[position])
 
 
 def drive_string_edit(page):
@@ -438,11 +447,14 @@ def test_clause_3_one_edit_is_one_undo_entry_and_the_page_follows_it(edited):
 def test_clause_4_a_spoken_record_with_no_proven_site_offers_no_edit(armed):
     page, _shell, _session, _project_dir = armed
     _choose_mode(page, "Spoken dialogue")
-    row = _select(page, lambda item: not item.sites)
+    position = next(
+        at for at, item in enumerate(page._rows) if not item.sites
+    )
+    row = _select_at(page, position)
 
     print("\nCLAUSE 4 | a spoken-dialogue record with no proven relation")
     print(f"  row        {row.identity}")
-    print(f"  support    {page._model.data(page._model.index(page._rows.index(row), 9))}")
+    print(f"  support    {page._model.data(page._model.index(position, 9))}")
     print(f"  reason     {row.note}")
     print(f"  provenance {row.provenance}")
     print(f"  apply      {page._apply.isEnabled()}  open bytes {page._open.isEnabled()}")

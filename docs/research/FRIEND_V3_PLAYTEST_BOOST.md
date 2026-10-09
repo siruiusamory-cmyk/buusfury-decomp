@@ -82,7 +82,7 @@ Character base-stat records are 9 records of 0x12 bytes at `0x006FDA4C`; the lay
 `tools/webfoot/formats/stat_tables.py:188-220` (level u8, pad, hp u16, ep u16, strength,
 power, endurance, speed, appearance id, technique count, 6 technique bytes). Records 0..4 are
 set to the widest value each field's own mode uses, **except hp and ep, which are left at
-retail values**:
+the foundation's own values**:
 
 | field | offset | value | basis |
 | --- | --- | --- | --- |
@@ -98,18 +98,17 @@ known about identity, and they must not be confused:
   Crystal RAM map. It is an external source, not a measurement of this image. It agrees with
   `tools/webfoot/formats/stat_tables.py:77` calling all nine records playable, and it puts
   Videl in the ninth record where `BASE_STAT_NAMES` says Hercule.
-- **The name-to-record mapping** is contradicted at runtime. On a cold boot of the first
-  consolidated image, the character the game displayed for a boosted record was named YAMCHA,
-  which is not in `BASE_STAT_NAMES`. Since only records 0..4 were modified, the mapping is
-  wrong for at least one of them. Whether the order itself is wrong is **not** established: this
-  is a character-swap build whose foundation already rewrites records 0, 1 and 4 against
-  canonical and whose story text renames characters, so a correctly ordered record carrying a
-  renamed character fits the same observation.
+- **The status screen agrees with the order rather than contradicting it.** On a cold boot of
+  the first consolidated image, the boosted character was displayed as YAMCHA, and the friend
+  build renames the name table itself: index 116 "Goku" became "Yamcha", 117 "SS Yamcha", 118
+  "SS3 Yamcha", and 123 "Gohan" became "Krillin". So a YAMCHA screen is what this build calls
+  the record labelled Goku, and it is why the boost is described by record index rather than by
+  character name.
 
-The consequence that matters for the playtest: **which characters receive the boost is
-unknown.** Records 5..8 keep their values, the conservative side. See the completion record
-beside this one for the screen that showed it and for the one measurement that would settle it.
-
+The consequence for the playtest remains: the record order is externally sourced, and the
+correspondence between a record index and the on-screen name is this build's own renaming, so
+a named character in a report must be tracked by index. See the completion record beside this
+one for the screen and for how to settle the index directly.
 The builder refuses a byte that its own field table does not account for. That catches a write
 outside the table. It cannot catch a wrong offset or width inside the table, because the table
 also drives the writes; those were checked by hand against `decode_base_stat_record` and by
@@ -180,14 +179,14 @@ Nothing. The boost lane is frozen at `6d7a56c6` pending review.
 
 | item | state |
 | --- | --- |
-| the Bandana starting item | **NOT IMPLEMENTED.** The gear names sit in a general name table of 8-byte records at `0x06BCE8` (name pointer, then description pointer): index 428 is "Geromantium Bandana" and index 518 is "Bandana", described as "Only a really vicious criminal would wear something like this." That table continues into room names immediately after index 518, so it is a shared name table and not an item-only one. The 83-record item table at `0x3BD2F8` names no bandana and runs item ids 0..82, its names resolving through that same table at four entries per item. Two facts measured on the hardware image in this pass (see the completion record beside this one): the inventory slots are 8-byte records of a count word and an id word whose top nibble is a flag, and the item-add routine `0x08004448` refuses silently at 250 entries and stores `id & 0x0FFFFFFF`. **The unresolved mechanism is the id arithmetic by which the game names an id through `0x06BCE8`, and therefore the Bandana's own id.** Without it, choosing an id or an insertion point would be invention, so no bandana code was written |
+| the Bandana starting item | **ID MEASURED, GRANT NOT WRITTEN.** The name table at `0x06BCE8` is a flat table of 4-byte pointers scaled by four, and the renderer `0x0801D988` reaches a gear table at file `0x6F82EC` of 162 records of `0x2C` bytes, whose `+0x00` is a name index. Gear record **126** names index 518, "Bandana". The grant is not written because the new-game initialization of the inventory has not been located: the count and slots are reached as offsets from the save block rather than through literals, and a grant needs a site. See `docs/research/FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md` section 2 |
 | zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
 | latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
 | the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |
 
 ## 5. Limits of this record, stated plainly
 
-1. **No runtime observation of `6d7a56c6` exists yet.** The claim that the party starts at
+1. **The runtime evidence belongs to the superseded image.** The claim that the party starts at
    level 200 with maximum stats is a static decode of a verified table plus the game's XP
    ceiling, which is itself a static read of one comparison. Nothing here shows that a
    starting level of 200 with no experience is a state the game handles. That is why the
@@ -213,7 +212,7 @@ note the frame, the last text box, and whether the music continued.
 
 | step | what to check | pass condition |
 | --- | --- | --- |
-| 0 | pre-flight | the loaded image is `6d7a56c6...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
+| 0 | pre-flight | the loaded image is `acd98c2a...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
 | 1 | new game, first stat screen | the boosted party reads **level 200**, with STR, POW, END and SPD at 255, and hp and ep at their ordinary starting values, never negative |
 | 2 | first combat encounter | damage taken is small relative to the boosted hp; no freeze, no graphical glitch in the HUD |
 | 3 | first shop and item use | items still buyable and usable; the inventory screen renders the party's techniques unchanged |

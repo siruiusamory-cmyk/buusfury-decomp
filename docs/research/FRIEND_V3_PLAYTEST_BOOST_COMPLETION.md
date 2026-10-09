@@ -139,14 +139,14 @@ here is inferred from a name, an offset or a stored note.
 
 | # | finding | source |
 | --- | --- | --- |
-| 1 | The character roster is nine characters in this table's own order: `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta, 5=Gotenks, 6=Vegito, 7=Gogeta, 8=Videl`, with a per-character block stride of `0x68`. | external Data Crystal RAM map, fetched through the Wayback mirror and read here |
+| 1 | The character roster is nine characters in this table's own order: `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta, 5=Gotenks, 6=Vegito, 7=Gogeta, 8=Videl`, with a per-character block stride of `0x68`. This row is EXTERNAL: it comes from a third-party RAM map, not from a measurement of this image. | external Data Crystal RAM map, fetched through the Wayback mirror and read here |
 | 2 | The ninth record is **Videl**, not Hercule. This corrects the earlier inference, and agrees with `tools/webfoot/formats/stat_tables.py:77`, which calls all nine records playable. | same |
-| 3 | The gear and room names live in one shared table of 8-byte records at `0x06BCE8`: a name pointer, then a description pointer. Index 428 is "Geromantium Bandana", index 518 is "Bandana" with the description "Only a really vicious criminal would wear something like this." Index 519 onward are room names ("Airship", "Atrium"). | ROM read of the image under test |
+| 3 | The gear and room names live in one shared name table at `0x06BCE8`, a flat table of 4-byte text pointers scaled by four in the renderer. Index 518 is "Bandana" and 519 is its description; 520 is already a room name ("Airship"), so the room run begins immediately after the pair. Index 428 is "Geromantium Bandana". | ROM read of the image under test |
 | 4 | The 83-record item table at `0x3BD2F8` runs item ids 0..82 and names no bandana. Its names resolve through the same table at four entries per item: id 0 is text index 654 "Miso Soup", id 41 is "Ninja Key". | ROM read |
 | 5 | The item-add routine at `0x08004448` takes an inventory pointer and an id, refuses silently once the count reaches `0xFA` (250), increments the count, and stores `id & 0x0FFFFFFF`. | Ghidra decompilation of `0x08004448` |
-| 6 | The inventory slot is an 8-byte record: a count word and an id word whose top nibble is a flag. One renderer reads ids as `id & 0xFFFFFFF`, multiplies by `0x2C` to find the item record, then indexes the name table by `record[0]`. | save-block read, and Ghidra decompilation of `0x0801D988` |
-| 7 | The battery save is one 4096-byte save block followed by 4096 bytes of `0xFF`. Its inventory block begins at offset `0x100` with a first entry of count 5 and id `0x74` (116). The RAM map names `0x0300114C` as the item count and `0x03001068` as the current character. | direct read of `v3-fixed-credits.sav`, and the RAM map |
-| 8 | The external RAM map records no item-id field for gear; the nearest entries are the derived "Currently Equipped STR/POW/END/SPD" totals at `0x03002B70`.., which are computed values, not ids. | RAM map |
+| 6 | The inventory slot is an 8-byte record of two words. The renderer reads the id as `id & 0xFFFFFFF`, multiplies by `0x2C` to reach the gear record, and indexes the name table by that record's `+0x00` halfword. The remaining nibble decides whether an " E" marker is also drawn (name index 69), tested at `0x0801DBC2`. | save-block read, and Ghidra decompilation of `0x0801D988` |
+| 7 | The battery save is one 4096-byte save block followed by 4096 bytes of `0xFF`. At offset `0x100` it holds `00000005 00000074`, which reads as count 5 and id 116 ("White Belt") only if each four-byte pair is read big-endian, so this row does not by itself corroborate an id ordering. The renderer's own code path does, and is what section 2 rests on. | direct read of the save, and the RAM map |
+| 8 | The external RAM map records no item-id field for gear; the nearest entries are the derived "Currently Equipped STR/POW/END/SPD" totals at `0x03002B70`.., which are computed values, not ids. This row is EXTERNAL, like row 1. | RAM map |
 
 ## 2. The Bandana: identity RESOLVED, the grant is not written
 
@@ -158,13 +158,15 @@ wrong, and an independent review contradicted it. Re-measured here, and it holds
 | a | The name table at `0x06BCE8` is a flat table of 4-byte pointers, scaled by four in the renderer. Index 518 is "Bandana", index 519 is its description, and index 520 is "Airship", so the room-name run begins immediately after the pair. There are no 8-byte records. | ROM read of the image under test |
 | b | The renderer `0x0801D988`'s literal pool holds two words: at `0x0801DC68` the value `0x0806BCE8`, the name table, and at `0x0801DC74` the value `0x086F82EC`, which is a **gear table** at file offset `0x6F82EC` of 162 records of `0x2C` bytes, each with the name index at `+0x00` and the description index at `+0x02`. | ROM read |
 | c | Gear record **116** names "White Belt", record **126** names "Bandana", and record 160 names "Geromantium Bandana". | ROM read of the gear table |
-| d | The battery save's first inventory id is `0x74`, which is 116, "White Belt". Inventory ids therefore index this gear table directly, which is what makes 126 the Bandana's id and not an inference from its name. | the save-block read, and (c) |
+| d | The renderer's own read path settles it without the save: `0x0801DACC`..`0x0801DADC` reads the word at slot `+4`, keeps its low 28 bits, multiplies by `0x2C`, and adds the gear-table base, so an inventory id indexes this gear table directly. That is what makes 126 the Bandana's id. | disassembly of `0x0801D988`, and (c) |
 
 So the **Bandana id is 126**, measured rather than chosen. What is still not established, and
 is the only reason no code was written:
 
-1. **The flag nibble.** Inventory entries carry one, and which namespace the nibble selects is
-   not established. A wrong value could turn an equipment grant into a quest-item grant.
+1. **The flag nibble.** It decides whether an " E" marker is drawn beside the name (name
+   index 69), which reads as an equipped marker. That reading is an inference, not a runtime
+   observation, so the grant should write the nibble value the game itself uses for a plain
+   inventory item.
 2. **The grant site.** No new-game initializer for the inventory has been located: the item
    count and the slots are reached as offsets from the save-block base at `0x03001068` rather
    than through literals, so the zeroing and seeding path is still untraced. The add routine
@@ -197,9 +199,9 @@ through a known function rather than raw bytes.
 
 ## 4. What is unchanged
 
-- The merged baseline `42106cacaed0b3f7878181dbec2d0b1ae4b23763` and its image
-  `6d7a56c6...` are untouched, and the reproducible pipeline in `build/fv3boost001/build.ps1`
-  still reproduces that digest.
+- The merged baseline `42106cacaed0b3f7878181dbec2d0b1ae4b23763` is untouched, and
+  `build/fv3boost001/build.ps1` now reproduces `acd98c2a...`. The earlier `6d7a56c6...` is
+  retired, not deleted, and its four runtime runs stay on record.
 - No level-gate bypass was written. Nothing measured in this pass shows a gate that level 200
   fails, and adding bypass code without that evidence would be exactly the speculative change
   the ticket forbids.

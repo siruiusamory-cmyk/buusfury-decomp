@@ -900,8 +900,10 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
     ``romPage``; the Data destination renders the records and the coverage view
     (S6) rather than a statement about them, so its page is ``dataPage``; the Maps
     destination renders the map's cells and warps (S7) so its page is ``mapPage``;
-    and the Entities destination renders the placement family (S7) so its page is
-    ``entityPage``. Each of the other two is its own ``foundationPage_<id>``.
+    the Entities destination renders the placement family (S7) so its page is
+    ``entityPage``; and the Scripts & Text destination renders the scripts, events
+    and the two text systems (S7) so its page is ``textPage``. The remaining
+    destination is its own ``foundationPage_<id>``.
     """
     session = Session()
     shell = _shell(tmp_path, session)
@@ -923,6 +925,7 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
             "data": "dataPage",
             "maps": "mapPage",
             "entities": "entityPage",
+            "scripts_text": "textPage",
         }.get(current.destination, f"foundationPage_{current.destination}")
         assert page_name == expected, page_name
 

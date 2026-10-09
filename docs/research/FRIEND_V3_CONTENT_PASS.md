@@ -255,3 +255,51 @@ of that comparison was archived, so the counts are NOT restated here. What stand
 without them: the four spoken records this ticket could not correct are examples of the
 gap, and those records are the operator's, not this ticket's, so they are recorded
 rather than repaired.
+
+## 8. Closure
+
+| item | value |
+| --- | --- |
+| baseline | `0fa1aa70fe22aecb4aa58d6e3c19098f14f10b92` |
+| reviewed candidate | `a671a7ecf4e524e1e799eed9841f0b8b795bdbdc`, PASS |
+| merged candidate | `5b84e12f4310b8002f867b3046ac926806d636b7` |
+| merge commit on master | `0bdf1df5946e52336ee9d45d2318935ac659967d`, a TRUE merge with parents `0fa1aa70` and `5b84e12` |
+| merge request | `!152` |
+| MR pipeline | `2928987904` (and push pipeline `2928987362`), both SUCCESS: `test-sdk` and `test-site` |
+| master pipeline | `2929001571`, SUCCESS: `test-sdk`, `test-site`, `deploy-site` |
+| local gates before the MR | readability 0 hard hits; architecture reports five pre-existing large modules; public surface 0 findings |
+
+**What the merge contains.** Five files: this record, the change plan, the review brief,
+`tools/research/apply_friend_v3_text_edits.py`, and
+`tests/unit/test_friend_v3_text_edits.py`. No product code, no capability change, so
+`src/data/capabilities.json` and `src/data/project.ts` were deliberately not touched and
+the site's published status strings do not move. No ROM, image, savestate or capture is
+tracked; `git ls-files` finds none.
+
+**Reviewer independence, stated honestly.** Every review round on this branch was run by
+the Claude CLI on a fresh context, and none of them authored the change. The FINAL tip
+was never given a clean verdict: the review budget was stopped by request after the last
+round returned BLOCKED on a single duplicated phrase, which was then fixed. So the SHA
+that merged carries a PASS on `a671a7e` plus a set of later documentation-only fixes,
+and the reader should treat the post-`a671a7e` prose as corrected-but-not-independently-
+cleared. That limitation is the reason section 2 now cites artefacts instead of results.
+
+**Proven, and by what.**
+
+| claim | basis |
+| --- | --- |
+| the foundation reproduces byte-exact | splice output `cffdb81e...` and engine output `d401d71c...`, both matching the recorded acceptance digests |
+| seven edits, 204 changed bytes | `build/fv3cp001/v3-content-pass-report.json`, and the same seven sites in the tool's `SECTION_3_1` |
+| Kibito cold-boot PASS on the exact image | `build/friendv3-coldboot/content-pass/`: `inputs.json` and `coldboot.csv`, independently read by two review rounds |
+| nothing ROM-shaped is tracked | `git ls-files` over the merged commit |
+
+**Not proven, and not claimed.** Every preservation figure from the span writer other
+than the 204-byte count, because the run that produced them left no archived report;
+the per-name survivor counts in the unchanged spoken dialogue; the survey values behind
+the Hercule, Spopo and Tulma items; and the source-image post-run hash.
+
+**Remaining limitations, unchanged by the merge.** The four spoken records still read
+`Bulma`; the seven contradictory scan biographies are still in the image; Hercule's
+encounter is untouched; the chapter titles are untouched; the Spopo replacement is
+undecided; and Tulma's blonde art does not exist yet, so Tulma is a name over original
+Bulma's art. The writer's four hardening refusals remain untested by the suite.

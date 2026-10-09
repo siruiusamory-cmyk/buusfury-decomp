@@ -61,13 +61,16 @@ the owner's standing requirement. Each is evaluated here rather than adopted.
   image.
 - **SDK work.** None required for admission (see the evaluation above). The claim
   query it depends on arrives in S4; until then claimed bytes are refused
-  conservatively from the atlas objects and declared tables.
+  conservatively from the atlas objects, the declared table extents and the
+  journal's own pending entries, and the plan-level overlap guard remains the last
+  gate rather than the first.
 - **Acceptance proof.** A raw write into bytes a declared structure owns is
-  refused, names the owner once, and creates no change. A write into an unowned
-  range creates exactly one entry owned by `raw:<image address>`, the plan
-  accepts it, and `verify_emitted_image` returns exactly that offset. Saving over
-  the canonical digest is refused. The canonical digest is unchanged before and
-  after.
+  refused, names the owner once, and creates no change. A raw write into a byte a
+  pending semantic edit has changed is also refused at commit, naming that
+  semantic owner. A write into an unowned range creates exactly one entry owned by
+  `raw:<image address>`, the plan accepts it, and `verify_emitted_image` returns
+  exactly that offset. Saving over the canonical digest is refused. The canonical
+  digest is unchanged before and after.
 - **Depends on.** S1, S2.
 
 ### S4 - DRAGONBYTE-Z-OWNER-RANGE-INDEX-001: what owns these bytes
@@ -176,17 +179,26 @@ comparison of two resources; any docking or layout-profile system.
 strings, the colour lookup block or debug debris. The census records the
 recommendation; this roadmap agrees.
 
-**Not a ticket queue.** The 40 census systems are not a backlog. The seven
-writable-adjacent domains above are the V1.0 surface set, and the rest of the
-census is evidence for honesty rather than work to schedule.
+**Not a ticket queue.** The 40 census systems are not a backlog. The V1.0 surface
+set above is seven capabilities over the domains the evidence already supports,
+and the rest of the census is evidence for honesty rather than work to schedule.
 
 ## Documentation owed by the sequence
 
 1. `../desktop-ui.md` gains the ROM surface's address-first exception, so the
    single deliberate inversion of "addresses are diagnostics" is written where
    the rule lives. S5 owns this.
-2. `docs/README.md` indexes this directory (done with this specification).
-3. `src/data/capabilities.json` changes only when a capability actually ships.
+2. `../workbench-architecture.md:3` currently states that DragonByte Z is the
+   desktop editor shipped from `tools/webfoot/workbench/`. That sentence is true
+   of the beta and false of this product, so it is amended when the new
+   application ships, naming the beta as the engineering surface the release
+   review already records it to be. S9 owns this.
+3. The existing journeys under `../journeys/` describe the beta's surfaces.
+   Each is mapped to its home among the five destinations and the action bar, or
+   recorded as having no home yet, in the same change. S7 owns this. Users of the
+   beta are not migrated by this sequence: the beta keeps working unchanged.
+4. `docs/README.md` indexes this directory (done with this specification).
+5. `src/data/capabilities.json` changes only when a capability actually ships.
    It reads 24 of 24 today and this roadmap does not change it. S9 owns any
    entry it needs.
 

@@ -16,8 +16,11 @@ document and a tracked authority disagree, the authority wins:
 census, [`../research/ROM_EDITOR_COVERAGE_SUMMARY.md`](../research/ROM_EDITOR_COVERAGE_SUMMARY.md),
 its ledger and its normative data file
 [`../research/rom_editor_coverage.json`](../research/rom_editor_coverage.json),
-at merge `178814c5f45a02a482b404b3831b2f72bfeb6a53`. That census is referenced
-here as evidence; its 40-row ledger is not restated.
+at merge `178814c5f45a02a482b404b3831b2f72bfeb6a53`, the merge that landed it.
+(The census file itself records its own ticket baseline,
+`486e3c665929a8dc57c63b7915f74606e30ccb0d`, because origin/master advanced while
+that ticket was open.) That census is referenced here as evidence; its 40-row
+ledger is not restated.
 
 The 24-entry public capability registry (`src/data/capabilities.json`) measures
 a different question, is unchanged by this document, and reads 24 of 24.
@@ -263,7 +266,7 @@ object; the tier shown first depends on the surface.
 | --- | --- | --- | --- |
 | Friendly display identity | `Placement 037`, `Map 0012 - West City`, `Text 1525`, `Sprite 149`, `Enemy 034` | Scannable label, unique inside its parent | List rows, headers, breadcrumbs |
 | Stable technical identity | `map:0012/placement:0037`, `enemy:0034`, `event_resource:0290`, `item:0000` | The key: stable, copyable, searchable, recorded | Inspector identity row, search, project files, manifests, refusals, bug reports |
-| Address identity | image `0x08711274+0x1C`, file `0x711274+0x1C`, range `[0x08711274, 0x08711290)` | The join between a semantic object and the bytes | Technical details everywhere; primary in the ROM surface |
+| Address identity | image `0x08711274+0x1C`, file `0x711274+0x1C`, range `[0x08711274, 0x08711290)` (half-open, as the plan's own `end` is) | The join between a semantic object and the bytes | Technical details everywhere; primary in the ROM surface |
 
 Rules.
 
@@ -372,9 +375,9 @@ with another change. The product adds the checks the format cannot express.
 5. **One undo entry per write**, with a `mergeWith` id so a continuous
    interaction collapses (`../desktop-ui.md:148-151`).
 6. **Two writes to one field is a contradiction.** The authored-image layer
-   already refuses it (`tools/webfoot/authored_image.py:195-200`), and a manifest
-   change with no owner is malformed (`:537-538`). The product must not create
-   either state.
+   already refuses it (`tools/webfoot/authored_image.py:550-554`), its tolerant
+   duplicate rule lives at `:195-200`, and a manifest change with no owner is
+   malformed (`:537-538`). The product must not create any of those states.
 
 **Why this is a design and not a description.** The census records arbitrary
 byte authority as absent, with a new owner class required. Measured against the
@@ -594,9 +597,10 @@ forward; the beta's four separate undo stacks are not.
 
 | Moment | Rule |
 | --- | --- |
-| Commit | A raw write into bytes a declared structure claims is refused at the point of the write and offered as a semantic edit. This is the primary prevention and it exists nowhere today; the range index supplies it. |
+| Commit | A raw write into bytes a declared structure claims is refused at the point of the write and offered as a semantic edit. The query consults three sources and must consult all three: the journal (a pending edit with no word in the SDK), the range index, and the atlas objects and declared table extents. This is the primary prevention and it exists nowhere today. |
 | After a structural edit | Every raw entry whose extent moved is re-projected. A re-projection that is unambiguous is applied silently; an ambiguous one marks the entry `Conflict` and it must be undone or converted into a named override inside the object. |
-| Build | The last gate is the plan's own check: two owners writing one byte is an error (`tools/webfoot/write.py:187-190`, `:1232-1233`), and two writes to one field is a contradiction in the authored image (`tools/webfoot/authored_image.py:195-200`). The product must never rely on either as the first check. |
+| After a build that relocated a structure | A raw entry addresses canonical file offsets and is validated against the canonical bytes (`tools/webfoot/write.py:1203-1235`), so it never silently re-targets. A build can still move a structure out from under it: `../journeys/dialogue-editing.md:67-73` measures a container recompressed 1,076 bytes larger and placed in generated expansion. When a build's relocation provenance moves a structure containing a raw entry's range, the entry is marked `Conflict` and names that relocation, and the user has three choices: undo it, re-address it to the relocated copy at the offset the provenance records, or keep it as an explicit edit of bytes the product can no longer show anyone reading them. |
+| Build | The last gate is the plan's own check: two owners writing one byte is an error (`tools/webfoot/write.py:187-190`, `:1232-1233`), and two changes writing one field is a contradiction in the authored image (`tools/webfoot/authored_image.py:550-554`). The product must never rely on either as the first check. |
 
 The user-facing form of a conflict is one dialog naming both entries, their
 offsets and three choices: undo the raw change and keep the semantic edit
@@ -634,7 +638,7 @@ Technical details.
 | Read-only | The product can show you this and cannot change it. | `SEMANTIC_READ_ONLY` |
 | Not supported yet | It is a real thing in the game and there is no model for it yet. | `KNOWN_BUT_UNSUPPORTED` |
 | Not mapped | This exists and its meaning is not established yet. | `UNKNOWN_UNMAPPED` |
-| Not in this game | The evidence says this does not exist in this title. | `N_A` |
+| Not in this game | The evidence says this does not exist in this title. Reserved for the census vocabulary: no current row emits it, and the product shows it rather than a blank if one ever does. | `N_A` |
 
 The last three transient states are results, never decoration before an attempt.
 
@@ -696,10 +700,14 @@ so no claim here is a claim about how the shipped window looks).
 - One spacing scale and five named control heights: `SPACE_XS..XL` 2/4/8/12/16,
   `ROW_HEIGHT 20`, `CONTROL_HEIGHT 24`, `TOOLBAR_HEIGHT 28`,
   `PANEL_HEADER_HEIGHT 22`, `STATUS_HEIGHT 22` (`theme.py:272-294`).
-- Two real defects worth not inheriting: `CONTROL_HEIGHT` says 24 while the
-  stylesheet derives from `ROW_HEIGHT - 6`, so a rendered button, input and combo
-  measure 22 px; and several surfaces put monospace on body text, which is what
-  makes a tool read as a hex editor by accident.
+- Two measured facts worth carrying correctly rather than as defects:
+  `CONTROL_HEIGHT` is declared 24 while the stylesheet derives a control's height
+  from the button metrics, so a rendered button, input and combo measure 22 px;
+  and several surfaces put monospace on body text, which is what makes a tool
+  read as a hex editor by accident. The first is a constant to keep in step with
+  what is rendered, not a bug to repair by overriding the stylesheet: a control
+  that sets its own smaller minimum is the two-pixel drift the constant exists to
+  prevent (`theme.py:286-290`).
 - Shared chrome already exists and is worth keeping as a vocabulary:
   `PanelHeader`, `DisclosureRow`, `AlignedFieldTable`, `TechnicalLabel`,
   `StateChip`, `ToolStrip`, `ScrollPane` (`widgets.py:43`, `:161`, `:233`,
@@ -707,9 +715,9 @@ so no claim here is a claim about how the shipped window looks).
 
 **Kept:** the palette's provenance and role vocabulary; the lightness ladder;
 small radii and 1 px separators; the spacing and height constants, with the
-`CONTROL_HEIGHT` disagreement fixed so the constant matches what is rendered;
-glyph plus brightness plus word for every state; one forced stylesheet applied
-once from the entry point; the shared chrome vocabulary.
+declared control height and the rendered height kept in step rather than
+overridden; glyph plus brightness plus word for every state; one forced
+stylesheet applied once from the entry point; the shared chrome vocabulary.
 
 **Changed:** density is stated as a target (20 px semantic record rows, 18 px
 hex rows, 22 px group headers, two density levels and no third); monospace is
@@ -839,7 +847,10 @@ Two import rules are mechanical and tested, following the precedent in
    authored project, and a build from either is byte-identical.
 5. **The beta keeps working while the new product is built.** This document
    neither freezes nor deletes the Workbench; the owner decision that it is not
-   the shipping product is already recorded in the release review.
+   the shipping product is already recorded in the release review. Two tracked
+   sentences still name it as the product (`../workbench-architecture.md:3` and
+   the journeys under `../journeys/`), and the roadmap records both as
+   documentation owed when the new application ships.
 6. **The registry is not touched by this document.** `src/data/capabilities.json`
    stays at 24 of 24 until a capability is actually shipped.
 7. **The import direction is one way, and tested.** Nothing under
@@ -962,8 +973,10 @@ needed to prove the four properties.
 - Side-by-side comparison of two resources (the section 5 concession).
 - Any docking or layout-profile system.
 
-**Research first, and never silently promoted.** Four items, each with what it
-unblocks and what it does not block.
+**Research first, and never silently promoted.** Four items are the V1.0-relevant
+research dependencies, each with what it unblocks and what it does not block.
+Section 19 adds two further evidence items that are correctness guards rather
+than dependencies.
 
 | Research item | Unblocks | Does not block |
 | --- | --- | --- |
@@ -996,6 +1009,8 @@ V1.0 gap, not a silent one.
 
 The bounded list, each a ticket rather than a product design. None of them
 becomes a V1.0 blocker, and this document does not create an open-ended queue.
+Items 1 to 4 are the V1.0-relevant research dependencies; items 5 and 6 are
+evidence corrections that no step waits on.
 
 1. The three unmodelled per-area object arrays and their record families
    (the four-array model is `INFERRED` and disputed; the census does not pick a
@@ -1054,7 +1069,8 @@ is exactly section 17.
   shapes and its measured constants are evidence.
 - It makes no runtime claim: no emulator was run for this design, so every
   statement about game behaviour is quoted from the census and its sources.
-- It does not amend the tracked authority. The one contradiction it knowingly
-  creates (address-first labels in the ROM surface against
-  `../desktop-ui.md:33-34`) is named in section 7 and is owed as a documented
-  exception when that surface is built.
+- It does not amend the tracked authority. Three amendments are owed instead,
+  each owned by a roadmap step: the ROM surface's address-first exception in
+  `../desktop-ui.md` (S5), the sentence in `../workbench-architecture.md:3` that
+  names the beta as the shipped editor (S9), and the journey documents' mapping
+  onto the new destinations (S7).

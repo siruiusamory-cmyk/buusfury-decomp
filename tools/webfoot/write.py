@@ -1350,10 +1350,23 @@ def emit_image(
     # and would name the wrong rule to the caller. Both policies are this
     # module's, shared with every other writer - see `ensure_not_source_alias`.
     ensure_not_source_alias(source, destination)
+    # OWNER R3. Identity, not digest: a hardlink or a junction-reached path to a
+    # protected ROM is refused here even though its name and its content differ
+    # from the source's, and a destination inside a protected input directory is
+    # refused however it got there. Runs before `ensure_new_destination` so a
+    # protected path is reported as protected rather than as occupied.
+    from .destination import refuse_rom_destination
+
+    refuse_rom_destination(source, destination)
     ensure_new_destination(destination)
 
     manifest_destination = Path(manifest_path) if manifest_path is not None else None
     if manifest_destination is not None:
+        # The provenance document is a destination this module writes, so it
+        # answers the same destination policy the image does, for the reason the
+        # policy gives: it is the PATH that is protected, not the bytes. Without
+        # this a manifest was created inside a protected ROM input directory.
+        refuse_rom_destination(source, manifest_destination)
         if paths_are_the_same_file(manifest_destination, source) or (
             paths_are_the_same_file(manifest_destination, destination)
         ):

@@ -341,6 +341,13 @@ def save_authored_image(
     # output, and replacing one is the loss this whole module exists to prevent.
     # Checked here, before the first destructive step below, so a refusal leaves
     # the destination, its provenance path and both staging siblings untouched.
+    #
+    # OWNER R3 adds the identity half the digest rule cannot reach: the
+    # destination may be a hardlink or a junction-reached path to a protected
+    # ROM, which has the protected file's identity and not its bytes.
+    from .destination import refuse_rom_destination
+
+    refuse_rom_destination(source, output)
     refuse_canonical_destination(output, canonical_sha256)
     normalized = normalize_changes(changes)
     try:

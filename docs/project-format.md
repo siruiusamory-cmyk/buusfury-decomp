@@ -29,11 +29,31 @@ project/
   sprites/sprites.toml    one new actor-sprite identity, and its actor
   sprites/**/*.png        the source sheets that identity is drawn from
   appearances/appearances.toml   new character-appearance definitions
+  raw/bytes.toml          authored raw byte writes, by file offset
 ```
 
 One file per table rather than per record: 141 single-record files would be a
 worse Git experience, not a better one. Only the supported content types get
 directories - no empty directories are reserved for systems that do not exist.
+
+`raw/bytes.toml` is the authored form of a raw byte write: a `[bytes]` table
+whose keys are file offsets and whose values are hex, one entry per byte range,
+written by the application's own document writer. Its shape is declared once, in
+`tools/dragonbyte/rawbytes.py`, and the shipping package reads it with
+`tools.webfoot.project.rawbytes`; the two cannot drift, because a test reads one
+file through both readers and asserts they agree. A missing file means the
+project authors no raw byte, matching every other optional document.
+
+The document states what the bytes become, never what they were. `before` is not
+stored, because the base image is the only authority for it, so `build` reads the
+bytes it is about to replace out of the image and the plan refuses the change
+unless the image really holds them.
+
+A raw write is an ordinary `ByteChange` with the owner `raw:<image address>`. It
+joins the same single plan as every semantic domain, so a raw write that meets
+another domain's bytes is the plan's overlap error rather than a silent
+last-writer-wins, and a write that reaches outside the image is a validation
+problem rather than a truncated emit.
 
 `text/strings.toml` is written only when the verified profile declares a string
 table, and a project without it simply authors no text. All 1,534 strings share
@@ -365,6 +385,13 @@ answers *which edit changed these bytes*, not merely *these bytes differ*.
 - semantic field ranges (enemy and character `level` cap at 200, from P-010's
   `cmp r6,#0xc8` at `0x08013A00` in the EXP award path);
 - `raw` presence, length, and agreement with the base image;
+- for a raw byte document: that it parses, that every key is a file offset and
+  every value an even-length hex string, and that every write lies inside the
+  canonical image. A document that cannot be read is refused, never read as "this
+  project authors no raw byte", because that reading would emit the canonical
+  bytes while reporting success. An entry that changes nothing is refused with its
+  offset named, for the same reason: it cannot become a change, and dropping it
+  silently would leave a person believing an authored write shipped;
 - records the ROM lacks, and records the project omits;
 - for text: identity key form and range, encodability (unsupported characters,
   malformed `{08:XX}` tokens, embedded NULs), whether the encoded text fits its
@@ -384,7 +411,41 @@ validation fails.
 Stats and text produce their changes separately but are validated and applied as
 a **single** write plan. Overlap detection is per-plan, so two subsystems in two
 plans could each look valid while together writing the same bytes; merging turns
-that into a hard error instead of silent last-writer-wins.
+that into a hard error instead of silent last-writer-wins. Raw byte writes are
+one more contributor to that plan, not a second writer: an authored raw write and
+an authored stat edit are the same kind of thing to the plan and to the manifest.
+
+## Protected ROM destinations
+
+A write is refused when its destination would overwrite a protected ROM input,
+by **file identity** rather than by content or by name
+(`tools.webfoot.destination`). Identity is the rule because a derivative has
+different bytes and a hard link has a different name, and both would otherwise
+pass:
+
+- the destination IS a protected input, by the filesystem's own identity or by
+  resolved path;
+- the destination is a **hard link** to one, which is one file under another name
+  and cannot be written independently of it;
+- the destination resolves inside a protected input directory, **including one
+  reached through a directory junction or symlink**, because the destination is
+  resolved before it is compared. The provenance manifest is a destination this
+  path writes, so it is held to the same rule as the image.
+
+The protected directory names are `destination.PROTECTED_INPUT_DIRECTORIES`: that
+tuple is authoritative, and the tracked ignore rules are consulted only to confirm
+a listed name is still declared there. A name dropped from the ignore file stops
+being protected; a newly ignored directory is not protected until it is listed,
+because `build/` is ignored as generated output and no parser can tell an input
+directory from an output one.
+
+What is not refused: a distinct derivative whose directory merely contains a ROM.
+A directory holding an input is not itself an input, and an output chosen outside
+a protected directory is written normally.
+
+These checks are preventive: they stop a write before it happens. They are
+complemented, not replaced, by the digest rules, which are detective - they
+notice a wrong or damaged image after it exists.
 
 ## Not in this format
 

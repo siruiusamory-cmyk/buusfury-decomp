@@ -49,7 +49,10 @@ from .project import (
     ProjectMeta,
     ProjectValidationError,
     StatProject,
+    raw_byte_changes,
+    raw_byte_no_op_problems,
     read_project,
+    read_raw_bytes,
     write_project,
 )
 from .project.atomic import replace_document
@@ -1248,6 +1251,37 @@ def _check_dialogues(project: StatProject, profile: RomProfile,
     return problems
 
 
+def _check_raw_bytes(
+    project_dir: str | Path, image: bytes | None
+) -> list[str]:
+    """Report the raw byte document's problems, resolved against the image.
+
+    LOG1-RAW-WRITE-BUILD-001. A raw write is a change like any other, and this is
+    its half of the fail-closed ordering every other subsystem already has: the
+    document is read, every write is resolved against the canonical image, and a
+    write that reaches outside the image, or one that is already the image's own
+    bytes and so changes nothing, is a named problem here rather than a build that
+    quietly leaves it out.
+
+    A MALFORMED document does not reach this function's problem list: the reader
+    itself raises `RawByteDocumentError`, and both callers let that raise, so a
+    build that cannot read the document stops before anything is emitted instead
+    of reading it as "this project authors no raw byte". Both paths are
+    fail-closed, which is the property that matters; this function does not claim
+    the reader's own refusals.
+
+    A `None` image means the caller has no canonical bytes to resolve against; the
+    document is then read for its own shape alone, which is still a stronger
+    answer than skipping it.
+    """
+    if image is None:
+        read_raw_bytes(project_dir)
+        return []
+    edits = read_raw_bytes(project_dir)
+    raw_byte_changes(edits, image)
+    return raw_byte_no_op_problems(edits, image)
+
+
 def _identity_order(identity: object) -> int:
     """Sort key for reporting. Only table-indexed identities reach this."""
     return getattr(identity, "index", -1)
@@ -1314,6 +1348,11 @@ def validate_project(
         from .project.model import GRAPHICS_FILE
 
         authored_graphics = (Path(project_dir) / GRAPHICS_FILE).is_file()
+        # LOG1-RAW-WRITE-BUILD-001. A raw byte write is resolved against the
+        # canonical image, so the document's own presence is what decides whether
+        # that image has to be read here - reading it for no reason would be the
+        # only cost this ticket adds to a project that authors no raw byte.
+        authored_raw_bytes = read_raw_bytes(project_dir)
         canonical_image = (
             Path(rom_path).read_bytes()
             if (project.layout.cells() or project.dialogues
@@ -1323,6 +1362,7 @@ def validate_project(
                 or not project.sprites.is_empty()
                 or not project.appearances.is_empty()
                 or not project.authored_maps.is_empty()
+                or authored_raw_bytes
                 or authored_graphics)
             else None
         )
@@ -1339,6 +1379,7 @@ def validate_project(
             + _check_authored_maps(project, profile, canonical_image, identification)
             + _check_graphics(project, profile, project_dir, canonical_image, identification)
             + _check_dialogues(project, profile, rom_path)
+            + _check_raw_bytes(project_dir, canonical_image)
         )
 
     return ValidationReport(
@@ -1432,6 +1473,14 @@ def build_project(
     if identity_problems:
         raise ProjectRomMismatchError("; ".join(identity_problems))
 
+    # LOG1-RAW-WRITE-BUILD-001. The raw byte document is read here, once, and only
+    # when the project authors one. That read decides whether the canonical image
+    # has to be opened, and the same image then backs both the plan's raw changes
+    # below and the validation of the document above them, so what a build applies
+    # and what it opens the image for cannot be two different answers.
+    raw_edits = read_raw_bytes(project_dir)
+    raw_image = Path(rom_path).read_bytes() if raw_edits else None
+
     # `_check_strings` applies the authored text as it checks it, so it runs
     # before `_apply_project_to_tables` and its problems join the same gate.
     problems = (
@@ -1439,6 +1488,7 @@ def build_project(
         + _check_strings(project, strings)
         + _check_maps(project, maps)
         + _check_dialogues(project, profile, rom_path)
+        + _check_raw_bytes(project_dir, raw_image)
     )
     if problems:
         raise ProjectValidationError(
@@ -1502,6 +1552,25 @@ def build_project(
     # original bytes and `plan_changes` then drops it as a no-op.
     changes: list[ByteChange] = []
     base_bytes: bytes | None = None
+
+    # LOG1-RAW-WRITE-BUILD-001. The project's raw byte document joins the plan as
+    # one more contributor of ordinary `ByteChange`es: a raw edit is not a second
+    # mutation engine, it is a change whose owner is the image address it lands
+    # at. It is read from the committed project the same way every other document
+    # is, never from the application's journal, so a build applies what was saved
+    # and not what is pending.
+    #
+    # The bytes it replaces are read from the canonical image HERE, not from the
+    # document, which does not store them: `plan_changes` then refuses the change
+    # unless the image it is handed really holds those bytes, which is what makes
+    # a write authored against a different image a refusal rather than a guess.
+    if raw_image is not None:
+        changes += raw_byte_changes(raw_edits, raw_image)
+        # A pure raw write is a legal whole build, so the base image it was
+        # validated against becomes the plan's own base rather than being left to
+        # whichever domain happens to have loaded one.
+        base_bytes = raw_image
+
     if tables is not None:
         _apply_project_to_tables(project, tables)
         changes += tables.changes()

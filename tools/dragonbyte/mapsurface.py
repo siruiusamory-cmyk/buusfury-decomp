@@ -219,6 +219,7 @@ class MapSurface:
         self.transitions_problem = transitions_problem
         self._painter: MapPainter | None = None
         self._layers: dict[int, tuple[LayerRow, ...]] = {}
+        self._warp_cache: tuple[object, tuple[ByteChange, ...]] | None = None
 
     # -- reading: the map list ------------------------------------------------
 
@@ -446,12 +447,22 @@ class MapSurface:
         requests = transition_edits_to_requests(project.transitions)
         if not requests or self.transitions is None:
             return ()
+        # Keyed on the authored document's own identity: the authority re-decodes
+        # the whole 735-record corpus per call, measured at 160 ms, and the ROM
+        # surface asks for the project's byte effect on every render. A document
+        # mutated in place rather than replaced would answer stale; nothing here
+        # mutates one, and the journal replaces it on every commit, undo and redo.
+        cached = self._warp_cache
+        if cached is not None and cached[0] is project.transitions:
+            return cached[1]
         application = plan_transition_edits(
             self.image, requests, profile=self.profile
         )
-        return tuple(
+        changes = tuple(
             change for change in application.changes if change.old != change.new
         )
+        self._warp_cache = (project.transitions, changes)
+        return changes
 
     # -- the open project's own documents -------------------------------------
 

@@ -110,8 +110,9 @@ twice carries both of its words.
    graphic and no palette byte can have changed.
 4. **Chi-Chi untouched.** Every container reached by sprite 66's frames is byte-identical in
    the candidate and the base.
-5. **Determinism.** Two runs of the writer over the same base and assets produce the same
-   digest, and the base is re-hashed unchanged.
+5. **Determinism.** Two runs of the writer over the same base and the same four assets
+   produce byte-identical output (`aec5aa9f` both times) and reports that differ only in the
+   output path they name, and the base image is re-hashed unchanged after each run.
 6. **Tests.** `tests/unit/test_tulma_graphics.py` covers the pure decisions (colour to
    index, the chroma key, the transparent key, the ambiguous-colour refusal, the 5-bit
    match, the crop window, the mirror, one container with two words, the disagreement
@@ -119,14 +120,44 @@ twice carries both of its words.
    `tests/integration/test_tulma_graphics_rom.py` runs the writer over the canonical image
    with sheets it derives from that image, so the whole path is exercised without carrying a
    pixel of anyone's art, and asserts each of the four properties above plus the refusal of a
-   facing that is not the mirror of its pair.
+   facing that is not the mirror of its pair. Both files pass: 21 tests.
+7. **A red test that is not this ticket's.** `tests/integration/test_graphics_rom.py::test_`
+   `verified_graphics_pointers_join_the_common_reference_graph` fails on this baseline with
+   11,304 references against an expectation of 11,302. It fails when run alone, it reads
+   only the canonical image and the tracked SDK, and the file was last changed before later
+   changes to `tools/webfoot/graphics.py` and `tools/webfoot/profile.py`, so the expectation
+   looks stale rather than the walk wrong. It is disclosed here and left alone: repairing it
+   is a separate ticket's scope, not this one's.
 
 ## 6. Runtime evidence
 
 To be recorded. The writer and the static checks above establish the bytes; only a session
-establishes what the engine draws. The run must follow `docs/skills/mgba-runtime.md`: the
-tracked launcher, an exact image digest, an allowlisted read-only observer with a liveness
-channel, and a session the operator ends.
+establishes what the engine draws.
+
+The rig is in place and its preconditions are verified by a dry run: mGBA `0.11.0.0` read
+from the binary, the candidate digest and size checked, no mGBA already running, no
+savestate (a state would restore VRAM a previous run assembled, so the area has to be built
+during the session). The launcher is the tracked one the graphics-import proof already
+uses, and this ticket adds only the observer, registered in the injector allowlist and
+accepted by its `-CheckOnly` gate.
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\runtime\start_gfximport001_live.ps1 `
+  -RomPath build\tulma001\v3-tulma-graphics.gba `
+  -RomSha256 aec5aa9ff1cabe454ae314721a647b31fe75102af96e6cde9b0a99f91bc1c7a6 `
+  -ExpectedRomSize 10141224 -Label tulma001-encounter `
+  -LuaPath tools\runtime\tulma001_tulma_proof.lua -SavePath roms\<the operator's save>
+
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\runtime\finish_gfximport001_session.ps1 -Label tulma001-encounter
+```
+
+The launcher prints the run directory and exits holding no wait loop; the operator boots
+the image, loads the saved game, walks to a Tulma appearance and closes the window. The
+observer then has, per settled screen, a screenshot plus full VRAM, palette and OAM dumps,
+so the claim is checked against the object-tile bytes rather than judged from a picture.
+The three instrument states of the runtime skill's section 8 are reported when the section
+is filled in: target silent with a silent liveness channel is no evidence, target silent
+with the heartbeat firing is a real negative, and anything drawn is execution observed.
 
 ## 7. The palette question, answered
 

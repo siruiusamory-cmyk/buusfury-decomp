@@ -41,6 +41,7 @@ from tools.webfoot.release_identity import release_identity
 from . import diagnostics, theme
 from .destination import DESTINATIONS, ROM, Destination, destination
 from .inspector import InspectorPane, support_state_text
+from .journal import EditKind
 from .session import Session, SessionError
 from .settings import Settings
 
@@ -427,6 +428,37 @@ class Shell(QMainWindow):
             self._session.redo_edit()
         except SessionError as exc:
             self._report_failure("Redo", str(exc))
+            return
+        self._refresh_status()
+
+    def apply_edit(
+        self,
+        *,
+        kind: EditKind,
+        target: str,
+        after: object,
+        resources: tuple[str, ...] = (),
+        reason: str = "",
+        coalesce_key: str = "",
+    ) -> None:
+        """Commit one edit to the session's project and re-render the window.
+
+        The one entry point an editing surface calls, so the status line, the
+        unsaved indicator and the three action states can never be left behind
+        by an edit: refreshing here rather than at the caller is what makes the
+        display follow the model instead of a discipline.
+        """
+        try:
+            self._session.apply_edit(
+                kind=kind,
+                target=target,
+                after=after,
+                resources=resources,
+                reason=reason,
+                coalesce_key=coalesce_key,
+            )
+        except SessionError as exc:
+            self._report_failure("Edit", str(exc))
             return
         self._refresh_status()
 

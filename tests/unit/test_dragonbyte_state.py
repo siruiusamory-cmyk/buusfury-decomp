@@ -772,12 +772,11 @@ def _close(shell, session: Session) -> None:
 
     A dirty journal makes `closeEvent` ask, and a modal QMessageBox cannot be
     answered offscreen, so a test that leaves edits pending would block forever
-    instead of failing. Undoing them first is the honest way to keep the window
-    test about the window.
+    instead of failing - including a test that fails BEFORE reaching its cleanup.
+    Rebinding the journal is the reset that makes the window clean whatever the
+    assertions already did, and it touches no state the tests assert on.
     """
-    while session.journal.can_undo:
-        session.undo_edit()
-    shell._refresh_status()
+    session.journal.bind(session.journal.authority or "")
     shell.close()
 
 
@@ -843,6 +842,41 @@ def test_the_status_line_names_unsaved_changes(qapp, tmp_path):
 
     assert "project open, unsaved changes" in _status_text(shell)
     assert shell.findChildren(QLabel)  # the status line is a real label
+    _close(shell, session)
+
+
+def test_a_shell_level_edit_leaves_no_stale_action_state(qapp, tmp_path):
+    """An edit through the shell's own entry point must not leave it behind.
+
+    Without a refresh inside `apply_edit`, the journal goes dirty while the status
+    line still says "project open" and Save, Undo and Redo stay disabled, until
+    some unrelated action happens to refresh. So nothing in this test calls a
+    refresh or any other shell method between the edit and the assertions.
+    """
+    from PySide6.QtGui import QAction
+
+    from tools.dragonbyte.shell import EDIT_ACTIONS
+
+    session = Session()
+    shell = _shell(tmp_path, session)
+    _write_project(tmp_path / "p")
+    session.open_project(tmp_path / "p")
+    shell._refresh_status()
+    actions = {action.text(): action for action in shell.findChildren(QAction)}
+
+    assert not actions["Save"].isEnabled()
+    assert "unsaved changes" not in _status_text(shell)
+
+    shell.apply_edit(
+        kind=EditKind.SEMANTIC, target=DIALOGUES, after={"a": "A."}
+    )
+
+    assert "project open, unsaved changes" in _status_text(shell)
+    rendered = {label: actions[label].isEnabled() for label in EDIT_ACTIONS}
+    answer = {
+        label: enabled for label, (enabled, _r) in session.edit_availability().items()
+    }
+    assert rendered == answer == {"Save": True, "Undo": True, "Redo": False}
     _close(shell, session)
 
 

@@ -415,4 +415,14 @@ changed: the build chain, the two edit tables and the image digest are those of
 reproducibility claim rests on running the chain twice here), did not run pytest, and
 did not do a cold boot.
 
-Filled at integration: merge request, pipelines, merge commit.
+**Integration.** Merge request `!155`, source
+`ticket/friend-v3-complete-text-pass-001`, target `master`, head SHA
+`0404e5d896f799eb1c0ddb86393e3968c5dc5d55`. The merge-request pipeline `2929238848`
+succeeded with `test-sdk` and `test-site`; the master pipeline `2929247715` succeeded
+with `test-sdk`, `test-site` and `deploy-site`. Merged as a TRUE merge commit
+`1a45f494374255dbceca148d58b129e0fcfbce7d` with parents `b97b3d63` and `0404e5d8`, not
+squashed, so every commit cited here stays reachable.
+
+**Public capability.** No product code, capability or published string changed:
+`src/data/capabilities.json` and `src/data/project.ts` are untouched, so the site's
+counts do not move and the `deploy-site` job republished the same content.

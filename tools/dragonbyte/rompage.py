@@ -12,7 +12,8 @@ bytes beside the current ones, the address and the file offset in the gutter and
 the changed positions named. `Open bytes` is enabled only from an answer that
 carries a proven extent, and a disabled one states the reason it was given. A raw
 write is offered only while the range index is loaded, and the page says in the
-one visible place that the write it makes is journal-local until a build.
+one visible place that the write it makes is saved with the project and shown in
+this surface, and is applied by no build path yet.
 
 The range index is a large artifact, so it is parsed on a worker thread: this page
 never blocks its own event loop for it, and it says what it is doing while the
@@ -117,8 +118,14 @@ class _IndexTask(QRunnable):
     The atlas artifact is tens of megabytes, so the parse belongs off the event
     loop: `docs/desktop-ui.md` forbids blocking the UI thread for indexing and
     gives a 400 ms feedback budget. The result crosses back through a queued
-    signal, and any failure becomes the stated reason rather than a silent
-    thread death that would leave the page loading forever.
+    signal, and a failure becomes the stated reason rather than a silent thread
+    death that would leave the page loading forever.
+
+    The one failure with nobody left to tell is a parse that answers after the
+    page that owns the signal source has been destroyed. That is caught here
+    rather than allowed to escape: an unhandled exception on a pool thread is
+    what this boundary exists to prevent, and there is no page left to state a
+    reason to.
     """
 
     def __init__(self, profile, directory, token: int, signals) -> None:
@@ -133,7 +140,13 @@ class _IndexTask(QRunnable):
             index, problem = load_index(self._profile, self._directory)
         except Exception as exc:  # a worker boundary: report, never die silently
             index, problem = None, f"the range index could not be loaded: {exc}"
-        self.signals.finished.emit(self._token, index, problem)
+        try:
+            self.signals.finished.emit(self._token, index, problem)
+        except RuntimeError:
+            # The page was destroyed while this parse ran, so the signal source
+            # and the widgets that would render the answer are gone. Nothing is
+            # installed and nobody is left to report to.
+            pass
 
 
 class RomPage(QWidget):
@@ -160,12 +173,14 @@ class RomPage(QWidget):
         #: The one token an index answer must carry to be installed: it moves
         #: every time a parse starts, so a late answer for another image cannot.
         self._index_request = 0
-        #: The signal source and the tasks, both owned by the page rather than by
-        #: a task: a parse can outlive the request that started it, and a worker
-        #: whose signal object has been collected dies at its own emit.
+        #: The signal source and the running parses, both owned by the page
+        #: rather than by a task: a parse can outlive the request that started
+        #: it, and a worker whose signal object has been collected dies at its
+        #: own emit. The parses are keyed by the token that started them and the
+        #: entry is dropped when that token answers, so the map holds one entry
+        #: per outstanding parse rather than one per parse ever started.
         self._index_signals = _IndexSignals(self)
-        self._index_tasks: list = []
-        self._index_task = None
+        self._index_tasks: dict[int, _IndexTask] = {}
         self._pool = QThreadPool.globalInstance()
         self._surface = None
         self._mode = RANGES_VIEW
@@ -393,7 +408,7 @@ class RomPage(QWidget):
         task = _IndexTask(
             self._session.profile, None, self._index_request, self._index_signals
         )
-        self._index_tasks.append(task)
+        self._index_tasks[self._index_request] = task
         self._pool.start(task)
 
     def _index_ready(self, token: int, index, problem: str) -> None:
@@ -404,13 +419,17 @@ class RomPage(QWidget):
         about bytes that are not open any more, and accepting them would bind
         every owner the strip shows and every claimed-bytes refusal to the wrong
         evidence.
+
+        The entry is dropped for a stale token as well as for the current one:
+        the answer names which parse just finished, so that is when the page
+        stops holding it.
         """
+        self._index_tasks.pop(token, None)
         if token != self._index_request:
             return
         self._index = index
         self._index_problem = problem
         self._index_loading = False
-        self._index_task = None
         self.refresh()
 
     def _reset_search(self) -> None:

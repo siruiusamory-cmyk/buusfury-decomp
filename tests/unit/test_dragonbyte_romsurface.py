@@ -1214,3 +1214,103 @@ def test_range_rows_skip_spans_the_open_image_does_not_have(index, profile):
     assert rows, "the spans inside the image are still rendered"
     assert all(row.span.start.value < len(smaller) for row in rows)
     assert [row.span.start.value for row in rows] == [0, 0x100]
+
+
+# --- the index worker's own boundary ------------------------------------------
+
+
+def _bare_page():
+    """A ROM page over no image, so it starts no parse and a test can drive one."""
+    from tools.dragonbyte.rompage import RomPage
+
+    return RomPage(Session())
+
+
+def test_a_failed_parse_becomes_the_stated_reason_when_the_page_is_alive(
+    qapp, monkeypatch
+):
+    """The promise the worker exists for: a failure is a reason, not a dead thread."""
+    from tools.dragonbyte import rompage
+
+    def broken(profile, directory=None):
+        raise RuntimeError("the atlas parser fell over")
+
+    monkeypatch.setattr(rompage, "load_index", broken)
+    page = _bare_page()
+    answers: list = []
+    page._index_signals.finished.connect(lambda *args: answers.append(args))
+    task = rompage._IndexTask(None, None, 7, page._index_signals)
+
+    task.run()  # on this thread, so the answer is delivered as a direct call
+
+    assert len(answers) == 1
+    token, index, problem = answers[0]
+    assert token == 7
+    assert index is None
+    assert "could not be loaded" in problem
+    assert "the atlas parser fell over" in problem
+
+
+def test_a_parse_that_answers_after_its_page_is_gone_does_not_raise(qapp, monkeypatch):
+    """The measured failure: "RuntimeError: Signal source has been deleted".
+
+    A parse outlives the request that started it, so it can answer after the page
+    that owns the signal source has been destroyed - which is what `Open bytes`
+    from the Data destination makes ordinary. Before the emit was guarded that
+    exception escaped on a pool thread, which is exactly what this boundary
+    exists to prevent.
+
+    `Shiboken.delete` deletes the C++ object while the Python wrapper the task
+    holds stays alive, which is the shape of a page destroyed mid-parse. Qt's
+    deferred deletion does not reproduce it here: `deleteLater` plus
+    `processEvents` leaves the object usable, measured before this test was
+    written.
+    """
+    shiboken = pytest.importorskip("shiboken6")
+    from tools.dragonbyte import rompage
+
+    monkeypatch.setattr(
+        rompage, "load_index", lambda profile, directory=None: (None, "an answer")
+    )
+    page = _bare_page()
+    signals = page._index_signals
+    answers: list = []
+    signals.finished.connect(lambda *args: answers.append(args))
+    task = rompage._IndexTask(None, None, 8, signals)
+
+    shiboken.Shiboken.delete(page)
+
+    task.run()  # must not raise: nobody is left to report to
+
+    assert answers == [], "a destroyed page can install nothing"
+
+
+def test_the_page_drops_a_parse_when_its_own_token_answers(qapp):
+    """One entry per outstanding parse, released by the answer that names it."""
+    from tools.dragonbyte import rompage
+
+    page = _bare_page()
+    assert page._index_tasks == {}
+    assert not hasattr(page, "_index_task"), "the dead attribute is gone"
+    page._index_request = 3
+    page._index_tasks[3] = rompage._IndexTask(None, None, 3, page._index_signals)
+
+    page._index_ready(3, None, "the range index is unavailable")
+
+    assert page._index_tasks == {}
+    assert page._index_problem == "the range index is unavailable"
+    assert page._index is None
+
+
+def test_a_stale_index_answer_is_dropped_without_installing_or_leaking(qapp):
+    from tools.dragonbyte import rompage
+
+    page = _bare_page()
+    page._index_request = 9
+    page._index_tasks[4] = rompage._IndexTask(None, None, 4, page._index_signals)
+
+    page._index_ready(4, "not an index", "stale")
+
+    assert page._index_tasks == {}
+    assert page._index is None
+    assert page._index_problem == ""

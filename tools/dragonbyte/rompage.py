@@ -312,11 +312,13 @@ class RomPage(QWidget):
         self._write_handler = handler
 
     def set_pending_provider(self, provider) -> None:
-        """The byte effect of the project's semantic edits, asked on every render.
+        """What the project's semantic edits amount to, asked on every render.
 
-        The Data destination owns those edits and their codecs; this page renders
-        whatever the provider answers, so a stat edit appears here as a changed
-        value without this page knowing what a stat is.
+        The destinations own those edits and their codecs; this page renders
+        whatever the provider answers - the bytes it could state, and its reason
+        for any it could not - so a stat edit appears here as a changed value
+        without this page knowing what a stat is, and an incomplete answer is
+        never shown as the image's own.
         """
         self._pending_provider = provider
 
@@ -386,7 +388,8 @@ class RomPage(QWidget):
             session.journal,
             index=self._index,
             index_problem=self._index_problem,
-            extra_pending=extra,
+            extra_pending=extra.mapping if extra is not None else None,
+            pending_problem=extra.problem if extra is not None else "",
         )
 
     def _ensure_index(self) -> None:

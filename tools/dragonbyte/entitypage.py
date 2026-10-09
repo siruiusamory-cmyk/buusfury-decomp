@@ -38,6 +38,7 @@ from . import entitysurface as es, theme
 from .dataedits import DATA_TARGET, read as read_data
 from .inspector import SUPPORT_ROLES, InspectorContext
 from .journal import EditKind
+from .romsurface import PendingBytes
 from .session import Session
 from .tablemodel import RowsModel
 
@@ -216,25 +217,23 @@ class EntityPage(QWidget):
 
     # -- the ROM surface's question -------------------------------------------
 
-    def pending_bytes(self) -> dict[int, bytes]:
+    def pending_bytes(self) -> PendingBytes:
         """The byte effect of this destination's pending edits, for the ROM page.
 
         Asked on every ROM render, so it is a read of the journal-backed project
-        rather than a cached value that could lag one undo behind.
-
-        This method swallows nothing, and this is what it actually answers with:
-        it returns nothing in exactly two cases - no surface for the open image,
-        and no open project - and `refresh` states that reason on the page. A
-        raise from the SDK is not caught here. It reaches
-        `Shell._pending_bytes`, whose existing `except Exception` boundary
-        contributes nothing for this provider, so in that case the surface would
-        be silent rather than stating a reason. That boundary is carried by the
-        shell, not added by this destination.
+        rather than a cached value that could lag one undo behind. No surface for
+        the open image and no open project are the two cases it answers with
+        nothing, and `refresh` states that reason on the page. A surface that
+        cannot encode the edits states why here, so the ROM surface never reads
+        this destination's silence as an answer.
         """
         surface = self._surface
         if surface is None or self._session.project is None:
-            return {}
-        return surface.pending_bytes(self._session.project)
+            return PendingBytes()
+        try:
+            return PendingBytes(surface.pending_bytes(self._session.project))
+        except Exception as exc:  # noqa: BLE001 - the exception text is the report
+            return PendingBytes(problem=f"the pending bytes could not be stated: {exc}")
 
     # -- rendering ------------------------------------------------------------
 

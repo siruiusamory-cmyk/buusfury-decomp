@@ -35,6 +35,7 @@ from . import mapsurface as ms, theme
 from .inspector import SUPPORT_ROLES, InspectorContext
 from .journal import EditKind
 from .mapedits import MAPS_TARGET, read as read_maps
+from .romsurface import PendingBytes
 from .session import Session
 from .tablemodel import RowsModel
 from tools.webfoot.binary import FileOffset
@@ -197,19 +198,20 @@ class MapPage(QWidget):
 
     # -- the ROM surface's question -------------------------------------------
 
-    def pending_bytes(self) -> dict[int, bytes]:
+    def pending_bytes(self) -> PendingBytes:
         """The byte effect of this destination's pending edits, for the ROM page.
 
         Asked on every ROM render, so it is a read of the journal-backed project
-        rather than a cached value that could lag one undo behind.
+        rather than a cached value that could lag one undo behind. A surface that
+        cannot encode the edits states why instead of answering with nothing.
         """
         surface = self._surface
         if surface is None or self._session.project is None:
-            return {}
+            return PendingBytes()
         try:
-            return surface.pending_bytes(self._session.project)
-        except Exception:  # a provider boundary: the ROM page still renders
-            return {}
+            return PendingBytes(surface.pending_bytes(self._session.project))
+        except Exception as exc:  # noqa: BLE001 - the exception text is the report
+            return PendingBytes(problem=f"the pending bytes could not be stated: {exc}")
 
     # -- rendering ------------------------------------------------------------
 

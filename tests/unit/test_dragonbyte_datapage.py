@@ -24,6 +24,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from tools.dragonbyte import coverage, datasurface as ds  # noqa: E402
 from tools.dragonbyte.datapage import COVERAGE_MODE, MODES  # noqa: E402
 from tools.dragonbyte.inspector import SUPPORT_STATES  # noqa: E402
+from tools.dragonbyte.romsurface import PendingBytes  # noqa: E402
 from tools.dragonbyte.session import Session  # noqa: E402
 from tools.dragonbyte.shell import Shell  # noqa: E402
 from tools.webfoot.build import extract_project  # noqa: E402
@@ -321,6 +322,51 @@ def test_a_stat_edit_moves_the_same_bytes_in_the_rom_surface(data_page):
         row.file_offset, row.size
     ) == rom._surface.canonical_bytes(row.file_offset, row.size)
     assert rom._model.data(rom._model.index(0, 4)) == "-"
+
+
+def test_a_data_provider_that_cannot_answer_states_its_reason(data_page, monkeypatch):
+    """A Data provider that cannot encode its edit says so; it is never silent.
+
+    The destination's own surface is made to fail after a real stat edit has been
+    committed, so the journal holds the claim, no bytes can be encoded for it,
+    and the ROM surface must state that instead of showing the canonical value as
+    though nothing were pending.
+    """
+    page, shell, session = data_page
+    row = page._rows[0]
+    page._field.setCurrentText("hp")
+    page._value.setText(str(row.field("hp").value + 1))
+    page._apply.click()
+    assert session.journal.depth == 1
+
+    reason = "the stat codec refused the record"
+
+    def refuse(_surface, _project):
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    page._open.click()
+    rom = shell._rom_page
+    merged = shell._pending_bytes()
+    stated = f"Data: the pending bytes could not be stated: {reason}"
+
+    print("\nDATA PROVIDER FAILURE | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  shell's merge      {merged.problem}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert page.pending_bytes() == PendingBytes(
+        problem=f"the pending bytes could not be stated: {reason}"
+    )
+    assert merged.problem == stated
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert row.file_offset in rom._surface.overlay
+    assert row.file_offset not in rom._surface.pending
+    assert rom._surface.current_bytes(
+        row.file_offset, row.size
+    ) == rom._surface.canonical_bytes(row.file_offset, row.size)
 
 
 def test_the_rom_page_renders_no_pending_bytes_without_a_data_edit(data_page):

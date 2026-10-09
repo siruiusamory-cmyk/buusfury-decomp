@@ -40,6 +40,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from tools.dragonbyte import textedits  # noqa: E402
 from tools.dragonbyte import textpage  # noqa: E402
 from tools.dragonbyte import textsurface as ts  # noqa: E402
+from tools.dragonbyte.romsurface import PendingBytes  # noqa: E402
 from tools.dragonbyte.session import Session  # noqa: E402
 from tools.dragonbyte.shell import Shell  # noqa: E402
 from tools.webfoot.build import build_project, extract_project  # noqa: E402
@@ -387,15 +388,53 @@ def test_clause_2_the_string_change_is_visible_in_the_rom_surface(edited):
     print("\nCLAUSE 2 | the string's bytes are visible in the ROM surface")
     print(f"  ROM caret             file offset 0x{rom._caret:06X}")
     print(f"  ROM changed column    {cells}")
-    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes())}")
+    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes().mapping)}")
 
     assert session.navigation.current.destination == "rom"
     assert rom._caret == string_row.file_offset
     assert string_row.file_offset in rom._surface.overlay
     assert cells
-    assert rom._surface.pending[string_row.file_offset] == shell._pending_bytes()[
+    assert rom._surface.pending[string_row.file_offset] == shell._pending_bytes().mapping[
         string_row.file_offset
     ]
+
+
+def test_a_text_provider_that_cannot_answer_states_its_reason(edited, monkeypatch):
+    """A Scripts & Text provider that cannot encode its edit says so; never silent.
+
+    The string table's in-place edit is the part of this destination that has a
+    byte effect before a build. When its codec refuses, that refusal is stated
+    rather than contributing an empty mapping beside the journal's claim.
+    """
+    page, shell, _session, _project_dir, string_row, _dialogue = edited
+    reason = "the string codec refused the slot"
+
+    def refuse(_surface, _project):
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    shell.open_rom_at(string_row.file_offset)
+    rom = shell._rom_page
+    merged = shell._pending_bytes()
+    stated = f"Scripts & Text: the pending bytes could not be stated: {reason}"
+
+    print("\nTEXT PROVIDER FAILURE | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  shell's merge      {merged.problem}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert page.pending_bytes() == PendingBytes(
+        problem=f"the pending bytes could not be stated: {reason}"
+    )
+    assert merged.problem == stated
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert string_row.file_offset in rom._surface.overlay
+    assert string_row.file_offset not in rom._surface.pending
+    assert rom._surface.current_bytes(
+        string_row.file_offset, string_row.allocation
+    ) == rom._surface.canonical_bytes(string_row.file_offset, string_row.allocation)
 
 
 # --- clause 3: one stack ------------------------------------------------------
@@ -577,7 +616,7 @@ def test_clause_4_a_string_edit_without_a_project_states_its_reason(
 
     assert not page._apply.isEnabled()
     assert "Open a project" in page._message.text()
-    assert page.pending_bytes() == {}
+    assert page.pending_bytes() == PendingBytes()
     assert page._open.isEnabled()
 
     _close(shell, session)

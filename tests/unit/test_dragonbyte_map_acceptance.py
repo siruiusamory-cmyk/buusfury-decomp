@@ -32,6 +32,7 @@ import pytest  # noqa: E402
 pytest.importorskip("PySide6.QtWidgets")
 
 from tools.dragonbyte import mapsurface as ms  # noqa: E402
+from tools.dragonbyte.romsurface import PendingBytes  # noqa: E402
 from tools.dragonbyte.session import Session  # noqa: E402
 from tools.dragonbyte.shell import Shell  # noqa: E402
 from tools.webfoot.binary import FileOffset  # noqa: E402
@@ -324,7 +325,7 @@ def test_clause_2_the_change_is_visible_in_the_rom_surface(edited):
     print(f"  ROM caret last        file offset 0x{rom._caret:06X}")
     print(f"  ROM changed column    {cell_cells} (cell edit) / {warp_cells} (warp edit)")
     print(f"  ROM overlay           {sorted(hex(at) for at in rom._surface.overlay)}")
-    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes())}")
+    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes().mapping)}")
 
     assert session.navigation.current.destination == "rom"
     assert rom._caret == cell.offset
@@ -334,7 +335,46 @@ def test_clause_2_the_change_is_visible_in_the_rom_surface(edited):
         assert rom._surface.current_bytes(offset, size) != rom._surface.canonical_bytes(
             offset, size
         )
-        assert rom._surface.pending[offset] == shell._pending_bytes()[offset]
+        assert rom._surface.pending[offset] == shell._pending_bytes().mapping[offset]
+
+
+def test_a_maps_provider_that_cannot_answer_states_its_reason(edited, monkeypatch):
+    """A Maps provider that cannot encode its edit says so; it is never silent.
+
+    The destination's own surface is made to fail after a real edit has been
+    committed, so the case is the one a user hits: the journal holds the claim,
+    the encoder cannot turn it into bytes, and the ROM surface must state that
+    rather than showing canonical bytes as though nothing were pending.
+    """
+    page, shell, _session, _project_dir, cell, _warp = edited
+    reason = "the layout codec refused the cell"
+
+    def refuse(_surface, _project):
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    shell.open_rom_at(cell.offset)
+    rom = shell._rom_page
+    merged = shell._pending_bytes()
+    stated = f"Maps: the pending bytes could not be stated: {reason}"
+
+    print("\nMAPS PROVIDER FAILURE | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  shell's merge      {merged.problem}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert page.pending_bytes() == PendingBytes(
+        problem=f"the pending bytes could not be stated: {reason}"
+    )
+    assert merged.problem == stated
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert cell.offset in rom._surface.overlay
+    assert cell.offset not in rom._surface.pending
+    assert rom._surface.current_bytes(cell.offset, 4) == rom._surface.canonical_bytes(
+        cell.offset, 4
+    )
 
 
 # --- clause 3: one stack ------------------------------------------------------

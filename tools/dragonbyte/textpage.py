@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 from . import textsurface as ts, theme
 from .inspector import SUPPORT_ROLES, InspectorContext
 from .journal import EditKind
+from .romsurface import PendingBytes
 from .session import Session
 from .tablemodel import RowsModel
 from .textedits import TEXT_TARGET
@@ -316,18 +317,22 @@ class TextPage(QWidget):
 
     # -- the ROM surface's question -------------------------------------------
 
-    def pending_bytes(self) -> dict[int, bytes]:
+    def pending_bytes(self) -> PendingBytes:
         """The byte effect of this destination's pending string edits.
 
         A dialogue replacement rewrites a decoded container, so its bytes are not
         a file range this surface can state; the manifest's own dialogue
         provenance carries that edit. The string table's in-place edits are a
-        byte range, and they are what this provider contributes.
+        byte range, and they are what this provider contributes. A surface that
+        cannot encode them states why instead of contributing nothing.
         """
         surface = self._surface
         if surface is None or self._session.project is None:
-            return {}
-        return surface.pending_bytes(self._session.project)
+            return PendingBytes()
+        try:
+            return PendingBytes(surface.pending_bytes(self._session.project))
+        except Exception as exc:  # noqa: BLE001 - the exception text is the report
+            return PendingBytes(problem=f"the pending bytes could not be stated: {exc}")
 
     # -- rendering ------------------------------------------------------------
 

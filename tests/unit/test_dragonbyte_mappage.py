@@ -240,7 +240,7 @@ def test_the_change_the_page_committed_is_visible_in_the_rom_surface(map_page):
     assert session.navigation.current.destination == "rom"
     assert rom._caret == row.offset
     assert row.offset in rom._surface.overlay
-    assert shell._pending_bytes()[row.offset] == (
+    assert shell._pending_bytes().mapping[row.offset] == (
         page._surface.pending_bytes(session.project)[row.offset]
     )
     assert rom._surface.current_bytes(row.offset, 4) != rom._surface.canonical_bytes(
@@ -303,12 +303,41 @@ def test_the_rom_surface_is_asked_for_every_open_destinations_bytes(map_page):
 
     merged = shell._pending_bytes()
 
-    assert row.offset in merged
-    assert data_row.file_offset in merged
-    assert merged == {
+    assert row.offset in merged.mapping
+    assert data_row.file_offset in merged.mapping
+    assert merged.mapping == {
         **page._surface.pending_bytes(session.project),
         **data._surface.pending_bytes(session.project),
     }
+    assert merged.problem == ""
+
+
+def test_the_merge_states_every_destination_that_could_not_answer(map_page, monkeypatch):
+    """Two failures: the shell's one merge names both, and neither hides the other."""
+    page, shell, _session = map_page
+
+    def refuse(_surface, _project):
+        raise RuntimeError("the codec refused")
+
+    shell.show_destination("data")
+    data = shell._data_page
+    monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    monkeypatch.setattr(type(data._surface), "pending_bytes", refuse)
+
+    merged = shell._pending_bytes()
+    stated = "the pending bytes could not be stated: the codec refused"
+
+    shell.show_destination("rom")
+    rom = shell._rom_page
+
+    print("\nTWO PROVIDER FAILURES | the merge states both")
+    print(f"  shell's merge      {merged.problem}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert merged.mapping == {}
+    assert merged.problem == f"Data: {stated}; Maps: {stated}"
+    assert rom._surface.pending_problem == merged.problem
+    assert merged.problem in rom._summary.text()
 
 
 def test_a_value_outside_the_layers_vocabulary_is_refused_and_stores_nothing(

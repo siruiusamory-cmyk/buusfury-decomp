@@ -455,34 +455,24 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\tulma001_tulma_proof.lua')
     )
-    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the read-only instrument for the boosted
-    # image. It answers the ROM-window question first - whether the emulator's Lua
-    # read8/read16/read32/readRange can read the cartridge region at 0x08000000 and
-    # up, which the cold-boot observer never tested because it trusted only EWRAM -
-    # by reading the GBA cartridge header and comparing it with the fixed values
-    # every cartridge carries on the same bus path the table read uses. It then reads
-    # the 90 bytes of base-stat records 0..4 at 0x086FDA4C exactly once with the frame
-    # number, and writes the raw bytes beside the frame heartbeat, the program counter
-    # trace and screenshots. It reads memory and registers only, presses no key, and
-    # writes host files inside the run directory.
+
+    # Added by FRIEND-V3-PLAYTEST-BOOST-001. Three read-only observers and one bounded
+    # input driver for that ticket, in the same commit family:
+    #   friendv3_boost001_probe.lua     reads the cartridge header as a liveness channel,
+    #                                   then the 90 base-stat bytes at 0x086FDA4C once.
+    #   boost001_inventory_watch.lua    samples the inventory block so a held or equipped
+    #                                   item's storage is measured, not inferred.
+    #   boost001_input_driver.lua       DRIVING CODE in its own file, as the runtime skill
+    #                                   requires: it presses A on a bounded schedule so a
+    #                                   cold boot can reach the new game unattended.
+    # Every observer reads memory and registers only and presses no key; only the driver
+    # presses keys, and it holds them for at most 900 frames.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv3_boost001_probe.lua')
     )
-    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the live inventory watch for the same
-    # ticket. The operator equips an item on a completed save and this reads the
-    # inventory block as it changes, so the storage shape of a held item is measured
-    # rather than inferred. Read-only: memory and registers only, no key, no write to
-    # emulated state.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\boost001_inventory_watch.lua')
     )
-    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the bounded input driver for the same
-    # ticket. It is DRIVING CODE in its own file, which is why it is separate from the
-    # observer above: it activates the title screen's highlighted entry and repeats that
-    # press at a slow fixed period between frames 1000 and 1900, then releases every key
-    # and removes itself. No directional input and no mashing - the menu structure is not
-    # established, so a blind multi-step route would not be evidence. It touches no
-    # emulated memory and writes no file.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\boost001_input_driver.lua')
     )

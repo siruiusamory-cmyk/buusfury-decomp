@@ -98,6 +98,8 @@ QT_FREE_MODULES = (
     "tools.dragonbyte.settings",
     "tools.dragonbyte.journal",
     "tools.dragonbyte.rawbytes",
+    "tools.dragonbyte.coverage",
+    "tools.dragonbyte.datasurface",
 )
 
 

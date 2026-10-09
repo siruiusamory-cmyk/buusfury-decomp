@@ -111,6 +111,23 @@ def no_range_index(monkeypatch):
     )
 
 
+def wait_for_surface(page, timeout_ms: int = 120_000) -> None:
+    """Wait for the worker's read to land. The page renders a loading state until it does.
+
+    The read is off the UI thread by design (`docs/desktop-ui.md`), so a test that
+    asserted rows immediately would be measuring the wrong thing. This spins the
+    event loop, exactly as a user's window does, and fails loudly rather than
+    silently asserting an empty page.
+    """
+    from PySide6.QtCore import QDeadlineTimer, QEventLoop
+
+    deadline = QDeadlineTimer(timeout_ms)
+    while page._surface_loading and not deadline.hasExpired():
+        QEventLoop().processEvents()
+    assert not page._surface_loading, "the text surface never finished loading"
+    assert page._surface is not None, page._problem
+
+
 @pytest.fixture
 def armed(qapp, tmp_path, catalog, canonical_rom, source_project):
     """A shell with the canonical image and a project, on Scripts & Text."""
@@ -120,6 +137,7 @@ def armed(qapp, tmp_path, catalog, canonical_rom, source_project):
     session.open_project(tmp_path / "project")
     shell = Shell(session, tmp_path / "config")
     shell.show_destination("scripts_text")
+    wait_for_surface(shell._text_page)
     yield shell._text_page, shell, session, tmp_path / "project"
     _close(shell, session)
 
@@ -384,7 +402,7 @@ def test_clause_2_the_string_change_is_visible_in_the_rom_surface(edited):
 
 
 def test_clause_3_the_write_goes_through_the_one_stack(edited):
-    _page, shell, session, project_dir, string_row, dialogue_row = edited
+    page, shell, session, project_dir, string_row, dialogue_row = edited
     entries = session.journal.edits()
     on_disk = _authored_string(project_dir, SLOT)
 
@@ -403,6 +421,24 @@ def test_clause_3_the_write_goes_through_the_one_stack(edited):
     assert on_disk == SLOT_TEXT, (
         "an unsaved edit must not have reached the project's documents"
     )
+
+    # The bytes the one journal protects are the bytes the plan will write, as a
+    # set. A claim taken from the record's canonical position would protect bytes
+    # this edit never touches and leave the ones it does outside the raw write's
+    # collision guard, which is a real safety hole rather than a cosmetic one.
+    plan_problem, plan_changes, plan_spans = page._surface.plan(
+        SLOT, SLOT_REPLACEMENT
+    )
+    assert plan_problem == ""
+    string_entry = next(entry for entry in entries if entry.target == textedits.TEXT_TARGET)
+    print(
+        f"  plan changes       "
+        f"{[(hex(change.offset), change.size) for change in plan_changes]}"
+    )
+    assert tuple(string_entry.claimed) == tuple(plan_spans)
+    assert {span.start.value for span in string_entry.claimed} == {
+        change.offset for change in plan_changes
+    }
 
     session.save_project()
 
@@ -497,6 +533,29 @@ def test_clause_4_the_script_and_event_modes_offer_no_edit_at_all(armed):
     assert event.note
 
 
+def test_clause_4_a_mode_with_no_rows_offers_nothing_and_states_its_reason(armed):
+    """The zero-row case: no row means no editor, no Apply and no Open bytes.
+
+    Measured on the empty-mode shape a family switch can produce, so a read-only
+    mode whose rows are all filtered away cannot leave a live button behind.
+    """
+    page, _shell, _session, _project_dir = armed
+    _choose_mode(page, "Scripts")
+    page._family = ""
+    page._families.setCurrentIndex(-1)
+    page._rows = ()
+    page._caret = ""
+    page._render_editor()
+
+    print("\nCLAUSE 4 | a mode with no rows")
+    print(f"  rows       {len(page._rows)}")
+    print(f"  apply      {page._apply.isEnabled()}  open bytes {page._open.isEnabled()}")
+
+    assert not page._apply.isEnabled()
+    assert not page._open.isEnabled()
+    assert page._detail.text() == ""
+
+
 def test_clause_4_a_string_edit_without_a_project_states_its_reason(
     qapp, tmp_path, catalog, canonical_rom
 ):
@@ -506,6 +565,7 @@ def test_clause_4_a_string_edit_without_a_project_states_its_reason(
     shell = Shell(session, tmp_path / "config")
     shell.show_destination("scripts_text")
     page = shell._text_page
+    wait_for_surface(page)
     _choose_mode(page, "String tables")
     row = page._rows[SLOT.index]
 
@@ -524,6 +584,69 @@ def test_clause_4_a_string_edit_without_a_project_states_its_reason(
 
 
 # --- clause 5: no unproven relation -------------------------------------------
+
+
+def test_a_relocating_string_edit_claims_the_bytes_the_plan_writes(armed):
+    """The reviewed defect, driven THROUGH THE PAGE and measured at the guard.
+
+    `text:0000` holds an empty string in a 2-byte allocation, so a real
+    replacement must relocate. The page commits under the plan's own spans, the
+    journal's guard therefore protects the pointer-table slot and the allocated
+    body, and the raw write that would have overwritten the relocated body
+    unguarded is refused.
+    """
+    from tools.dragonbyte.journal import RawContext, RawRequest
+    from tools.dragonbyte.rawbytes import RawWrite
+
+    page, _shell, session, _project_dir = armed
+    _choose_mode(page, "String tables")
+    row = _select(page, lambda item: item.identity == "text:0000")
+    original = (row.file_offset, row.allocation)
+    replacement = "Relocate me"
+    _problem, changes, spans = page._surface.plan(TextIdentity(0), replacement)
+
+    page._value.setText(replacement)
+    page._apply.click()
+
+    print("\nCLAIM | a relocating string edit, through the page")
+    print(f"  record           text:0000 at 0x{original[0]:06X} alloc {original[1]}")
+    print(f"  plan changes     {[(hex(c.offset), c.size, c.reason) for c in changes]}")
+    print(f"  journal claimed  {[span.to_json() for span in session.journal.pending_spans()]}")
+    print(f"  message          {page._message.text()!r}")
+
+    entry = session.journal.edits()[0]
+    assert entry.target == textedits.TEXT_TARGET
+    assert tuple(entry.claimed) == tuple(spans)
+    assert {span.start.value for span in entry.claimed} == {
+        change.offset for change in changes
+    }
+    assert original not in {
+        (span.start.value, span.size) for span in entry.claimed
+    }, "the claim must not be the record's canonical position"
+    assert session.project.strings[TextIdentity(0)] == replacement
+
+    # The guard the journal shows a raw write: the allocated body is claimed, so
+    # a write into it is refused rather than landing unguarded.
+    body = max(entry.claimed, key=lambda span: span.start.value)
+    refusal = session.journal.raw_refusal(
+        RawRequest(
+            write=RawWrite(
+                offset=body.start.value,
+                before=session.base_image[body.start.value : body.end],
+                new=b"\xff" * body.size,
+                confirmed=True,
+            ),
+            context=RawContext(
+                base_image=session.base_image, profile=session.profile
+            ),
+        )
+    )
+
+    print(f"  raw write into  0x{body.start.value:06X} (+{body.size}) -> "
+          f"{refusal.message if refusal else 'ACCEPTED'}")
+
+    assert refusal is not None
+    assert str(entry.owner) in refusal.message or entry.owner in refusal.message
 
 
 def test_clause_5_the_two_text_systems_are_never_one_row(armed):

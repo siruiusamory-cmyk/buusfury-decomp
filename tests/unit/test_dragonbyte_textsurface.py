@@ -16,8 +16,10 @@ import pytest
 
 from tools.dragonbyte import textedits
 from tools.dragonbyte.journal import DOCUMENT_ADAPTERS
+from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
 from tools.webfoot.catalog import load_catalog
 from tools.webfoot.formats.text_tables import TextIdentity
+from tools.webfoot.layout import RomRange
 from tools.webfoot.project import read_project
 from tools.webfoot.rom import identify_rom
 
@@ -205,15 +207,57 @@ def test_a_replacement_the_container_cannot_hold_is_refused_by_the_sdk(surface):
 def test_an_over_long_string_states_the_sdk_refusal_and_a_fitting_one_does_not(surface):
     identity = TextIdentity(2)
     entry = surface.strings.entry(identity)
+    _problem, changes, claimed = surface.plan(identity, "Fight!")
+    refused, _changes, _spans = surface.plan(identity, "z" * 200)
 
     print("\nMODEL | string refusals")
     print(f"  allocation          {entry.location.allocation}")
-    print(f"  a fitting edit      {surface.string_problem(identity, 'Fight!')!r}")
-    print(f"  an over-long edit   {surface.string_problem(identity, 'z' * 200)[:80]!r}")
+    print(f"  a fitting edit      changes {[(hex(c.offset), c.size) for c in changes]}")
+    print(f"                      claimed {[span.to_json() for span in claimed]}")
+    print(f"  an over-long edit   {refused[:80]!r}")
 
-    assert surface.string_problem(identity, "Fight!") == ""
-    assert "bytes too long" in surface.string_problem(identity, "z" * 200)
-    assert surface.string_span(identity).size == entry.location.allocation
+    assert "bytes too long" in refused
+    assert claimed == (RomRange(FileOffset(entry.location.file_offset), entry.location.allocation),)
+
+
+def test_a_relocating_edit_claims_the_bytes_the_plan_actually_writes(surface):
+    """The defect this pins: a claim taken from the canonical position is wrong.
+
+    `text:0000` holds an empty string in a 2-byte allocation, so any real text
+    must relocate. The plan then writes the body at the allocator's span and
+    rewrites this entry's POINTER-TABLE slot to name it, and nothing at all at
+    0x05792C. A claim computed from the record's own position would mark the old
+    address in the ROM surface and leave the bytes that change unguarded.
+    """
+    from tools.webfoot.formats.text_tables import TEXT_POINTER_SIZE
+
+    identity = TextIdentity(0)
+    entry = surface.strings.entry(identity)
+    problem, changes, claimed = surface.plan(identity, "Relocate me")
+
+    print("\nMODEL | a relocating edit's claim")
+    print(f"  record     {identity} at 0x{entry.location.file_offset:06X} "
+          f"allocation {entry.location.allocation}")
+    print(f"  problem    {problem!r}")
+    print(f"  changes    {[(hex(change.offset), change.size, change.reason) for change in changes]}")
+    print(f"  claimed    {[span.to_json() for span in claimed]}")
+
+    assert problem == ""
+    assert len(claimed) == len(changes)
+    # The plan's own changes as a set, which is the whole requirement.
+    assert {span.start.value for span in claimed} == {
+        change.offset for change in changes
+    }
+    assert RomRange(
+        FileOffset(entry.location.file_offset), entry.location.allocation
+    ) not in claimed
+    # One change is the pointer-table slot this entry is reached through, so the
+    # new body is reachable; the other is the body at the span the allocator chose.
+    table_offset = (
+        surface.profile.text_strings.pointer_table_address.raw - GBA_ROM_BASE
+    )
+    assert table_offset in {change.offset for change in changes}
+    assert all(change.new != change.old for change in changes)
 
 
 def test_the_surface_stages_every_pending_string_edit_it_is_handed(surface):

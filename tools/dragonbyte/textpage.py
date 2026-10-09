@@ -25,7 +25,7 @@ than carrying a button that would go nowhere.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -118,6 +118,67 @@ def _support_cell(word: str) -> str:
     return f"{theme.status_glyph(SUPPORT_ROLES[word])} {word}"
 
 
+class _SurfaceSignals(QObject):
+    """The worker's one answer, delivered on the thread that owns the page.
+
+    The request token travels with it: the read takes seconds, an image can be
+    replaced while it runs, and an answer for the previous image must never be
+    installed over the current one.
+    """
+
+    finished = Signal(int, object, str)
+
+
+class _SurfaceTask(QRunnable):
+    """Read this image's scripts, events, dialogue and strings off the UI thread.
+
+    `docs/desktop-ui.md` forbids blocking the UI thread for a bulk decode. The
+    result crosses back through a queued signal, and a failure becomes the stated
+    reason rather than a silent thread death that would leave the page loading
+    forever. The one failure with nobody left to tell is an answer that arrives
+    after the page that owns the signal source has been destroyed, which is
+    caught here rather than allowed to escape a pool thread.
+    """
+
+    def __init__(
+        self,
+        rom_path,
+        catalog,
+        identification,
+        profile,
+        image: bytes,
+        token: int,
+        signals,
+    ) -> None:
+        super().__init__()
+        self.signals = signals
+        self._rom_path = rom_path
+        self._catalog = catalog
+        self._identification = identification
+        self._profile = profile
+        self._image = image
+        self._token = token
+
+    def run(self) -> None:
+        try:
+            surface = ts.load_text_surface(
+                self._rom_path,
+                self._catalog,
+                self._identification,
+                self._profile,
+                self._image,
+            )
+            problem = ""
+        except Exception as exc:  # a worker boundary: report, never die silently
+            surface, problem = None, f"these records could not be read: {exc}"
+        try:
+            self.signals.finished.emit(self._token, surface, problem)
+        except RuntimeError:
+            # The page was destroyed while this read ran, so the signal source
+            # and the widgets that would render the answer are gone.
+            pass
+
+
 class TextPage(QWidget):
     """The Scripts & Text destination's centre page."""
 
@@ -133,6 +194,18 @@ class TextPage(QWidget):
         self._surface: ts.TextSurface | None = None
         self._surface_for = None
         self._problem = ""
+        #: The one read of this image's records, on a worker. It is expensive and
+        #: immutable per image, so it is read once and never per repaint.
+        self._surface_requested = False
+        self._surface_loading = False
+        #: The one token an answer must carry to be installed: it moves every time
+        #: a read starts, so a late answer for another image cannot be.
+        self._surface_request = 0
+        #: The signal source and the running reads, both owned by the page rather
+        #: than by a task, because a read can outlive the request that started it.
+        self._surface_signals = _SurfaceSignals(self)
+        self._surface_tasks: dict[int, _SurfaceTask] = {}
+        self._pool = QThreadPool.globalInstance()
         self._rows: tuple = ()
         self._caret = ""
         self._mode = ts.SCRIPTS
@@ -223,6 +296,7 @@ class TextPage(QWidget):
         self._apply.clicked.connect(self._on_apply)
         self._open.clicked.connect(self._on_open)
         self._table.selectionModel().currentRowChanged.connect(self._on_row_changed)
+        self._surface_signals.finished.connect(self._surface_ready)
 
         self.refresh()
 
@@ -274,6 +348,58 @@ class TextPage(QWidget):
             self._render_events()
         else:
             self._render_scripts()
+
+    # -- the open image, off the UI thread -------------------------------------
+
+    def _ensure_surface(self) -> None:
+        """Start the one read of this image's records, on a worker.
+
+        Reading the four families costs seconds measured, and `docs/desktop-ui.md`
+        forbids blocking the UI thread for a decode and asks for feedback within
+        about 400 ms. The event loop therefore keeps running while this happens,
+        and the page says it is loading until the answer lands.
+        """
+        session = self._session
+        if (
+            session.base_image is None
+            or session.profile is None
+            or session.identification is None
+            or session.rom_path is None
+            or session.catalog is None
+        ):
+            self._surface = None
+            self._surface_for = None
+            self._problem = ""
+            return
+        if self._surface_requested and self._surface_for == session.rom_path:
+            return
+        self._surface_requested = True
+        self._surface_for = session.rom_path
+        self._surface_request += 1
+        self._surface = None
+        self._problem = "the scripts and text records are still loading"
+        self._surface_loading = True
+        task = _SurfaceTask(
+            session.rom_path,
+            session.catalog,
+            session.identification,
+            session.profile,
+            session.base_image,
+            self._surface_request,
+            self._surface_signals,
+        )
+        self._surface_tasks[self._surface_request] = task
+        self._pool.start(task)
+
+    def _surface_ready(self, token: int, surface, problem: str) -> None:
+        """The worker's answer, if it is still the answer for the open image."""
+        self._surface_tasks.pop(token, None)
+        if token != self._surface_request:
+            return
+        self._surface = surface
+        self._problem = problem
+        self._surface_loading = False
+        self.refresh()
 
     def _render_families_switch(self) -> None:
         """Fill the family switch once per image, keeping the reader's own choice."""
@@ -344,11 +470,23 @@ class TextPage(QWidget):
             f"System: {ts.SPOKEN_SYSTEM}. {ts.SPOKEN_IDENTITY_LINE} "
             f"{_TWO_SYSTEMS}"
         )
-        self._summary.setText(ts.dialogue_summary(rows))
+        self._summary.setText(
+            ts.dialogue_summary(rows)
+            + (
+                f". {self._surface.dialogue_note}"
+                if self._surface.dialogue_note
+                else ""
+            )
+        )
         self._message.setText(
-            "Open a project to replace the one record with an authored target."
-            if self._session.project is None
-            else ""
+            # A mode with no rows says why it has none, and a container that did
+            # not decode is the reason that belongs here rather than silence.
+            self._surface.dialogue_note
+            or (
+                "Open a project to replace the one record with an authored target."
+                if self._session.project is None
+                else ""
+            )
         )
         self._editor.setVisible(True)
         self._select_caret()
@@ -381,6 +519,7 @@ class TextPage(QWidget):
         self._render_editor()
 
     def _render_unavailable(self) -> None:
+        """Nothing to show: the page says which of the two reasons it is."""
         self._families.setVisible(False)
         self._editor.setVisible(False)
         self._rows = ()
@@ -390,9 +529,13 @@ class TextPage(QWidget):
         self._detail.clear()
         self._open.setEnabled(False)
         self._apply.setEnabled(False)
-        self._message.setText(
-            self._problem or "Open a ROM image to see its scripts, events, dialogue and strings."
-        )
+        if self._surface_loading:
+            self._message.setText(self._problem)
+        else:
+            self._message.setText(
+                self._problem
+                or "Open a ROM image to see its scripts, events, dialogue and strings."
+            )
         self._publish_selection(None)
 
     # -- cells ----------------------------------------------------------------
@@ -609,7 +752,9 @@ class TextPage(QWidget):
         self._value.clear()
 
     def _clear_editor(self) -> None:
+        """No row is selected, so nothing here is offered: no field, no buttons."""
         self._clear_value()
+        self._apply.setEnabled(False)
         self._open.setEnabled(False)
         self._detail.clear()
 
@@ -655,15 +800,22 @@ class TextPage(QWidget):
             self._report("This row has no edit.")
 
     def _apply_string(self, row: ts.StringRow) -> None:
-        """Commit one string edit under the string-table target."""
+        """Commit one string edit under the string-table target.
+
+        The refusal, the changes and the claimed spans come from ONE staging of
+        this exact edit, so the bytes the journal protects are the bytes the plan
+        will write. That agreement is what the note below is not: a claim taken
+        from the record's canonical position rather than from the plan marks bytes
+        a relocating edit never touches and leaves the bytes it does write
+        outside the raw write's collision guard.
+        """
         identity = _identity(row.identity)
         text = self._value.text()
-        surface = self._surface
-        problem = surface.string_problem(identity, text)
+        problem, changes, claimed = self._surface.plan(identity, text)
         if problem:
             self._report(problem)
             return
-        if surface.strings.entry(identity).text == text:
+        if not changes:
             self._report(f"{row.identity} already reads that text.")
             return
         from dataclasses import replace
@@ -681,7 +833,7 @@ class TextPage(QWidget):
                 kind=EditKind.SEMANTIC,
                 target=TEXT_TARGET,
                 after=after,
-                claimed=(surface.string_span(identity),),
+                claimed=claimed,
                 reason=f"{row.identity} edit: text",
             )
         finally:
@@ -768,36 +920,6 @@ class TextPage(QWidget):
     def _publish_selection(self, context: InspectorContext | None) -> None:
         if self._selection_handler is not None:
             self._selection_handler(context)
-
-    # -- the open image -------------------------------------------------------
-
-    def _ensure_surface(self) -> None:
-        session = self._session
-        if (
-            session.base_image is None
-            or session.profile is None
-            or session.identification is None
-            or session.rom_path is None
-            or session.catalog is None
-        ):
-            self._surface = None
-            self._surface_for = None
-            self._problem = ""
-            return
-        if self._surface_for == session.rom_path and self._surface is not None:
-            return
-        self._surface_for = session.rom_path
-        try:
-            self._surface = ts.load_text_surface(
-                session.rom_path,
-                session.catalog,
-                session.identification,
-                session.profile,
-                session.base_image,
-            )
-        except ts.TextSurfaceError as exc:
-            self._surface = None
-            self._problem = str(exc)
 
 
 def _key(row) -> str:

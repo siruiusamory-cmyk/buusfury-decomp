@@ -134,14 +134,6 @@ SYSTEM_LINES = {
 #: is shown as its raw byte, because the product does not know what it is.
 DIALOG_TYPE_WORDS = {0x4: "dialog record", 0x0: "no dialog record"}
 
-#: The census state words the coverage view publishes, so two surfaces cannot
-#: name one support state two ways. Imported lazily in `_word` to keep this
-#: module importable without the coverage view's own dependencies.
-_STRING_SUPPORT = "Editable"
-_SPOKEN_SUPPORT = "Editable"
-_READ_ONLY = "Read-only"
-_UNSUPPORTED = "Not supported yet"
-
 
 class TextSurfaceError(ValueError):
     """The open image's script, event, dialogue or text records could not be read."""
@@ -307,6 +299,9 @@ class TextSurface:
     #: Authored-target anchors, built once: the dialogue reader asks this question
     #: once per record, and 2,805 scans of a one-entry registry is wasted work.
     _target_cache: dict | None = None
+    #: Why the dialogue mode holds what it holds: every declared selector whose
+    #: container this image could not decode. Set by `dialogue_rows`.
+    _dialogue_note: str = ""
     #: The event-resource records, tiled once. `resource_records()` re-tiles the
     #: whole pointer table on every call, and the dialogue reader asks for it once
     #: per record: measured at 2,639 calls and about 8 seconds per render.
@@ -438,15 +433,23 @@ class TextSurface:
         record is editable only when the SDK publishes it as an authored target,
         which is a registry of exactly one entry today; every other record states
         the SDK's own refusal sentence rather than a promise.
+
+        A container the image cannot decode is STATED, not skipped: `dialogue_note`
+        carries that reason, so a mode with no rows says why it has none rather
+        than reading as a corpus that holds nothing.
         """
         rows: list[DialogueRow] = []
         if self._dialogue_cache is not None:
             return tuple(self._dialogue_cache)
         if self._inventory_cache is None:
             object.__setattr__(self, "_inventory_cache", {})
+        problems: list[str] = []
         for selector in self.container_selectors:
             decoded, _record_count = self._container(selector)
             if decoded is None:
+                problems.append(
+                    f"selector {selector} names no container this build can decode"
+                )
                 continue
             inventory = self._inventory_cache.get(selector)
             if inventory is None:
@@ -494,7 +497,22 @@ class TextSurface:
                     )
                 )
         object.__setattr__(self, "_dialogue_cache", rows)
+        object.__setattr__(
+            self,
+            "_dialogue_note",
+            "; ".join(dict.fromkeys(problems)),
+        )
         return tuple(rows)
+
+    @property
+    def dialogue_note(self) -> str:
+        """Why this image's dialogue mode holds what it holds, or an empty string.
+
+        Empty when every declared selector decoded. A container that did not is
+        named here, because a mode with no rows and no reason reads as an image
+        with no spoken dialogue.
+        """
+        return self._dialogue_note
 
     def authored_dialogue(self) -> tuple[CompressedDialogueTarget, ...]:
         """Every record this build can replace, from the SDK's own registry."""
@@ -546,28 +564,47 @@ class TextSurface:
             )
         return tuple(rows)
 
-    def string_problem(self, identity: Any, text: str) -> str:
-        """Why this string edit would be refused, or an empty string.
+    def plan(
+        self, identity: Any, text: str
+    ) -> tuple[str, tuple[ByteChange, ...], tuple[RomRange, ...]]:
+        """One string edit staged through the SDK: refusal, changes, claimed spans.
 
-        The SDK's own `set_text` is run against a clone of the loaded table, so
-        the answer is the production refusal - the exact deficit, or the reason
-        this profile or this entry cannot relocate - and not a restatement.
+        The three answers a single edit needs, from ONE staging, because they must
+        agree. The SDK's own `set_text` runs against a clone of the loaded table,
+        so the refusal is the production one - the exact deficit, or the reason
+        this profile or this entry cannot relocate.
+
+        The claimed spans are read off the changes themselves rather than computed
+        from the record's canonical position, and that is the difference that
+        matters when the edit RELOCATES: a longer replacement needs no space at
+        its old address at all, it writes the body at the span the allocator chose
+        and rewrites this entry's pointer-table slot to name it. Claiming the old
+        address there would mark bytes in the ROM surface that this edit never
+        touches, and would leave the bytes that really change outside the raw
+        write's collision guard. Each change contributes the bytes it actually
+        differs in, which is the whole of what one edit rewrites.
         """
         if self.strings is None:
-            return self.strings_problem or "no string table is loaded"
+            return (
+                self.strings_problem or "no string table is loaded",
+                (),
+                (),
+            )
         clone = _clone_strings(self.strings)
         try:
             clone.set_text(identity, text)
         except (ValueError, OSError) as exc:
-            return str(exc)
-        return ""
-
-    def string_span(self, identity: Any) -> RomRange:
-        """The byte extent one string's edit rewrites in place, or claims."""
-        if self.strings is None:
-            raise TextSurfaceError(self.strings_problem or "no string table is loaded")
-        entry = self.strings.entry(identity)
-        return RomRange(FileOffset(entry.location.file_offset), entry.location.allocation)
+            return (str(exc), (), ())
+        owner = str(identity)
+        changes = tuple(
+            change
+            for change in clone.changes()
+            if change.owner == owner and change.old != change.new
+        )
+        claimed = tuple(
+            RomRange(FileOffset(change.offset), len(change.new)) for change in changes
+        )
+        return ("", changes, claimed)
 
     # -- planning --------------------------------------------------------------
 

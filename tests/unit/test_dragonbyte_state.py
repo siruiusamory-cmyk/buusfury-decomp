@@ -897,9 +897,11 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
 
     One page names itself differently on purpose: the ROM destination renders the
     address space (S5) rather than a foundation statement, so its page is
-    ``romPage``, and the Data destination renders the records and the coverage
-    view (S6) rather than a statement about them, so its page is ``dataPage``.
-    Each of the other four is its own ``foundationPage_<id>``.
+    ``romPage``; the Data destination renders the records and the coverage view
+    (S6) rather than a statement about them, so its page is ``dataPage``; the Maps
+    destination renders the map's cells and warps (S7) so its page is ``mapPage``;
+    and the Entities destination renders the placement family (S7) so its page is
+    ``entityPage``. Each of the other two is its own ``foundationPage_<id>``.
     """
     session = Session()
     shell = _shell(tmp_path, session)
@@ -920,6 +922,7 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
             ROM_DESTINATION.id: "romPage",
             "data": "dataPage",
             "maps": "mapPage",
+            "entities": "entityPage",
         }.get(current.destination, f"foundationPage_{current.destination}")
         assert page_name == expected, page_name
 

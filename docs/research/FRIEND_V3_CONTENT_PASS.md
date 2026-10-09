@@ -277,9 +277,10 @@ the site's published status strings do not move. No ROM, image, savestate or cap
 tracked; `git ls-files` finds none.
 
 **Reviewer independence, stated honestly.** Every review round on this branch was run by
-the Claude CLI on a fresh context, and none of them authored the change. The FINAL tip
-was never given a clean verdict: the review budget was stopped by request after the last
-round returned BLOCKED on a single duplicated phrase, which was then fixed. So the SHA
+an independent reviewer on a fresh context, and none of them authored the change. The
+final tip was never given a clean verdict: the review budget was stopped by request
+after the last round returned BLOCKED on a single duplicated phrase, which was then
+fixed. So the SHA
 that merged carries a PASS on `a671a7e` plus a set of later documentation-only fixes,
 and the reader should treat the post-`a671a7e` prose as corrected-but-not-independently-
 cleared. That limitation is the reason section 2 now cites artefacts instead of results.

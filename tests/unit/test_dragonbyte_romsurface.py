@@ -52,9 +52,11 @@ from tools.dragonbyte.journal import project_authority  # noqa: E402
 from tools.dragonbyte.rawbytes import declared_extents  # noqa: E402
 from tools.dragonbyte.romsurface import (  # noqa: E402
     BYTE_VIEW_ROWS,
+    DEFAULT_SEARCH_HITS,
     FILE_OFFSET,
     IMAGE_ADDRESS,
     ROM_ROW_BYTES,
+    SEARCH_SCOPE,
     SurfaceError,
     byte_rows,
     changed_offsets,
@@ -71,12 +73,14 @@ from tools.dragonbyte.romsurface import (  # noqa: E402
     target_for_address,
     target_for_offset,
     with_manifest,
+    write_gate,
 )
 from tools.dragonbyte.session import Session, SessionError  # noqa: E402
 
 from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
+    _close,
     _write_project,
 )
 
@@ -90,6 +94,13 @@ PROOF = Provenance("synthetic", "0" * 64, "rom-surface fixture")
 #: A byte the fixture atlas object owns, and a byte nobody owns.
 OWNED_OFFSET = 0x100
 FREE_OFFSET = 0x400
+#: A byte a below-floor (CANDIDATE) object covers, and one a declared extent does.
+CANDIDATE_OFFSET = 0x180
+DECLARED_OFFSET = 0x300
+
+#: The reviewer's measured byte: inside an atlas object and outside every declared
+#: table extent, so only the atlas can call it owned.
+LEAK_OFFSET = 0x3BBBB0
 
 
 @pytest.fixture(scope="module")
@@ -127,13 +138,22 @@ def atlas() -> Atlas:
                 "fixture:table", _span(OWNED_OFFSET, 0x40), "pointer-table",
                 Confidence.INFERRED, PROOF,
             ),
+            AtlasObject(
+                "fixture:candidate", _span(CANDIDATE_OFFSET, 0x40), "pointer-table",
+                Confidence.CANDIDATE, PROOF,
+            ),
         ),
     )
 
 
 @pytest.fixture
 def index(atlas) -> RangeIndex:
-    return RangeIndex(atlas)
+    """The production shape: an atlas plus the profile's declared layer.
+
+    The windowed lane reads this index, and production's `load_index` always
+    supplies declared extents, so the fixture that stands in for it does too.
+    """
+    return RangeIndex(atlas, ((_span(DECLARED_OFFSET, 0x40), "declared:test-table"),))
 
 
 def _span(start: int, size: int) -> RomRange:
@@ -653,6 +673,20 @@ def qapp():
     yield app
 
 
+def _settle(page) -> None:
+    """Wait for the page's index worker, then drain its queued answer.
+
+    The parse runs on a worker by design (docs/desktop-ui.md forbids blocking the
+    UI thread for indexing), so a test that wants the loaded surface has to wait
+    for the thread and then let the main thread deliver the signal.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    assert page._pool.waitForDone(30_000), "the range index worker did not finish"
+    QApplication.processEvents()
+    assert not page._index_loading, "the range index answer never reached the page"
+
+
 @pytest.fixture
 def rom_page(qapp, tmp_path, profile, index, monkeypatch):
     """The ROM destination inside the real shell, over the synthetic image.
@@ -670,8 +704,9 @@ def rom_page(qapp, tmp_path, profile, index, monkeypatch):
     session = _session(tmp_path, profile)
     shell = Shell(session, tmp_path / "config")
     shell.show_destination("rom")
+    _settle(shell._rom_page)
     yield shell._rom_page, shell, session
-    shell.close()
+    _close(shell, session)
 
 
 def test_the_rom_destination_shows_the_surface_and_the_other_five_do_not(rom_page):
@@ -688,6 +723,7 @@ def test_the_rom_destination_shows_the_surface_and_the_other_five_do_not(rom_pag
         for column in range(page._model.columnCount())
     ] == [
         f"0x{rows[0].address:08X}",
+        f"0x{rows[0].span.start.value:06X}",
         f"0x{rows[0].span.size:06X}",
         rows[0].classification,
         rows[0].confidence.value,
@@ -745,7 +781,8 @@ def test_open_bytes_opens_the_proven_extent_and_is_disabled_without_one(rom_page
 def test_open_bytes_is_disabled_and_states_its_reason_with_no_rom(qapp, tmp_path):
     from tools.dragonbyte.shell import Shell
 
-    shell = Shell(Session(), tmp_path / "config")
+    session = Session()
+    shell = Shell(session, tmp_path / "config")
     shell.show_destination("rom")
     page = shell._rom_page
 
@@ -753,7 +790,7 @@ def test_open_bytes_is_disabled_and_states_its_reason_with_no_rom(qapp, tmp_path
     assert "Open a ROM first" in page._open_button.toolTip()
     assert "No ROM is open" in page._strip.text()
     assert page._model.rowCount() == 0
-    shell.close()
+    _close(shell, session)
 
 
 def test_a_write_from_the_page_is_one_journal_entry_and_one_undo(
@@ -833,3 +870,249 @@ def test_the_page_holds_no_rom_semantics_of_its_own():
     }
 
     assert not [name for name in imported if name.startswith("tools.webfoot")], imported
+
+
+# --- the review's fixes: one floor, one gate, no stall, no false claim --------
+
+
+def test_the_write_gate_refuses_while_the_range_index_is_absent(profile):
+    """The write fails closed when the surface cannot ask who owns the bytes."""
+    surface = surface_for(
+        IMAGE,
+        profile,
+        _journal(),
+        index_problem="the range index is not assembled: atlas.jsonl is missing",
+    )
+    gate = write_gate(surface)
+
+    assert not gate.available
+    assert "not assembled" in gate.reason
+    assert "cannot tell bytes a structure owns" in gate.reason
+
+
+def test_the_write_gate_is_open_once_the_index_has_answered(index, profile):
+    surface = surface_for(IMAGE, profile, _journal(), index=index)
+    gate = write_gate(surface)
+
+    assert gate.available
+    assert "build" in gate.reason
+
+
+def test_the_strip_and_the_write_path_use_one_ownership_floor(
+    index, profile, tmp_path
+):
+    """A below-floor object is a known shape on screen and writable on disk."""
+    session = _session(tmp_path, profile)
+    surface = surface_for(session.base_image, profile, session.journal, index=index)
+
+    known_shape = ownership(surface, CANDIDATE_OFFSET)
+    assert known_shape.owners == ()
+    assert known_shape.shapes == ("fixture:candidate",)
+    assert "below the ownership floor" in known_shape.text()
+    assert session.raw_write_problem(
+        CANDIDATE_OFFSET, b"\x01", atlas=index.atlas
+    ) == ""
+
+    owner = ownership(surface, OWNED_OFFSET)
+    assert owner.owners == ("fixture:table",)
+    assert "fixture:table" in session.raw_write_problem(
+        OWNED_OFFSET, b"\x01", atlas=index.atlas
+    )
+
+    declared = ownership(surface, DECLARED_OFFSET)
+    assert declared.owners == ("declared:test-table",)
+    # Production's declared layer IS the profile's own extent list, so the strip
+    # and the write path agree there by construction. This fixture adds one
+    # synthetic declared extent the write path cannot know, so only the strip
+    # side of the declared rule is asserted here.
+
+
+def test_the_range_view_reports_owners_under_the_same_floor(index, profile):
+    surface = surface_for(IMAGE, profile, _journal(), index=index)
+    rows = range_rows(surface)
+
+    def containing(offset: int):
+        return next(
+            row for row in rows if row.span.start.value <= offset < row.span.end
+        )
+
+    # A coverage row can carry an owner and a below-floor shape at once: the
+    # split is per identity, not per row, and an owner is what the row shows.
+    covered = containing(CANDIDATE_OFFSET)
+    assert "fixture:table" in covered.owners
+    assert "fixture:candidate" in covered.shapes
+    assert covered.owner_text == "fixture:table"
+    assert "declared:test-table" in containing(DECLARED_OFFSET).owners
+
+
+def test_the_range_view_addresses_every_row_in_both_spellings(index, profile):
+    surface = surface_for(IMAGE, profile, _journal(), index=index)
+    row = range_rows(surface)[0]
+
+    assert row.address == GBA_ROM_BASE + row.span.start.value
+    assert (row.address, row.span.start.value) == (0x08000000, 0)
+
+
+def test_search_reads_the_current_bytes_and_says_so(index, profile, tmp_path):
+    """A byte the project wrote is found; the canonical image does not hold it."""
+    session = _session(tmp_path, profile)
+    session.apply_raw_edit(FREE_OFFSET, b"\xDE\xAD\xBE\xEF", confirmed=True)
+    surface = surface_for(session.base_image, profile, session.journal, index=index)
+
+    assert surface.image.find(b"\xDE\xAD\xBE\xEF") == -1
+    hits = search_bytes(surface, "DE AD BE EF")
+    assert [hit.offset for hit in hits] == [FREE_OFFSET]
+    assert "CURRENT bytes" in (search_bytes.__doc__ or "")
+    assert "current bytes" in SEARCH_SCOPE
+
+
+def test_a_search_can_tell_a_full_page_from_the_whole_answer(index, profile):
+    surface = surface_for(IMAGE, profile, _journal(), index=index)
+
+    assert len(search_bytes(surface, "ff", limit=3)) == 3
+    probed = search_bytes(surface, "ff", limit=DEFAULT_SEARCH_HITS + 1)
+    assert len(probed) == DEFAULT_SEARCH_HITS + 1
+
+
+def test_the_index_parse_runs_off_the_ui_thread(
+    qapp, tmp_path, profile, monkeypatch
+):
+    """The parse is a worker: the event loop is not held for it."""
+    import threading
+    import time
+
+    from tools.dragonbyte import rompage
+    from tools.dragonbyte.shell import Shell
+
+    seen = []
+
+    def slow(profile, directory=None):
+        seen.append(threading.current_thread())
+        time.sleep(1.0)
+        return None, "the range index is not assembled for this test"
+
+    monkeypatch.setattr(rompage, "load_index", slow)
+    session = _session(tmp_path, profile)
+    shell = Shell(session, tmp_path / "config")
+    started = time.monotonic()
+    shell.show_destination("rom")
+    elapsed = time.monotonic() - started
+    page = shell._rom_page
+
+    assert elapsed < 0.6, elapsed
+    assert page._index_loading
+    assert "still loading" in page._surface.index_problem
+    assert not page._write_button.isEnabled()
+    _settle(page)
+    assert seen and seen[0] is not threading.main_thread()
+    assert "not assembled" in page._write_button.toolTip()
+    _close(shell, session)
+
+
+def test_the_write_controls_are_disabled_with_their_reason_without_an_index(
+    qapp, tmp_path, profile, monkeypatch
+):
+    """Acceptance clause 4's shape, applied to the write the reviewer measured."""
+    from tools.dragonbyte import rompage
+    from tools.dragonbyte.shell import Shell
+
+    monkeypatch.setattr(
+        rompage,
+        "load_index",
+        lambda profile, directory=None: (
+            None,
+            "the range index is not assembled: atlas.jsonl is missing",
+        ),
+    )
+    session = _session(tmp_path, profile)
+    shell = Shell(session, tmp_path / "config")
+    shell.show_destination("rom")
+    page = shell._rom_page
+    _settle(page)
+
+    assert not page._write_button.isEnabled()
+    assert not page._write_hex.isEnabled()
+    reason = page._write_button.toolTip()
+    assert "not assembled" in reason
+    assert "cannot tell bytes a structure owns" in reason
+    assert reason in page._write_button.accessibleName()
+
+    page._goto.setText("0x08000400")
+    page._on_go()
+    page._write_hex.setText("A1")
+    page._on_write()
+
+    assert session.journal.depth == 0, "no write may happen without the owner answer"
+    _close(shell, session)
+
+
+def test_the_page_says_a_raw_write_is_journal_local(rom_page):
+    page, _shell, _session_ = rom_page
+
+    note = page._write_note.text()
+
+    assert "journal-local" in note
+    assert "build" in note
+    assert page._write_note.isVisibleTo(page)
+
+
+def test_the_range_view_headers_name_both_spellings(rom_page):
+    from PySide6.QtCore import Qt
+
+    page, _shell, _session_ = rom_page
+
+    assert page._model.headerData(0, Qt.Orientation.Horizontal) == "Address"
+    assert page._model.headerData(1, Qt.Orientation.Horizontal) == "File offset"
+    assert [
+        page._model.data(page._model.index(0, column)) for column in (0, 1)
+    ] == ["0x08000000", "0x000000"]
+
+
+def test_a_capped_search_page_says_it_is_the_first_of_more(rom_page):
+    page, _shell, _session_ = rom_page
+
+    page._find.setText("ff")
+    page._find_button.click()
+
+    assert page._hits_truncated
+    assert len(page._hits) == DEFAULT_SEARCH_HITS
+    assert "the first of more" in page._message.text()
+    assert SEARCH_SCOPE in page._message.text()
+
+
+def test_a_search_for_a_byte_the_project_wrote_is_not_capped(rom_page):
+    page, _shell, session = rom_page
+    session.apply_raw_edit(FREE_OFFSET, b"\xDE\xAD\xBE\xEF", confirmed=True)
+    page.refresh()
+
+    page._find.setText("DE AD BE EF")
+    page._find_button.click()
+
+    assert [hit.offset for hit in page._hits] == [FREE_OFFSET]
+    assert not page._hits_truncated
+    assert "the first of more" not in page._message.text()
+
+
+def test_the_canonical_rom_byte_the_gate_protects_is_refused_by_the_real_index(
+    profile, tmp_path
+):
+    """The reviewer's measured leak, pinned against the assembled index.
+
+    A byte inside an atlas object and outside every declared extent is refused by
+    the atlas the range index holds, which is exactly why the write path is
+    closed while no index is loaded.
+    """
+    index, problem = load_index(profile)
+    if index is None:
+        pytest.skip(problem)
+    rom = _canonical_rom()
+    image = rom.read_bytes()
+    session = _session(tmp_path, profile, image=image)
+    surface = surface_for(image, profile, session.journal, index=index)
+
+    assert write_gate(surface).available
+    owners = ownership(surface, LEAK_OFFSET).owners
+    assert "seed:scripts.item_use.pool" in owners, owners
+    assert "atlas:seed:scripts.item_use.pool" in session.raw_write_problem(
+        LEAK_OFFSET, b"\x01", atlas=index.atlas
+    )

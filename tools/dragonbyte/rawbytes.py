@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tools.webfoot.atlas import CONFIDENCE_ORDER, Atlas, Confidence, strength
+from tools.webfoot.atlas import Atlas, Confidence, strength
 from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
 from tools.webfoot.layout import RomRange
 from tools.webfoot.profile import RomProfile
@@ -47,9 +47,15 @@ RAW_TARGET = "rawbytes"
 #: alone; `read_project` loads exact names, so an existing reader ignores it.
 RAW_DOCUMENT = Path("raw") / "bytes.toml"
 
-#: The confidence below which an atlas object is not treated as owning bytes.
-#: Weak evidence must not be able to block an honest write.
-_CLAIM_CONFIDENCE = "INFERRED"
+#: The confidence at which an atlas object is treated as owning bytes. Weak
+#: evidence must not be able to block an honest write, and the ROM surface reads
+#: this same floor so the owners it shows and the writes it refuses agree.
+OWNERSHIP_FLOOR = Confidence("INFERRED")
+
+
+def blocks_a_write(confidence: Confidence) -> bool:
+    """Whether evidence this strong makes the bytes someone else's to edit."""
+    return strength(confidence) >= strength(OWNERSHIP_FLOOR)
 
 
 class RawRefusal(Exception):
@@ -195,14 +201,13 @@ def _atlas_span(atlas: Atlas, span: RomRange) -> tuple[str, RomRange] | None:
     gap and reaches into an object would otherwise be accepted over that object's
     bytes.
     """
-    floor = CONFIDENCE_ORDER.index(Confidence(_CLAIM_CONFIDENCE))
     best: tuple[str, RomRange] | None = None
     best_strength = -1
     for item in atlas.objects:
         if not item.range.overlaps(span):
             continue
         rank = strength(item.confidence)
-        if rank < floor or rank <= best_strength:
+        if not blocks_a_write(item.confidence) or rank <= best_strength:
             continue
         best = (f"atlas:{item.identity}", item.range)
         best_strength = rank

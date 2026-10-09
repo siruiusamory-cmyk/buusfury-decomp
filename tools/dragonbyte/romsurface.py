@@ -16,16 +16,23 @@ read. The conversion is the SDK's own (`binary.GbaRomAddress`,
 
 *Who owns these bytes?* S4's `atlas.RangeIndex` answers for the open image, over
 the atlas artifact the SDK itself assembles, with the profile's declared extents
-as the index's declared layer. Where the index is not available the surface says
-so rather than inventing a classification, and where no owner claims a byte it
-says `no semantic owner known` rather than leaving a blank.
+as the index's declared layer. The owner predicate is the raw byte authority's
+own floor (`rawbytes.blocks_a_write`), so the owners a strip shows and the writes
+that are refused cannot disagree: an object below that floor is a known shape,
+not an owner. Where the index is not available the surface says so rather than
+inventing a classification, and where no owner claims a byte it says `no semantic
+owner known` rather than leaving a blank.
 
 *What changed?* The overlay is a set of file offsets: the project's own pending
 edits before a build, and exactly the manifest's change set after one. A set and
-not a count, because "how many bytes changed" cannot answer "which".
+not a count, because "how many bytes changed" cannot answer "which". Those
+pending edits are journal-local: they reach an image only when a build applies
+them, and nothing here claims otherwise.
 
-*May these bytes be opened?* An extent is proven or it is not, and where it is
-not the surface states the reason instead of guessing one.
+*May these bytes be opened or written?* An extent is proven or it is not, and a
+write is offered only while the range index is loaded, because without it the
+surface cannot tell bytes a structure owns from bytes nobody owns. Either way the
+surface states the reason instead of guessing one.
 
 No Qt is imported: the whole surface is drivable with no window.
 """
@@ -36,19 +43,19 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from tools.webfoot.atlas import AtlasError, Confidence, RangeIndex
+from tools.webfoot.atlas import DECLARED_EXTENT, AtlasError, Confidence, RangeIndex
 from tools.webfoot.binary import (
     GBA_ROM_BASE,
     BinaryAddressError,
     FileOffset,
     GbaRomAddress,
 )
-from tools.webfoot.layout import LayoutError, RomRange
+from tools.webfoot.layout import RomRange
 from tools.webfoot.profile import AtlasIdentityMismatch, RomProfile
 from tools.webfoot.write import ByteChange, WriteManifest
 
 from .journal import EditJournal
-from .rawbytes import declared_extents
+from .rawbytes import blocks_a_write, declared_extents
 
 
 class SurfaceError(ValueError):
@@ -70,6 +77,12 @@ PREVIEW_BYTES = 8
 #: cannot try to build a table with a million rows in it.
 DEFAULT_SEARCH_HITS = 200
 
+#: What the raw search reads, said wherever the answer could be read the other
+#: way: the canonical image alone would miss a byte the project authored.
+SEARCH_SCOPE = (
+    "Searches the current bytes: the canonical image plus pending raw writes."
+)
+
 #: The spelling `parse_target` read a number in. The product says which one it
 #: was, because a bare number is otherwise ambiguous between the two spaces.
 IMAGE_ADDRESS = "image address"
@@ -86,6 +99,18 @@ _NOT_PRINTABLE = "."
 _ARTICLE = {IMAGE_ADDRESS: "an", FILE_OFFSET: "a"}
 
 
+def image_address(offset: int, image_size: int) -> int:
+    """The image address of one file offset, through the SDK's own typed pair.
+
+    The one place this module converts offset to address, so the conversion and
+    the size check are the SDK's rather than a second arithmetic here.
+    """
+    try:
+        return FileOffset(offset).to_gba_address(image_size).raw
+    except BinaryAddressError as exc:
+        raise SurfaceError(str(exc)) from exc
+
+
 # --- where a number points ----------------------------------------------------
 
 
@@ -93,23 +118,21 @@ _ARTICLE = {IMAGE_ADDRESS: "an", FILE_OFFSET: "a"}
 class RomTarget:
     """One location in the image, in both spellings at once.
 
-    `spelling` is the one the caller actually supplied; the other is derived, so
-    the two can never disagree and a conversion is never a second arithmetic.
+    `spelling` is the one the caller actually supplied; both values are computed
+    through the SDK's own conversion, so the two can never disagree.
     """
 
     file_offset: int
+    address: int
     spelling: str
 
     def __post_init__(self) -> None:
         if type(self.file_offset) is not int or self.file_offset < 0:
             raise SurfaceError("a ROM location needs a non-negative file offset")
+        if type(self.address) is not int or self.address < 0:
+            raise SurfaceError("a ROM location needs a non-negative image address")
         if self.spelling not in (IMAGE_ADDRESS, FILE_OFFSET):
             raise SurfaceError(f"{self.spelling!r} is not a known spelling")
-
-    @property
-    def address(self) -> int:
-        """The image address of the same byte."""
-        return GBA_ROM_BASE + self.file_offset
 
     @property
     def read_as(self) -> str:
@@ -163,7 +186,11 @@ def target_for_offset(offset: int, image_size: int) -> RomTarget:
         raise SurfaceError(
             f"file offset 0x{offset:06X} is outside the {image_size}-byte image."
         )
-    return RomTarget(file_offset=offset, spelling=FILE_OFFSET)
+    return RomTarget(
+        file_offset=offset,
+        address=image_address(offset, image_size),
+        spelling=FILE_OFFSET,
+    )
 
 
 def target_for_address(address: int, image_size: int) -> RomTarget:
@@ -172,7 +199,11 @@ def target_for_address(address: int, image_size: int) -> RomTarget:
         offset = GbaRomAddress(address).to_file_offset(image_size)
     except BinaryAddressError as exc:
         raise SurfaceError(str(exc)) from exc
-    return RomTarget(file_offset=offset, spelling=IMAGE_ADDRESS)
+    return RomTarget(
+        file_offset=offset,
+        address=image_address(offset, image_size),
+        spelling=IMAGE_ADDRESS,
+    )
 
 
 # --- the surface --------------------------------------------------------------
@@ -195,10 +226,45 @@ class RomSurface:
     index_problem: str = ""
     pending: Mapping[int, bytes] = field(default_factory=dict)
     overlay: frozenset[int] = frozenset()
+    #: The index's owners split by the raw byte authority's floor: the ones whose
+    #: evidence blocks a write, and the known shapes whose evidence does not.
+    strong_owners: frozenset[str] = field(default=frozenset(), repr=False)
+    shape_owners: frozenset[str] = field(default=frozenset(), repr=False)
+
+    def __post_init__(self) -> None:
+        if self.index is None:
+            return
+        strong: set[str] = set()
+        shapes: set[str] = set()
+        for item in self.index.atlas.objects:
+            (strong if blocks_a_write(item.confidence) else shapes).add(item.identity)
+        object.__setattr__(self, "strong_owners", frozenset(strong))
+        object.__setattr__(self, "shape_owners", frozenset(shapes))
 
     @property
     def image_size(self) -> int:
         return len(self.image)
+
+    def owners_of(self, spans) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """One query's spans as ``(owners, known shapes)`` under the write floor.
+
+        A declared extent always owns: the profile vouches for it and the raw
+        byte authority refuses against it whatever its evidence. An atlas object
+        owns only at or above the floor, which is the rule the same authority
+        applies, so a byte this reports as owned is a byte a raw write refuses.
+        """
+        owners = {
+            span.owner
+            for span in spans
+            if span.source == DECLARED_EXTENT
+            or span.owner in self.strong_owners
+        }
+        shapes = {
+            span.owner
+            for span in spans
+            if span.source != DECLARED_EXTENT and span.owner not in self.strong_owners
+        }
+        return tuple(sorted(owners)), tuple(sorted(shapes))
 
     def canonical_bytes(self, offset: int, size: int) -> bytes:
         """The base image's own bytes: the column that is never written to."""
@@ -207,9 +273,11 @@ class RomSurface:
     def current_bytes(self, offset: int, size: int) -> bytes:
         """The base bytes with the project's pending raw writes applied.
 
-        A pending semantic edit is not materialized here: it has no byte value
-        until a build produces one, and the ownership strip says so rather than
-        showing a base value that the project has already replaced.
+        These bytes are journal-local: they are what a build would emit for this
+        range once it applies the project's raw document, and no artifact on disk
+        holds them yet. A pending semantic edit is not materialized here at all:
+        it has no byte value until a build produces one, and the ownership strip
+        says so rather than showing a base value the project has replaced.
         """
         window = bytearray(self.canonical_bytes(offset, size))
         for written_at, value in self.pending.items():
@@ -218,6 +286,20 @@ class RomSurface:
                 if offset <= at < offset + size:
                     window[at - offset] = byte
         return bytes(window)
+
+
+def owner_phrase(owners: Iterable[str], shapes: Iterable[str]) -> str:
+    """What the surface says it knows about one query's owners, in its own words."""
+    owners = tuple(owners)
+    shapes = tuple(shapes)
+    if owners:
+        return ", ".join(owners)
+    if shapes:
+        return (
+            f"no semantic owner known; {len(shapes)} known shape(s) below the "
+            "ownership floor"
+        )
+    return "no semantic owner known"
 
 
 def load_index(
@@ -326,21 +408,18 @@ class Ownership:
     """Everything the surface can say about one byte, and the honest limits."""
 
     offset: int
+    address: int
     classification: str
     confidence: Confidence | None
     owners: tuple[str, ...]
+    #: Identities the atlas knows here whose evidence is below the write floor.
+    shapes: tuple[str, ...] = ()
     problem: str = ""
-
-    @property
-    def address(self) -> int:
-        return GBA_ROM_BASE + self.offset
 
     @property
     def owner_text(self) -> str:
         """The one phrase the specification requires where nobody owns a byte."""
-        if self.owners:
-            return ", ".join(self.owners)
-        return "no semantic owner known"
+        return owner_phrase(self.owners, self.shapes)
 
     def text(self) -> str:
         """One line for the ownership strip, in the product's own words."""
@@ -358,14 +437,18 @@ def ownership(surface: RomSurface, offset: int) -> Ownership:
         raise SurfaceError(
             f"file offset 0x{offset:06X} is outside the {len(surface.image)}-byte image."
         )
+    where = image_address(offset, len(surface.image))
     if surface.index is None:
-        return Ownership(offset, "", None, (), surface.index_problem)
+        return Ownership(offset, where, "", None, (), problem=surface.index_problem)
     answer = surface.index.at(FileOffset(offset))
+    owners, shapes = surface.owners_of(answer["spans"])
     return Ownership(
         offset=offset,
+        address=where,
         classification=answer["classification"],
         confidence=answer["confidence"],
-        owners=answer["owners"],
+        owners=owners,
+        shapes=shapes,
     )
 
 
@@ -389,18 +472,16 @@ class RangeRow:
     """One row of the range view: one coverage span and who claims its bytes."""
 
     span: RomRange
+    address: int
     classification: str
     confidence: Confidence
     owners: tuple[str, ...]
+    shapes: tuple[str, ...]
     preview: bytes
 
     @property
-    def address(self) -> int:
-        return GBA_ROM_BASE + self.span.start.value
-
-    @property
     def owner_text(self) -> str:
-        return ", ".join(self.owners) if self.owners else "no semantic owner known"
+        return owner_phrase(self.owners, self.shapes)
 
     def text(self) -> str:
         return (
@@ -413,20 +494,24 @@ def range_rows(surface: RomSurface) -> tuple[RangeRow, ...]:
     """The whole image, one row per covered span, in offset order.
 
     The rows are the atlas's own coverage partition, so they tile the image
-    exactly once and no second partition is invented here. Empty when no index is
-    loaded; `surface.index_problem` then says why.
+    exactly once and no second partition is invented here. Ownership is the same
+    floor the write path uses, so an owner shown here is an owner a raw write
+    would be refused by. Empty when no index is loaded; `surface.index_problem`
+    then says why.
     """
     if surface.index is None:
         return ()
     rows = []
     for span in surface.index.atlas.coverage.spans:
-        owners = surface.index.owners_of(span.range)
+        owners, shapes = surface.owners_of(surface.index.spans_overlapping(span.range))
         rows.append(
             RangeRow(
                 span=span.range,
+                address=image_address(span.range.start.value, surface.image_size),
                 classification=span.classification,
                 confidence=span.confidence,
                 owners=owners,
+                shapes=shapes,
                 preview=surface.canonical_bytes(span.range.start.value, PREVIEW_BYTES),
             )
         )
@@ -457,12 +542,9 @@ class ByteRow:
     """One sixteen-byte row: the current bytes beside the canonical ones."""
 
     offset: int
+    address: int
     current: bytes
     canonical: bytes
-
-    @property
-    def address(self) -> int:
-        return GBA_ROM_BASE + self.offset
 
     @property
     def changed(self) -> tuple[int, ...]:
@@ -519,6 +601,7 @@ def byte_rows(
         built.append(
             ByteRow(
                 offset=start,
+                address=image_address(start, surface.image_size),
                 current=surface.current_bytes(start, len(canonical)),
                 canonical=canonical,
             )
@@ -534,17 +617,15 @@ class SearchHit:
     """One raw hit: the offset, and the classification the index reports for it."""
 
     offset: int
+    address: int
     classification: str
     confidence: Confidence | None
     owners: tuple[str, ...]
-
-    @property
-    def address(self) -> int:
-        return GBA_ROM_BASE + self.offset
+    shapes: tuple[str, ...] = ()
 
     @property
     def owner_text(self) -> str:
-        return ", ".join(self.owners) if self.owners else "no semantic owner known"
+        return owner_phrase(self.owners, self.shapes)
 
     def text(self) -> str:
         confidence = self.confidence.value if self.confidence else "UNKNOWN"
@@ -584,24 +665,35 @@ def search_bytes(
 ) -> tuple[SearchHit, ...]:
     """Every offset where `pattern` occurs, up to `limit`, in offset order.
 
+    The bytes searched are the CURRENT bytes: the canonical image with the
+    project's pending raw writes applied. Evidence for that choice: the byte view
+    leads with the current bytes and shows the canonical ones beside them, so a
+    search over anything else would not find a byte the view puts in front of the
+    reader. The alternative, the canonical image alone, would miss exactly the
+    bytes the surface itself authored, and there is no third candidate: a pending
+    semantic edit has no byte value until a build emits one.
+
     A hit is a position, never a claim: the specification's rule is that a hit is
     not presented as an editable owner, so each one carries the classification and
     the owners the index already reports for that byte rather than a new meaning.
     """
     needle = parse_pattern(pattern)
+    searched = surface.current_bytes(0, len(surface.image))
     hits = []
-    start = surface.image.find(needle)
+    start = searched.find(needle)
     while start >= 0 and len(hits) < limit:
         known = ownership(surface, start)
         hits.append(
             SearchHit(
                 offset=start,
+                address=known.address,
                 classification=known.classification,
                 confidence=known.confidence,
                 owners=known.owners,
+                shapes=known.shapes,
             )
         )
-        start = surface.image.find(needle, start + 1)
+        start = searched.find(needle, start + 1)
     return tuple(hits)
 
 
@@ -690,3 +782,40 @@ def selection_extent(surface: RomSurface, offset: int) -> RomRange:
             f"file offset 0x{offset:06X} is outside the {len(surface.image)}-byte image."
         )
     return RomRange(FileOffset(offset), 1)
+
+
+# --- the raw write gate -------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class WriteGate:
+    """Whether a raw write may be offered, and the reason either way."""
+
+    available: bool
+    reason: str
+
+
+def write_gate(surface: RomSurface) -> WriteGate:
+    """Whether this surface may accept a raw byte write at all.
+
+    A raw write is refused when ANY source claims the bytes, and one of those
+    sources is the atlas. Without the range index the surface cannot ask that
+    question, so it fails closed here in one place rather than accepting a write
+    into bytes a structure owns. The alternative, writing blind and calling the
+    unowned result honest, is the thing section 9 of the product specification
+    exists to prevent: an unknown byte would be taught as free.
+    """
+    if surface.index is None:
+        return WriteGate(
+            False,
+            "A raw write is disabled: "
+            f"{surface.index_problem or 'the range index is not loaded'}. Without "
+            "it the surface cannot tell bytes a structure owns from bytes nobody "
+            "owns, so no write here would be safe.",
+        )
+    return WriteGate(
+        True,
+        "Write the new bytes at the selection. The change is confirmed first, is "
+        "owned by raw:<image address>, and takes effect with the project's next "
+        "build.",
+    )

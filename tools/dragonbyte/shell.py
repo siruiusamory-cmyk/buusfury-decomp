@@ -609,9 +609,11 @@ class Shell(QMainWindow):
         self._status_state.setText(f"{label}   |   {rom}   |   {project}")
         self._status_message.setText(self._status_text)
         self._refresh_edit_actions()
-        if self._rom_page is not None:
+        if self._rom_page is not None and self._page_stack.currentWidget() is self._rom_page:
             # The ROM destination renders the image and the journal, so it is
-            # re-rendered wherever the journal can have moved.
+            # re-rendered wherever the journal can have moved - but only while it
+            # is the page on screen. Re-rendering a page nobody is looking at is
+            # work the user waits for and cannot see; showing it refreshes it.
             self._rom_page.refresh()
 
     def _refresh_edit_actions(self) -> None:

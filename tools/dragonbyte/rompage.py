@@ -10,7 +10,13 @@ The ranges view lists the atlas's own coverage spans with the owners the range
 index reports; the bytes view shows sixteen bytes per row with the canonical
 bytes beside the current ones, the address and the file offset in the gutter and
 the changed positions named. `Open bytes` is enabled only from an answer that
-carries a proven extent, and a disabled one states the reason it was given.
+carries a proven extent, and a disabled one states the reason it was given. A raw
+write is offered only while the range index is loaded, and the page says in the
+one visible place that the write it makes is journal-local until a build.
+
+The range index is a large artifact, so it is parsed on a worker thread: this page
+never blocks its own event loop for it, and it says what it is doing while the
+parse runs.
 
 No ROM semantics live here: no address arithmetic, no offset literal, no record
 stride. `Go to address` calls the model's parser, and a write goes through the
@@ -19,7 +25,15 @@ shell's one confirmed raw-write path.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QModelIndex,
+    QObject,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -35,6 +49,7 @@ from . import theme
 from .romsurface import (
     BYTE_VIEW_ROWS,
     DEFAULT_SEARCH_HITS,
+    SEARCH_SCOPE,
     SurfaceError,
     byte_rows,
     load_index,
@@ -47,6 +62,7 @@ from .romsurface import (
     selection_extent,
     surface_for,
     summary,
+    write_gate,
 )
 from .session import Session
 
@@ -56,7 +72,15 @@ RANGES_VIEW = "Ranges"
 BYTES_VIEW = "Bytes"
 SEARCH_VIEW = "Find results"
 
-_RANGE_HEADERS = ("Address", "Size", "Classification", "Confidence", "Owner", "Preview")
+_RANGE_HEADERS = (
+    "Address",
+    "File offset",
+    "Size",
+    "Classification",
+    "Confidence",
+    "Owner",
+    "Preview",
+)
 _BYTE_HEADERS = (
     "Address",
     "File offset",
@@ -67,12 +91,50 @@ _BYTE_HEADERS = (
 )
 _SEARCH_HEADERS = ("Address", "File offset", "Classification", "Confidence", "Owner")
 
+#: Said where the user writes, because it is the one thing a write here does not
+#: do: no build path reads the project's raw byte document yet.
+JOURNAL_LOCAL = (
+    "A raw write here is journal-local: it is saved with the project and reaches "
+    "an image only when a build applies it."
+)
+
+
+class _IndexSignals(QObject):
+    """The worker's one answer, delivered on the thread that owns the page."""
+
+    finished = Signal(object, str)
+
+
+class _IndexTask(QRunnable):
+    """Parse the range index away from the UI thread.
+
+    The atlas artifact is tens of megabytes, so the parse belongs off the event
+    loop: `docs/desktop-ui.md` forbids blocking the UI thread for indexing and
+    gives a 400 ms feedback budget. The result crosses back through a queued
+    signal, and any failure becomes the stated reason rather than a silent
+    thread death that would leave the page loading forever.
+    """
+
+    def __init__(self, profile, directory) -> None:
+        super().__init__()
+        self.signals = _IndexSignals()
+        self._profile = profile
+        self._directory = directory
+
+    def run(self) -> None:
+        try:
+            index, problem = load_index(self._profile, self._directory)
+        except Exception as exc:  # a worker boundary: report, never die silently
+            index, problem = None, f"the range index could not be loaded: {exc}"
+        self.signals.finished.emit(index, problem)
+
 
 class _RowsModel(QAbstractTableModel):
     """A read-only table over strings the page has already rendered.
 
-    A model rather than one widget per row: the range view of the accepted image
-    is 7,833 rows, and a widget each is the pattern `docs/desktop-ui.md` forbids.
+    A model rather than one widget per row: an assembled range index for a whole
+    image covers it in thousands of spans, and a widget each is the pattern
+    `docs/desktop-ui.md` forbids.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -123,16 +185,21 @@ class RomPage(QWidget):
         #: the same write as a write from anywhere else.
         self._write_handler = None
         #: The range index and the one attempt to load it. It is expensive and
-        #: immutable per image, so it is loaded once and never per repaint.
+        #: immutable per image, so it is loaded once, on a worker, and never per
+        #: repaint or per status refresh.
         self._index = None
         self._index_problem = ""
+        self._index_loading = False
         self._index_attempted = False
         self._index_for = None
+        self._index_task = None
+        self._pool = QThreadPool.globalInstance()
         self._surface = None
         self._mode = RANGES_VIEW
         self._range_rows: tuple = ()
         self._byte_rows: tuple = ()
         self._hits: tuple = ()
+        self._hits_truncated = False
         #: The one selection both views share, as a file offset.
         self._caret = 0
         #: What the caret is, and the extent something has proven for it.
@@ -154,7 +221,9 @@ class RomPage(QWidget):
         self._find.setObjectName("romFindBytes")
         self._find.setPlaceholderText("hex bytes, for example DE AD BE EF")
         self._find.setAccessibleName("Find bytes")
+        self._find.setToolTip(SEARCH_SCOPE)
         self._find_button = QPushButton("Find")
+        self._find_button.setToolTip(SEARCH_SCOPE)
 
         self._model = _RowsModel(self)
         self._table = QTableView()
@@ -192,6 +261,9 @@ class RomPage(QWidget):
         self._write_hex.setPlaceholderText("new bytes (hex)")
         self._write_hex.setAccessibleName("New bytes for the raw write")
         self._write_button = QPushButton("Write")
+        self._write_note = QLabel(JOURNAL_LOCAL)
+        self._write_note.setProperty("dbzRole", "hint")
+        self._write_note.setWordWrap(True)
         self._message = QLabel()
         self._message.setProperty("dbzRole", "hint")
         self._message.setWordWrap(True)
@@ -234,6 +306,7 @@ class RomPage(QWidget):
         layout.addWidget(self._summary)
         layout.addWidget(self._strip)
         layout.addLayout(write)
+        layout.addWidget(self._write_note)
 
     def _connect(self) -> None:
         self._views.currentTextChanged.connect(self._on_view_changed)
@@ -282,14 +355,26 @@ class RomPage(QWidget):
             self._goto_button,
             self._find,
             self._find_button,
-            self._write_hex,
-            self._write_button,
         ):
             widget.setEnabled(True)
+        self._refresh_write_controls()
         if not 0 <= self._caret < self._surface.image_size:
             self._caret = 0
         self._summary.setText(summary(self._surface))
         self._render()
+
+    def _refresh_write_controls(self) -> None:
+        """Render the model's raw-write gate on the two write controls.
+
+        The same shape as `Open bytes`: a control that cannot act is disabled and
+        states the reason it was given, and a disabled one cannot be clicked into
+        a write the surface would have to refuse later.
+        """
+        gate = write_gate(self._surface)
+        for widget in (self._write_hex, self._write_button):
+            widget.setEnabled(gate.available)
+            widget.setToolTip(gate.reason)
+        self._write_button.setAccessibleName(f"Write. {gate.reason}")
 
     def _build_surface(self):
         session = self._session
@@ -305,20 +390,37 @@ class RomPage(QWidget):
         )
 
     def _ensure_index(self) -> None:
-        """Load the range index once per image, through the SDK's own artifact."""
+        """Start the one parse of the range index for this image, on a worker.
+
+        Nothing here blocks: the parse is tens of megabytes and the event loop
+        keeps running while it happens, which is the budget `docs/desktop-ui.md`
+        sets for indexing. The page renders what it has until the answer lands.
+        """
         if self._index_attempted and self._index_for == self._session.rom_path:
             return
-        # The assembled 56 MB atlas is parsed on this thread the first time the
-        # ROM destination is shown, measured at 4 s. Move it to a worker or a
-        # chained QTimer drain if that wait ever lands on a user.
-        self._index, self._index_problem = load_index(self._session.profile)
         self._index_attempted = True
         self._index_for = self._session.rom_path
+        self._index = None
+        self._index_problem = "the range index is still loading"
+        self._index_loading = True
         self._reset_search()
+        task = _IndexTask(self._session.profile, None)
+        task.signals.finished.connect(self._index_ready)
+        self._index_task = task
+        self._pool.start(task)
+
+    def _index_ready(self, index, problem: str) -> None:
+        """The worker's answer: hold it, say so, and re-render."""
+        self._index = index
+        self._index_problem = problem
+        self._index_loading = False
+        self._index_task = None
+        self.refresh()
 
     def _reset_search(self) -> None:
         """Another image invalidates every hit: each one names an offset in this one."""
         self._hits = ()
+        self._hits_truncated = False
         self._mode = RANGES_VIEW
         if self._views.currentText() != RANGES_VIEW:
             self._views.blockSignals(True)
@@ -353,6 +455,7 @@ class RomPage(QWidget):
             tuple(
                 (
                     f"0x{row.address:08X}",
+                    f"0x{row.span.start.value:06X}",
                     f"0x{row.span.size:06X}",
                     row.classification,
                     row.confidence.value,
@@ -530,20 +633,26 @@ class RomPage(QWidget):
         if self._surface is None:
             return
         try:
-            self._hits = search_bytes(self._surface, self._find.text())
+            # One more than will be shown, so a full page of hits can say whether
+            # it is the whole answer or the first of more.
+            found = search_bytes(
+                self._surface, self._find.text(), limit=DEFAULT_SEARCH_HITS + 1
+            )
         except SurfaceError as exc:
             self._report(str(exc))
             return
+        self._hits_truncated = len(found) > DEFAULT_SEARCH_HITS
+        self._hits = found[:DEFAULT_SEARCH_HITS]
         if not self._hits:
             self._message.setText("No raw byte hit for that pattern.")
             return
         if self._views.count() == 2:
             self._views.addItem(SEARCH_VIEW)
-        stopped = len(self._hits) == DEFAULT_SEARCH_HITS
         self._message.setText(
             f"{len(self._hits)} raw byte hit(s)"
-            + (f", the first {DEFAULT_SEARCH_HITS} of more" if stopped else "")
-            + "."
+            + (", the first of more" if self._hits_truncated else "")
+            + ". "
+            + SEARCH_SCOPE
         )
         if self._views.currentText() == SEARCH_VIEW:
             self._render()
@@ -561,15 +670,21 @@ class RomPage(QWidget):
             self._render()
 
     def _on_write(self) -> None:
+        """Ask the model whether a write is offered, then hand it to the shell."""
         if self._surface is None or self._write_handler is None:
+            return
+        gate = write_gate(self._surface)
+        if not gate.available:
+            # The control is disabled for this reason; refuse here too, so a
+            # signal that arrives anyway cannot write into bytes nobody checked.
+            self._report(gate.reason)
             return
         try:
             new = parse_pattern(self._write_hex.text())
         except SurfaceError as exc:
             self._report(str(exc))
             return
-        atlas = self._surface.index.atlas if self._surface.index else None
-        self._write_handler(self._caret, new, atlas=atlas)
+        self._write_handler(self._caret, new, atlas=self._surface.index.atlas)
 
     def _report(self, reason: str) -> None:
         self._message.setText(reason)

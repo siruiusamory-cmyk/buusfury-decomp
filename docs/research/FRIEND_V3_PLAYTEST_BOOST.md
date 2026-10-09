@@ -16,13 +16,14 @@ recorded in section 2 or a hash recorded in section 1.
 | | |
 | --- | --- |
 | image | `build/fv3boost001/out/v3-playtest-boost.gba` (ignored, not tracked) |
-| SHA-256 | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e` |
+| SHA-256 | `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c` |
 | bytes | 10,140,972 |
 | manifest | `build/fv3boost001/out/v3-playtest-boost.manifest.json` |
-| changed bytes | 45, all inside the character base-stat table `0x006FDA4C..0x006FDA9D` |
+| changed bytes | 25, all inside the character base-stat table `0x006FDA4C..0x006FDA9D` |
+| superseded | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e`, the first consolidated baseline, retired because its hp and ep edit read as negative in game. See `docs/research/FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md` |
 | canonical ROM | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, unchanged |
 
-There is exactly one final image. No competing variant was built.
+There is one current final image. No competing variant was built.
 
 ## 2. Reproducible build, with the provenance chain
 
@@ -79,15 +80,15 @@ re-hashes the canonical copy at both ends.
 
 Character base-stat records are 9 records of 0x12 bytes at `0x006FDA4C`; the layout is
 `tools/webfoot/formats/stat_tables.py:188-220` (level u8, pad, hp u16, ep u16, strength,
-power, endurance, speed, appearance id, technique count, 6 technique bytes). The five base
-party records are set to the widest value each field's own mode uses:
+power, endurance, speed, appearance id, technique count, 6 technique bytes). Records 0..4 are
+set to the widest value each field's own mode uses, **except hp and ep, which are left at
+retail values**:
 
 | field | offset | value | basis |
 | --- | --- | --- | --- |
 | level | +0x00 | 200 | the game's XP ceiling, not the u8 bound: `cmp r6,#0xc8` before the threshold lookup, reported at `tools/webfoot/stats.py:71-75` from `docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393`. The encoding is a u8 and would accept 255 |
-| hp | +0x02 | 65535 | u16 field |
-| ep | +0x04 | 65535 | u16 field |
-| strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields |
+| hp, ep | +0x02, +0x04 | unchanged | both are u16 and the engine reads them as signed. Writing 0xFFFF made a live character read HP -1 and EP -5 with energy attacks disabled, observed on a cold boot; see the completion record beside this one |
+| strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields; 255 reads correctly in game |
 
 Records 0..4 are set from `BASE_STAT_NAMES` order (Goku, Gohan, Goten, Trunks, Vegeta).
 Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. The record order

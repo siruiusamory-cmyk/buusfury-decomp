@@ -3,11 +3,58 @@
 This is the record of the second, bounded pass. The first pass is
 `docs/research/FRIEND_V3_PLAYTEST_BOOST.md` and its image
 `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e`, which stays identified
-as the first verified consolidated baseline. Nothing here rewrites it.
+as the first verified consolidated baseline, not as the deliverable. Nothing here rewrites it.
 
-**Status:** the Bandana is NOT delivered. This record is an evidence-backed blocker for that
-one requirement, plus the research findings and the runtime evidence that came with it. No
-claim of a completed playtest deliverable is made.
+**Status:** one corrected image now exists, `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`.
+The Bandana is still NOT delivered, with its mechanism named in section 2. Two defects were
+found by runtime observation and one of them is fixed in this image.
+
+## 0b. The corrected image
+
+| | |
+| --- | --- |
+| image | `build/fv3boost001/out/v3-playtest-boost.gba` (ignored) |
+| SHA-256 | `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c` |
+| bytes | 10,140,972 |
+| changed bytes | 25, all inside the character base-stat table |
+| reproduced | twice, same digest, by `build/fv3boost001/build.ps1` |
+
+**Why it is not `6d7a56c6`.** On a cold boot of that image, the owner read the in-game status
+screen and the character showed HP -1 and EP -5 with energy attacks disabled. hp and ep are
+u16 fields at record `+0x02` and `+0x04`; writing `0xFFFF` made the engine read them as
+negative. The four u8 stats at `+0x06..+0x09` were correct at 255, and the level showed 200.
+The owner's ruling, verbatim: "You don't even need to change the HP or EP tbh". Both fields are
+now absent from the build's field table and keep their retail values, which is what the
+regression test `test_hp_and_ep_keep_their_bytes_because_0xFFFF_reads_as_negative` pins.
+
+The screen that produced the ruling, captured afterwards on the same image family, reads:
+
+```text
+YAMCHA   LVL 200
+HP: -1/-1    EP: -5/-1    XP: 50410227
+NXT LVL: 0   ZENIE: 100   TIME: 0:06
+STR: 255   POW: 255   END: 255   SPD: 255
+```
+
+## 0e. A second defect, in the roster identity, found at runtime and NOT fixed
+
+That same screen names the boosted character **YAMCHA**, and `BASE_STAT_NAMES`
+(`tools/webfoot/formats/stat_tables.py:87`) is Goku, Gohan, Goten, Trunks, Vegeta, Gotenks,
+Vegito, Gogeta, Hercule, with no Yamcha. Only records 0..4 are modified, so the record the
+engine resolves for Yamcha sits inside 0..4. Two consequences, stated as they stand:
+
+1. The inferred name order is wrong for at least that record, and the names this build prints
+   in its change manifest are labels from an inference, not verified identities.
+2. Which characters actually receive the boost is therefore **unknown**. Some that the ticket
+   meant to boost may sit in records 5..8 and receive nothing.
+
+The byte evidence is unaffected: whatever those records are, an emulator running the image has
+level 200 and four stats at 255 in them, and no hp or ep edit.
+
+The friend workstream already carries the matching warning: in the merged foundation the only
+record labelled "Bulma" is retail Chi-Chi, and retail Bulma is labelled "Tulma". Labels in
+this image are not identities, and this pass adds a second measured instance of that.
+
 
 ## 0. Runtime evidence, taken on the exact merged image
 

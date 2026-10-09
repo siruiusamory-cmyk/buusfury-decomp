@@ -1,8 +1,10 @@
 """The playtest boost changes the maximum number of bytes, and only those bytes.
 
 The synthetic base carries every record at a value that is not the maximum, so a
-builder that skipped a field, wrote a field twice, or patched outside the seven
-fields it declares is caught here rather than on a real image.
+builder that skipped a field, wrote a field twice, or patched outside the five
+fields it declares is caught here rather than on a real image. The sentinel in
+the hp and ep fields is there because those two are deliberately not written:
+writing 0xFFFF into them read back as HP -1 and EP -5 on a live character.
 """
 
 from __future__ import annotations
@@ -37,6 +39,9 @@ def synthetic_base() -> bytearray:
         for name, (rel, width) in FIELD_OFFSETS.items():
             value = 1 if name == "level" else 0
             base[record + rel:record + rel + width] = value.to_bytes(width, "little")
+        # The two fields the boost must never touch, at a value no candidate uses.
+        base[record + 0x02:record + 0x04] = (0x1234).to_bytes(2, "little")
+        base[record + 0x04:record + 0x06] = (0x5678).to_bytes(2, "little")
     return base
 
 
@@ -58,18 +63,18 @@ def test_changed_bytes_are_exactly_the_declared_fields() -> None:
 
     actual = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
     assert actual == expected
-    assert len(actual) == 45  # five records, seven fields: 5 * (1 + 2 + 2 + 1 + 1 + 1 + 1)
+    assert len(actual) == 25  # five records, five single-byte fields
     assert [entry["name"] for entry in changes] == ["Goku", "Gohan", "Goten", "Trunks", "Vegeta"]
 
 
-def test_a_partial_width_field_change_is_not_a_missing_declared_byte() -> None:
-    """hp 0x00FF is one byte short of the maximum, so only its high byte moves."""
-    base = synthetic_base()
-    _write(base, 0, "hp", 0x00FF)
-    boosted, _ = plan(bytes(base))
-    offset = BASE_STAT_TABLE + 0x02
-    assert boosted[offset:offset + 2] == b"\xff\xff"
-    assert base[offset:offset + 2] == b"\xff\x00"
+def test_hp_and_ep_keep_their_bytes_because_0xFFFF_reads_as_negative() -> None:
+    """The regression this guards: a live character read HP -1 and EP -5."""
+    base = bytes(synthetic_base())
+    boosted, _ = plan(base)
+    for index in range(BASE_STAT_COUNT):
+        record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
+        assert boosted[record + 0x02:record + 0x04] == (0x1234).to_bytes(2, "little")
+        assert boosted[record + 0x04:record + 0x06] == (0x5678).to_bytes(2, "little")
 
 
 def test_every_party_field_is_written_at_its_maximum() -> None:

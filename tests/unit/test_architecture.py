@@ -145,6 +145,99 @@ def test_an_ordinary_import_in_shipping_source_is_accepted(tmp_path, monkeypatch
     assert arch._rule_no_test_imports_in_production(["tools/webfoot/helper.py"]) == []
 
 
+# --- the import direction between the application and the SDK ----------------
+
+
+def _write(root: Path, name: str, source: str) -> None:
+    target = root / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source, encoding="utf-8")
+
+
+def test_shipping_source_importing_the_application_is_a_violation(
+    tmp_path, monkeypatch
+):
+    _write(tmp_path, "tools/webfoot/helper.py", "import tools.dragonbyte.session\n")
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    findings = arch._rule_import_direction(["tools/webfoot/helper.py"])
+
+    assert [item["rule"] for item in findings] == ["import-direction"]
+    assert findings[0]["line"] == 1
+    assert "must not import the application" in findings[0]["detail"]
+
+
+def test_a_relative_import_of_the_application_is_a_violation(tmp_path, monkeypatch):
+    """The rule resolves relative spellings, so a name that never writes the
+    target's own spelling still resolves to it."""
+    _write(tmp_path, "tools/webfoot/helper.py", "from .. import dragonbyte\n")
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    findings = arch._rule_import_direction(["tools/webfoot/helper.py"])
+
+    assert [item["path"] for item in findings] == ["tools/webfoot/helper.py"]
+
+
+def test_shipping_source_importing_an_sdk_module_is_accepted(tmp_path, monkeypatch):
+    _write(
+        tmp_path,
+        "tools/webfoot/helper.py",
+        "from tools.webfoot.profile import RomProfile\n",
+    )
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    assert arch._rule_import_direction(["tools/webfoot/helper.py"]) == []
+
+
+def test_a_comment_naming_the_application_is_not_an_import(tmp_path, monkeypatch):
+    """The rule parses the file, so prose can neither satisfy it nor trip it."""
+    _write(
+        tmp_path,
+        "tools/webfoot/helper.py",
+        "# tools.dragonbyte is imported here in the version that must not exist\n",
+    )
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    assert arch._rule_import_direction(["tools/webfoot/helper.py"]) == []
+
+
+def test_application_source_importing_the_beta_package_is_a_violation(
+    tmp_path, monkeypatch
+):
+    _write(
+        tmp_path,
+        "tools/dragonbyte/shell.py",
+        "import tools.webfoot.workbench.session\n",
+    )
+    _write(tmp_path, "tools/dragonbyte/app.py", "from ..webfoot import workbench\n")
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    findings = arch._rule_import_direction(
+        ["tools/dragonbyte/shell.py", "tools/dragonbyte/app.py"]
+    )
+
+    assert {item["path"] for item in findings} == {
+        "tools/dragonbyte/shell.py",
+        "tools/dragonbyte/app.py",
+    }
+    assert all("beta desktop package" in item["detail"] for item in findings)
+
+
+def test_application_source_importing_the_sdk_is_accepted(tmp_path, monkeypatch):
+    _write(
+        tmp_path,
+        "tools/dragonbyte/session.py",
+        "from tools.webfoot.rom import identify_rom\n",
+    )
+    monkeypatch.setattr(arch, "REPOSITORY_ROOT", tmp_path)
+
+    assert arch._rule_import_direction(["tools/dragonbyte/session.py"]) == []
+
+
+def test_the_real_tree_respects_the_import_direction():
+    assert arch._rule_import_direction(arch.tracked_files()) == []
+
+
 # --- the real tree -----------------------------------------------------------
 
 

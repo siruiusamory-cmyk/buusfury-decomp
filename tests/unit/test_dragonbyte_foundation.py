@@ -291,10 +291,25 @@ def test_the_session_is_defined_once_and_carries_no_second_answer_to_dirty():
     assert definitions == ["Session"]
 
     members = {field.name for field in dataclasses.fields(Session)} | set(dir(Session))
-    forbidden = ("staged", "dirty", "revision", "unsaved", "undo", "journal")
-    assert [name for name in members if any(word in name for word in forbidden)] == []
+    # STATE-001 gave the session exactly one journal, which owns every edit, every
+    # checkpoint and the derived dirty state. The rule this test exists for is
+    # unchanged, so it is restated rather than dropped: the session holds no
+    # independent dirty flag, no edit counter and no second undo stack. Two
+    # entries are deliberate and named, because they are the session's edit
+    # boundary - `journal` is the one journal, and `undo_edit`/`redo_edit` are
+    # thin calls into it, not an undo stack kept here.
+    forbidden = ("staged", "dirty", "revision", "unsaved", "undo")
+    allowed = {"journal", "undo_edit", "redo_edit"}
+    assert [
+        name
+        for name in members
+        if any(word in name for word in forbidden) and name not in allowed
+    ] == []
+    assert [name for name in members if "journal" in name] == ["journal"]
     assert not hasattr(Session, "register_staged_work")
     assert not hasattr(Session, "unsaved_edit_count")
+    assert not hasattr(Session, "undo_stack")
+    assert not hasattr(Session, "dirty")
 
 
 # --- 6. navigation is not edit undo ------------------------------------------

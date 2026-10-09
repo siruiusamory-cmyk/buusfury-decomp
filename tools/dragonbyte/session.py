@@ -7,10 +7,10 @@ offset literal, no record stride. The image is identified by SHA-256 through the
 SDK's own catalog mechanism, so a profile id is never hard-coded here.
 
 What this session deliberately does NOT own is as important as what it does.
-There is no staged-work registry, no unsaved-edit count, no dirty flag, no
-revision counter and no undo stack: those belong to the edit journal, which this
-step does not build. One answer to "is there unwritten work" is the rule, and
-inventing a second one here would be the defect that rule exists to prevent.
+There is no unsaved-edit count, no dirty flag, no revision counter and no undo
+stack: all edit and dirty state belongs to the one edit journal it holds, which
+is the single answer to "is there unwritten work". Inventing a second one here
+would be the defect that rule exists to prevent, so this module keeps none.
 
 No Qt is imported: a raised `SessionError` is what a window turns into a
 message box.
@@ -37,6 +37,7 @@ from tools.webfoot.project import (
 )
 from tools.webfoot.rom import RomIdentification, RomReadError, identify_rom
 
+from .journal import EditJournal, EditKind, JournalError, project_authority
 from .navigation import NavigationHistory
 
 
@@ -46,6 +47,10 @@ class SessionError(Exception):
     Catchable and typed, so a window shows one message box that states the
     reason instead of a traceback.
     """
+
+
+class UnsavedChangesError(SessionError):
+    """A project replacement was refused because the journal holds unwritten edits."""
 
 
 class RomNotRecognizedError(SessionError):
@@ -76,6 +81,14 @@ _OPEN_ROM_ERRORS = (RomReadError, OSError, GbaHeaderError, ProfileConfigError)
 #: the project files `read_project` reads.
 _OPEN_PROJECT_ERRORS = (ProjectError, ProjectFormatError, OSError)
 
+#: The families an edit or a save converts into `SessionError`.
+#:
+#: `JournalError` is the journal's own boundary type and covers an unregistered
+#: target, a foreign authority, an empty history and a failed write; `OSError`
+#: and the project families are named because the journal's writer reaches the
+#: filesystem and the project codec directly.
+_EDIT_ERRORS = (JournalError, OSError, ProjectError, ProjectFormatError)
+
 
 @dataclass
 class Session:
@@ -87,6 +100,9 @@ class Session:
     project_dir: Path | None = None
     project: StatProject | None = None
     navigation: NavigationHistory = field(default_factory=NavigationHistory)
+    #: The one journal for this session. It owns every edit, every checkpoint and
+    #: the derived dirty state; the session holds no second answer to any of them.
+    journal: EditJournal = field(default_factory=EditJournal)
     #: The catalog resolved once, on the first open, through the SDK's own
     #: default resolution. Lazy because a session that opens no image reads no
     #: configuration at all.
@@ -151,17 +167,125 @@ class Session:
         self.identification = identification
         self.profile = match.profile
 
-    def open_project(self, directory: Path) -> None:
+    def open_project(self, directory: Path, *, discard_unsaved: bool = False) -> None:
         """Read and hold the authored project at `directory`.
 
         TOTAL over the project families: a missing directory, unreadable TOML,
         a bad document or a structurally invalid record all leave as
         `SessionError` with the SDK's own reason.
+
+        The new project is read BEFORE the unsaved-changes question is settled, so
+        a refusal to read it leaves the previous session, its journal and its
+        checkpoints exactly as they were - a caller can offer the choice only
+        once it knows there is something to replace. The journal is then rebound
+        to the new project's own authority, which discards every trace of the old
+        one.
         """
         directory = Path(directory)
         try:
             project = read_project(directory)
         except _OPEN_PROJECT_ERRORS as exc:
             raise SessionError(str(exc)) from exc
+        if self.journal.is_dirty and not discard_unsaved:
+            raise UnsavedChangesError(
+                "Opening another project would lose the unsaved changes to "
+                f"{self.project_identity}: {self.journal.depth} edit(s) to "
+                f"{', '.join(sorted({entry.target for entry in self.journal.edits()}))}. "
+                "Save the project first, or discard those changes."
+            )
         self.project_dir = directory
         self.project = project
+        self.journal.bind(project_authority(project))
+
+    # -- editing --------------------------------------------------------------
+
+    def edit_availability(self) -> dict[str, tuple[bool, str]]:
+        """Whether each edit action can act, and the reason when it cannot.
+
+        This is the ONE authority on that question: a widget reads it and renders
+        it, and no widget computes an enabled state or a refusal reason of its own.
+        """
+        can_save = self.project is not None and self.journal.is_dirty
+        return {
+            "Save": (
+                can_save,
+                "Write the unsaved edits to the project files."
+                if can_save
+                else self._unavailable(),
+            ),
+            "Undo": (
+                self.journal.can_undo,
+                "Undo the most recent edit."
+                if self.journal.can_undo
+                else "There is nothing to undo.",
+            ),
+            "Redo": (
+                self.journal.can_redo,
+                "Redo the next edit."
+                if self.journal.can_redo
+                else "There is nothing to redo.",
+            ),
+        }
+
+    def _unavailable(self) -> str:
+        """Why Save cannot act: one sentence, and the honest one of the two.
+
+        It is plural on purpose: naming the missing project is a different fact
+        from naming the missing changes, and a reason a user cannot act on is not
+        a reason.
+        """
+        if self.project is None:
+            return "No project is open."
+        return "There are no unsaved changes."
+
+    def apply_edit(
+        self,
+        *,
+        kind: EditKind,
+        target: str,
+        after: object,
+        resources: tuple[str, ...] = (),
+        reason: str = "",
+        coalesce_key: str = "",
+    ) -> None:
+        """Commit one edit to the held project, or refuse with its reason."""
+        if self.project is None:
+            raise SessionError("No project is open, so there is nothing to edit.")
+        try:
+            self.project = self.journal.apply(
+                self.project,
+                kind=kind,
+                target=target,
+                after=after,
+                resources=resources,
+                reason=reason,
+                coalesce_key=coalesce_key,
+            )
+        except _EDIT_ERRORS as exc:
+            raise SessionError(str(exc)) from exc
+
+    def save_project(self) -> None:
+        """Write the held project's unsaved edits, or refuse with the reason."""
+        if self.project is None or self.project_dir is None:
+            raise SessionError("No project is open, so there is nothing to save.")
+        try:
+            self.journal.save(self.project_dir, self.project)
+        except _EDIT_ERRORS as exc:
+            raise SessionError(str(exc)) from exc
+
+    def undo_edit(self) -> None:
+        """Step the project back one committed edit."""
+        self._step(self.journal.undo)
+
+    def redo_edit(self) -> None:
+        """Step the project forward one committed edit."""
+        self._step(self.journal.redo)
+
+    def _step(self, move) -> None:
+        """Run one history step against the held project, or refuse with its reason."""
+        if self.project is None:
+            raise SessionError("No project is open, so there is no edit history.")
+        try:
+            self.project = move(self.project)
+        except _EDIT_ERRORS as exc:
+            raise SessionError(str(exc)) from exc

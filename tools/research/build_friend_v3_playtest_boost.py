@@ -2,10 +2,10 @@
 
 One image in, one image out. `main` refuses unless the input digest equals the
 caller's expected digest, so the builder can never patch an image it was not
-verified against. It then refuses unless the changed-byte set of the output
-equals the union of the spans it declared from its own field table: a write that
-escapes that table is caught, while a wrong offset or width inside it is not,
-because the table is also what drives the writes.
+verified against. It then refuses unless every changed byte is contained in the
+span its own field table declared: a write that escapes that table is caught,
+while a wrong offset or width inside it is not, because the table is also what
+drives the writes.
 
 Read-only with respect to its input. The canonical ROM is never an input here.
 """
@@ -24,8 +24,11 @@ BASE_STAT_TABLE = 0x006FDA4C
 BASE_STAT_RECORD_SIZE = 0x12
 BASE_STAT_COUNT = 9
 
-# The five base party records. Fusion records (Gotenks, Vegito, Gogeta) derive
-# from them and Hercule is not part of the five-character party.
+# Records 0..4 in BASE_STAT_NAMES order. Which record is which character is an
+# INFERENCE: tools/webfoot/formats/stat_tables.py:80 calls the names inferred and
+# :77 calls all nine records playable. Records 5..8 (Gotenks, Vegito, Gogeta,
+# Hercule) are therefore left at retail values, the conservative side of that
+# uncertainty. See section 2 of docs/research/FRIEND_V3_PLAYTEST_BOOST.md.
 PARTY_RECORDS = (0, 1, 2, 3, 4)
 ROSTER_NAMES = ("Goku", "Gohan", "Goten", "Trunks", "Vegeta")
 

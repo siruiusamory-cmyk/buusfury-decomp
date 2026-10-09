@@ -24,6 +24,7 @@ from tools.research.build_friend_v3_playtest_boost import (  # noqa: E402
     FIELD_OFFSETS,
     MAXIMUM,
     PARTY_RECORDS,
+    _assert_only_declared_bytes_changed,
     plan,
 )
 
@@ -92,6 +93,17 @@ def test_fusion_and_non_party_records_are_untouched() -> None:
     for index in (5, 6, 7, 8):
         record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
         assert boosted[record:record + BASE_STAT_RECORD_SIZE] == base[record:record + BASE_STAT_RECORD_SIZE]
+
+
+def test_a_byte_outside_the_declared_spans_is_refused() -> None:
+    """The guard's only reachable case: a write the field table did not declare."""
+    base = bytes(synthetic_base())
+    boosted, changes = plan(base)
+    tampered = bytearray(boosted)
+    stray = BASE_STAT_TABLE + 0x0C  # inside a record, outside every declared field
+    tampered[stray] ^= 0xFF
+    with pytest.raises(BoostError, match="outside the declared spans"):
+        _assert_only_declared_bytes_changed(base, bytes(tampered), changes)
 
 
 def test_an_image_too_small_for_the_table_is_refused() -> None:

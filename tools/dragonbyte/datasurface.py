@@ -306,7 +306,7 @@ class DataSurface:
     def _map_changes(self, project: Any) -> tuple[ByteChange, ...]:
         if self.maps is None:
             return ()
-        staged = self._clone_maps()
+        staged = clone_maps(self.maps)
         touched: set[str] = set()
         for index, values in project.maps.items():
             identity = MapIdentity(index)
@@ -330,24 +330,6 @@ class DataSurface:
             if change.owner in touched and change.old != change.new
         )
 
-    def _clone_maps(self) -> Maps:
-        """A fresh `Maps` over the same records, so staging here mutates nothing.
-
-        The loaded `Maps` is shared with the surface's own reads; staging an
-        edit into it would make the second read of a row return the edited value
-        and turn one edit into two.
-        """
-        source = self.maps
-        assert source is not None
-        return Maps(
-            identification=source.identification,
-            profile=source.profile,
-            entries=tuple(source.entries()),
-            arrays=tuple(source.slot_arrays()),
-            placements=tuple(source.placements()),
-            base_bytes=source.base_bytes,
-        )
-
     # -- the open project's own records ---------------------------------------
 
     @staticmethod
@@ -361,6 +343,24 @@ class DataSurface:
         if project is None:
             return {}
         return project.maps
+
+
+def clone_maps(source: Maps) -> Maps:
+    """A fresh `Maps` over the same records, so staging here mutates nothing.
+
+    The loaded `Maps` is shared with the surface's own reads; staging an edit into
+    it would make the second read of a row return the edited value and turn one
+    edit into two. The Entities destination stages placement edits into the same
+    kind of copy, which is why this is one function rather than two.
+    """
+    return Maps(
+        identification=source.identification,
+        profile=source.profile,
+        entries=tuple(source.entries()),
+        arrays=tuple(source.slot_arrays()),
+        placements=tuple(source.placements()),
+        base_bytes=source.base_bytes,
+    )
 
 
 def span(row: RecordRow) -> RomRange:

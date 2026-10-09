@@ -166,10 +166,19 @@ What the captures show, and what they do not:
   rendered as a linear raster is the retail portrait, and the candidate's payload rendered
   the same way is noise, so the payload had been swizzled when it must not be. Section 4
   records the fix and why every static check passed anyway.
-- **A confirmation session is owed.** Candidate `ef939dcd` carries the linear portrait; its
-  payload renders as the supplied Tulma portrait when read the way the engine reads it, but
-  no session has yet shown it on a screen. Until one has, this record does not claim the
-  portrait is correct in play.
+- **A confirmation session, `tulma001-encounter-8`, on candidate `ef939dcd`.** The portrait
+  renders as the supplied Tulma art beside the same dialogue line (settle-10), and the
+  operator confirmed it on screen. Tested mechanically as well: the engine's object tile
+  region 0x06010000..0x06018000 holds the authored container `0x3fce94` (sprite 41's stand,
+  direction 0) on every gameplay settle, which is the authored payload streamed into VRAM.
+  One container is the expected figure, because the engine keeps one facing resident at a
+  time.
+- **The live object palette equals the image's table in all 256 colours.** One entry, index
+  2, differs in raw halfwords only: the ROM holds `0xFFFF` and the engine `0x7FFF`, the same
+  five channels with the unused top bit cleared. The analysis compares colours with that bit
+  masked, and says why, because comparing raw halfwords reported a mismatch that is not one.
+  The live background bank is a different table, which is consistent with the palette-write
+  enumeration in section 7, and the difference follows from the engine's own copy.
 
 The rig: mGBA `0.11.0.0` read from the binary, the candidate digest and size checked, no
 running mGBA, no savestate (a state would restore VRAM a previous run assembled, so the area

@@ -48,7 +48,7 @@ from .journal import (
     project_authority,
 )
 from .navigation import NavigationHistory
-from .rawbytes import RAW_TARGET, RawRefusal, RawWrite
+from .rawbytes import RAW_DOCUMENT, RAW_TARGET, RawRefusal, RawWrite, read_raw_document
 
 
 class SessionError(Exception):
@@ -209,7 +209,8 @@ class Session:
         directory = Path(directory)
         try:
             project = read_project(directory)
-        except _OPEN_PROJECT_ERRORS as exc:
+            raw = read_raw_document(directory / RAW_DOCUMENT)
+        except _OPEN_PROJECT_ERRORS + (RawRefusal,) as exc:
             raise SessionError(str(exc)) from exc
         if self.journal.is_dirty and not discard_unsaved:
             raise UnsavedChangesError(
@@ -220,7 +221,7 @@ class Session:
             )
         self.project_dir = directory
         self.project = project
-        self.journal.bind(project_authority(project))
+        self.journal.bind(project_authority(project), raw=raw)
 
     # -- editing --------------------------------------------------------------
 
@@ -296,6 +297,21 @@ class Session:
         except _EDIT_ERRORS as exc:
             raise SessionError(str(exc)) from exc
 
+    def raw_write_problem(
+        self, offset: int, new: bytes, *, atlas: object | None = None
+    ) -> str:
+        """Why this raw write would be refused, or an empty string. Commits nothing.
+
+        A caller that has to decide whether to ask a person uses this first, so an
+        owned range is refused without a confirmation the user cannot act on.
+        """
+        try:
+            request = self._raw_request(offset, new, confirmed=True, atlas=atlas)
+        except _EDIT_ERRORS as exc:
+            return str(exc)
+        refusal = self.journal.raw_refusal(request)
+        return "" if refusal is None else str(refusal)
+
     def apply_raw_edit(
         self,
         offset: int,
@@ -313,35 +329,8 @@ class Session:
         """
         if self.project is None:
             raise SessionError("No project is open, so there is nothing to edit.")
-        if self.base_image is None or self.profile is None:
-            raise SessionError(
-                "No ROM is open, so the bytes a raw write replaces cannot be read."
-            )
-        if (
-            type(offset) is not int
-            or offset < 0
-            or not new
-            or offset + len(new) > len(self.base_image)
-        ):
-            raise SessionError(
-                f"0x{offset:06X} is not a {len(new)}-byte range inside the "
-                f"{len(self.base_image)}-byte open image."
-            )
-        # What the write replaces is the bytes as they now stand: a pending raw
-        # write at this offset has already changed them, and the entry must record
-        # the value someone could come back to.
-        before = self.journal.raw_edits().bytes_by_offset.get(
-            offset, self.base_image[offset : offset + len(new)]
-        )
-        request = RawRequest(
-            write=RawWrite(offset=offset, before=before, new=new, confirmed=confirmed),
-            context=RawContext(
-                base_image=self.base_image,
-                profile=self.profile,
-                atlas=atlas,
-            ),
-        )
         try:
+            request = self._raw_request(offset, new, confirmed=confirmed, atlas=atlas)
             self.project = self.journal.apply(
                 self.project,
                 kind=EditKind.RAW,
@@ -351,6 +340,43 @@ class Session:
             )
         except _EDIT_ERRORS as exc:
             raise SessionError(str(exc)) from exc
+
+    def _raw_request(
+        self, offset: int, new: bytes, *, confirmed: bool, atlas: object | None
+    ) -> RawRequest:
+        """The write this session would judge, reading the bytes it replaces."""
+        if self.base_image is None or self.profile is None:
+            raise SessionError(
+                "No ROM is open, so the bytes a raw write replaces cannot be read."
+            )
+        if (
+            type(offset) is not int
+            or offset < 0
+            or not new
+            or not isinstance(new, bytes)
+            or offset + len(new) > len(self.base_image)
+        ):
+            raise SessionError(
+                f"0x{offset:06X} is not a {len(new)}-byte range inside the "
+                f"{len(self.base_image)}-byte open image."
+            )
+        # What the write replaces is the bytes as they now stand, so a write that
+        # replaces a pending one records the value someone could come back to. A
+        # pending write of a different length is not this write's predecessor, so
+        # it is left to the journal's own overlap refusal rather than being
+        # reported as a resize.
+        before = self.base_image[offset : offset + len(new)]
+        pending = self.journal.raw_edits().bytes_by_offset.get(offset)
+        if pending is not None and len(pending) == len(new):
+            before = pending
+        return RawRequest(
+            write=RawWrite(offset=offset, before=before, new=new, confirmed=confirmed),
+            context=RawContext(
+                base_image=self.base_image,
+                profile=self.profile,
+                atlas=atlas,
+            ),
+        )
 
     def save_project(self) -> None:
         """Write the held project's unsaved edits, or refuse with the reason."""
@@ -366,12 +392,14 @@ class Session:
         """Refuse a Save whose destination is the canonical image itself.
 
         The project directory is what a save writes into, and the SDK identifies
-        an image by content hash rather than by name, so a destination that IS a
-        copy of the canonical ROM is refused here, before any document is written.
-        An ordinary project directory is not an image, so this does nothing at all
-        for the common case.
+        an image by content hash rather than by name, so a destination that IS the
+        canonical ROM this profile names is refused here, before any document is
+        written. The digest compared against is the profile's own canonical digest,
+        never the destination's own: a destination compared with itself would
+        refuse every image. An ordinary project directory is not an image, so this
+        does nothing at all for the common case.
         """
-        if self.project_dir is None or self._catalog is None:
+        if self.project_dir is None or self._catalog is None or self.profile is None:
             return
         if not self.project_dir.is_file():
             return
@@ -380,7 +408,7 @@ class Session:
         except (RomReadError, OSError, GbaHeaderError, ProfileConfigError):
             return
         refuse_canonical_destination(
-            identification.path, identification.hashes.sha256
+            identification.path, self.profile.sha256
         )
 
     def undo_edit(self) -> None:

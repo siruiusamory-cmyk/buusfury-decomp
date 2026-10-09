@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tools.webfoot.binary import GBA_ROM_BASE
 from tools.webfoot.release_identity import release_identity
 
 from . import diagnostics, theme
@@ -472,21 +473,24 @@ class Shell(QMainWindow):
         question for a person: what range changes, from what bytes to what bytes,
         and who the write will be owned by. A write the user declines is not
         applied and nothing is written down.
+
+        The model is asked first, so a range another structure owns is refused
+        with its owner instead of costing a dialog the user cannot act on.
         """
         session = self._session
-        if session.base_image is None:
-            self._report_failure(
-                "Write bytes", "No ROM is open, so the bytes being replaced cannot be read."
-            )
+        problem = session.raw_write_problem(offset, new)
+        if problem:
+            self._report_failure("Write bytes", problem)
             return
-        before = session.base_image[offset : offset + len(new)]
-        owner = raw_owner(0x08000000 + offset)
+        before = session.journal.raw_edits().bytes_by_offset.get(
+            offset, (session.base_image or b"")[offset : offset + len(new)]
+        )
         answer = QMessageBox.question(
             self,
             "Write bytes",
             f"Replace {len(new)} byte(s) at 0x{offset:06X}?\n\n"
             f"{before.hex() or '(past the image)'} -> {new.hex()}\n\n"
-            f"The change is owned by {owner}.",
+            f"The change is owned by {raw_owner(GBA_ROM_BASE + offset)}.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

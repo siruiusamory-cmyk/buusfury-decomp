@@ -198,38 +198,11 @@ class RawRequest:
     context: RawContext
 
 
-def install_raw(project: StatProject, payload: object) -> RawWrite:
-    """Judge one requested raw write against the profile, the atlas and the image.
-
-    `project` is the document the other adapters install into; a raw write
-    changes the image rather than a document, so it is not read here.
-    """
-    if not isinstance(payload, RawRequest) or not isinstance(payload.write, RawWrite):
+def raw_request(after: object) -> RawWrite:
+    """The write a raw request carries, or a refusal when it carries none."""
+    if not isinstance(after, RawRequest) or not isinstance(after.write, RawWrite):
         raise RawRefusal("a raw byte edit carries a RawRequest holding a RawWrite.")
-    write: RawWrite = payload.write
-    if not write.confirmed:
-        raise RawRefusal(
-            "This write changes bytes no model explains, so it asks first: "
-            f"0x{write.offset:06X} for {len(write.new)} byte(s), "
-            f"{write.before.hex()} -> {write.new.hex()}, owned by {write.owner}."
-        )
-    context = payload.context
-    span = write.span
-    if span.end > len(context.base_image):
-        raise RawRefusal(
-            f"{write.owner}: 0x{write.offset:06X}+{span.size} extends past the "
-            f"{len(context.base_image)}-byte image."
-        )
-    claim = claimed_by(context.profile, span, atlas=context.atlas)
-    if claim is not None:
-        owner, extent = claim
-        raise RawRefusal(
-            f"These bytes back {owner} (0x{extent.start.value:06X}..0x{extent.end:06X}); "
-            "edit that object instead.",
-            owner=owner,
-            claimed=extent,
-        )
-    return write
+    return after.write
 
 
 def write_raw(directory: object, payload: object) -> None:
@@ -250,8 +223,10 @@ class EditJournal:
         self._saved_revision = 0
         self._counter = 0
         self._authority: str | None = None
-        #: The raw byte document at the cursor. Kept in step by `_rebuild_raw`
-        #: rather than by a settable field.
+        #: The raw byte document the project authors on disk, and the document at
+        #: the cursor. The applied one is rebuilt from the base, never mutated in
+        #: place, so a refusal cannot leave the two disagreeing.
+        self._raw_base = RawEdits()
         self._raw_applied = RawEdits()
 
     # -- binding --------------------------------------------------------------
@@ -260,18 +235,24 @@ class EditJournal:
     def authority(self) -> str | None:
         return self._authority
 
-    def bind(self, authority: str) -> None:
+    def bind(self, authority: str, *, raw: RawEdits | None = None) -> None:
         """Bind to one project, discarding every trace of another.
 
         A different project must never inherit this one's entries, checkpoints or
         revision counter, so binding is a full reset rather than a merge.
+
+        `raw` is the raw byte document the project authors on disk. It is the
+        immutable base the cursor replays onto, so a session that authors one new
+        byte keeps every byte an earlier session authored instead of rebuilding
+        the document from its own entries alone.
         """
         self._entries = []
         self._cursor = 0
         self._saved_revision = 0
         self._counter = 0
         self._authority = authority
-        self._raw_applied = RawEdits()
+        self._raw_base = raw if raw is not None else RawEdits()
+        self._raw_applied = self._raw_base
 
     # -- editing --------------------------------------------------------------
 
@@ -325,6 +306,72 @@ class EditJournal:
         self._commit(operation)
         return edited
 
+    def raw_refusal(self, after: object) -> RawRefusal | None:
+        """Why this raw write would be refused, or None. Commits nothing.
+
+        The ONE judgment a raw write passes, called by the commit and by a caller
+        that has to decide whether to ask a person at all. It is ordered by what
+        the answer costs: the bytes' owner, then this session's own pending
+        writes, then the confirmation last, so an owned range is refused without
+        ever asking.
+        """
+        if not isinstance(after, RawRequest) or not isinstance(after.write, RawWrite):
+            return RawRefusal("a raw byte edit carries a RawRequest holding a RawWrite.")
+        write = after.write
+        context = after.context
+        if write.span.end > len(context.base_image):
+            return RawRefusal(
+                f"{write.owner}: 0x{write.offset:06X}+{write.span.size} extends past "
+                f"the {len(context.base_image)}-byte image."
+            )
+        claim = claimed_by(context.profile, write.span, atlas=context.atlas)
+        if claim is not None:
+            owner, extent = claim
+            return RawRefusal(
+                f"These bytes back {owner}; edit that object instead.",
+                owner=owner,
+                claimed=extent,
+            )
+        # This session's own pending raw writes are the third source beside the
+        # profile extents and the atlas, and the only one that can see a write
+        # made here. A write at one offset and length replaces the write already
+        # pending there, because one field has one owner; any other overlap is a
+        # contradiction the plan would refuse, so it is refused here instead.
+        for offset, pending in sorted(self._raw_applied.bytes_by_offset.items()):
+            if not self._overlaps_pending(write, offset, pending):
+                continue
+            if offset == write.offset and len(pending) == len(write.new):
+                continue
+            return RawRefusal(
+                f"{write.owner}: the pending write at 0x{offset:06X} covers "
+                f"{len(pending)} byte(s), which this {len(write.new)}-byte write at "
+                f"0x{write.offset:06X} overlaps without replacing; undo it first.",
+                owner=write.owner,
+            )
+        # The applied semantic entries are the journal's own answer, and they are
+        # consulted here because only the journal holds them. A raw entry's own
+        # span is excluded: a raw write does not own bytes the way a structure
+        # does. The redo tail above the cursor is not applied, so it claims
+        # nothing and is not consulted.
+        for entry in self._entries[: self._cursor]:
+            if entry.target == RAW_TARGET:
+                continue
+            for declared in entry.claimed:
+                if declared.overlaps(write.span):
+                    return RawRefusal(
+                        f"These bytes back {entry.owner}; edit it there, or undo that "
+                        "edit first.",
+                        owner=entry.owner,
+                        claimed=declared,
+                    )
+        if not write.confirmed:
+            return RawRefusal(
+                "This write changes bytes no model explains, so it asks first: "
+                f"0x{write.offset:06X} for {len(write.new)} byte(s), "
+                f"{write.before.hex()} -> {write.new.hex()}, owned by {write.owner}."
+            )
+        return None
+
     def _apply_raw(
         self,
         project: StatProject,
@@ -333,59 +380,18 @@ class EditJournal:
         reason: str,
     ) -> StatProject:
         """Commit one raw byte write, or refuse it with the claiming owner."""
-        if not isinstance(after, RawRequest) or not isinstance(after.write, RawWrite):
-            raise RawRefusal("a raw byte edit carries a RawRequest holding a RawWrite.")
-        write = after.write
-        # The journal's own pending raw writes are the third source beside the
-        # profile extents and the atlas, and the only one that can see a write
-        # made in this session. A second write at the same offset and length
-        # replaces the first, because one field has one owner; any other overlap
-        # with a pending raw write is a contradiction the plan would refuse, so it
-        # is refused here instead.
-        for offset, pending in sorted(self._raw_applied.bytes_by_offset.items()):
-            if not self._overlaps_pending(write, offset, pending):
-                continue
-            if offset == write.offset and len(pending) == len(write.new):
-                self._raw_applied = replace(
-                    self._raw_applied,
-                    bytes_by_offset={
-                        key: value
-                        for key, value in self._raw_applied.bytes_by_offset.items()
-                        if key != offset
-                    },
-                )
-                break
-            raise RawRefusal(
-                f"{write.owner}: the pending write at 0x{offset:06X} covers "
-                f"{len(pending)} byte(s), which this {len(write.new)}-byte write at "
-                f"0x{write.offset:06X} overlaps without replacing; undo it first.",
-                owner=write.owner,
-            )
-        # The pending semantic entries are the journal's own answer, and they are
-        # consulted here because only the journal holds them. A raw entry's own
-        # span is excluded: this session's earlier raw writes were just judged
-        # above, and a raw write does not own bytes the way a structure does.
-        for entry in self._entries:
-            if entry.target == RAW_TARGET:
-                continue
-            for declared in entry.claimed:
-                if declared.overlaps(write.span):
-                    raise RawRefusal(
-                        f"These bytes back {entry.owner} "
-                        f"(0x{declared.start.value:06X}..0x{declared.end:06X}), whose "
-                        "edit is already committed; undo it first.",
-                        owner=entry.owner,
-                        claimed=declared,
-                    )
-        installed = install_raw(project, after)
+        refusal = self.raw_refusal(after)
+        if refusal is not None:
+            raise refusal
+        write = raw_request(after)
         operation = self._operation(
             kind=EditKind.RAW,
             target=RAW_TARGET,
             owner=write.owner,
-            before=installed.before,
-            after=installed.new,
+            before=write.before,
+            after=write.new,
             resources=(),
-            claimed=(installed.span,),
+            claimed=(write.span,),
             reason=reason or f"raw byte write at 0x{write.offset:06X}",
             coalesce_key="",
         )
@@ -536,27 +542,23 @@ class EditJournal:
         return payload
 
     def _rebuild_raw(self) -> RawEdits:
-        """The raw document at the cursor, replayed from the history.
+        """The raw document at the cursor, replayed from the project's own base.
 
-        The first raw entry holds the document the timeline started from and each
-        applied entry after it holds its own bytes, so the state at any cursor is
-        a function of the history alone and needs no second field to keep in step.
-        This is O(depth) and runs once per raw apply, undo or redo.
+        The base is what the project authored on disk and each applied raw entry
+        holds the bytes it wrote, so the state at any cursor is a function of the
+        base and the history alone: no second field has to be kept in step, and a
+        refusal cannot half-apply a write. This is O(depth) and runs once per raw
+        apply, undo or redo.
         """
-        document = RawEdits()
-        started = False
+        document = self._raw_base
         for entry in self._entries[: self._cursor]:
             if entry.target != RAW_TARGET:
                 continue
-            offset = self._offset_of(entry)
-            if not started:
-                document = RawEdits({offset: self._raw_bytes(entry.before)})
-                started = True
             document = replace(
                 document,
                 bytes_by_offset={
                     **document.bytes_by_offset,
-                    offset: self._raw_bytes(entry.after),
+                    self._offset_of(entry): self._raw_bytes(entry.after),
                 },
             )
         return document

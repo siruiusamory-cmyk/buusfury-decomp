@@ -45,12 +45,14 @@ from tools.dragonbyte.journal import (  # noqa: E402
 from tools.dragonbyte.rawbytes import (  # noqa: E402
     RAW_DOCUMENT,
     RAW_TARGET,
+    RawEdits,
     RawRefusal,
     RawWrite,
     claimed_by,
     raw_change,
     raw_owner,
     read_raw_document,
+    write_raw_document,
 )
 from tools.dragonbyte.session import Session, SessionError  # noqa: E402
 
@@ -58,6 +60,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _write_project,
+    qapp,
 )
 
 
@@ -82,6 +85,9 @@ FREE_OFFSET = 0x00001000
 
 #: An offset inside the profile's declared enemy-stat table (0x08711274).
 OWNED_OFFSET = 0x00711274
+
+#: A second offset below every declared extent, for a document holding two writes.
+SECOND_OFFSET = 0x00002000
 
 
 def _session(tmp_path: Path, base: bytes) -> Session:
@@ -231,7 +237,8 @@ def test_a_raw_write_into_a_pending_semantic_edits_bytes_is_refused_at_commit(
     cause = refusal.value.__cause__
     assert isinstance(cause, RawRefusal)
     assert cause.claimed == claimed
-    assert "already committed" in message
+    assert "These bytes back" in message
+    assert "undo that edit first" in message
     assert cause.owner in message
     assert message.count(cause.owner) == 1
     assert session.journal.depth == 1
@@ -372,6 +379,231 @@ def test_a_partial_overlap_with_a_pending_raw_write_is_refused(tmp_path, base):
     assert session.journal.raw_edits().bytes_by_offset == {
         FREE_OFFSET: b"\x11\x22\x33\x44"
     }
+
+
+def test_a_refused_raw_write_leaves_the_pending_document_exactly_as_it_was(
+    tmp_path, base
+):
+    """A refusal after the replacement check must not consume the pending write.
+
+    The document the journal reports and the entries it holds have to agree after
+    every refusal, or a Save writes a state nobody asked for and the next write
+    records a `before` the image never held.
+    """
+    session = _session(tmp_path, base)
+    session.apply_raw_edit(FREE_OFFSET, b"\x11\x22", confirmed=True)
+    pending = session.journal.raw_edits().bytes_by_offset
+    assert pending == {FREE_OFFSET: b"\x11\x22"}
+
+    with pytest.raises(SessionError):
+        session.apply_raw_edit(FREE_OFFSET, b"\x33\x44", confirmed=False)
+
+    assert session.journal.raw_edits().bytes_by_offset == pending
+    assert [entry.after for entry in session.journal.edits()] == [b"\x11\x22"]
+    assert session.journal.is_dirty
+    session.save_project()
+    assert read_raw_document(session.project_dir / RAW_DOCUMENT).bytes_by_offset == pending
+
+
+def test_a_semantic_claim_between_two_raw_writes_does_not_consume_the_first(
+    tmp_path, base
+):
+    """The other refusal that lands after the replacement check."""
+    session = _session(tmp_path, base)
+    session.apply_raw_edit(FREE_OFFSET, b"\x11\x22", confirmed=True)
+    pending = session.journal.raw_edits().bytes_by_offset
+    session.apply_edit(
+        kind=EditKind.SEMANTIC,
+        target="dialogues",
+        after={"goku-greeting": "Hello."},
+        claimed=(RomRange(FileOffset(FREE_OFFSET), 4),),
+    )
+
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(FREE_OFFSET, b"\x33\x44", confirmed=True)
+
+    assert "These bytes back" in str(refusal.value)
+    assert session.journal.raw_edits().bytes_by_offset == pending
+    session.save_project()
+    assert read_raw_document(session.project_dir / RAW_DOCUMENT).bytes_by_offset == pending
+
+
+def test_opening_a_project_that_authors_raw_bytes_keeps_them(tmp_path, base):
+    """A project's authored raw bytes survive a reopen, unaffected by new writes.
+
+    The document on disk is the base a session replays onto. Rebuilding from this
+    session's entries alone would drop every byte authored by an earlier session
+    and, at an empty cursor, delete the document outright.
+    """
+    project_dir = _write_project(tmp_path / "proj")
+    write_raw_document(project_dir, RawEdits({FREE_OFFSET: b"\x11"}))
+    assert read_raw_document(project_dir / RAW_DOCUMENT).bytes_by_offset == {
+        FREE_OFFSET: b"\x11"
+    }
+
+    session = Session()
+    session.base_image = base
+    session.profile = load_catalog(None).profiles[0]
+    session.open_project(project_dir)
+
+    assert session.journal.raw_edits().bytes_by_offset == {FREE_OFFSET: b"\x11"}
+    session.apply_raw_edit(SECOND_OFFSET, b"\x33", confirmed=True)
+    session.save_project()
+    assert read_raw_document(project_dir / RAW_DOCUMENT).bytes_by_offset == {
+        FREE_OFFSET: b"\x11",
+        SECOND_OFFSET: b"\x33",
+    }
+
+
+# --- the non-blocking findings, each measured ---------------------------------
+
+
+def test_an_undone_semantic_edit_stops_claiming_its_bytes(tmp_path, base):
+    """Only the applied prefix claims bytes. A redo tail claims nothing."""
+    session = _session(tmp_path, base)
+    claimed = RomRange(FileOffset(FREE_OFFSET), 4)
+    session.apply_edit(
+        kind=EditKind.SEMANTIC,
+        target="dialogues",
+        after={"goku-greeting": "Hello."},
+        claimed=(claimed,),
+    )
+    session.undo_edit()
+    assert session.journal.pending_spans() == ()
+
+    session.apply_raw_edit(FREE_OFFSET, b"\x11", confirmed=True)
+
+    assert session.journal.raw_edits().bytes_by_offset == {FREE_OFFSET: b"\x11"}
+
+
+def test_a_write_that_reaches_into_an_atlas_object_is_refused(tmp_path, base, profile):
+    """Overlap with an object, not containment of its first byte."""
+    from tools.webfoot.atlas import (
+        Atlas,
+        AtlasObject,
+        Confidence,
+        CoverageMap,
+        Provenance,
+    )
+
+    provenance = Provenance(profile.id, profile.sha256, "test")
+    atlas = Atlas(
+        profile_id=profile.id,
+        base_sha256=profile.sha256,
+        image_size=profile.size,
+        coverage=CoverageMap.single(
+            profile.size, "UNKNOWN", Confidence.OBSERVED, provenance
+        ),
+        objects=(
+            AtlasObject(
+                "graphics:0001",
+                RomRange(FileOffset(FREE_OFFSET), 16),
+                "container",
+                Confidence.CONFIRMED,
+                provenance,
+            ),
+        ),
+    )
+    start = FREE_OFFSET - 8
+    span = RomRange(FileOffset(start), 16)
+    assert not RomRange(FileOffset(FREE_OFFSET), 16).contains(FileOffset(start))
+    assert claimed_by(profile, span, atlas=atlas) == (
+        "atlas:graphics:0001",
+        RomRange(FileOffset(FREE_OFFSET), 16),
+    )
+
+    session = _session(tmp_path, base)
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(start, b"\x11" * 16, confirmed=True, atlas=atlas)
+
+    assert "atlas:graphics:0001" in str(refusal.value)
+    assert session.journal.raw_edits().bytes_by_offset == {}
+
+
+def test_a_same_offset_write_of_another_length_gets_the_overlap_refusal(
+    tmp_path, base
+):
+    """The journal's own refusal, not the resize message S8 owns."""
+    session = _session(tmp_path, base)
+    session.apply_raw_edit(FREE_OFFSET, b"\x11\x22\x33\x44", confirmed=True)
+
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(FREE_OFFSET, b"\x55\x66", confirmed=True)
+
+    message = str(refusal.value)
+    assert "overlaps without replacing" in message
+    assert "resize" not in message
+    assert len(session.journal.edits()) == 1
+
+
+def test_the_canonical_refusal_compares_the_profile_digest_not_the_file_itself(
+    tmp_path,
+):
+    """A GBA image at the destination is not a copy of the canonical ROM.
+
+    Comparing a file with its own digest refuses every image and mislabels it, so
+    the digest compared against has to be the profile's canonical one. Only an
+    image that really is the canonical copy is refused as one.
+    """
+    canonical = _canonical_image()
+    other = tmp_path / "other.gba"
+    other.write_bytes(canonical.read_bytes()[:0xC0] + bytes(0x400))
+    assert other.is_file()
+
+    session = _session(tmp_path, canonical.read_bytes())
+    session.open_rom(canonical)
+    session.project_dir = other
+    session.apply_raw_edit(FREE_OFFSET, b"\x11", confirmed=True)
+
+    with pytest.raises(SessionError) as refusal:
+        session.save_project()
+
+    assert "is a copy of the canonical ROM" not in str(refusal.value)
+
+
+def test_an_owned_range_is_refused_without_asking_a_person(
+    qapp, tmp_path, base, monkeypatch
+):
+    """The refusal costs no confirmation, and a free write shows pending bytes."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from tests.unit.test_dragonbyte_state import _close, _shell
+
+    session = _session(tmp_path, base)
+    shell = _shell(tmp_path, session)
+    asked: list[str] = []
+    reported: list[str] = []
+
+    def question(_parent, _title, text, *_args, **_kwargs):
+        asked.append(text)
+        return QMessageBox.StandardButton.Yes
+
+    def warning(_parent, _title, text, *_args, **_kwargs):
+        reported.append(text)
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    monkeypatch.setattr(QMessageBox, "warning", warning)
+
+    # Both modals are answered offscreen and the window is closed before any
+    # assertion, so a failure reports instead of blocking on closeEvent.
+    try:
+        shell.apply_raw_write(OWNED_OFFSET, b"\x01")
+        owned_asked, owned_reported = list(asked), list(reported)
+        owned_edits = session.journal.edits()
+        shell.apply_raw_write(FREE_OFFSET, b"\x11\x22")
+        first = asked[0] if asked else ""
+        shell.apply_raw_write(FREE_OFFSET, b"\x33\x44")
+        second = asked[1] if len(asked) > 1 else ""
+    finally:
+        _close(shell, session)
+
+    assert owned_asked == [], "an owned range must not cost a confirmation"
+    assert "enemy_stats" in "".join(owned_reported)
+    assert owned_edits == ()
+    assert "raw:0x08001000" in first
+    assert "ffff -> 1122" in first
+    assert "1122 -> 3344" in second
 
 
 # --- 4. and 5. the canonical digest ------------------------------------------

@@ -185,13 +185,18 @@ def _table_spans(profile: RomProfile) -> tuple[tuple[RomRange, str], ...]:
     return tuple(spans)
 
 
-def _atlas_span(atlas: Atlas, offset: int) -> tuple[str, RomRange] | None:
-    """The strongest atlas object covering `offset`, if any is strong enough."""
+def _atlas_span(atlas: Atlas, span: RomRange) -> tuple[str, RomRange] | None:
+    """The strongest atlas object the range touches, if any is strong enough.
+
+    Overlap, not containment of the first byte: a write that starts in an unowned
+    gap and reaches into an object would otherwise be accepted over that object's
+    bytes.
+    """
     floor = CONFIDENCE_ORDER.index(Confidence(_CLAIM_CONFIDENCE))
     best: tuple[str, RomRange] | None = None
     best_strength = -1
     for item in atlas.objects:
-        if not item.range.contains(FileOffset(offset)):
+        if not item.range.overlaps(span):
             continue
         rank = strength(item.confidence)
         if rank < floor or rank <= best_strength:
@@ -213,6 +218,12 @@ def claimed_by(
     `spans` are the byte ranges the journal's committed edits declare. They are
     consulted first because they are the one source the SDK cannot see: a
     semantic edit that has not been built has no word in any artifact yet.
+
+    `atlas` is the third source the specification names. No production caller
+    supplies one yet, so the live sources in the running product are the
+    journal's spans and the profile's declared extents; the atlas source stays
+    unwired until S4's range index answers this query for the whole image, and
+    assembling an atlas per write is not the way to wire it.
     """
     for declared in sorted(spans, key=lambda item: (item.start.value, item.size)):
         if declared.overlaps(span):
@@ -220,36 +231,13 @@ def claimed_by(
             # substituted there rather than invented here.
             return ("", declared)
     if atlas is not None:
-        found = _atlas_span(atlas, span.start.value)
+        found = _atlas_span(atlas, span)
         if found is not None:
             return found
     for declared, name in _table_spans(profile):
         if declared.overlaps(span):
             return (name, declared)
     return None
-
-
-def claimed_spans(
-    profile: RomProfile,
-    span: RomRange,
-    *,
-    spans: frozenset[RomRange] = frozenset(),
-    atlas: Atlas | None = None,
-) -> tuple[RomRange, ...]:
-    """Every declared extent the range touches, for a surface that must show them."""
-    found = []
-    for declared in sorted(spans, key=lambda item: (item.start.value, item.size)):
-        if declared.overlaps(span):
-            found.append(declared)
-    if atlas is not None:
-        floor = CONFIDENCE_ORDER.index(Confidence(_CLAIM_CONFIDENCE))
-        for item in atlas.objects:
-            if item.range.overlaps(span) and strength(item.confidence) >= floor:
-                found.append(item.range)
-    for declared, _name in _table_spans(profile):
-        if declared.overlaps(span):
-            found.append(declared)
-    return tuple(dict.fromkeys(found))
 
 
 # --- the document -------------------------------------------------------------

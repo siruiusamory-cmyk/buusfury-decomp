@@ -236,8 +236,8 @@ def apply_spec(image: bytes, spec_path: Path) -> tuple[bytes, dict]:
     """Apply a spec's operations to an image and return the new image and its report."""
     try:
         document = json.loads(spec_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SwapSpecError(f"{spec_path} is not valid JSON: {exc}") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise SwapSpecError(f"{spec_path} is not readable JSON text: {exc}") from exc
     except OSError as exc:
         raise SwapSpecError(f"{spec_path} could not be read: {exc}") from exc
     sprites, portraits, rewrites = parse_spec(document)
@@ -273,7 +273,10 @@ def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
     if report_path is not None:
         ensure_not_source_alias(image_path, report_path)
         ensure_not_source_alias(out_path, report_path)
-    image = image_path.read_bytes()
+    try:
+        image = image_path.read_bytes()
+    except OSError as exc:
+        raise error(f"{image_path} could not be read: {exc}") from exc
     digest = sha256(image)
     if digest != expect_sha256.lower():
         raise error(

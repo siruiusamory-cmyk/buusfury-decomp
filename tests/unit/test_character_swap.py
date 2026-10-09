@@ -186,8 +186,26 @@ def test_a_refused_text_field_publishes_no_output(tmp_path):
 def test_a_spec_that_is_not_json_is_refused_with_a_message(tmp_path):
     spec = tmp_path / "spec.json"
     spec.write_text("{not json", encoding="utf-8")
-    with pytest.raises(cs.SwapSpecError, match="is not valid JSON"):
+    with pytest.raises(cs.SwapSpecError, match="not readable JSON text"):
         cs.apply_spec(b"image", spec)
+
+
+def test_a_spec_that_is_not_utf8_is_refused_with_a_message(tmp_path):
+    spec = tmp_path / "spec.json"
+    spec.write_bytes(b'{"operations": [\xff\xfe]}')
+    with pytest.raises(cs.SwapSpecError, match="not readable JSON text"):
+        cs.apply_spec(b"image", spec)
+
+
+def test_a_bool_where_a_line_belongs_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec(_dialogue(_line(new=True)))
+
+
+def test_a_missing_image_is_reported_as_a_refusal(tmp_path):
+    with pytest.raises(cs.SwapSpecError, match="could not be read"):
+        cs.guarded_apply(tmp_path / "absent.gba", "00" * 32, tmp_path / "out.bin", None,
+                         lambda image: (image, {}))
 
 
 def test_a_missing_file_is_reported_as_a_refusal_not_a_traceback(tmp_path):

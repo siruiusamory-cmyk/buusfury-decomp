@@ -44,7 +44,7 @@ def diagnostics_text(
             f"ROM identity: {session.rom_identity}",
             f"Project identity: {session.project_identity}",
             f"Active destination: {active}",
-            f"Session state: ROM {rom}, project {project}",
+            f"Session: ROM {rom}, project {project}",
             f"Support: {status or 'none'}",
         )
     )

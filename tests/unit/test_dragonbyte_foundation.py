@@ -693,7 +693,7 @@ def test_diagnostics_reports_one_line_per_fact():
     assert "ROM identity: No ROM open" in lines
     assert "Project identity: No project open" in lines
     assert "Active destination: Maps (maps)" in lines
-    assert "Session state: ROM not open, project not open" in lines
+    assert "Session: ROM not open, project not open" in lines
     assert "Support: Open ROM: refused" in lines
     assert diagnostics.diagnostics_text(session, None).splitlines()[-1] == (
         "Support: none"

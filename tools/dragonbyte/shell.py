@@ -287,8 +287,8 @@ class Shell(QMainWindow):
         return spacer
 
     def _build_status_bar(self) -> None:
-        """Active destination and session state on one side, the last message
-        on the other, so a transient refusal cannot hide the session state."""
+        """The active destination and what is open on one side, the last message
+        on the other, so a transient refusal cannot hide the other two."""
         self._status_state = QLabel()
         self._status_state.setProperty("dbzRole", "status")
         self._status_message = QLabel()

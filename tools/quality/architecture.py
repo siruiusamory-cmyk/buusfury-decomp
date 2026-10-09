@@ -332,7 +332,9 @@ def _rule_import_direction(files: list[str]) -> list[dict]:
       is reference rather than a dependency.
 
     The file is parsed, so a module name inside a comment or a string can
-    neither satisfy the rule nor trip it.
+    neither satisfy the rule nor trip it. The ceiling that follows from parsing
+    is a name assembled at run time: an import built from a variable, a
+    concatenation or a call is outside what a parse can see.
     """
     # The roots above are paths; an import names a module, so the forbidden
     # side of each edge is the dotted spelling of the same root.

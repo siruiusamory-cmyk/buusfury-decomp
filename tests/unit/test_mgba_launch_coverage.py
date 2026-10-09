@@ -139,6 +139,21 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "test_the_removed_engine_prototype_stays_out_of_the_product_repository",
      "'git'"):
         "asks git what the repository tracks; it starts no emulator",
+    ("tests/unit/test_dragonbyte_foundation.py",
+     "_run_module",
+     "sys.executable"):
+        "runs this interpreter on the application module to read its version "
+        "flag; it starts no emulator",
+    ("tests/unit/test_dragonbyte_foundation.py",
+     "test_the_package_imports_and_the_qt_free_modules_stay_headless",
+     "sys.executable"):
+        "runs this interpreter to prove the headless modules import with no "
+        "window toolkit loaded; it starts no emulator",
+    ("tests/unit/test_dragonbyte_foundation.py",
+     "test_the_application_starts_and_stays_alive_offscreen",
+     "sys.executable"):
+        "runs this interpreter on the application under the offscreen platform "
+        "to prove start-up does not crash; it starts no emulator",
     ("tests/unit/test_mgba_instrumented_identity.py",
      "_emulator_processes",
      "'ps'"):

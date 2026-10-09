@@ -6,8 +6,7 @@ This is the record of the second, bounded pass. The first pass is
 as the first verified consolidated baseline, not as the deliverable. Nothing here rewrites it.
 
 **Status:** one corrected image now exists, `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`.
-The Bandana is still NOT delivered, with its mechanism named in section 2. Two defects were
-found by runtime observation and one of them is fixed in this image.
+The Bandana is still NOT delivered: its id and storage are now measured, and the new-game seeding site is the one missing piece, named in section 2. One defect was found by runtime observation and is fixed in this image.
 
 ## 0b. The corrected image
 
@@ -39,7 +38,7 @@ NXT LVL: 0   ZENIE: 100   TIME: 0:06
 STR: 255   POW: 255   END: 255   SPD: 255
 ```
 
-## 0e. A second defect, in the roster identity, found at runtime and NOT fixed
+## 0e. The roster identity, read correctly from the runtime screen
 
 That same screen names the boosted character **YAMCHA**, and `BASE_STAT_NAMES`
 (`tools/webfoot/formats/stat_tables.py:87`) is Goku, Gohan, Goten, Trunks, Vegeta, Gotenks,
@@ -124,7 +123,7 @@ Two notes so a later reader does not repeat my own first readings.
    suspected of gating on level. Expected: it opens on the same trigger as retail, because no
    level gate was found that level 200 fails, and no bypass was written for one. A refusal
    here is the evidence a bypass would need.
-4. **The Bandana.** Meaningful only after section 2 is resolved. With a bandana in the
+4. **The Bandana.** Its id and storage are measured; the grant is not written. With a bandana in the
    inventory, the entry can be read in a savestate or debugger: the RAM count at `0x0300114C`
    then the 8-byte slots from `0x03001150`, id in the low 28 bits of the second word. The id
    read there is the id the game uses, and that number is the one piece of information this
@@ -148,35 +147,49 @@ here is inferred from a name, an offset or a stored note.
 | 7 | The battery save is one 4096-byte save block followed by 4096 bytes of `0xFF`. At offset `0x100` it holds `00000005 00000074`, which reads as count 5 and id 116 ("White Belt") only if each four-byte pair is read big-endian, so this row does not by itself corroborate an id ordering. The renderer's own code path does, and is what section 2 rests on. | direct read of the save, and the RAM map |
 | 8 | The external RAM map records no item-id field for gear; the nearest entries are the derived "Currently Equipped STR/POW/END/SPD" totals at `0x03002B70`.., which are computed values, not ids. This row is EXTERNAL, like row 1. | RAM map |
 
-## 2. The Bandana: identity RESOLVED, the grant is not written
+## 2. The Bandana: storage MEASURED, grant not written
 
 An earlier version of this record called the id arithmetic an unresolved blocker. That was
-wrong, and an independent review contradicted it. Re-measured here, and it holds:
+wrong, and an independent review contradicted it. All of the following is measured on the
+delivered image and on live emulated RAM.
 
-| # | finding | source |
-| --- | --- | --- |
-| a | The name table at `0x06BCE8` is a flat table of 4-byte pointers, scaled by four in the renderer. Index 518 is "Bandana", index 519 is its description, and index 520 is "Airship", so the room-name run begins immediately after the pair. There are no 8-byte records. | ROM read of the image under test |
-| b | The renderer `0x0801D988`'s literal pool holds two words: at `0x0801DC68` the value `0x0806BCE8`, the name table, and at `0x0801DC74` the value `0x086F82EC`, which is a **gear table** at file offset `0x6F82EC` of 162 records of `0x2C` bytes, each with the name index at `+0x00` and the description index at `+0x02`. | ROM read |
-| c | Gear record **116** names "White Belt", record **126** names "Bandana", and record 160 names "Geromantium Bandana". | ROM read of the gear table |
-| d | The renderer's own read path settles it without the save: `0x0801DACC`..`0x0801DADC` reads the word at slot `+4`, keeps its low 28 bits, multiplies by `0x2C`, and adds the gear-table base, so an inventory id indexes this gear table directly. That is what makes 126 the Bandana's id. | disassembly of `0x0801D988`, and (c) |
+**The id.** The name table at `0x06BCE8` is a flat table of 4-byte text pointers scaled by
+four in the renderer. The renderer `0x0801D988`'s literal pool holds the name table at
+`0x0801DC68` and a **gear table** at `0x0801DC74`, file offset `0x6F82EC`: 162 records of
+`0x2C` bytes, the name index at `+0x00`, the description index at `+0x02`. Gear record **126**
+names index 518, "Bandana". The renderer reads an inventory id, keeps its low 28 bits,
+multiplies by `0x2C` and adds that base, so ids index this gear table directly.
 
-So the **Bandana id is 126**, measured rather than chosen. What is still not established, and
-is the only reason no code was written:
+**The storage.** Measured twice, and the two agree: once by reading the completed battery save
+directly, and once by reading live emulated RAM with the operator's equipped bandana in place.
 
-1. **The flag nibble.** It decides whether an " E" marker is drawn beside the name (name
-   index 69), which reads as an equipped marker. That reading is an inference, not a runtime
-   observation, so the grant should write the nibble value the game itself uses for a plain
-   inventory item.
-2. **The grant site.** No new-game initializer for the inventory has been located: the item
-   count and the slots are reached as offsets from the save-block base at `0x03001068` rather
-   than through literals, so the zeroing and seeding path is still untraced. The add routine
-   itself is known and small: `0x08004448` takes the inventory pointer and an id, refuses
-   silently at 250 entries, increments the count, and stores `id & 0x0FFFFFFF`.
+| element | finding |
+| --- | --- |
+| count | u16 at `0x0300114C`; read live as 28 on the completed save |
+| slot | 8 bytes: **word 0 is the item's own gear id**, **word 1 is a status word** |
+| a held but unequipped item | status word `0x00000000`; the pair is (`id`, `0`) |
+| an equipped item | the top nibble of the status word is set to the wearer's index plus one |
+| the observed transition | the operator equipped the bandana. At frame 1110 the pair at `0x030011A4` was `0x0000007E 0x0000007E`; at frame 3210 it was `0x1000007E 0x0000007E`. Only that nibble moved, and the count stayed 28 |
 
-Writing "call the add routine with 126 somewhere on the new-game path" without the site would
-be a guess about where, which is the class of change this project refuses. The bounded next
-action is one trace: find the code that zeroes the count offset from the save base, and the
-grant becomes one call with a measured constant.
+Reading the same structure out of the completed save independently corroborates it: it holds
+`00000005 00000044` at `0x140` and `0000009C 0000007E` at `0x150`, which is the bandana with
+status `0x7E` marking it held and available.
+
+**The remaining gap is the site, not the shape.** A grant has to write id 126 into the next
+free slot with status 0 and increment the count at `0x0300114C`. The routine that does that
+already exists and is known: `0x08004448` takes the inventory pointer and an id, refuses
+silently at 250 entries, increments the count and stores `id & 0x0FFFFFFF`. What is not yet
+located is the new-game initialization path that seeds the inventory, so a call site cannot be
+chosen from evidence. Two bounded routes to it:
+
+1. Trace the writer that stores the count at inventory `+0xE4` on a new game, from the
+   save-block base pointer the ROM holds as a literal at file `0x6B7080`.
+2. Have the operator start a brand-new game on a session with the inventory watch armed, and
+   read the first count transition. That shows the seeding writes directly.
+
+Either yields a call site inside the game's own path, which is what a grant should use rather
+than a raw byte patch of the live save block.
+
 
 
 ## 3. The specific next action that resolves it

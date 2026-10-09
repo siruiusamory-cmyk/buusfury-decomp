@@ -41,7 +41,8 @@ is not a write target and is not read through a junction; no input is hardlinked
 | 5 complete text pass | `d564ef8a...` | `20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c` |
 | 6 toolkit graphics swap | `20f2c140...` | `ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4` |
 | 7 toolkit dialogue swap | `ef939dcd...` | `a4c12a95818cab2781165658d25f2463bc6fe0f87040620a7c89f0034c5b49db` |
-| 8 playtest boost | `a4c12a95...` | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e` |
+| 8 playtest boost, first form | `a4c12a95...` | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e`, superseded: its hp and ep edit read as negative in game |
+| 9 playtest boost, corrected | `a4c12a95...` | `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`, this build's current image |
 
 Steps 1 to 5 are the merged complete-text-pass chain. Step 6 and 7 are the merged
 character-swap toolkit, invoked as
@@ -59,7 +60,7 @@ under ignored `build/`. The four art inputs are `stand.png`
 
 **Steps 6, 7 and 8 were re-run here, not assumed.** Re-running the two swaps from the
 verified `20f2c140` foundation produced `ef939dcd` and then `a4c12a95` byte for byte, and
-re-running the boost on that fresh output produced `6d7a56c6` again. That is the integration
+re-running the boost on that fresh output reproduced the first form's digest, and after the hp and ep fields were dropped it reproduces `acd98c2a`. That is the integration
 provenance check the ticket asks for: the selected foundation demonstrably contains the text
 pass and the Tulma work, because the toolkit regenerates it.
 
@@ -146,12 +147,12 @@ and any runtime observation of this image. See section 5.
 
 | item | what is missing |
 | --- | --- |
-| the playtest boost (`6d7a56c6`) | independent review, CI, and one runtime observation that level 200 is what the game displays |
+| the playtest boost (`acd98c2a`) | independent review and CI |
 | Tulma graphics runtime confirmation | the human-played encounter session the graphics ticket names |
 
 ### 4.3 In progress
 
-Nothing. The boost lane is frozen at `6d7a56c6` pending review.
+Nothing. The boost lane is frozen at `acd98c2a` pending review.
 
 ### 4.4 Approved future changes
 
@@ -179,7 +180,7 @@ Nothing. The boost lane is frozen at `6d7a56c6` pending review.
 
 | item | state |
 | --- | --- |
-| the Bandana starting item | **ID MEASURED, GRANT NOT WRITTEN.** The name table at `0x06BCE8` is a flat table of 4-byte pointers scaled by four, and the renderer `0x0801D988` reaches a gear table at file `0x6F82EC` of 162 records of `0x2C` bytes, whose `+0x00` is a name index. Gear record **126** names index 518, "Bandana". The grant is not written because the new-game initialization of the inventory has not been located: the count and slots are reached as offsets from the save block rather than through literals, and a grant needs a site. See `docs/research/FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md` section 2 |
+| the Bandana starting item | **ID AND STORAGE MEASURED, GRANT NOT WRITTEN.** Id 126, through the gear table at file `0x6F82EC` that the renderer `0x0801D988` names in its literal pool at `0x0801DC74`; 162 records of `0x2C` bytes, name index at `+0x00`. Storage was measured live on the delivered image: a u16 count at `0x0300114C` and 8-byte slots whose first word is the item's gear id and whose second word is a status word, zero when the item is merely held. Equipping the bandana on a completed save moved the status word's top nibble from `0x0000007E` to `0x1000007E` and nothing else. What is missing is the new-game seeding site, so no call site can yet be chosen from evidence. See the completion record beside this one, section 2 |
 | zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
 | latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
 | the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |
@@ -214,7 +215,7 @@ note the frame, the last text box, and whether the music continued.
 | --- | --- | --- |
 | 0 | pre-flight | the loaded image is `acd98c2a...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
 | 1 | new game, first stat screen | the boosted party reads **level 200**, with STR, POW, END and SPD at 255, and hp and ep at their ordinary starting values, never negative |
-| 2 | first combat encounter | damage taken is small relative to the boosted hp; no freeze, no graphical glitch in the HUD |
+| 2 | first combat encounter | damage lands normally and hp never displays as a negative; no freeze, no graphical glitch in the HUD |
 | 3 | first shop and item use | items still buyable and usable; the inventory screen renders the party's techniques unchanged |
 | 4 | first quest-gated door or NPC | the gate opens on the same trigger as retail. A gate that requires a level or a specific item is the case this boost does not address: record it, do not route around it silently |
 | 5 | each chapter in order | chapter completes; no freeze; the party remains at boosted stats; check the quest log after each chapter |

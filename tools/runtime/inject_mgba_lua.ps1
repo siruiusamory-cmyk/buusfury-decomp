@@ -468,6 +468,14 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv3_boost001_probe.lua')
     )
+    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the live inventory watch for the same
+    # ticket. The operator equips an item on a completed save and this reads the
+    # inventory block as it changes, so the storage shape of a held item is measured
+    # rather than inferred. Read-only: memory and registers only, no key, no write to
+    # emulated state.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\boost001_inventory_watch.lua')
+    )
     # Added by FRIEND-V3-PLAYTEST-BOOST-001: the bounded input driver for the same
     # ticket. It is DRIVING CODE in its own file, which is why it is separate from the
     # observer above: it activates the title screen's highlighted entry and repeats that

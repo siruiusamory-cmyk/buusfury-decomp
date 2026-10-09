@@ -40,7 +40,7 @@ from tools.webfoot.project import (  # noqa: E402
 from tools.webfoot.project import model as project_model  # noqa: E402
 
 from tools.dragonbyte import journal as journal_module  # noqa: E402
-from tools.dragonbyte.destination import DESTINATIONS  # noqa: E402
+from tools.dragonbyte.destination import DESTINATIONS, ROM_DESTINATION  # noqa: E402
 from tools.dragonbyte.journal import (  # noqa: E402
     EditJournal,
     EditKind,
@@ -893,7 +893,12 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
     """The FOUNDATION observation was a selected ROM button beside a Data page.
     Nothing in the model allows it - the strip, the stack and the history are
     written in one place from one id - so this pins the invariant rather than
-    reproducing a defect. See the report: not reproducible from the model."""
+    reproducing a defect. See the report: not reproducible from the model.
+
+    One page names itself differently on purpose: the ROM destination renders the
+    address space (S5) rather than a foundation statement, so its page is
+    ``romPage`` and each of the other five is its own ``foundationPage_<id>``.
+    """
     session = Session()
     shell = _shell(tmp_path, session)
     stack = shell._page_stack
@@ -908,7 +913,13 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
         ]
         assert checked == [current.destination], checked
         assert stack.currentWidget() is shell._pages[current.destination]
-        assert stack.currentWidget().objectName() == f"foundationPage_{current.destination}"
+        page_name = stack.currentWidget().objectName()
+        expected = (
+            "romPage"
+            if current.destination == ROM_DESTINATION.id
+            else f"foundationPage_{current.destination}"
+        )
+        assert page_name == expected, page_name
 
     for _round in range(3):
         for candidate in DESTINATIONS:

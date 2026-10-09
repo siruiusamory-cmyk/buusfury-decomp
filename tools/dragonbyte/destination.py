@@ -83,9 +83,10 @@ DESTINATIONS: tuple[Destination, ...] = (
         label="ROM",
         group=ROM,
         foundation_summary=(
-            "The ROM destination is the address-first view of the image, covering "
-            "its ranges, the ownership of those bytes and the bytes themselves; it "
-            "is not implemented in the foundation build."
+            "The ROM destination is the address-first view of the image: its "
+            "ranges and the owners the range index reports, its bytes beside their "
+            "canonical values, raw byte search, and a confirmed raw write into "
+            "bytes no structure owns."
         ),
     ),
 )

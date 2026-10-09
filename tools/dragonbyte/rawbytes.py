@@ -10,9 +10,9 @@ Three questions are answered here and nowhere else.
 it claims, or with nothing when the range is free. It consults all three sources
 the product spec requires: the journal's own committed spans (a pending edit the
 SDK has no word for), the declared table extents the profile vouches for, and
-the atlas objects. The range index that will answer this properly arrives in S4;
-until then a byte is refused when ANY source claims it, which is the
-conservative direction.
+the atlas objects. The ROM surface passes the atlas from the range index it
+already holds (S4); a caller without one keeps the conservative two-source
+answer, and a byte is refused when ANY source claims it.
 
 *Is this write confirmed?* An unclaimed overwrite changes bytes no model
 explains, so it is refused until the caller states that the range, the old bytes
@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from tools.webfoot.atlas import CONFIDENCE_ORDER, Atlas, Confidence, strength
+from tools.webfoot.atlas import Atlas, Confidence, strength
 from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
 from tools.webfoot.layout import RomRange
 from tools.webfoot.profile import RomProfile
@@ -47,9 +47,15 @@ RAW_TARGET = "rawbytes"
 #: alone; `read_project` loads exact names, so an existing reader ignores it.
 RAW_DOCUMENT = Path("raw") / "bytes.toml"
 
-#: The confidence below which an atlas object is not treated as owning bytes.
-#: Weak evidence must not be able to block an honest write.
-_CLAIM_CONFIDENCE = "INFERRED"
+#: The confidence at which an atlas object is treated as owning bytes. Weak
+#: evidence must not be able to block an honest write, and the ROM surface reads
+#: this same floor so the owners it shows and the writes it refuses agree.
+OWNERSHIP_FLOOR = Confidence("INFERRED")
+
+
+def blocks_a_write(confidence: Confidence) -> bool:
+    """Whether evidence this strong makes the bytes someone else's to edit."""
+    return strength(confidence) >= strength(OWNERSHIP_FLOOR)
 
 
 class RawRefusal(Exception):
@@ -139,11 +145,14 @@ def raw_change(write: RawWrite) -> ByteChange:
 # --- what owns these bytes ----------------------------------------------------
 
 
-def _table_spans(profile: RomProfile) -> tuple[tuple[RomRange, str], ...]:
+def declared_extents(profile: RomProfile) -> tuple[tuple[RomRange, str], ...]:
     """The extents the profile itself vouches for, as (range, owner) pairs.
 
     Owner names are the profile's own table and field names, so a refusal names
-    a fact the configuration file states rather than anything invented here.
+    a fact the configuration file states rather than anything invented here. It
+    is public because it is also the range index's declared layer and the ROM
+    surface's jump list: one list, so a table a jump offers and a table a write
+    is refused by cannot disagree.
     """
     size = profile.size
     spans: list[tuple[RomRange, str]] = []
@@ -192,14 +201,13 @@ def _atlas_span(atlas: Atlas, span: RomRange) -> tuple[str, RomRange] | None:
     gap and reaches into an object would otherwise be accepted over that object's
     bytes.
     """
-    floor = CONFIDENCE_ORDER.index(Confidence(_CLAIM_CONFIDENCE))
     best: tuple[str, RomRange] | None = None
     best_strength = -1
     for item in atlas.objects:
         if not item.range.overlaps(span):
             continue
         rank = strength(item.confidence)
-        if rank < floor or rank <= best_strength:
+        if not blocks_a_write(item.confidence) or rank <= best_strength:
             continue
         best = (f"atlas:{item.identity}", item.range)
         best_strength = rank
@@ -219,11 +227,11 @@ def claimed_by(
     consulted first because they are the one source the SDK cannot see: a
     semantic edit that has not been built has no word in any artifact yet.
 
-    `atlas` is the third source the specification names. No production caller
-    supplies one yet, so the live sources in the running product are the
-    journal's spans and the profile's declared extents; the atlas source stays
-    unwired until S4's range index answers this query for the whole image, and
-    assembling an atlas per write is not the way to wire it.
+    `atlas` is the third source the specification names. The ROM surface holds
+    one already, taken from the range index over the open image, and passes it
+    here; a caller without one keeps the conservative answer from the journal's
+    spans and the profile's declared extents, rather than assembling an atlas of
+    its own per write.
     """
     for declared in sorted(spans, key=lambda item: (item.start.value, item.size)):
         if declared.overlaps(span):
@@ -234,7 +242,7 @@ def claimed_by(
         found = _atlas_span(atlas, span)
         if found is not None:
             return found
-    for declared, name in _table_spans(profile):
+    for declared, name in declared_extents(profile):
         if declared.overlaps(span):
             return (name, declared)
     return None

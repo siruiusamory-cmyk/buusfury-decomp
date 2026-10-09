@@ -44,6 +44,7 @@ from .destination import DESTINATIONS, ROM, Destination, destination
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
 from .rawbytes import raw_owner
+from .rompage import RomPage
 from .session import Session, SessionError
 from .settings import Settings
 
@@ -139,8 +140,18 @@ class Shell(QMainWindow):
 
         self._pages: dict[str, QWidget] = {}
         self._page_stack = QStackedWidget()
+        #: The ROM destination's page, which renders the interface to the image
+        #: itself rather than a statement about it. The other five are still the
+        #: foundation's statement, and the last one is built differently on
+        #: purpose: the registry says which kind of surface it is.
+        self._rom_page: RomPage | None = None
         for candidate in DESTINATIONS:
-            page = _FoundationPage(candidate)
+            if candidate.group == ROM:
+                page: QWidget = RomPage(self._session)
+                page.set_write_handler(self.apply_raw_write)
+                self._rom_page = page
+            else:
+                page = _FoundationPage(candidate)
             self._pages[candidate.id] = page
             self._page_stack.addWidget(page)
 
@@ -466,7 +477,9 @@ class Shell(QMainWindow):
             return
         self._refresh_status()
 
-    def apply_raw_write(self, offset: int, new: bytes) -> None:
+    def apply_raw_write(
+        self, offset: int, new: bytes, *, atlas: object | None = None
+    ) -> None:
         """Confirm one free byte write, then commit it.
 
         The confirmation lives here rather than in the model because it is a
@@ -476,9 +489,11 @@ class Shell(QMainWindow):
 
         The model is asked first, so a range another structure owns is refused
         with its owner instead of costing a dialog the user cannot act on.
+        `atlas` is the open image's atlas when the caller holds one, which is the
+        third claimed-bytes source beside the profile's extents and the journal.
         """
         session = self._session
-        problem = session.raw_write_problem(offset, new)
+        problem = session.raw_write_problem(offset, new, atlas=atlas)
         if problem:
             self._report_failure("Write bytes", problem)
             return
@@ -497,7 +512,7 @@ class Shell(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         try:
-            session.apply_raw_edit(offset, new, confirmed=True)
+            session.apply_raw_edit(offset, new, confirmed=True, atlas=atlas)
         except SessionError as exc:
             self._report_failure("Write bytes", str(exc))
             return
@@ -594,6 +609,12 @@ class Shell(QMainWindow):
         self._status_state.setText(f"{label}   |   {rom}   |   {project}")
         self._status_message.setText(self._status_text)
         self._refresh_edit_actions()
+        if self._rom_page is not None and self._page_stack.currentWidget() is self._rom_page:
+            # The ROM destination renders the image and the journal, so it is
+            # re-rendered wherever the journal can have moved - but only while it
+            # is the page on screen. Re-rendering a page nobody is looking at is
+            # work the user waits for and cannot see; showing it refreshes it.
+            self._rom_page.refresh()
 
     def _refresh_edit_actions(self) -> None:
         """Render the session's answer about Save, Undo and Redo.

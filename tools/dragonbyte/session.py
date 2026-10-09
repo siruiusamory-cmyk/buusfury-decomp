@@ -344,7 +344,14 @@ class Session:
     def _raw_request(
         self, offset: int, new: bytes, *, confirmed: bool, atlas: object | None
     ) -> RawRequest:
-        """The write this session would judge, reading the bytes it replaces."""
+        """The write this session would judge, reading the bytes it replaces.
+
+        ``atlas`` is optional here and NOT optional by rule: with None the claim
+        check rests on the profile's declared extents and the journal's spans
+        alone, which is the conservative path S3 measured. The one production
+        caller, the ROM page, either supplies the open image's atlas or refuses
+        first through `romsurface.write_gate`; a new caller must supply one.
+        """
         if self.base_image is None or self.profile is None:
             raise SessionError(
                 "No ROM is open, so the bytes a raw write replaces cannot be read."

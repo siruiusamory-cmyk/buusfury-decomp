@@ -42,6 +42,7 @@ from . import diagnostics, theme
 from .destination import DESTINATIONS, ROM, Destination, destination
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
+from .rawbytes import raw_owner
 from .session import Session, SessionError
 from .settings import Settings
 
@@ -438,6 +439,7 @@ class Shell(QMainWindow):
         target: str,
         after: object,
         resources: tuple[str, ...] = (),
+        claimed: tuple = (),
         reason: str = "",
         coalesce_key: str = "",
     ) -> None:
@@ -454,11 +456,46 @@ class Shell(QMainWindow):
                 target=target,
                 after=after,
                 resources=resources,
+                claimed=claimed,
                 reason=reason,
                 coalesce_key=coalesce_key,
             )
         except SessionError as exc:
             self._report_failure("Edit", str(exc))
+            return
+        self._refresh_status()
+
+    def apply_raw_write(self, offset: int, new: bytes) -> None:
+        """Confirm one free byte write, then commit it.
+
+        The confirmation lives here rather than in the model because it is a
+        question for a person: what range changes, from what bytes to what bytes,
+        and who the write will be owned by. A write the user declines is not
+        applied and nothing is written down.
+        """
+        session = self._session
+        if session.base_image is None:
+            self._report_failure(
+                "Write bytes", "No ROM is open, so the bytes being replaced cannot be read."
+            )
+            return
+        before = session.base_image[offset : offset + len(new)]
+        owner = raw_owner(0x08000000 + offset)
+        answer = QMessageBox.question(
+            self,
+            "Write bytes",
+            f"Replace {len(new)} byte(s) at 0x{offset:06X}?\n\n"
+            f"{before.hex() or '(past the image)'} -> {new.hex()}\n\n"
+            f"The change is owned by {owner}.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            session.apply_raw_edit(offset, new, confirmed=True)
+        except SessionError as exc:
+            self._report_failure("Write bytes", str(exc))
             return
         self._refresh_status()
 

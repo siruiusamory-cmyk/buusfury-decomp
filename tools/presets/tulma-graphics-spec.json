@@ -1,0 +1,42 @@
+{
+  "operations": [
+    {
+      "kind": "sprite",
+      "sprite_id": 41,
+      "slots": [
+        {
+          "slot": 0,
+          "sheet": "stand.png",
+          "frames": 2
+        },
+        {
+          "slot": 1,
+          "sheet": "walk.png",
+          "frames": 4
+        },
+        {
+          "slot": 12,
+          "sheet": "arms_up.png",
+          "frames": 2
+        }
+      ],
+      "frame": [
+        16,
+        32
+      ],
+      "cell": 32,
+      "crop_x": 8,
+      "anchor": [
+        0,
+        -24
+      ],
+      "composition_size": 512
+    },
+    {
+      "kind": "portrait",
+      "slot": 17,
+      "png": "portrait.png",
+      "side": 64
+    }
+  ]
+}

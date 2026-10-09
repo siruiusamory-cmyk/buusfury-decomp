@@ -140,7 +140,8 @@ SDK authored, which is the SDK's central claim.
 
 ### Retired tombstones (do not run, do not delete)
 
-Each is a single `error(...)` line naming why the helper was withdrawn. They
+Each is a single failing statement naming why the helper was withdrawn:
+`error(...)` in a Lua tombstone, `throw` in a PowerShell one. They
 stay tracked so a research document citing the filename still resolves, and so
 nobody reintroduces the same unsafe helper.
 
@@ -151,3 +152,4 @@ nobody reintroduces the same unsafe helper.
 | `p006_load_and_scan.lua` | Direct Lua state loading bypasses provenance and identity checks; use `run_mgba_capture.ps1` with `-StatePath`/`-LuaPath`. |
 | `p006_load_slot1.lua` | Not part of the tracked capture pipeline. |
 | `p006_save_state.lua` | Wrote a state beside the read-only source state. |
+| `toolkit031_load_state.ps1` | A second mGBA Scripting-window driver beside `inject_mgba_lua.ps1`. Load a state through `start_toolkit031_session.ps1`, which asks `Start-MgbaSession -StatePath` for the inject-then-load order. |

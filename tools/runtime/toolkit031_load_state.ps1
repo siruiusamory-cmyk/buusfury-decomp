@@ -1,0 +1,1 @@
+throw 'RETIRED: a second mGBA Scripting-window driver beside inject_mgba_lua.ps1; load a state through start_toolkit031_session.ps1, which asks Start-MgbaSession -StatePath for the inject-then-load order'

@@ -259,6 +259,11 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "'powershell.exe'"):
         "starts a helper shell that clicks the Scripting window's Run button in "
         "an already-running mGBA; it starts no emulator itself",
+    ("tests/unit/test_mgba_state_load_routing.py",
+     "_tracked_powershell",
+     "'git'"):
+        "lists the tracked PowerShell tree for the single-injection-authority "
+        "check; it starts no emulator",
     ("tools/webfoot/release_identity.py",
      "_git",
      "'git'"):

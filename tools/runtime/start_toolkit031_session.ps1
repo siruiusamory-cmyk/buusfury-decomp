@@ -107,15 +107,16 @@ $csv = Join-Path $runDir 'toolkit031-execution.csv'
 # CHILD process that inherits it, so set it before launching mGBA.
 $env:TOOLKIT031_OUT = $csv
 
-# One mechanism for every launcher: mGBA loads the state with -t and runs the
-# observer with --script, so no Scripting window is opened and nothing takes the
-# operator window. See tools/runtime/mgba_session.ps1.
+# One mechanism for every launcher: the shared helper composes a bootstrap that
+# runs the observer's dofile and THEN loads the savestate, so the observer is
+# armed before the load constructs anything. No Scripting window is opened and
+# nothing takes the operator window. See tools/runtime/mgba_session.ps1:114-154.
 . (Join-Path $PSScriptRoot 'mgba_session.ps1')
 $process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
     -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
     -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
     -StatePath $workingState
-Set-Content -LiteralPath (Join-Path $runDir 'state-loaded.txt') -Value 'mGBA -t --script' -Encoding ascii
+Set-Content -LiteralPath (Join-Path $runDir 'state-loaded.txt') -Value 'observer dofile then emu:loadStateFile (bootstrap)' -Encoding ascii
 
 $identity = [ordered]@{
     label        = $Label

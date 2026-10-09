@@ -47,6 +47,7 @@ from .journal import (
     RawRequest,
     project_authority,
 )
+from .dataedits import DataEditError
 from .navigation import NavigationHistory
 from .rawbytes import RAW_DOCUMENT, RAW_TARGET, RawRefusal, RawWrite, read_raw_document
 
@@ -96,13 +97,16 @@ _OPEN_PROJECT_ERRORS = (ProjectError, ProjectFormatError, OSError)
 #: `JournalError` is the journal's own boundary type and covers an unregistered
 #: target, a foreign authority, an empty history and a failed write; `RawRefusal`
 #: is the raw byte layer's refusal and is deliberately not a `JournalError`, so a
-#: caller can tell a claimed byte from a broken journal. `AuthoredImageError` is
+#: caller can tell a claimed byte from a broken journal; `DataEditError` is the
+#: data documents' own refusal, for the same reason in the other direction.
+#: `AuthoredImageError` is
 #: the SDK's own save-boundary refusal, which a canonical destination raises.
 #: `OSError` and the project families are named because the journal's writer
 #: reaches the filesystem and the project codec directly.
 _EDIT_ERRORS = (
     JournalError,
     RawRefusal,
+    DataEditError,
     AuthoredImageError,
     OSError,
     ProjectError,
@@ -135,6 +139,16 @@ class Session:
     @property
     def has_rom(self) -> bool:
         return self.identification is not None
+
+    @property
+    def catalog(self) -> RomProfileCatalog | None:
+        """The profile catalog this session resolved when it opened its image.
+
+        Read-only, and None before an image is open: a destination that needs to
+        load a second table from the same file asks for the catalog the open
+        already settled rather than resolving a second one from configuration.
+        """
+        return self._catalog
 
     @property
     def has_project(self) -> bool:

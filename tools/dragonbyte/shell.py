@@ -40,6 +40,7 @@ from tools.webfoot.binary import GBA_ROM_BASE
 from tools.webfoot.release_identity import release_identity
 
 from . import diagnostics, theme
+from .datapage import DataPage
 from .destination import DESTINATIONS, ROM, Destination, destination
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
@@ -47,6 +48,11 @@ from .rawbytes import raw_owner
 from .rompage import RomPage
 from .session import Session, SessionError
 from .settings import Settings
+
+#: The Data destination's registry id. Named here because the shell builds this
+#: one page differently, and the registry remains the authority on its label,
+#: its group and its strip position.
+DATA_DESTINATION = "data"
 
 #: The window's starting size. A narrower window is allowed; this is what a user
 #: sees first, with the centre editor and the inspector both usable.
@@ -145,18 +151,35 @@ class Shell(QMainWindow):
         #: foundation's statement, and the last one is built differently on
         #: purpose: the registry says which kind of surface it is.
         self._rom_page: RomPage | None = None
+        #: The Data destination's page: the three record tables and the Coverage
+        #: view. Its edits go through this window's one `apply_edit`, and the ROM
+        #: page asks it for the byte effect of those edits.
+        self._data_page: DataPage | None = None
+        self._inspector = InspectorPane()
+        self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
         for candidate in DESTINATIONS:
             if candidate.group == ROM:
                 page: QWidget = RomPage(self._session)
                 page.set_write_handler(self.apply_raw_write)
                 self._rom_page = page
+            elif candidate.id == DATA_DESTINATION:
+                data_page = DataPage(self._session)
+                data_page.set_edit_handler(self.apply_edit)
+                data_page.set_open_bytes_handler(self.open_rom_at)
+                data_page.set_selection_handler(self._inspector.set_context)
+                self._data_page = data_page
+                page = data_page
             else:
                 page = _FoundationPage(candidate)
             self._pages[candidate.id] = page
             self._page_stack.addWidget(page)
 
-        self._inspector = InspectorPane()
-        self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
+        if self._rom_page is not None and self._data_page is not None:
+            # One journal, two views: the ROM page shows a data edit's bytes
+            # because the Data page is the only thing that knows how to encode
+            # them, and it is asked rather than duplicated.
+            self._rom_page.set_pending_provider(self._data_page.pending_bytes)
+
         centre = QSplitter(Qt.Orientation.Horizontal)
         centre.addWidget(self._page_stack)
         centre.addWidget(self._inspector)
@@ -426,6 +449,17 @@ class Shell(QMainWindow):
             return
         self._refresh_status()
 
+    def open_rom_at(self, offset: int) -> None:
+        """Show the ROM destination and put its one selection on `offset`.
+
+        The route a semantic destination takes to hand the address surface a
+        selection. It pushes one history entry, the same as any other
+        destination switch, so Back returns to the record the user came from.
+        """
+        self.show_destination("rom")
+        if self._rom_page is not None:
+            self._rom_page.focus_offset(offset)
+
     def undo_edit(self) -> None:
         """Step the project back one edit. A refusal changes nothing."""
         try:
@@ -609,12 +643,17 @@ class Shell(QMainWindow):
         self._status_state.setText(f"{label}   |   {rom}   |   {project}")
         self._status_message.setText(self._status_text)
         self._refresh_edit_actions()
-        if self._rom_page is not None and self._page_stack.currentWidget() is self._rom_page:
+        current = self._page_stack.currentWidget()
+        if self._rom_page is not None and current is self._rom_page:
             # The ROM destination renders the image and the journal, so it is
             # re-rendered wherever the journal can have moved - but only while it
             # is the page on screen. Re-rendering a page nobody is looking at is
             # work the user waits for and cannot see; showing it refreshes it.
             self._rom_page.refresh()
+        if self._data_page is not None and current is self._data_page:
+            # The Data destination renders the project's records, so it is
+            # re-rendered wherever the project can have moved, by the same rule.
+            self._data_page.refresh()
 
     def _refresh_edit_actions(self) -> None:
         """Render the session's answer about Save, Undo and Redo.

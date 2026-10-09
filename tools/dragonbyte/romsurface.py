@@ -271,12 +271,14 @@ class RomSurface:
         return self.image[offset : offset + size]
 
     def current_bytes(self, offset: int, size: int) -> bytes:
-        """The base bytes with the project's pending raw writes applied.
+        """The base bytes with the project's pending writes applied.
 
         These bytes are saved with the project and shown here; no build path
-        applies them to an image yet. A pending semantic edit is not materialized
-        at all: it has no byte value until a build produces one, and the ownership
-        strip says so rather than showing a base value the project has replaced.
+        applies them to an image yet. A pending semantic edit appears here only
+        when the domain that owns it encoded one, which is what
+        `surface_for(extra_pending=...)` supplies; an edit with no byte value
+        before a build is not materialized at all, and the ownership strip says
+        so rather than showing a base value the project has replaced.
         """
         window = bytearray(self.canonical_bytes(offset, size))
         for written_at, value in self.pending.items():
@@ -348,18 +350,29 @@ def surface_for(
     *,
     index: RangeIndex | None = None,
     index_problem: str = "",
+    extra_pending: Mapping[int, bytes] | None = None,
 ) -> RomSurface:
     """The surface over one open image, its profile and its journal.
 
     The overlay starts as the journal's pending claims: what the project has
     changed and not yet built. A build replaces it through `with_manifest`.
+
+    `extra_pending` is the byte effect of the project's semantic edits, when the
+    domain that owns them can encode one in place. The data tables can: a stat or
+    map-header field is a fixed-width overwrite the SDK's own codec produces, so
+    the surface can show the changed value rather than only the claimed range.
+    A domain whose edit has no byte value before a build supplies nothing, and
+    the overlay alone says the bytes are claimed.
     """
+    pending = dict(journal.raw_edits().bytes_by_offset)
+    if extra_pending:
+        pending.update(extra_pending)
     return RomSurface(
         image=image,
         profile=profile,
         index=index,
         index_problem=index_problem,
-        pending=dict(journal.raw_edits().bytes_by_offset),
+        pending=pending,
         overlay=pending_offsets(journal),
     )
 

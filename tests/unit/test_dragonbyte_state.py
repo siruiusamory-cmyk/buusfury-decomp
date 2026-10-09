@@ -897,7 +897,9 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
 
     One page names itself differently on purpose: the ROM destination renders the
     address space (S5) rather than a foundation statement, so its page is
-    ``romPage`` and each of the other five is its own ``foundationPage_<id>``.
+    ``romPage``, and the Data destination renders the records and the coverage
+    view (S6) rather than a statement about them, so its page is ``dataPage``.
+    Each of the other four is its own ``foundationPage_<id>``.
     """
     session = Session()
     shell = _shell(tmp_path, session)
@@ -914,11 +916,10 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
         assert checked == [current.destination], checked
         assert stack.currentWidget() is shell._pages[current.destination]
         page_name = stack.currentWidget().objectName()
-        expected = (
-            "romPage"
-            if current.destination == ROM_DESTINATION.id
-            else f"foundationPage_{current.destination}"
-        )
+        expected = {
+            ROM_DESTINATION.id: "romPage",
+            "data": "dataPage",
+        }.get(current.destination, f"foundationPage_{current.destination}")
         assert page_name == expected, page_name
 
     for _round in range(3):

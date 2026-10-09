@@ -15,6 +15,7 @@ directory, no claim in this document is a claim about what the engine drew.
 | canonical (immutable) | `roms/Dragon Ball Z - Buu's Fury (U).gba` | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` | 8,388,608 |
 | base (the approved content foundation) | `build/fv3ctp001/v3-complete-text-pass-2.gba` in the text-pass worktree | `20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c` | 10,133,410 |
 | candidate | `build/tulma001/v3-tulma-graphics.gba` | `ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4` | 10,140,972 |
+| final candidate (graphics plus the owner-authorized dialogue rewrite, section 9) | `build/tulma001/v3-tulma-final.gba` | `a4c12a95818cab2781165658d25f2463bc6fe0f87040620a7c89f0034c5b49db` | 10,140,972 |
 
 The canonical image was re-hashed before and after every command in this record and is
 unchanged. The base image was re-hashed after the write and is unchanged; the writer
@@ -229,7 +230,10 @@ than that is a separate ticket, filed with this evidence.
 
 ## 8. Not claimed
 
-- No runtime observation yet. Nothing in this record says the engine drew Tulma.
+- Runtime observation IS claimed, for the states section 6 names and no others: the sprite was
+  drawn in session 6, the portrait in session 8, and the two dialogue lines in session
+  `tulma001-dialogue-2`. Nothing here claims a state that was not on a screen in one of those
+  sessions, and no cutscene beyond the one that was played.
 - No claim about directions beyond the donor's own cell order: the sheets are read
   direction-major, `cell = direction * frames_per_facing + frame`, which is the convention
   `sprite_identity.SourceSheet.slot_cell_index` states, and the walk proves it for this donor
@@ -239,8 +243,65 @@ than that is a separate ticket, filed with this evidence.
 - No claim about cutscene behaviour beyond this: the write is to the character's own
   containers, so every route that draws sprite id 41 draws the new art. No scripted reload
   path was found that could substitute another payload, and no such path is claimed to
-  exist or not to exist for other characters.
+  exist or not to exist for other characters. The scene the dialogue rewrite was confirmed in
+  is the same World Tournament area, and no other scene was played.
 - No claim about the 45 unreferenced portrait run entries or the 22 with no located
   consumer.
 - No art judgment: the supplied art is reproduced as faithfully as the format allows, which
   here means exactly, because the crop loses no pixel and no colour had to be approximated.
+- One thing outside this ticket's control, recorded because it affects any ROM claim: during
+  the work, the canonical image's shared inode was briefly written in place by something this
+  session did not run, which made the ROM-gated test skip until it was restored. The canonical
+  is intact and verified, and the observation is recorded in the cross-session store rather
+  than here, because attributing it is not this ticket's business.
+
+## 9. The dialogue rewrite, an owner-authorized expansion
+
+The ticket's own text forbids expanding into dialogue rewrites. The owner authorized this one
+in the same session, so it is recorded here rather than left to another document; the tool is
+`tools/research/apply_tulma_dialogue.py` and the reusable procedure is the
+`log1-friend-dialogue-rewrite` skill.
+
+**What changed.** Two lines in the World Tournament registration scene, each in its own
+speaker's record slot:
+
+| slot (decoded offset) | speaker | was | now |
+| --- | --- | --- | --- |
+| 60182 | Bulma | `Isn't this wonderful? Our family is back together again!` | `Look at how mad Tulma is! Do you think I went too far this time?` |
+| 60294 | Tulma | `It's great that <player> is back. Everyone seems so happy to be together.` | `That bitch! She knew I was going to wear this!` |
+
+**Why it is a byte-exact write and not a container rebuild.** Selectors 0 through 5 of this
+image's dialogue table are Webfoot containers of kind 0, the stored form: the payload after the
+8-byte header is the decoded stream itself, and `webfoot_lz.pack` cannot emit kind 0. So the
+text is edited where it lies.
+
+**Why the two records were laid out together.** A record's length lives in its handle, and the
+records here are back-to-back with no terminator unit. Bulma's new line needs 128 bytes where
+her span held 112, so it cannot grow in place. Her record and Tulma's are contiguous (112 + 138
+= 250 bytes) and the two replacements need 220, so the pair is re-laid out inside its own
+combined region and both handles are rewritten to match. Nothing else in the container moves,
+which is what keeps every other record's absolute offsets valid. The writer refuses when the
+records are not adjacent or when the pair has no room, because either case needs a container
+re-layout, which is a different mechanism.
+
+**A defect this expansion found, in my own mapping.** The first version had the two speaker
+labels the wrong way round, so each new line landed in the other character's record and the
+game displayed them swapped. The owner caught it on screen. The fix is the slot-to-speaker
+assignment, and the lesson is worth keeping: a line's speaker is which record the scene asks
+for, so the slot is the identity and only the wording may move.
+
+**Verification, and it is exhaustive rather than sampled.** Every record in the image was read
+before and after with the engine's own reader: 2,814 records both times; exactly two old
+handles no longer exist and exactly two new ones do, each reading its own speaker's line with
+no padding; the only other records whose text changed are the two enclosing scene views, which
+is expected because they cover the same bytes; and no record anywhere still holds the old
+wording. The image diff is 120 bytes: 116 in the re-laid text region and 4 in the two handle
+words. The container's packed size and the table word are unchanged.
+
+**Runtime confirmation.** Session `tulma001-dialogue-2` on the final candidate
+`a4c12a95`: both lines read as written, in the right characters' mouths, with the portrait from
+section 6 beside them. The owner confirmed it on screen.
+
+**Not claimed for this expansion.** The wording of any other line, any record's length or
+handle beyond these two, who speaks a line (that is the scene's actor, not the text record),
+which portrait a scene shows, or any scene other than the one played.

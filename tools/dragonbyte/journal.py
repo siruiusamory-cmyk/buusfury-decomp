@@ -37,6 +37,7 @@ from .rawbytes import (
     claimed_by,
     write_raw_document,
 )
+from . import dataedits
 
 
 class JournalError(Exception):
@@ -171,6 +172,16 @@ DOCUMENT_ADAPTERS: dict[str, _DocumentAdapter] = {
         install=_install_dialogues,
         validate=_validate_dialogues,
         write=_write_dialogues,
+    ),
+    # The Data destination's three authored tables. The four functions live in
+    # their own module because they are the project's own documents rather than
+    # anything this journal knows about; the registration is here because this
+    # registry is the one list a target must appear in to be reversible at all.
+    dataedits.DATA_TARGET: _DocumentAdapter(
+        read=dataedits.read,
+        install=dataedits.install,
+        validate=dataedits.validate,
+        write=dataedits.write,
     ),
 }
 

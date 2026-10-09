@@ -100,6 +100,7 @@ QT_FREE_MODULES = (
     "tools.dragonbyte.rawbytes",
     "tools.dragonbyte.coverage",
     "tools.dragonbyte.datasurface",
+    "tools.dragonbyte.dataedits",
 )
 
 

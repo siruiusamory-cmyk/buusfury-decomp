@@ -252,10 +252,11 @@ here because a review asked for it, not because they are routine.
 
 1. **The four `Bulma` records read `Tulma`, not the plan's `Chi-Chi` (REVERSAL).** The
    ticket's provenance rule selects original Bulma, and the surrounding lines pair a
-   wife with a son, so `Tulma` is the reading this pass shipped. The plan's `Chi-Chi`
-   direction was proposed, never approved, and the previous record left the route to the
-   owner. If the owner prefers `Chi-Chi`, it is a map edit plus a rebuild, and the token
-   blocker the plan recorded applies again.
+   wife with a son, so `Tulma` is the reading this pass shipped. The merged record says
+   those four "should read `Chi-Chi` under the closure" and offered the owner three
+   routes, none of them `Tulma`; this pass took a fourth reading, which the ticket's own
+   provenance rule supports and which the merged record could not have weighed because
+   the `Bulma`/`Tulma` split landed after it. Confirmation is the owner's.
 2. **Tulma is named as a parent in slot 1193 (NEW TENSION).** `Uub is the son of Tien
    and Tulma` follows the retail statement that Trunks is Vegeta and Bulma's son, but
    Tulma's own biography deliberately carries no marriage line. A review flagged the
@@ -386,4 +387,32 @@ evidence stay under ignored paths.
 
 ## 9. Closure
 
-Filled at integration: reviewed SHA, merge request, pipelines, merge commit.
+| item | value |
+| --- | --- |
+| baseline | `b97b3d6365c193c85e37c06e613f62d323305a3c` |
+| reviewed candidate | `21a275562c92a60a931039d548116df470c32159`, PASS |
+| built image | `20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c`, 10133410 bytes |
+| local gates at the reviewed candidate | readability 0 hard hits; public surface 0 findings; public release 0 findings; architecture 0 violations |
+| focused tests | 14 passed |
+
+**Review rounds.** The first candidate, `3d858c9`, was reviewed independently and
+returned BLOCKED on three findings: retail names the case-sensitive rules and audit
+could not see (the uppercase `SAIYAMAN` lines, the one-word `Chichi`, menu slots 180 and
+181), reversals of earlier decisions that the owner list did not mention, and one false
+sentence in section 2. `21a2755` fixed all three and the same reviewer returned PASS with
+every finding closed, confirming the stream counts, the menu slots, the byte counts and
+the positional protection test by re-running the audit and decoding the containers
+independently.
+
+**After the PASS**, two non-blocking notes from that review were applied in a
+documentation-and-test-only commit: the section 5 item 1 wording no longer claims the
+plan's `Chi-Chi` direction was never approved, and two tests now cover the audit's
+positional protection and its case-insensitive match. Nothing the review examined
+changed: the build chain, the two edit tables and the image digest are those of
+`21a2755`.
+
+**Not independently checked.** The reviewer did not re-run the build (the five-digest
+reproducibility claim rests on running the chain twice here), did not run pytest, and
+did not do a cold boot.
+
+Filled at integration: merge request, pipelines, merge commit.

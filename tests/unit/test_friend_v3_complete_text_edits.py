@@ -17,6 +17,7 @@ rather than against the private friend image:
 from __future__ import annotations
 
 from tools.research import apply_friend_v3_complete_text_edits as edits
+from tools.research import audit_friend_v3_name_coverage as audit
 from tools.research import build_friend_v3_complete_map as build
 
 TABLE_START = 0x0006BCE8
@@ -109,6 +110,25 @@ def test_relocation_refuses_a_replacement_that_would_fit_in_place() -> None:
         assert "belongs" in str(exc)
     else:
         raise AssertionError("a fitting replacement belongs to the in-place table")
+
+
+def test_the_audit_judges_a_protected_phrase_by_position() -> None:
+    """`Grandpa Gohan` is a different character; a standalone Gohan beside it is not.
+
+    The first version of this test protected the whole record, which would have hidden
+    any standalone Gohan in a record that merely mentions the phrase.
+    """
+    rows = audit.record("Grandpa Gohan and Gohan", "Grandpa Gohan and Gohan")
+    verdicts = [(row["retail"], row["verdict"]) for row in rows]
+    assert ("Gohan", "protected") in verdicts
+    assert ("Gohan", "missed") in verdicts
+
+
+def test_the_audit_sees_an_uppercase_spelling() -> None:
+    rows = audit.record("SAIYAMAN!", "SAIYAMAN!")
+    assert [row["verdict"] for row in rows] == ["missed"]
+    rows = audit.record("SAIYAMAN!", "SOYMAN!")
+    assert [row["verdict"] for row in rows] == ["correct"]
 
 
 def test_each_table_carries_the_sites_it_is_for() -> None:

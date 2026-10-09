@@ -147,3 +147,36 @@ image declares one small verified-free region; `GRAPHICS_CONTAINER` is
 `EXPANDED_PERMITTED`, because a re-encoded container that genuinely fits trusted
 verified-free bytes is a strictly weaker addressability claim than an expanded
 one, and first fit therefore takes the conservative option when one exists.
+
+## Growth
+
+`plan_relocation` accepts a payload of any size, including one larger than the
+anchor it replaces. That is the whole growth path, and it is one path: the
+allocator, the reference re-encoding, the relocation provenance and the
+generated-allocation provenance all come from the same call. A second domain that
+needs to grow a container supplies a payload and a reason for the move; it does
+not supply an allocator, an encoder, a plan or a manifest.
+
+Size alone decides nothing about where the payload goes. `AllocationRequest.kind`
+names the semantic class of what is being placed and the kind's
+`Addressability` says whether an above-EOF span may be offered to it at all;
+`RelocationRequest.addressability` may override that for one request when the
+caller has an argument the kind's default does not carry.
+
+An above-EOF placement is authorized, never inferred.
+`RelocationRequest.generated` names the destination's `(domain, resource,
+pointer_offset)`, and that is what turns an expanded allocation into a
+`GeneratedAllocationProvenance` the write layer accepts. A request the allocator
+places above canonical EOF without one is refused, because no plan record could
+then say at what address those bytes were written. The bound each dislodged
+reference is encoded against is the image its own placement was authorized
+against, which for an expanded anchor is the generated image rather than the
+canonical one.
+
+`RelocationResult.document` carries the image the plan would publish. For a grown
+batch that is the generated image with the changes applied, which is longer than
+the canonical input, so the proposed document states that size; it is an
+inspection artefact and not a new trusted base. The original payload region is
+still left byte-intact, because the consumer set a domain publishes is not
+claimed to be every word in the image that happens to equal the payload's
+address.

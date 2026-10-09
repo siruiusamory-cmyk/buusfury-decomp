@@ -919,6 +919,7 @@ def test_the_selected_destination_the_visible_page_and_the_cursor_agree(
         expected = {
             ROM_DESTINATION.id: "romPage",
             "data": "dataPage",
+            "maps": "mapPage",
         }.get(current.destination, f"foundationPage_{current.destination}")
         assert page_name == expected, page_name
 

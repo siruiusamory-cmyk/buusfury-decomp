@@ -44,15 +44,17 @@ from .datapage import DataPage
 from .destination import DESTINATIONS, ROM, Destination, destination
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
+from .mappage import MapPage
 from .rawbytes import raw_owner
 from .rompage import RomPage
 from .session import Session, SessionError
 from .settings import Settings
 
-#: The Data destination's registry id. Named here because the shell builds this
-#: one page differently, and the registry remains the authority on its label,
-#: its group and its strip position.
+#: The two destinations whose pages are built rather than stated. Named here
+#: because the shell builds these pages differently, and the registry remains the
+#: authority on their labels, their groups and their strip positions.
 DATA_DESTINATION = "data"
+MAPS_DESTINATION = "maps"
 
 #: The window's starting size. A narrower window is allowed; this is what a user
 #: sees first, with the centre editor and the inspector both usable.
@@ -155,6 +157,10 @@ class Shell(QMainWindow):
         #: view. Its edits go through this window's one `apply_edit`, and the ROM
         #: page asks it for the byte effect of those edits.
         self._data_page: DataPage | None = None
+        #: The Maps destination's page: a map's chunk cells and its warps. Its
+        #: edits go through the same one `apply_edit`, and the ROM page asks it
+        #: for the byte effect of those edits beside the Data page's.
+        self._map_page: MapPage | None = None
         self._inspector = InspectorPane()
         self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
         for candidate in DESTINATIONS:
@@ -162,6 +168,13 @@ class Shell(QMainWindow):
                 page: QWidget = RomPage(self._session)
                 page.set_write_handler(self.apply_raw_write)
                 self._rom_page = page
+            elif candidate.id == MAPS_DESTINATION:
+                map_page = MapPage(self._session)
+                map_page.set_edit_handler(self.apply_edit)
+                map_page.set_open_bytes_handler(self.open_rom_at)
+                map_page.set_selection_handler(self._inspector.set_context)
+                self._map_page = map_page
+                page = map_page
             elif candidate.id == DATA_DESTINATION:
                 data_page = DataPage(self._session)
                 data_page.set_edit_handler(self.apply_edit)
@@ -174,11 +187,13 @@ class Shell(QMainWindow):
             self._pages[candidate.id] = page
             self._page_stack.addWidget(page)
 
-        if self._rom_page is not None and self._data_page is not None:
-            # One journal, two views: the ROM page shows a data edit's bytes
-            # because the Data page is the only thing that knows how to encode
-            # them, and it is asked rather than duplicated.
-            self._rom_page.set_pending_provider(self._data_page.pending_bytes)
+        if self._rom_page is not None and (
+            self._data_page is not None or self._map_page is not None
+        ):
+            # One journal, two views: the ROM page shows an edit's bytes because
+            # the page that made it is the only thing that knows how to encode
+            # them, and each is asked rather than duplicated.
+            self._rom_page.set_pending_provider(self._pending_bytes)
 
         centre = QSplitter(Qt.Orientation.Horizontal)
         centre.addWidget(self._page_stack)
@@ -654,6 +669,28 @@ class Shell(QMainWindow):
             # The Data destination renders the project's records, so it is
             # re-rendered wherever the project can have moved, by the same rule.
             self._data_page.refresh()
+        if self._map_page is not None and current is self._map_page:
+            # The Maps destination renders the map's cells and warps, by the
+            # same rule again.
+            self._map_page.refresh()
+
+    def _pending_bytes(self) -> dict[int, bytes]:
+        """Every open destination's byte effect, merged for the ROM surface.
+
+        One provider because the ROM page has one question: what does the project
+        currently build here. A destination that cannot answer for itself (an
+        image it has not read, a document it cannot plan) contributes nothing
+        rather than stopping the surface from rendering.
+        """
+        merged: dict[int, bytes] = {}
+        for page in (self._data_page, self._map_page):
+            if page is None:
+                continue
+            try:
+                merged.update(page.pending_bytes())
+            except Exception:  # noqa: BLE001 - a provider boundary
+                continue
+        return merged
 
     def _refresh_edit_actions(self) -> None:
         """Render the session's answer about Save, Undo and Redo.

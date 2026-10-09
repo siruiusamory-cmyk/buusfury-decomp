@@ -154,6 +154,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "sys.executable"):
         "runs this interpreter on the application under the offscreen platform "
         "to prove start-up does not crash; it starts no emulator",
+    ("tests/unit/test_dragonbyte_romsurface.py",
+     "test_the_surface_module_imports_with_no_pyside6_leak",
+     "sys.executable"):
+        "reruns this interpreter to prove the ROM surface module imports with "
+        "no window toolkit loaded; it starts no emulator",
+    ("tests/unit/test_dragonbyte_romsurface.py",
+     "test_the_whole_surface_is_answerable_with_no_window",
+     "sys.executable"):
+        "reruns this interpreter to read one module constant with no window "
+        "toolkit loaded; it starts no emulator",
     ("tests/unit/test_mgba_instrumented_identity.py",
      "_emulator_processes",
      "'ps'"):

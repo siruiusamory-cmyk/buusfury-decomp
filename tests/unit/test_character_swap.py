@@ -78,6 +78,45 @@ def test_a_record_that_is_not_a_pair_is_refused():
              "lines": [{"old": "x", "new": "y", "record": [1, 2, 3]}]}]})
 
 
+def test_a_typo_in_a_key_is_refused_rather_than_ignored():
+    """A misspelled key would otherwise silently write with the donor's value for it."""
+    with pytest.raises(cs.SwapSpecError, match="does not define"):
+        cs.parse_spec({"operations": [
+            {"kind": "sprite", "sprite_id": 41, "cropx": 8,
+             "slots": [{"slot": 0, "sheet": "a.png", "frames": 1}]}]})
+
+
+def test_a_misspelled_record_key_is_refused_rather_than_dropping_the_span_check():
+    with pytest.raises(cs.SwapSpecError, match="does not define"):
+        cs.parse_spec({"operations": [
+            {"kind": "dialogue", "selector": 2,
+             "lines": [{"old": "x", "new": "y", "records": [1, 2]}]}]})
+
+
+def test_a_float_where_an_integer_belongs_is_refused_rather_than_truncated():
+    with pytest.raises(cs.SwapSpecError, match="must be an integer"):
+        cs.parse_spec({"operations": [
+            {"kind": "portrait", "slot": 17.9, "png": "p.png"}]})
+
+
+def test_a_missing_key_is_refused_with_the_key_named():
+    with pytest.raises(cs.SwapSpecError, match="missing 'sprite_id'"):
+        cs.parse_spec({"operations": [
+            {"kind": "sprite", "slots": [{"slot": 0, "sheet": "a.png", "frames": 1}]}]})
+
+
+def test_an_operation_that_is_not_an_object_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="unknown kind"):
+        cs.parse_spec({"operations": ["sprite"]})
+
+
+def test_a_crop_window_outside_the_cell_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="outside a 32-pixel cell"):
+        cs.parse_spec({"operations": [
+            {"kind": "sprite", "sprite_id": 41, "crop_x": 24, "frame": [16, 32],
+             "slots": [{"slot": 0, "sheet": "a.png", "frames": 1}]}]})
+
+
 def _transform(image: bytes) -> tuple[bytes, dict]:
     return image + b"!", {"note": "appended one byte"}
 

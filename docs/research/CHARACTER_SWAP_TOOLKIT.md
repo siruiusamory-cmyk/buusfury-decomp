@@ -78,18 +78,36 @@ too, so there is one implementation rather than one per writer.
 
 ## Reproducibility, the acceptance for this toolkit
 
-Driven by the same inputs, the front end reproduces the ticket that first needed it, byte for
-byte, and so does the preset path. From the friend v3 text-pass image `20f2c140`:
+The two specs below are committed, but the artwork is private and is not, so the operator copies
+the spec next to the PNGs. From the friend v3 text-pass image
+`20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c`, with the four supplied
+PNGs (a 64x64 portrait and three one-row sheets) in `build\tulma\`:
+
+```powershell
+New-Item -ItemType Directory -Force build\tulma
+Copy-Item tools\presets\tulma-*.json build\tulma
+Copy-Item <art>\stand.png,<art>\walk.png,<art>\arms_up.png,<art>\portrait.png build\tulma
+
+python -m tools.webfoot.character_swap --image <text-pass>.gba `
+  --expect-sha256 20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c `
+  --spec build\tulma\tulma-graphics-spec.json --out build\tulma\candidate.gba
+
+python -m tools.webfoot.character_swap --image build\tulma\candidate.gba `
+  --expect-sha256 ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4 `
+  --spec build\tulma\tulma-dialogue-spec.json --out build\tulma\final.gba
+```
 
 | path | command | result |
 | --- | --- | --- |
-| sprite and portrait, preset | `python tools/research/apply_tulma_graphics.py` | `ef939dcd` |
-| sprite and portrait, spec | `character_swap --spec graphics-spec.json` | `ef939dcd` |
-| two lines, preset | `python tools/research/apply_tulma_dialogue.py` | `a4c12a95` |
-| two lines, spec | `character_swap --spec dialogue-spec.json` | `a4c12a95` |
+| sprite and portrait, preset | `python tools/research/apply_tulma_graphics.py --base <text-pass>.gba --expect-sha256 20f2c140... --assets build\tulma --out build\tulma\preset.gba --report build\tulma\preset.json` | `ef939dcd` |
+| sprite and portrait, spec | the first command above | `ef939dcd` |
+| two lines, preset | `python tools/research/apply_tulma_dialogue.py --base build\tulma\preset.gba --expect-sha256 ef939dcd... --out build\tulma\final-preset.gba --report build\tulma\final-preset.json` | `a4c12a95` |
+| two lines, spec | the second command above | `a4c12a95` |
 
 The first and third are `FRIEND-V3-TULMA-GRAPHICS-001`'s candidates, which were confirmed on
-screen. The second and fourth prove the generalized path is the same path.
+screen. The second and fourth prove the generalized path is the same path. Both were re-run
+independently by that ticket's reviewer, which also confirmed the source image's digest was
+unchanged afterwards.
 
 ## Layout
 

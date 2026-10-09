@@ -160,23 +160,31 @@ def _resolve(image: bytes, selector: int, edit: LineEdit) -> dict:
 def context(image: bytes, selector: int, start: int, length: int) -> dict:
     """The evidence a human needs to check a speaker claim, none of it inferred by this module.
 
-    ``sites`` are the words that name the record. ``enclosing`` are records whose span covers
-    it, which is how a scene view reaches the same bytes. Neither proves who speaks the line:
-    the speaker is the scene's actor, and this module states that rather than deriving it.
+    ``sites`` are the words that name the record. ``enclosing`` are records whose span covers it
+    completely, which is how a scene view reaches the same bytes; a record that starts where it
+    starts and runs longer counts, because it still contains the whole line. ``partial_overlaps``
+    are records that would read mixed text, and the planner refuses those rather than writing.
+    ``speaker`` is not derived here: the speaker is the scene's actor, not a property of a text
+    record, so this reports the claim and the evidence and says so.
     """
     offset = container_file_offset(image, selector)
     payload = stored_payload(image, offset)
     sites: list[int] = []
     enclosing: list[tuple[int, int]] = []
+    partial: list[tuple[int, int]] = []
+    end = start + length
     for record in dialogue_record_inventory(image, selector, len(payload)):
-        if (record.handle.decoded_start == start
-                and record.handle.decoded_length == length):
+        record_start = record.handle.decoded_start
+        record_end = record_start + record.handle.decoded_length
+        if record_start == start and record.handle.decoded_length == length:
             sites = list(record.sites)
-        elif (record.handle.decoded_start < start
-              and record.handle.decoded_start + record.handle.decoded_length >= start + length):
-            enclosing.append((record.handle.decoded_start, record.handle.decoded_length))
+        elif record_start <= start and record_end >= end:
+            enclosing.append((record_start, record.handle.decoded_length))
+        elif record_start < end and record_end > start:
+            partial.append((record_start, record.handle.decoded_length))
     return {"record_sites": sites, "record_sites_hex": [hex(site) for site in sites],
             "enclosing_records": enclosing,
+            "partial_overlaps": partial,
             "speaker_evidence": "caller-claim; the speaker is the scene's actor, and no evidence "
                                 "in the text record establishes it"}
 
@@ -207,6 +215,22 @@ def plan(image: bytes, rewrite: DialogueRewrite) -> dict:
 
     records = {f"{r.handle.decoded_start}:{r.handle.decoded_length}": r
                for r in dialogue_record_inventory(image, rewrite.selector, len(payload))}
+    # A record that only PARTLY covers the region would read mixed old and new text once the
+    # bytes move under it, and nothing else in this engine would notice. A record that fully
+    # contains the region is a scene view and is expected; a partial overlap is refused.
+    group = {(target["decoded_start"], target["decoded_length"]) for target in ordered}
+    for record in dialogue_record_inventory(image, rewrite.selector, len(payload)):
+        start = record.handle.decoded_start
+        length = record.handle.decoded_length
+        if (start, length) in group:
+            continue
+        if start < region_end and start + length > region_start:
+            if start > region_start or start + length < region_end:
+                raise DialogueEditError(
+                    f"the record ({start}, {length}) overlaps the rewritten region "
+                    f"({region_start}, {region_bytes}) without containing it, so it would read "
+                    "mixed old and new text; refusing rather than writing that"
+                )
     region = bytearray()
     handles = []
     cursor = region_start
@@ -288,7 +312,9 @@ def verify(base: bytes, out: bytes, planned: dict) -> dict:
         if record is None:
             raise DialogueEditError(f"the output carries no record for {key}")
         text = payload[handle["new_start"]:handle["new_start"] + handle["new_length"]]
-        read_back[handle["speaker"]] = text.decode("utf-16le")
+        # Keyed by the written span, not by the speaker: two lines can share a speaker label,
+        # and keying by it would let one quietly overwrite the other's read-back.
+        read_back[f"{handle['new_start']}:{handle['new_length']}"] = text.decode("utf-16le")
         if text.decode("utf-16le") != handle["new_text"]:
             raise DialogueEditError(f"{handle['speaker']}: the output does not read the new line")
         if handle["old_text"] in payload.decode("utf-16le"):

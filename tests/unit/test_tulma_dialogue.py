@@ -96,8 +96,10 @@ def test_the_two_records_receive_their_own_wording():
     planned = td.plan(base)
     out = td.apply(base, planned)
     report = td.verify(base, out, planned)
-    assert report["read_back"]["bulma"] == BULMA.new_text
-    assert report["read_back"]["tulma"] == TULMA.new_text
+    # read_back is keyed by the written span, so two lines sharing a speaker label cannot
+    # overwrite each other; the wording is what this test is about.
+    assert sorted(report["read_back"].values()) == sorted([BULMA.new_text, TULMA.new_text])
+    assert [h["new_length"] for h in planned["handles"]] == [128, 92]
 
 
 def test_the_diff_is_confined_to_the_region_and_the_handle_words():
@@ -166,11 +168,28 @@ def test_the_speaker_is_reported_as_a_claim_with_the_evidence_a_human_can_check(
 
 
 def test_the_context_reports_an_enclosing_view_that_covers_the_record():
-    """A scene view spanning both records is context, not a second target: it holds no line."""
-    image = _image(extra=(THIRD_RECORD_SITE, 60000, 400))
+    """A scene view fully containing the region is context, not a second target: it holds no line."""
+    image = _image(extra=(THIRD_RECORD_SITE, 57000, 4000))
     planned = dialogue_edit.plan(image, _rewrite(BULMA, TULMA))
     enclosing = [list(record) for record in planned["handles"][0]["context"]["enclosing_records"]]
-    assert [60000, 400] in enclosing
+    assert [57000, 4000] in enclosing
+
+
+def test_a_record_that_partly_overlaps_the_region_is_refused():
+    """A partial overlap would read mixed old and new text, so it is refused, not written."""
+    image = _image(extra=(THIRD_RECORD_SITE, 60000, 400))
+    with pytest.raises(DialogueEditError, match="without containing it"):
+        dialogue_edit.plan(image, _rewrite(BULMA, TULMA))
+
+
+def test_two_lines_sharing_a_speaker_label_are_both_read_back():
+    """Keyed by span, not by speaker: a shared label must not hide the second line."""
+    base = _image()
+    planned = dialogue_edit.plan(base, _rewrite(BULMA._replace(speaker="same"),
+                                               TULMA._replace(speaker="same")))
+    out = dialogue_edit.apply(base, planned)
+    report = dialogue_edit.verify(base, out, planned)
+    assert len(report["read_back"]) == 2
 
 
 # --- the other guards -----------------------------------------------------------------------
@@ -253,7 +272,7 @@ def test_run_writes_the_image_and_a_report(tmp_path):
     path.write_bytes(base)
     report = td.run(path, td.sha256(base), tmp_path / "out.gba", tmp_path / "report.json")
     assert report["output_sha256"] == td.sha256((tmp_path / "out.gba").read_bytes())
-    assert report["verification"]["read_back"]["tulma"] == TULMA.new_text
+    assert TULMA.new_text in report["verification"]["read_back"].values()
     assert (tmp_path / "report.json").exists()
 
 
@@ -300,4 +319,4 @@ def test_a_spec_driven_rewrite_produces_the_same_bytes_as_the_preset(tmp_path):
     spec_out, report = character_swap.apply_spec(base, spec)
     preset_out = td.apply(base, td.plan(base))
     assert spec_out == preset_out
-    assert report["passes"][0]["verification"]["read_back"]["tulma"] == TULMA.new_text
+    assert TULMA.new_text in report["passes"][0]["verification"]["read_back"].values()

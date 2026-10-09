@@ -49,9 +49,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from tools.webfoot.dialogue_edit import DialogueRewrite, LineEdit, rewrite_dialogue
+from tools.webfoot.dialogue_edit import (DialogueEditError, DialogueRewrite, LineEdit,
+                                         rewrite_dialogue)
 from tools.webfoot.sprite_swap import (DONOR_GEOMETRY, PortraitSwap, SheetSlot, SpriteGeometry,
-                                       SpriteSwap, swap)
+                                       SpriteSwap, SpriteSwapError, swap)
 from tools.webfoot.write import WriteError, ensure_not_source_alias
 
 
@@ -78,23 +79,77 @@ def write_staged(path: Path, data: bytes) -> None:
     staged.replace(path)
 
 
-def _geometry(entry: dict[str, Any]) -> SpriteGeometry:
+#: Keys a spec may carry, per operation kind. An unknown key is refused rather than ignored,
+#: because a typo like "cropx" would otherwise silently write the wrong window.
+_SPRITE_KEYS = {"kind", "sprite_id", "slots", "frame", "cell", "crop_x", "anchor",
+                "composition_size"}
+_PORTRAIT_KEYS = {"kind", "slot", "png", "side"}
+_DIALOGUE_KEYS = {"kind", "selector", "lines"}
+_LINE_KEYS = {"speaker", "old", "new", "record"}
+_SLOT_KEYS = {"slot", "sheet", "frames"}
+
+
+def _reject_unknown(entry: dict[str, Any], allowed: set[str], where: str) -> None:
+    if not isinstance(entry, dict):
+        raise SwapSpecError(f"{where} must be an object, not {type(entry).__name__}")
+    unknown = sorted(set(entry) - allowed)
+    if unknown:
+        raise SwapSpecError(
+            f"{where} carries {unknown}, which this spec does not define; refusing rather than "
+            f"ignoring {unknown} and writing something else"
+        )
+
+
+def _require(entry: dict[str, Any], key: str, where: str) -> Any:
+    if key not in entry:
+        raise SwapSpecError(f"{where} is missing {key!r}")
+    return entry[key]
+
+
+def _integer(value: Any, where: str) -> int:
+    """A real integer. A bool is not one, and a float is not truncated into one."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise SwapSpecError(f"{where} must be an integer, not {value!r}")
+    return value
+
+
+def _geometry(entry: dict[str, Any], where: str) -> SpriteGeometry:
     frame = entry.get("frame", [DONOR_GEOMETRY.frame_width, DONOR_GEOMETRY.frame_height])
     anchor = entry.get("anchor", list(DONOR_GEOMETRY.frame_anchor))
-    if len(frame) != 2 or len(anchor) != 2:
-        raise SwapSpecError(f"frame and anchor are [width, height] and [x, y]: {entry!r}")
-    return SpriteGeometry(frame_width=int(frame[0]), frame_height=int(frame[1]),
-                          cell_side=int(entry.get("cell", DONOR_GEOMETRY.cell_side)),
-                          crop_x=int(entry.get("crop_x", DONOR_GEOMETRY.crop_x)),
-                          frame_anchor=(int(anchor[0]), int(anchor[1])),
-                          composition_size=int(entry.get("composition_size",
-                                                         DONOR_GEOMETRY.composition_size)))
+    if not isinstance(frame, list) or len(frame) != 2:
+        raise SwapSpecError(f"{where}: 'frame' is [width, height], not {frame!r}")
+    if not isinstance(anchor, list) or len(anchor) != 2:
+        raise SwapSpecError(f"{where}: 'anchor' is [x, y], not {anchor!r}")
+    geometry = SpriteGeometry(
+        frame_width=_integer(frame[0], f"{where}: frame width"),
+        frame_height=_integer(frame[1], f"{where}: frame height"),
+        cell_side=_integer(entry.get("cell", DONOR_GEOMETRY.cell_side),
+                           f"{where}: cell"),
+        crop_x=_integer(entry.get("crop_x", DONOR_GEOMETRY.crop_x), f"{where}: crop_x"),
+        frame_anchor=(_integer(anchor[0], f"{where}: anchor x"),
+                      _integer(anchor[1], f"{where}: anchor y")),
+        composition_size=_integer(entry.get("composition_size",
+                                           DONOR_GEOMETRY.composition_size),
+                                  f"{where}: composition_size"))
+    if geometry.cell_side % 8 or geometry.frame_width > geometry.cell_side:
+        raise SwapSpecError(
+            f"{where}: a {geometry.cell_side}-pixel cell must be a whole number of 8-pixel "
+            f"tiles and at least as wide as the {geometry.frame_width}-pixel frame"
+        )
+    if geometry.crop_x < 0 or geometry.crop_x + geometry.frame_width > geometry.cell_side:
+        raise SwapSpecError(
+            f"{where}: crop_x {geometry.crop_x} puts a {geometry.frame_width}-pixel frame "
+            f"outside a {geometry.cell_side}-pixel cell"
+        )
+    return geometry
 
 
 def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
                                                   tuple[PortraitSwap, ...],
                                                   tuple[DialogueRewrite, ...]]:
     """Read the operations, refusing anything that would have to be guessed at."""
+    if not isinstance(document, dict):
+        raise SwapSpecError("the spec must be a JSON object")
     operations = document.get("operations")
     if not isinstance(operations, list) or not operations:
         raise SwapSpecError("the spec needs a non-empty 'operations' list")
@@ -102,41 +157,61 @@ def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
     portraits: list[PortraitSwap] = []
     rewrites: list[DialogueRewrite] = []
     for index, entry in enumerate(operations):
-        kind = entry.get("kind")
+        where = f"operation {index}"
+        kind = entry.get("kind") if isinstance(entry, dict) else None
         if kind == "sprite":
-            slots = entry.get("slots")
+            _reject_unknown(entry, _SPRITE_KEYS, where)
+            slots = _require(entry, "slots", where)
             if not isinstance(slots, list) or not slots:
-                raise SwapSpecError(f"operation {index}: a sprite needs a non-empty 'slots'")
+                raise SwapSpecError(f"{where}: a sprite needs a non-empty 'slots'")
+            parsed = []
+            for position, slot in enumerate(slots):
+                slot_where = f"{where} slot {position}"
+                _reject_unknown(slot, _SLOT_KEYS, slot_where)
+                parsed.append(SheetSlot(
+                    _integer(_require(slot, "slot", slot_where), f"{slot_where}: slot"),
+                    str(_require(slot, "sheet", slot_where)),
+                    _integer(_require(slot, "frames", slot_where), f"{slot_where}: frames")))
             sprites.append(SpriteSwap(
-                sprite_id=int(entry["sprite_id"]),
-                slots=tuple(SheetSlot(int(slot["slot"]), str(slot["sheet"]),
-                                      int(slot["frames"])) for slot in slots),
-                geometry=_geometry(entry)))
+                sprite_id=_integer(_require(entry, "sprite_id", where),
+                                   f"{where}: sprite_id"),
+                slots=tuple(parsed),
+                geometry=_geometry(entry, where)))
         elif kind == "portrait":
-            portraits.append(PortraitSwap(slot=int(entry["slot"]), png=str(entry["png"]),
-                                          side=int(entry.get("side", 64))))
+            _reject_unknown(entry, _PORTRAIT_KEYS, where)
+            portraits.append(PortraitSwap(
+                slot=_integer(_require(entry, "slot", where), f"{where}: slot"),
+                png=str(_require(entry, "png", where)),
+                side=_integer(entry.get("side", 64), f"{where}: side")))
         elif kind == "dialogue":
-            lines = entry.get("lines")
+            _reject_unknown(entry, _DIALOGUE_KEYS, where)
+            lines = _require(entry, "lines", where)
             if not isinstance(lines, list) or not lines:
-                raise SwapSpecError(f"operation {index}: a dialogue edit needs 'lines'")
+                raise SwapSpecError(f"{where}: a dialogue edit needs 'lines'")
             edits = []
-            for line in lines:
+            for position, line in enumerate(lines):
+                line_where = f"{where} line {position}"
+                _reject_unknown(line, _LINE_KEYS, line_where)
                 record = line.get("record")
-                if record is not None and len(record) != 2:
+                if record is not None and (not isinstance(record, list) or len(record) != 2):
                     raise SwapSpecError(
-                        f"operation {index}: 'record' is [decoded start, decoded length]")
+                        f"{line_where}: 'record' is [decoded start, decoded length], "
+                        f"not {record!r}"
+                    )
                 edits.append(LineEdit(
                     speaker=str(line.get("speaker", "unstated")),
-                    old_text=str(line["old"]),
-                    new_text=str(line["new"]),
-                    decoded_start=None if record is None else int(record[0]),
-                    decoded_length=None if record is None else int(record[1])))
-            rewrites.append(DialogueRewrite(selector=int(entry["selector"]),
-                                            lines=tuple(edits)))
+                    old_text=str(_require(line, "old", line_where)),
+                    new_text=str(_require(line, "new", line_where)),
+                    decoded_start=None if record is None else _integer(
+                        record[0], f"{line_where}: record start"),
+                    decoded_length=None if record is None else _integer(
+                        record[1], f"{line_where}: record length")))
+            rewrites.append(DialogueRewrite(
+                selector=_integer(_require(entry, "selector", where), f"{where}: selector"),
+                lines=tuple(edits)))
         else:
             raise SwapSpecError(
-                f"operation {index}: unknown kind {kind!r}; expected sprite, portrait or "
-                "dialogue"
+                f"{where}: unknown kind {kind!r}; expected sprite, portrait or dialogue"
             )
     return tuple(sprites), tuple(portraits), tuple(rewrites)
 
@@ -215,7 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = run(args.image, args.expect_sha256, args.spec, args.out, args.report)
-    except (SwapSpecError, WriteError) as exc:
+    except (SwapSpecError, WriteError, DialogueEditError, SpriteSwapError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     print(f"output {report['image']['output_sha256']}  {report['image']['output_size']} bytes")
@@ -226,9 +301,10 @@ def main(argv: list[str] | None = None) -> int:
                   f"{entry['diff']['changed_bytes_outside']} outside")
         else:
             for handle in entry["handles"]:
+                key = f"{handle['new_start']}:{handle['new_length']}"
                 print(f"  dialogue: {handle['speaker']} {handle['was']} -> "
                       f"({handle['new_start']}, {handle['new_length']}) reads "
-                      f"{entry['verification']['read_back'][handle['speaker']]!r}")
+                      f"{entry['verification']['read_back'][key]!r}")
     return 0
 
 

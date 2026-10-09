@@ -99,10 +99,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"refused: {exc}", file=sys.stderr)
         return 2
     for handle in report["handles"]:
-        print(f"  {handle['speaker']:6s} handle {handle['old_handle_hex']} -> "
-              f"0x{handle['new_handle']:08X} at {handle['context']['record_sites_hex']}")
-    for speaker, text in report["verification"]["read_back"].items():
-        print(f"  reads  {speaker:6s} {text!r}")
+        key = f"{handle['new_start']}:{handle['new_length']}"
+        print(f"  {handle['speaker']:6s} {handle['was']} -> ({key}) reads "
+              f"{report['verification']['read_back'][key]!r}")
     return 0
 
 

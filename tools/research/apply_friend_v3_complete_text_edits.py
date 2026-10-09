@@ -77,6 +77,7 @@ SECTION_2: tuple[SpanEdit, ...] = (
              "most powerful fighters in the universe."),
     SpanEdit(136, 0x058552, "SS Gogeta", "SS Yamien"),
     SpanEdit(165, 0x058754, "Gogeta", "Yamien"),
+    SpanEdit(181, 0x058836, "GOGETA", "YAMIEN"),
     SpanEdit(1304, 0x068F7E, "Gogeta", "Yamien"),
     SpanEdit(1305, 0x949CE0,
              "Gogeta is the fusion of Yamcha and Tien using the Metamorese Art of Fusion.",
@@ -110,6 +111,7 @@ SECTION_3: tuple[RelocatedEdit, ...] = (
     RelocatedEdit(134, 0x058530, "Vegito", "Tiencha"),
     RelocatedEdit(135, 0x05853E, "SS Vegito", "SS Tiencha"),
     RelocatedEdit(164, 0x058746, "Vegito", "Tiencha"),
+    RelocatedEdit(180, 0x058828, "VEGITO", "TIENCHA"),
     RelocatedEdit(1306, 0x069024, "Vegito", "Tiencha"),
     RelocatedEdit(1307, 0x949D78,
                   "Vegito is the fusion of Yamcha and Tien using the magic Potara "

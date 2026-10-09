@@ -63,6 +63,16 @@ def test_saiyaman_becomes_soyman_and_keeps_its_punctuation() -> None:
     assert build.ruled("Saiyan Race", "Saiyan Race") == ("Saiyan Race", ())
 
 
+def test_rules_match_case_insensitively_and_keep_the_retail_case() -> None:
+    """Retail spells the same name several ways, so the match cannot be case-sensitive."""
+    assert build.ruled("SAIYAMAN!", "SAIYAMAN!")[0] == "SOYMAN!"
+    assert build.ruled("Chichi", "Chichi")[0] == "Bulma"
+    assert build.ruled("CHICHI", "CHICHI")[0] == "BULMA"
+    assert build.ruled("Goku and Chichi", "Yamcha and Chichi")[0] == "Yamcha and Bulma"
+    # A name this tool does not rule on is untouched, whatever its case.
+    assert build.ruled("VEGITO", "VEGITO") == ("VEGITO", ())
+
+
 def test_relocation_appends_and_repoints_a_single_reference() -> None:
     image = make_image("Vegito")
     result = edits.apply_relocations(

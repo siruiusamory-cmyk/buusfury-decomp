@@ -47,8 +47,9 @@ from tools.webfoot.token_dictionary import TokenDictionary, decode_text
 SLOTS = 7
 TOKENS = ("Ya", "ha", "Kr", "in", "Ti", "YA", "HA", "KR", "IN", "TI")
 #: This ticket's word rules. The left side is matched inside a retail word, so
-#: `Bulma's` and `Saiyaman!` are covered; the right side replaces the whole word.
-RULES = (("Saiyaman", "Soyman"), ("Bulma", "Tulma"))
+#: `Bulma's`, `Saiyaman!` and the uppercase spellings are covered; the right side
+#: replaces the whole word, in the case the retail word used.
+RULES = (("Saiyaman", "Soyman"), ("Bulma", "Tulma"), ("Chichi", "Bulma"))
 
 
 class CompleteMapError(ValueError):
@@ -59,6 +60,10 @@ def boundary(name: str) -> str:
     return r"(?<![A-Za-z])" + re.escape(name) + r"(?![A-Za-z])"
 
 
+def _same_case(found: str, target: str) -> str:
+    return target.upper() if found.isupper() else target
+
+
 def ruled(old_text: str, new_text: str) -> tuple[str, tuple[str, ...]]:
     """`new_text` with this ticket's rules applied where the RETAIL word carries them.
 
@@ -67,6 +72,9 @@ def ruled(old_text: str, new_text: str) -> tuple[str, tuple[str, ...]]:
     already changed (retail `Chi-Chi` -> displayed `Bulma`) sits in a replaced run and
     is left alone, while a word the map copied through (retail `Bulma` -> `Bulma`) sits
     in an equal run and becomes `Tulma`.
+    A rule matches CASE-INSENSITIVELY and carries the retail word's case into the
+    replacement, because the retail text spells the same name `SAIYAMAN`, `Vegito` and
+    `CHI-CHI` in different records and a case-sensitive rule is blind to all but one.
     """
     old_words = old_text.split(" ")
     new_words = new_text.split(" ")
@@ -81,8 +89,11 @@ def ruled(old_text: str, new_text: str) -> tuple[str, tuple[str, ...]]:
             word = old_words[i1 + offset]
             replacement = new_words[j1 + offset]
             for source, target in RULES:
-                if re.search(boundary(source), word):
-                    replacement = re.sub(boundary(source), target, replacement)
+                if re.search(boundary(source), word, re.IGNORECASE):
+                    replacement = re.sub(
+                        boundary(source),
+                        lambda found, want=target: _same_case(found.group(0), want),
+                        replacement, flags=re.IGNORECASE)
                     applied.append(f"{source}->{target}")
             new_words[j1 + offset] = replacement
     return " ".join(new_words), tuple(applied)
@@ -153,7 +164,8 @@ def main() -> int:
     untouched: list[str] = []
     for key in sorted(inventory):
         old_text, sites = inventory[key]
-        if not any(re.search(boundary(source), old_text) for source, _ in RULES):
+        if not any(re.search(boundary(source), old_text, re.IGNORECASE)
+                   for source, _ in RULES):
             continue
         selector, start, length = (int(part) for part in key.split(":"))
         if key in rows and rows[key]["old_text"] != old_text:

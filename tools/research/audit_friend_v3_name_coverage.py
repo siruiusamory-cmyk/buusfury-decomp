@@ -20,10 +20,11 @@ Two surfaces, two provenances, because they are different corpora:
   * the seven compressed dialogue containers, whose provenance is the base image the
     rename map describes.
 
-PROTECTED SPELLINGS are reported as preserved, never as misses: `Grandpa Gohan` is a
-different character from Gohan, `planet/Planet Vegeta` is a place, and `Gotenks` and
-`Gokuu` carry a mapped name inside a different word. APPROVED lists the occurrences an
-owner decision deliberately leaves alone, each with its reason.
+PROTECTED SPELLINGS are reported as preserved, never as misses, and only for the word
+that actually rides inside the phrase: `Grandpa Gohan` is a different character from a
+standalone Gohan, and `planet/Planet Vegeta` is a place. A token such as `Gotenks` or
+`Gokuu` is not the mapped word at all, so it is never counted. APPROVED lists the
+occurrences an owner decision deliberately leaves alone, each with its reason.
 
 THE NAME MAP is stated rather than derived, because two of its rows (`Android 18` ->
 `Chi-Chi` from the menu pass, `Bulma` -> `Tulma` from the content pass) never appear in
@@ -55,14 +56,19 @@ DIALOGUE_SLOTS = 7
 TOKENS = ("Ya", "ha", "Kr", "in", "Ti", "YA", "HA", "KR", "IN", "TI")
 TOKEN_BASE = 0xE000
 
-#: retail name -> the one name it displays as.
+#: retail name -> the one name it displays as. Compared CASE-INSENSITIVELY, because the
+#: retail text uses `SAIYAMAN`, `VEGITO`, `GOGETA` and `CHI-CHI` as well as the mixed-case
+#: spellings, and a case-sensitive map is blind to every one of those.
 NAME_MAP = {"Goku": "Yamcha", "Kakarot": "Yamcha", "Gohan": "Krillin", "Goten": "Videl",
             "Trunks": "Uub", "Vegeta": "Tien", "Krillin": "Goku", "Yamcha": "Gohan",
-            "Chi-Chi": "Bulma", "Chi Chi": "Bulma", "Android 18": "Chi-Chi",
-            "Android #18": "Chi-Chi", "Gogeta": "Yamien", "Vegito": "Tiencha",
-            "Saiyaman": "Soyman", "Bulma": "Tulma"}
-#: A mapped name inside one of these is a different character or a place, not a miss.
-PROTECTED = ("Grandpa Gohan", "planet Vegeta", "Planet Vegeta", "Gotenks", "Gokuu")
+            "Chi-Chi": "Bulma", "Chi Chi": "Bulma", "Chichi": "Bulma",
+            "Android 18": "Chi-Chi", "Android #18": "Chi-Chi", "Gogeta": "Yamien",
+            "Vegito": "Tiencha", "Saiyaman": "Soyman", "Bulma": "Tulma"}
+UPPER_MAP = {name.upper(): shown for name, shown in NAME_MAP.items()}
+#: A mapped name is PRESERVED, not a miss, only when the word itself rides inside one of
+#: these phrases. Testing the record instead of the word would hide a standalone `Gohan`
+#: in any record that merely mentions `Grandpa Gohan`.
+PROTECTED = (("Grandpa", "Gohan"), ("planet", "Vegeta"), ("Planet", "Vegeta"))
 #: Occurrences an owner decision leaves as retail. Each is reported, never hidden.
 APPROVED = {
     ("menu", 1033): "content pass's authored twin-sister biography, preserved as approved",
@@ -98,9 +104,12 @@ def core(word: str) -> str:
     return word[:-2] if word.endswith("'s") else word
 
 
-def protected_in(text: str, name: str) -> bool:
-    """True when the word rides inside a protected PHRASE of the retail text."""
-    return any(phrase in text and name in phrase for phrase in PROTECTED)
+def protected_at(retail: list[str], index: int, name: str) -> bool:
+    """True when THIS word rides inside a protected phrase, judged by its neighbour."""
+    if index == 0:
+        return False
+    return any(preceding == retail[index - 1].strip() and name.upper() == tail.upper()
+               for preceding, tail in PROTECTED)
 
 
 def expected_tokens(retail: list[str]) -> tuple[list[str], list[int]]:
@@ -112,15 +121,15 @@ def expected_tokens(retail: list[str]) -> tuple[list[str], list[int]]:
     while index < len(retail):
         for key in keys:
             size = len(key.split(" "))
-            if size > 1 and [core(word) for word in retail[index:index + size]] == \
-                    key.split(" "):
+            if size > 1 and [core(word).upper() for word in retail[index:index + size]] == \
+                    [part.upper() for part in key.split(" ")]:
                 out.append(NAME_MAP[key])
                 owner.append(index)
                 index += size
                 break
         else:
-            name = core(retail[index])
-            out.append(NAME_MAP.get(name, retail[index]))
+            found = UPPER_MAP.get(core(retail[index]).upper())
+            out.append(found if found else retail[index])
             owner.append(index)
             index += 1
     return out, owner
@@ -135,27 +144,40 @@ def slot_text(image: bytes, slot: int) -> str:
 
 
 def record(before: str, after: str, **where: object) -> list[dict]:
+    """Compare one retail text against its displayed text, token by token.
+
+    A retail name and its displayed name need not occupy the same number of tokens
+    (`Android 18` is two and `Chi-Chi` is one), so the two lists are aligned with a
+    token-level diff and each retail name is judged against the displayed run it
+    aligns to. An equal run is judged on the token itself; a replaced run is judged on
+    whether the single-step image, the retail name, or a third name appears in it.
+    Every comparison is case-insensitive. A displayed name that no retail name accounts
+    for is NOT reported: records overlap, so one record's span legitimately holds a
+    neighbouring record's replacement, which makes "inserted" indistinguishable from a
+    neighbour's write. That limit is stated in the record rather than guessed at here.
+    """
     retail = tokens(before)
     shown = tokens(after, expand_tokens=True)
     expected, owner = expected_tokens(retail)
-    matcher = difflib.SequenceMatcher(None, [core(word) for word in expected],
-                                      [core(word) for word in shown], autojunk=False)
+    matcher = difflib.SequenceMatcher(None, [core(word).upper() for word in expected],
+                                      [core(word).upper() for word in shown],
+                                      autojunk=False)
     out: list[dict] = []
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        run = [core(word) for word in shown[j1:j2]]
+        run = [core(word).upper() for word in shown[j1:j2]]
         for position in range(i1, i2):
             retail_word = retail[owner[position]]
             name = core(retail_word)
-            if name not in NAME_MAP:
+            if name.upper() not in UPPER_MAP:
                 continue
             want = core(expected[position])
-            if protected_in(before, name):
+            if protected_at(retail, owner[position], name):
                 verdict = "protected"
-            elif tag == "equal" or want in run:
+            elif tag == "equal" or want.upper() in run:
                 verdict = "correct"
-            elif name in run:
+            elif name.upper() in run:
                 verdict = "missed"
-            elif any(word in NAME_MAP for word in run):
+            elif any(word in UPPER_MAP for word in run):
                 verdict = "cascade"
             else:
                 verdict = "absent"

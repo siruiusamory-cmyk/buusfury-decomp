@@ -20,8 +20,9 @@ session rather than quoted, because the ticket names no SHA.
 | private rename map | `8fc91afc83614eb299a46cf4a62594fdc4586ee765cc4c24013a1a94e37cd138` | 187943 |
 
 The merged candidate is the latest verified friend image: the content pass's record
-names it, and section 2 reproduces it byte for byte from the rename base, which is what
-makes this pass sit on the verified foundation rather than beside it.
+names it. It is reproduced byte for byte by `build/fv3ctp001/repro.ps1`, which runs the
+splice, the engine patch and the merged span table from the rename base, so this pass
+sits on the verified foundation rather than beside it.
 
 ## 2. Composition
 
@@ -29,40 +30,51 @@ Five digest-gated steps. Each output digest below was produced here, not copied.
 
 | step | tool | sha256 of the output |
 | --- | --- | --- |
-| 1 extend the map | `tools/research/build_friend_v3_complete_map.py` | map `26192ee420ebed37a0a86db3c7a27e70f0ff397527ad022d0b2c6936f0beab52` |
-| 2 splice the dialogue | `tools/research/splice_dialogue_tokens.py` | `bd428deeeaf99748e42d9ea4e87ce5747fac70a15dba3458891df0a169872a38` |
-| 3 patch the token engine | `tools/research/build_dialogue_token_engine.py` | `26c3ca3dd11b3d9fbb15ab7a5212a136b2c88445a8741a51c7833b2fed892a27` |
-| 4 merged content-pass edits | `tools/research/apply_friend_v3_text_edits.py` | `acf9c63f5d9b25d8a489a0d975f31e0c3ebd02629bd9b5b190c5f69d7d718c64` |
-| 5 this ticket's menu edits | `tools/research/apply_friend_v3_complete_text_edits.py` | **`bf3e61b3def05eb5bfe9b0f54eafafff674684d9c248c6bf29948a52c9d252e8`** (10133394 bytes) |
+| 1 extend the map | `tools/research/build_friend_v3_complete_map.py` | map `5a60806ba2ecfb379b605cf998f16672fe8f176be2bb5736b9bbe1c02a260b98` |
+| 2 splice the dialogue | `tools/research/splice_dialogue_tokens.py` | `bf16dfd36f431eac63553b61252f7274f0c265066f2f5905f6c38f8ae672a4c1` |
+| 3 patch the token engine | `tools/research/build_dialogue_token_engine.py` | `cec009d94af07b93eff6a13d9ff534303c0efde80b3ef5c4c4fd478885339df8` |
+| 4 merged content-pass edits | `tools/research/apply_friend_v3_text_edits.py` | `d564ef8a985502ef51cfb0d121108d7ebf46d3d5b774fd90c7ac4966a41f6155` |
+| 5 this ticket's menu edits | `tools/research/apply_friend_v3_complete_text_edits.py` | **`20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c`** (10133410 bytes) |
 
 The chain is one script, `build/fv3ctp001/build.ps1`, and running it twice produced the
-same five digests. Reproducing the merged candidate means stopping after step 4, and it
-lands on `b3344a3f` byte for byte, which is the foundation check.
+same five digests. Step 4 uses the EXTENDED map, so this chain is not the same
+composition as the merged candidate: `repro.ps1` is what reproduces `b3344a3f`, and the
+step-4 output here is a different image by design.
 
-The splice encodes 490 rows, applies 482 and refuses 8. Every refusal is one of the
+The splice encodes 492 rows, applies 483 and refuses 9. Every refusal is one of the
 large records that share bytes with a neighbour, where the neighbour writes first, so
 the record's own replacement is not applied; the pre-existing `3:2184:2112` is one of
-them. Refused records are how this tool has always reported that case (one refusal in
-the merged build), and section 4 is what proves no name was lost to it.
+them. Refused records are how this tool has always reported that case, and section 4 is
+what proves no name was lost to it.
 
 ## 3. What changed
 
-### 3.1 Spoken dialogue: two word rules added to the rename map
+### 3.1 Spoken dialogue: three word rules added to the rename map
 
-The 451-row map renames twelve names and stops. It never carried `Saiyaman` or the
-retail word `Bulma`, so both survived every spoken record. The map is extended rather
-than a second pass being stacked on a spliced image, because the splice relocates
-records and a second pass would have to re-encode an already-relocated container.
+The 451-row map renames twelve names and stops. It never carried `Saiyaman`, the retail
+word `Bulma`, or the one-word spelling `Chichi`, so all three survived spoken records.
+The map is extended rather than a second pass being stacked on a spliced image, because
+the splice relocates records and a second pass would have to re-encode an
+already-relocated container.
 
-`build_friend_v3_complete_map.py` adds 39 rows and edits 10, taking the map from 451 to
-490. Every row's replacement text is rebuilt from the retail text plus the map's own
-84-entry word table plus two rules, so a row added for a record the operator's map
+`build_friend_v3_complete_map.py` adds 41 rows and edits 11, taking the map from 451 to
+492. Every row's replacement text is rebuilt from the retail text plus the map's own
+84-entry word table plus three rules, so a row added for a record the operator's map
 never covered cannot disagree with a neighbouring row that was covered. Measured: that
 table reconstructs all 451 authored rows exactly, so this is the map's own rule and not
 a reinterpretation of it.
 
-* `Saiyaman` becomes `Soyman` (26 rows touched).
-* The retail word `Bulma` becomes `Tulma` (25 rows touched).
+* `Saiyaman` becomes `Soyman`.
+* The retail word `Bulma` becomes `Tulma`.
+* The retail word `Chichi` becomes `Bulma` (the rename pass's table had `Chi Chi` and
+  `Chi-chi.` but not the unhyphenated spelling, so one line still read `Yamcha and
+  Chichi made a new one` where the displayed name is `Bulma`).
+
+**The rules are case-insensitive and keep the retail case.** The retail text spells the
+same name `SAIYAMAN`, `Saiyaman!`, `VEGITO` and `GOGETA` in different records. The first
+version of this tool matched case-sensitively, and an independent review found the
+uppercase occurrences it therefore could not see; the fix carries the matched word's
+case into the replacement (`SAIYAMAN` becomes `SOYMAN`) and a unit test covers it.
 
 **Provenance, not string replacement.** The rename pass had already turned retail
 `Chi-Chi` into the displayed name `Bulma`. The two are told apart by aligning the retail
@@ -88,16 +100,16 @@ not by blind replacement) the answer is the other direction, and it is cheaper:
 A variant map copy, `rename_map_fv3cp001.json`, differs from the shipped map in exactly
 those four rows and only in `new_text`, saying `Chi-Chi` where the shipped copy keeps
 `Bulma`; the merged candidate follows the shipped copy. That variant is a map-copy
-question, not a build question, and this record treats the shipped copy as the source
-of truth. The change here is recorded as a deliberate departure from the plan's section
-3.2 direction.
+question, not a build question, and this record treats the shipped copy as the source of
+truth. **An independent review objected that this reverses a reviewed direction and
+that it does not appear in the owner list; it now does, as item 1 of section 5.**
 
 ### 3.3 Menu pool, including the strings that had to move
 
 `tools/research/apply_friend_v3_complete_text_edits.py` carries two tables, because two
 different things have to happen and each keeps one job.
 
-In place, 13 sites, each replacement no longer than the text it replaces:
+In place, 14 sites, each replacement no longer than the text it replaces:
 
 | slot | current | replacement |
 | --- | --- | --- |
@@ -112,29 +124,32 @@ In place, 13 sites, each replacement no longer than the text it replaces:
 | 1193 | `Uub is the son of Tien and Bulma. ...` | `Uub is the son of Tien and Tulma. ...` |
 | 136 | `SS Gogeta` | `SS Yamien` |
 | 165 | `Gogeta` | `Yamien` |
+| 181 | `GOGETA` | `YAMIEN` |
 | 1304 | `Gogeta` | `Yamien` |
 | 1305 | `Gogeta is the fusion of Yamcha and Tien using the Metamorese Art of Fusion.` | `Yamien is the fusion...` |
 
-Relocated, 6 sites, because the replacement is LONGER than the site's own span, which a
+Relocated, 7 sites, because the replacement is LONGER than the site's own span, which a
 prefix write cannot express. Each is appended to the end of the image and its single
 table pointer is repointed, the mechanism the earlier rename pass used for 84 slots.
 The guard is what makes it safe: the tool counts every word-aligned occurrence of the
 site's old pointer in the whole image and refuses unless there is exactly one, its own
 table entry.
 
-| slot | old offset | new offset | current | replacement |
-| --- | --- | --- | --- | --- |
-| 134 | `0x058530` | `0x9A9DE8` | `Vegito` | `Tiencha` |
-| 135 | `0x05853E` | `0x9A9DF8` | `SS Vegito` | `SS Tiencha` |
-| 164 | `0x058746` | `0x9A9E10` | `Vegito` | `Tiencha` |
-| 1306 | `0x069024` | `0x9A9E20` | `Vegito` | `Tiencha` |
-| 1307 | `0x949D78` | `0x9A9E30` | `Vegito is the fusion of Yamcha and Tien using the magic Potara earrings.` | `Tiencha is the fusion...` |
-| 1347 | `0x949E9E` | `0x9A9EC4` | `...turn back into Goku.` | `...turn back into Krillin.` |
+| slot | old offset | current | replacement |
+| --- | --- | --- | --- |
+| 134 | `0x058530` | `Vegito` | `Tiencha` |
+| 135 | `0x05853E` | `SS Vegito` | `SS Tiencha` |
+| 164 | `0x058746` | `Vegito` | `Tiencha` |
+| 180 | `0x058828` | `VEGITO` | `TIENCHA` |
+| 1306 | `0x069024` | `Vegito` | `Tiencha` |
+| 1307 | `0x949D78` | `Vegito is the fusion of Yamcha and Tien using the magic Potara earrings.` | `Tiencha is the fusion...` |
+| 1347 | `0x949E9E` | `...turn back into Goku.` | `...turn back into Krillin.` |
 
 The `Gogeta` and `Vegito` sites are names the audit found still shown as their retail
-spelling. Four `Gogeta` sites fit in place and two do not; all five `Vegito` sites grow.
-The dialogue map already renames both (`Gogeta!` to `Yamien!`, `Goku? Vegito` to
-`Yamcha? Tiencha`), so the menu pool was the surface that had not followed.
+spelling, in both cases the uppercase slot included (the first version of this table
+took only the mixed-case sites, and the review found the two uppercase ones). The
+dialogue map already renames both names, so the menu pool was the surface that had not
+followed.
 
 ### 3.4 The cascade this ticket corrected
 
@@ -142,16 +157,15 @@ Slot 1347 read `...turn back into Goku.` in the merged candidate. The retail tex
 `...turn back into Gohan.` and the map's single step is `Gohan` to `Krillin`, so the
 merged image had applied the map twice: `Gohan` to `Krillin` to `Goku`. The audit's
 `cascade` verdict found it, and this pass restores the single-step name. The content
-pass's plan defended the change as deliberate; under single-step provenance it is a
-rule applied twice, which is the failure this ticket's audit exists to catch.
+pass's plan defended the change as deliberate; under single-step provenance it is a rule
+applied twice. **Because it undoes a merged decision it is listed for the owner in
+section 5 rather than treated as settled.**
 
 ### 3.5 Changed bytes
 
-Against the step-4 image (the same chain without the menu edits): **50 bytes** differ
-below the old end of file, plus **426 bytes** appended. The 50 are 9 single-byte
-`B` to `T` changes, 24 bytes of `Gogeta` to `Yamien`, and 17 bytes in six repointed
-table words; the tools claim 57 byte positions, seven of which are pointer bytes whose
-value did not change. Nothing else in a 10132968-byte image moved.
+Against the step-4 image (the same chain without the menu edits): **59 bytes** differ
+below the old end of file, plus **442 bytes** appended. Nothing else in a 10132968-byte
+image moved.
 
 ## 4. Coverage report
 
@@ -163,22 +177,24 @@ text with every retail name replaced by the single name it must display as), ali
 expected against displayed token by token, and judges each retail name by what appears
 in the run it aligns to. Pairing a retail name directly with a displayed token would
 mis-pair a chain that swaps two names in one sentence (retail `Goku and Krillin` is
-displayed as `Yamcha and Goku`), which is a real record in this image.
+displayed as `Yamcha and Goku`), which is a real record in this image. Every comparison
+is case-insensitive.
 
 | verdict | merged candidate | this candidate |
 | --- | --- | --- |
-| dialogue occurrences correct | 672 | **719** |
-| dialogue occurrences unresolved | 47 (`Bulma` 23, `Saiyaman` 24) | **0** |
-| menu occurrences correct | 95 | **114** |
-| menu occurrences protected | 6 | 6 |
+| dialogue occurrences correct | 684 | **734** |
+| dialogue occurrences unresolved | 50 (`Bulma` 23, `Saiyaman` 24, `SAIYAMAN` 2, `Chichi` 1) | **0** |
+| menu occurrences correct | 104 | **125** |
+| menu occurrences protected | 4 | 4 |
 | menu occurrences approved | 5 | 5 |
-| menu occurrences unresolved | 19 (`Bulma` 9, `Gogeta` 4, `Vegito` 5, cascade 1) | **0** |
-| total tracked occurrences | 844 | 844 |
+| menu occurrences unresolved | 21 (`Bulma` 9, `Gogeta` 5, `Vegito` 6, cascade 1) | **0** |
+| total tracked occurrences | 868 | 868 |
 
-**Protected** are the six `planet`/`Planet Vegeta` and `Grandpa Gohan` spellings, where
-the mapped name rides inside a protected phrase. **Approved** are the five occurrences
-inside slot 1033, the content pass's authored twin-sister biography, which the ticket
-says to preserve.
+**Protected** are the four `planet`/`Planet Vegeta` and `Grandpa Gohan` spellings, where
+the mapped name rides inside a protected phrase, judged by the word's own neighbour
+rather than by the record it sits in. **Approved** are the five occurrences inside slot
+1033, the content pass's authored twin-sister biography, which the ticket says to
+preserve.
 
 **Occurrence counts on the dialogue surface are per record, and records overlap.** The
 honest stream count, where each character of each container is counted once, agrees with
@@ -186,7 +202,8 @@ the ticket's claim: `Saiyaman` appears exactly **20** times across the seven dec
 containers (selector 1 nine, selector 2 five, selector 3 six, containers 0/4/5/6 zero).
 An independent audit of the same ticket counted 20 occurrences on the cutscene
 event-handle surface as well, and 26 to 28 record spans containing the word, which is
-the same data counted with overlap.
+the same data counted with overlap. The uppercase `SAIYAMAN` lines are outside that
+count and are counted separately.
 
 Measured counts of the words themselves, decoded with the token dictionary expanded:
 
@@ -194,14 +211,16 @@ Measured counts of the words themselves, decoded with the token dictionary expan
 | --- | --- | --- |
 | `Saiyaman` | 20 | **0** |
 | `Soyman` | 0 | **20** |
-| `Bulma` | 21 | **3** |
+| `Bulma` | 21 | **4** |
 | `Tulma` | 0 | **18** |
 | `Great Soy Man` (spaced) | 1 | 1 |
 
-The 3 remaining `Bulma` words in dialogue are the ones the rename pass put there for
-retail `Chi-Chi`, which is exactly the distinction the provenance rule draws. The one
-spaced `Great Soy Man` is a spelling the rules do not touch, because they match the
-single word `Saiyaman`; it is left as found and listed for the owner in section 5.
+The 4 remaining `Bulma` words in dialogue are the ones the rename pass put there for
+retail `Chi-Chi`, plus the one that was `Chichi` and is now the same displayed name;
+that is exactly the distinction the provenance rule draws. The one spaced
+`Great Soy Man` is not a leftover: it is RETAIL text, in the same retail record that
+says `SAIYAMAN! HE'S CALLED THE GREAT SAIYAMAN!`, where the public mispronounces the
+name. It is left as the original writing and listed for the owner.
 
 **Orphaned retail copies.** Five retail strings sit in the pool with no table entry and
 zero word-aligned references anywhere in the image: file `0x06364E` (a second copy of
@@ -227,23 +246,38 @@ the same occurrences this pass corrects in the containers.
 
 ## 5. Owner decisions, consolidated
 
-Unresolved creative decisions, each with what is recorded and what is missing.
+Each item states what is recorded and what is missing. The first three are decisions
+this pass took that reverse or extend an earlier reviewed choice, and they are listed
+here because a review asked for it, not because they are routine.
 
-1. **Idasa and Uub dialogue: TEXT NOT RECORDED.** The ticket asks to include "the
+1. **The four `Bulma` records read `Tulma`, not the plan's `Chi-Chi` (REVERSAL).** The
+   ticket's provenance rule selects original Bulma, and the surrounding lines pair a
+   wife with a son, so `Tulma` is the reading this pass shipped. The plan's `Chi-Chi`
+   direction was proposed, never approved, and the previous record left the route to the
+   owner. If the owner prefers `Chi-Chi`, it is a map edit plus a rebuild, and the token
+   blocker the plan recorded applies again.
+2. **Tulma is named as a parent in slot 1193 (NEW TENSION).** `Uub is the son of Tien
+   and Tulma` follows the retail statement that Trunks is Vegeta and Bulma's son, but
+   Tulma's own biography deliberately carries no marriage line. A review flagged the
+   combination. Either wording is defensible; making 1193 avoid the parentage is a
+   one-site edit.
+3. **Slot 1347 reads `Krillin` again (REVERSAL).** The merged pass chose `Goku`; the
+   single-step reading is `Krillin`, because the ability's owner is the character
+   displayed as `Krillin`. Confirmation is the owner's, and the reversal is one site.
+4. **Idasa and Uub dialogue: TEXT NOT RECORDED.** The ticket asks to include "the
    planned Idasa/Uub interaction". No such text exists anywhere: `Idasa` has zero hits
    in every tracked file, zero in the cross-session memory store, and the only game-side
    presence is the database entry at pool slot 1016 (`Idasa`, with its description slot
    next to it) plus three dialogue mentions. The character exists; the lines do not.
-   This is the owner's to write.
-2. **Chapter and saga titles: nothing left to change, no new title TEXT recorded.** The
+5. **Chapter and saga titles: nothing left to change, no new title TEXT recorded.** The
    twelve chapter titles and the eleven saga strings already carry the established
    names: chapter 2 is `Great Soyman` and chapter 5 is `Majin Tien`, both applied before
    this ticket. No owner-authored replacement title text is recorded, so no title was
    invented.
-3. **Spopo's target: NOT RECORDED.** The record names `Android #13` or `Perfect Cell` as
+6. **Spopo's target: NOT RECORDED.** The record names `Android #13` or `Perfect Cell` as
    the candidates and records the choice as the owner's. Both names exist in the game's
    text; no replacement text is recorded.
-4. **Scan-biography wording: the plan's section 7 proposals are NOT applied.** Six
+7. **Scan-biography wording: the plan's section 7 proposals are NOT applied.** Six
    proposed rewrites remain unapproved in the repository, and they are not needed: with
    the `Bulma`/`Tulma` collision resolved, the biographies read consistently under the
    displayed identities (for example `Krillin is the son of Yamcha and Bulma` is
@@ -252,16 +286,16 @@ Unresolved creative decisions, each with what is recorded and what is missing.
    identity work cannot fix because it is grammar, slot 1065: `Tien was once a rival of
    Yamcha is now a loyal Z-Fighter.` The missing `, and` is the original writing and is
    preserved. A one-word repair is offered for approval.
-5. **`Great Soy Man`, one dialogue record.** One record spells the name with spaces, so
-   the word rules do not match it. It is left as found; a decision to make it
-   `Great Soyman` belongs to the owner.
-6. **Hercule's encounter difficulty.** Out of this ticket's scope, which puts combat
+8. **`Great Soy Man`, one dialogue record.** The spacing is retail text, so the rules do
+   not match it and no change is made. A decision to make it `Great Soyman` belongs to
+   the owner.
+9. **Hercule's encounter difficulty.** Out of this ticket's scope, which puts combat
    balancing and boss replacement in separate workstreams. The record's numbers were
    deleted as unarchived and live only in a memory node, so they must be re-derived
    before any target is written.
-7. **Tulma's blonde art.** Out of scope (sprite workstream). Tulma is a name over
-   original Bulma's art until the art lands, and the biography deliberately makes no
-   appearance claim.
+10. **Tulma's blonde art.** Out of scope (sprite workstream). Tulma is a name over
+    original Bulma's art until the art lands, and the biography deliberately makes no
+    appearance claim.
 
 ## 6. Runtime
 
@@ -273,17 +307,14 @@ build, the `v3-fixed-credits.ss1` savestate, and the read-only observer
 overrides with the original defaults, added here because 40 units stop inside a line
 that opens with eight control codes and five seconds can miss a box between two copies.
 
-Two things move on this route and both were observed on the final image:
-
-| measurement | candidate | known-bad control |
+| measurement | this candidate | known-bad control |
 | --- | --- | --- |
-| image digest reported by `emu:romSize()` size | 10133394 | 9764900 |
-| frame heartbeat | 60 to 10560 in the first run | 60 to **1980, then stops** |
-| dialogue copier hits | 23 in the first run | 8 |
+| image size reported by `emu:romSize()` | 10133410 | 9764900 |
+| frame heartbeat | 60 to 3180 at session end, 9 copier hits | 60 to **1980, then stops** |
 | verdict | **SURVIVED, renamed text copied** | FROZEN at frame 1980 |
 
-The renamed line, copied by the engine from the image under test, in the wide-snippet
-run at copy 6 (about frame 1500):
+The renamed line, copied by the engine from the image under test, at copy 6 (about frame
+1500):
 
 ```text
 ........It can't be! .ill.'s the Great Soyman   AND the Gold Fighter??? Impossible!
@@ -294,15 +325,20 @@ exactly as the cold-boot acceptance recorded for the merged image (its copy 33 r
 `It can't be! .ill.'s the Great S`). `Great Soyman` is this ticket's rename, in plain
 glyphs, and the three spaces before `AND` are the documented shrink padding: a shorter
 replacement keeps the following characters where retail put them by paying the
-difference with spaces. Retail reads `Great Saiyaman` here.
+difference with spaces. Retail reads `Great Saiyaman` here. An independent review
+checked the same question from the other side: the savestate itself decompresses to 7
+`Saiyaman` and 0 `Soyman`, and the control run on the same rig copies
+`Great Saiyaman`, so the renamed text came from this image and not from a restored
+buffer.
 
-**Instrument proven, not assumed.** The same rig on the known-bad
-`v3-fixed-credits.gba` (`ddfdf780...`) wrote its last heartbeat at frame 1980 and its
-CSV was byte-identical across a 75-second wait with the emulator still running. That is
-the failure this route is known for, so a candidate that reaches 10560 frames with 23
-copies on the same rig is a surviving run, not a silent instrument.
+**Instrument proven, not assumed.** The same rig on the known-bad `v3-fixed-credits.gba`
+(`ddfdf780...`) wrote its last heartbeat at frame 1980 and its CSV was byte-identical
+across a 75-second wait with the emulator still running. That is the failure this route
+is known for, so a candidate that reaches thousands of frames with copier hits on the
+same rig is a surviving run, not a silent instrument. A longer run of the previous
+candidate on this rig reached 10560 frames with 23 copier hits.
 
-**After the runs**: the candidate re-hashes to `bf3e61b3...`, the canonical ROM to
+**After the runs**: the candidate re-hashes to `20f2c140...`, the canonical ROM to
 `940ad5f0...` and the rename base to `b0de6ddf...`, all unchanged.
 
 The limit is stated: this route loads a savestate whose EWRAM holds a decoded dialogue
@@ -316,7 +352,7 @@ the emulator in front of them can take.
 
 | obligation | check | result |
 | --- | --- | --- |
-| the 451 spoken renames | audit over all 2,814 records | 719 correct, 0 unresolved |
+| the 451 spoken renames | audit over all 2,814 records | 734 correct, 0 unresolved |
 | the content pass's seven menu edits | step 4 re-hashed in the chain | 204 bytes, same seven sites |
 | credits line | `Cale Aaron Cymek` utf-16le | present at file `0x949FFE` |
 | slot-292 crash fix | file byte `0x6B692B` | `0x04` |
@@ -335,14 +371,18 @@ evidence stay under ignored paths.
 * The audit proves which name each enumerated string displays. It does not prove which
   string the game draws for a given menu, scan screen or quest line; that is index
   topology, and the runtime leg is what shows the dialogue path.
+* A displayed name that no retail name accounts for is not reported, because records
+  overlap: one record's span legitimately holds a neighbouring record's replacement, so
+  an "inserted" name is indistinguishable from a neighbour's write. An earlier version
+  tried and produced noise.
 * The orphaned retail copies (section 4) are left in place. They have no table entry and
-  no word-aligned reference; a pointer into them from code that is not a literal word
-  in the image would not be visible to that check.
+  no word-aligned reference; a pointer into them from code that is not a literal word in
+  the image would not be visible to that check.
 * The 2,814-record inventory and the 1,534-entry table are the surfaces this project
   enumerates. A text surface stored only inside compressed graphics or code was not
-  looked for beyond the whole-image scan the independent audit ran.
+  looked for beyond the whole-image scan an independent audit ran.
 * Relocation is proven safe by the one-reference guard, not by disassembly of the code
-  that reads those five pointers.
+  that reads those seven pointers.
 
 ## 9. Closure
 

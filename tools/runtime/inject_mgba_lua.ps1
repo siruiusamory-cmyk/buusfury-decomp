@@ -443,6 +443,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap_map4.lua')
     )
+    # Added by FRIEND-V3-TULMA-GRAPHICS-001: the read-only settled-screen observer
+    # for the Tulma session. It samples the object-tile region every frame for a
+    # still signature, and on a settle writes a screenshot plus full VRAM, palette
+    # and OAM dumps into the run directory, so whether the engine drew the authored
+    # tiles is measured against the dumped object-tile bytes rather than judged from
+    # a picture. It presses no key and writes no emulated memory. It accepts exactly
+    # the two image sizes this ticket owns, 10,133,410 and 10,141,224 bytes, so a
+    # session cannot silently run on another image.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\tulma001_tulma_proof.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

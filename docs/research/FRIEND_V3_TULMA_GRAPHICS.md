@@ -14,13 +14,13 @@ directory, no claim in this document is a claim about what the engine drew.
 | --- | --- | --- | --- |
 | canonical (immutable) | `roms/Dragon Ball Z - Buu's Fury (U).gba` | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` | 8,388,608 |
 | base (the approved content foundation) | `build/fv3ctp001/v3-complete-text-pass-2.gba` in the text-pass worktree | `20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c` | 10,133,410 |
-| candidate | `build/tulma001/v3-tulma-graphics.gba` | `aec5aa9ff1cabe454ae314721a647b31fe75102af96e6cde9b0a99f91bc1c7a6` | 10,141,224 |
+| candidate | `build/tulma001/v3-tulma-graphics.gba` | `ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4` | 10,140,972 |
 
 The canonical image was re-hashed before and after every command in this record and is
 unchanged. The base image was re-hashed after the write and is unchanged; the writer
 refuses to run unless its `--expect-sha256` equals what it read.
 
-The candidate is the base plus 7,814 appended bytes, with 8,140 changed bytes inside spans
+The candidate is the base plus 7,562 appended bytes, with 7,888 changed bytes inside spans
 the writer's own report attributes to a named owner and **zero changed bytes outside them**.
 
 ## 2. The supplied art, measured before anything was written
@@ -48,6 +48,10 @@ part of the write:
   already carries (`(240,192,112)`), so the change is indices, not palette bytes. Its 32
   chroma-key pixels become index 0, the hardware transparent key, which is the hole the
   artist drew.
+- **A portrait payload is a LINEAR raster, not swizzled tiles.** CONFIRMED by rendering the
+  retail container's own 4,096 decoded bytes as a linear 64x64 raster: that reproduces the
+  retail portrait. Reading the same bytes as swizzled 8x8 tiles produces noise. The sprite
+  path is the opposite, which is why the two cannot share an encoder.
 
 ## 3. The target, and the trap
 
@@ -95,6 +99,17 @@ ticket asks about, produced by the tooling rather than by the engine. The reopen
 below caught it before any runtime run, and a test now asserts that every container named
 twice carries both of its words.
 
+**A defect the runtime session found, and why the static checks could not.** The first
+candidate rendered the sprite correctly and the portrait as noise. The portrait payload is a
+linear raster, and the writer had put it through the sprite encoder, which swizzles 8x8
+tiles. The reason no static check caught it is the part worth keeping: decode (unswizzle)
+then re-encode (swizzle) round trips **byte-exactly**, so the writer's own reopen check
+compared the art through the same wrong model and agreed with itself. A format guard that
+shares the writer's assumption cannot see a wrong assumption. The fix is a dedicated
+`plan_portrait`, which packs the raster straight, and a check that compares the raw payload
+rather than an unswizzled reading of it. A unit test asserts the bytes actually written and
+that they are not the swizzled alternative.
+
 ## 5. Static verification
 
 1. **Round trip.** Every one of the 32 frame cells of sprite 41 was re-read from the
@@ -111,7 +126,7 @@ twice carries both of its words.
 4. **Chi-Chi untouched.** Every container reached by sprite 66's frames is byte-identical in
    the candidate and the base.
 5. **Determinism.** Two runs of the writer over the same base and the same four assets
-   produce byte-identical output (`aec5aa9f` both times) and reports that differ only in the
+   produce byte-identical output and reports that differ only in the
    output path they name, and the base image is re-hashed unchanged after each run.
 6. **Tests.** `tests/unit/test_tulma_graphics.py` covers the pure decisions (colour to
    index, the chroma key, the transparent key, the ambiguous-colour refusal, the 5-bit
@@ -120,7 +135,8 @@ twice carries both of its words.
    `tests/integration/test_tulma_graphics_rom.py` runs the writer over the canonical image
    with sheets it derives from that image, so the whole path is exercised without carrying a
    pixel of anyone's art, and asserts each of the four properties above plus the refusal of a
-   facing that is not the mirror of its pair. Both files pass: 21 tests.
+   facing that is not the mirror of its pair, and that the portrait payload is written as the
+   linear raster and not as the swizzled alternative. Both files pass: 23 tests.
 7. **A red test that is not this ticket's.** `tests/integration/test_graphics_rom.py::test_`
    `verified_graphics_pointers_join_the_common_reference_graph` fails on this baseline with
    11,304 references against an expectation of 11,302. It fails when run alone, it reads
@@ -131,33 +147,56 @@ twice carries both of its words.
 
 ## 6. Runtime evidence
 
-To be recorded. The writer and the static checks above establish the bytes; only a session
-establishes what the engine draws.
+Session `tulma001-encounter-6`, run directory `build/gfximport001/tulma001-encounter-6`,
+candidate `aec5aa9f` (the swizzled-portrait build), battery save `roms/v3.sav`, mGBA
+`0.11.0.0`, no savestate. The operator booted the image, loaded the saved game and reached
+map 134; the window was closed by hand, which is the documented way a session ends, so
+`liveness.csv` rather than `proof.txt` is the instrument record.
 
-The rig is in place and its preconditions are verified by a dry run: mGBA `0.11.0.0` read
-from the binary, the candidate digest and size checked, no mGBA already running, no
-savestate (a state would restore VRAM a previous run assembled, so the area has to be built
-during the session). The launcher is the tracked one the graphics-import proof already
-uses, and this ticket adds only the observer, registered in the injector allowlist and
-accepted by its `-CheckOnly` gate.
+What the captures show, and what they do not:
+
+- **The instrument ran.** 11 settled screens latched between frames 46 and 6547, with a
+  heartbeat every 120 frames throughout, so a silent target would have been a real negative
+  rather than an unproven instrument. Settles 4 to 11 are gameplay on map 134.
+- **The sprite is right.** In settle-08 the dialogue reads "It's great that Yamcha is back.
+  Everyone seems so happy to be together." and the overworld figure renders normally. That is
+  one written container streamed by the engine and drawn.
+- **The portrait was wrong, and that is the finding.** The portrait cell in the same screen
+  is noise. Diagnosed from the image, not from opinion: the retail container's payload
+  rendered as a linear raster is the retail portrait, and the candidate's payload rendered
+  the same way is noise, so the payload had been swizzled when it must not be. Section 4
+  records the fix and why every static check passed anyway.
+- **A confirmation session is owed.** Candidate `ef939dcd` carries the linear portrait; its
+  payload renders as the supplied Tulma portrait when read the way the engine reads it, but
+  no session has yet shown it on a screen. Until one has, this record does not claim the
+  portrait is correct in play.
+
+The rig: mGBA `0.11.0.0` read from the binary, the candidate digest and size checked, no
+running mGBA, no savestate (a state would restore VRAM a previous run assembled, so the area
+has to be built during the session). The launcher is the tracked one the graphics-import
+proof already uses, and this ticket adds only the observer, registered in the injector
+allowlist and accepted by its `-CheckOnly` gate. One trap is worth recording because it cost a
+launch: the observer names the image sizes it accepts, so a new candidate size throws on load
+and the launcher reports "Lua script did not report ready", which reads like an injection
+fault and is not one.
 
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\runtime\start_gfximport001_live.ps1 `
   -RomPath build\tulma001\v3-tulma-graphics.gba `
-  -RomSha256 aec5aa9ff1cabe454ae314721a647b31fe75102af96e6cde9b0a99f91bc1c7a6 `
-  -ExpectedRomSize 10141224 -Label tulma001-encounter `
-  -LuaPath tools\runtime\tulma001_tulma_proof.lua -SavePath roms\<the operator's save>
+  -RomSha256 ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4 `
+  -ExpectedRomSize 10140972 -Label tulma001-encounter-8 `
+  -LuaPath tools\runtime\tulma001_tulma_proof.lua -SavePath roms\v3.sav
 
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\runtime\finish_gfximport001_session.ps1 -Label tulma001-encounter
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\runtime\finish_gfximport001_session.ps1 -Label tulma001-encounter-8
 ```
 
-The launcher prints the run directory and exits holding no wait loop; the operator boots
-the image, loads the saved game, walks to a Tulma appearance and closes the window. The
-observer then has, per settled screen, a screenshot plus full VRAM, palette and OAM dumps,
-so the claim is checked against the object-tile bytes rather than judged from a picture.
-The three instrument states of the runtime skill's section 8 are reported when the section
-is filled in: target silent with a silent liveness channel is no evidence, target silent
-with the heartbeat firing is a real negative, and anything drawn is execution observed.
+The launcher prints the run directory and exits holding no wait loop; the operator boots the
+image, loads the saved game, walks to a Tulma appearance and closes the window. The observer
+then has, per settled screen, a screenshot plus full VRAM, palette and OAM dumps, so the claim
+is checked against the object-tile bytes rather than judged from a picture. The three
+instrument states of the runtime skill's section 8 are reported when this section is
+completed: target silent with a silent liveness channel is no evidence, target silent with the
+heartbeat firing is a real negative, and anything drawn is execution observed.
 
 ## 7. The palette question, answered
 

@@ -448,9 +448,10 @@ $allowedLua = @(
     # still signature, and on a settle writes a screenshot plus full VRAM, palette
     # and OAM dumps into the run directory, so whether the engine drew the authored
     # tiles is measured against the dumped object-tile bytes rather than judged from
-    # a picture. It presses no key and writes no emulated memory. It accepts exactly
-    # the two image sizes this ticket owns, 10,133,410 and 10,141,224 bytes, so a
-    # session cannot silently run on another image.
+    # a picture. It presses no key and writes no emulated memory. It accepts only the
+    # image sizes this ticket owns, which it names in its own header; a size outside
+    # that list throws on load and the launcher then reports the misleading "Lua
+    # script did not report ready", so the two are updated together.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\tulma001_tulma_proof.lua')
     )

@@ -29,9 +29,12 @@
 --
 -- ACCEPTED IMAGES. Two shapes are legitimate for this ticket and both are accepted: the
 -- content foundation this write extends (10,133,410 bytes) and the candidate it produced
--- (10,141,224 bytes). The launcher pins the exact digest; this check pins the shape, so a
--- session cannot silently run on some other image. The 0.11 dev build returns the bare game
--- code, so both spellings are accepted.
+-- (10,140,972 bytes). The launcher pins the exact digest; this check pins the shape, so a
+-- session cannot silently run on some other image. UPDATE THIS LIST WHEN THE CANDIDATE
+-- CHANGES, and expect the omission to fail loudly: a size outside the list throws on load,
+-- the ready marker is never written, and the launcher reports "Lua script did not report
+-- ready", which looks like an injection fault and is not one. The 0.11 dev build returns the
+-- bare game code, so both spellings are accepted.
 
 local ACTIVE_MAP_PTR = 0x03001980
 local MAP_ENTRY_BASE = 0x0808E2E0
@@ -43,7 +46,7 @@ local OBJ_LO, OBJ_BYTES = 0x06010000, 0x8000
 local PAL_LO, PAL_BYTES = 0x05000000, 0x400
 local OAM_LO, OAM_BYTES = 0x07000000, 0x400
 
-local ACCEPTED_ROM_SIZES = { [10133410] = true, [10141224] = true }
+local ACCEPTED_ROM_SIZES = { [10133410] = true, [10140972] = true }
 
 local HEARTBEAT_FRAMES = 120
 local DWELL_FRAMES = 45

@@ -16,6 +16,7 @@ import pytest
 from tools.export.png import encode_rgba
 from tools.research import apply_tulma_graphics as tg
 from tools.webfoot.formats import sprite_graphics as sg
+from tools.webfoot.formats import webfoot_lz as wl
 
 PALETTE_OFFSET = 0x40
 
@@ -158,6 +159,34 @@ def test_a_container_two_cells_disagree_about_is_refused():
 def test_a_container_named_once_carries_one_reference():
     target, = tg.containers([_cell(0x2000, b"a" * 4, piece=0x188)]).values()
     assert target.references == (0x188,)
+
+
+def test_the_portrait_payload_is_written_linear_and_not_as_tiles():
+    """The defect a runtime session found: the portrait raster is not swizzled tiles.
+
+    Rendering the retail portrait container's own payload as a linear 64x64 raster reproduces
+    the retail portrait, so the payload is linear. A writer that swizzles it passes its own
+    decode-then-compare round trip, because that round trip is the identity inside the wrong
+    model, and puts noise on the screen. This asserts the bytes actually written.
+    """
+    raster = bytes((i * 7) % 251 for i in range(tg.PORTRAIT_SIDE ** 2))
+    container = wl.pack(raster, kind=1)
+    data = b"\x00" * 0x40 + container
+    plan = tg.Plan()
+    tg.plan_portrait(data, plan, 0x40, raster, owner="portrait", reference_words=())
+    written = plan.writes[0].new
+    assert written == container
+    swizzled = wl.pack(sg.swizzle_tiles(raster, tg.PORTRAIT_SIDE, tg.PORTRAIT_SIDE,
+                                        colour_256=True), kind=1)
+    assert written != swizzled
+    assert wl.unpack(bytes(0x40) + written, 0x40).data == raster
+
+
+def test_a_portrait_whose_extent_disagrees_with_the_raster_is_refused():
+    container = wl.pack(bytes(64), kind=1)
+    with pytest.raises(tg.TulmaGraphicsError, match="declares"):
+        tg.plan_portrait(bytes(0x40) + container, tg.Plan(), 0x40, bytes(80),
+                         owner="portrait", reference_words=())
 
 
 # --- apply and verify -----------------------------------------------------------------

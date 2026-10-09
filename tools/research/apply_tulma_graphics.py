@@ -53,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.webfoot.formats import rgb_png  # noqa: E402
 from tools.webfoot.formats import sprite_graphics as sg  # noqa: E402
+from tools.webfoot.formats import webfoot_lz as wl  # noqa: E402
 
 #: config/roms.yaml actor_sprites.character_table_address.
 REGISTRY_TABLE_ADDRESS = 0x086B6BDC
@@ -351,30 +352,18 @@ class Plan:
     placed: list[int] = field(default_factory=list)
 
 
-def plan_container(
-    data: bytes, plan: Plan, offset: int, width: int, height: int, raster: bytes,
-    owner: str, reference_words: tuple[int, ...],
+def _place(
+    data: bytes, plan: Plan, offset: int, payload: bytes, owner: str,
+    reference_words: tuple[int, ...], record: dict,
 ) -> None:
-    """Encode one container and place it, in place or appended, recording the choice.
+    """Put an encoded payload where it belongs, in place or appended.
 
-    ``reference_words`` are the file offsets of every word that names this container. They
-    are written only when the payload has to move, and only after each word is confirmed
-    to be the one this write read.
+    A payload that fits the extent the container already occupies is written there; one that
+    does not is appended above the end of the image, and every word that names the container
+    is rewritten in the same batch after each word is confirmed to be the one this write
+    read. Repointing only some of those words is how a facing keeps the old art.
     """
-    kind = sg.graphics_container_kind(data, offset)
-    graphic = sg.decode_graphic(data, offset, width, height, colour_256=True)
-    payload = sg.encode_graphic_payload(graphic, raster, kind=kind)
-    record = {
-        "container_offset": offset,
-        "container_address": f"0x{offset + 0x08000000:08X}",
-        "width": width,
-        "height": height,
-        "original_packed_size": graphic.packed_size,
-        "encoded_size": len(payload),
-        "owner": owner,
-        "reference_word_offsets": list(reference_words),
-    }
-    if len(payload) <= graphic.packed_size:
+    if len(payload) <= record["original_packed_size"]:
         plan.writes.append(Write(offset, data[offset:offset + len(payload)], payload, owner,
                                  "in-place graphics payload overwrite"))
         record["placement"] = "in-place"
@@ -406,6 +395,70 @@ def plan_container(
         # payload, so the diff-confinement check can attribute every changed byte.
         record["spans"] = spans
     plan.records.append(record)
+
+
+def plan_container(
+    data: bytes, plan: Plan, offset: int, width: int, height: int, raster: bytes,
+    owner: str, reference_words: tuple[int, ...],
+) -> None:
+    """Encode one actor-sprite container, which the engine reads as swizzled 8x8 tiles."""
+    kind = sg.graphics_container_kind(data, offset)
+    graphic = sg.decode_graphic(data, offset, width, height, colour_256=True)
+    payload = sg.encode_graphic_payload(graphic, raster, kind=kind)
+    _place(data, plan, offset, payload, owner, reference_words, {
+        "container_offset": offset,
+        "container_address": f"0x{offset + 0x08000000:08X}",
+        "format": "swizzled-tiles",
+        "width": width,
+        "height": height,
+        "original_packed_size": graphic.packed_size,
+        "encoded_size": len(payload),
+        "owner": owner,
+        "reference_word_offsets": list(reference_words),
+    })
+
+
+def plan_portrait(
+    data: bytes, plan: Plan, offset: int, raster: bytes, owner: str,
+    reference_words: tuple[int, ...],
+) -> None:
+    """Encode the portrait container, whose payload is a LINEAR raster and not tiles.
+
+    This cost a runtime session, so it is stated as evidence rather than as a choice.
+    Rendering the retail container's own payload as a linear 64x64 raster reproduces the
+    retail portrait; reading that same payload as swizzled 8x8 tiles produces noise. The
+    portrait therefore packs straight.
+
+    The trap is that the sprite encoder agrees with itself on the wrong model: decode
+    (unswizzle) then re-encode (swizzle) round trips byte-exactly, so a writer that treated
+    the portrait as tiles passed its own decode-then-compare check while putting noise on
+    the screen. A format check that shares the writer's assumption cannot catch that.
+    """
+    kind = sg.graphics_container_kind(data, offset)
+    container = wl.unpack(data, offset)
+    if container.declared_size != len(raster):
+        raise TulmaGraphicsError(
+            f"the portrait container at {offset:#x} declares {container.declared_size} "
+            f"bytes but the supplied raster is {len(raster)}"
+        )
+    payload = wl.pack(raster, kind=kind)
+    try:
+        wl.validate_retail_termination(payload)
+    except wl.ContainerError as exc:
+        raise TulmaGraphicsError(
+            f"the re-encoded portrait does not satisfy the retail termination contract: {exc}"
+        ) from exc
+    _place(data, plan, offset, payload, owner, reference_words, {
+        "container_offset": offset,
+        "container_address": f"0x{offset + 0x08000000:08X}",
+        "format": "linear-raster",
+        "width": PORTRAIT_SIDE,
+        "height": PORTRAIT_SIDE,
+        "original_packed_size": container.packed_size,
+        "encoded_size": len(payload),
+        "owner": owner,
+        "reference_word_offsets": list(reference_words),
+    })
 
 
 def apply(data: bytes, plan: Plan) -> bytes:
@@ -518,8 +571,8 @@ def run(base_path: Path, expect_sha256: str, assets: Path, out_path: Path,
     palette = palette_indices(data, file_offset(OBJECT_PALETTE_ADDRESS, size))
     portrait_raster = raster_from_png(assets / "portrait.png", palette, PORTRAIT_SIDE,
                                       PORTRAIT_SIDE)
-    plan_container(
-        data, plan, portrait_offset, PORTRAIT_SIDE, PORTRAIT_SIDE, portrait_raster,
+    plan_portrait(
+        data, plan, portrait_offset, portrait_raster,
         owner=f"appearance:{BULMA_CHARACTER_INDEX}/portrait:{BULMA_PORTRAIT_SLOT}",
         reference_words=(portrait_word,),
     )
@@ -528,9 +581,10 @@ def run(base_path: Path, expect_sha256: str, assets: Path, out_path: Path,
     out = apply(data, plan)
     reopen = verify_reopen(out, assets, placed)
     portrait_now = portrait_record.get("new_offset", portrait_record["container_offset"])
-    if sg.decode_graphic(out, portrait_now, PORTRAIT_SIDE, PORTRAIT_SIDE,
-                         colour_256=True).pixels != portrait_raster:
-        raise TulmaGraphicsError("the portrait container does not decode to the art placed")
+    # The portrait is compared as its own format: the raw payload, not an unswizzled
+    # reading of it. Comparing it through the sprite decoder would agree with the bug.
+    if wl.unpack(out, portrait_now).data != portrait_raster:
+        raise TulmaGraphicsError("the portrait container does not hold the art placed")
     reopen["portrait_container_offset"] = portrait_now
     report = {
         "ticket": "FRIEND-V3-TULMA-GRAPHICS-001",

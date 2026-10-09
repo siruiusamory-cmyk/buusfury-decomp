@@ -113,6 +113,21 @@ def _integer(value: Any, where: str) -> int:
     return value
 
 
+def _text(value: Any, where: str) -> str:
+    """A real string, required.
+
+    Coercing with ``str()`` is how a JSON ``null`` becomes the literal line "None" and then
+    passes its own read-back, because the read-back compares the sentence the engine was given.
+    Refusing here is the only place that can be caught.
+    """
+    if not isinstance(value, str):
+        raise SwapSpecError(
+            f"{where} must be a string, not {value!r}; a null or a number here would be written "
+            "into the game as text, so it is refused"
+        )
+    return value
+
+
 def _geometry(entry: dict[str, Any], where: str) -> SpriteGeometry:
     frame = entry.get("frame", [DONOR_GEOMETRY.frame_width, DONOR_GEOMETRY.frame_height])
     anchor = entry.get("anchor", list(DONOR_GEOMETRY.frame_anchor))
@@ -170,7 +185,7 @@ def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
                 _reject_unknown(slot, _SLOT_KEYS, slot_where)
                 parsed.append(SheetSlot(
                     _integer(_require(slot, "slot", slot_where), f"{slot_where}: slot"),
-                    str(_require(slot, "sheet", slot_where)),
+                    _text(_require(slot, "sheet", slot_where), f"{slot_where}: sheet"),
                     _integer(_require(slot, "frames", slot_where), f"{slot_where}: frames")))
             sprites.append(SpriteSwap(
                 sprite_id=_integer(_require(entry, "sprite_id", where),
@@ -181,7 +196,7 @@ def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
             _reject_unknown(entry, _PORTRAIT_KEYS, where)
             portraits.append(PortraitSwap(
                 slot=_integer(_require(entry, "slot", where), f"{where}: slot"),
-                png=str(_require(entry, "png", where)),
+                png=_text(_require(entry, "png", where), f"{where}: png"),
                 side=_integer(entry.get("side", 64), f"{where}: side")))
         elif kind == "dialogue":
             _reject_unknown(entry, _DIALOGUE_KEYS, where)
@@ -199,9 +214,10 @@ def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
                         f"not {record!r}"
                     )
                 edits.append(LineEdit(
-                    speaker=str(line.get("speaker", "unstated")),
-                    old_text=str(_require(line, "old", line_where)),
-                    new_text=str(_require(line, "new", line_where)),
+                    speaker=("unstated" if "speaker" not in line
+                             else _text(line["speaker"], f"{line_where}: speaker")),
+                    old_text=_text(_require(line, "old", line_where), f"{line_where}: old"),
+                    new_text=_text(_require(line, "new", line_where), f"{line_where}: new"),
                     decoded_start=None if record is None else _integer(
                         record[0], f"{line_where}: record start"),
                     decoded_length=None if record is None else _integer(
@@ -218,7 +234,12 @@ def parse_spec(document: dict[str, Any]) -> tuple[tuple[SpriteSwap, ...],
 
 def apply_spec(image: bytes, spec_path: Path) -> tuple[bytes, dict]:
     """Apply a spec's operations to an image and return the new image and its report."""
-    document = json.loads(spec_path.read_text(encoding="utf-8"))
+    try:
+        document = json.loads(spec_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SwapSpecError(f"{spec_path} is not valid JSON: {exc}") from exc
+    except OSError as exc:
+        raise SwapSpecError(f"{spec_path} could not be read: {exc}") from exc
     sprites, portraits, rewrites = parse_spec(document)
     assets = spec_path.parent
     report: dict[str, Any] = {"spec": str(spec_path), "operations": [], "passes": []}
@@ -259,7 +280,12 @@ def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
             f"{image_path} is {digest}, not the image this swap was proven against "
             f"({expect_sha256.lower()})"
         )
-    out, report = transform(image)
+    try:
+        out, report = transform(image)
+    except OSError as exc:
+        # A missing sheet or portrait is an operator error, not a crash: report it as a refusal
+        # so the message names the file rather than a traceback.
+        raise error(f"a file the swap needs could not be read: {exc}") from exc
     report["image"] = {
         "path": str(image_path), "sha256": digest, "size": len(image),
         "output_path": str(out_path), "output_sha256": sha256(out), "output_size": len(out),

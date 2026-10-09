@@ -117,6 +117,93 @@ def test_a_crop_window_outside_the_cell_is_refused():
              "slots": [{"slot": 0, "sheet": "a.png", "frames": 1}]}]})
 
 
+# --- text fields are required strings, never coerced ------------------------------------------
+
+
+def _line(**overrides) -> dict:
+    line = {"speaker": "tulma", "old": "the old wording", "new": "the new wording"}
+    line.update(overrides)
+    return line
+
+
+def _dialogue(*lines: dict) -> dict:
+    return {"operations": [{"kind": "dialogue", "selector": 2, "lines": list(lines)}]}
+
+
+def test_a_null_new_text_is_refused_rather_than_written_as_the_word_none():
+    """The defect this closes: str(None) became the literal line "None" and passed read-back."""
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec(_dialogue(_line(new=None)))
+
+
+def test_a_null_old_text_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec(_dialogue(_line(old=None)))
+
+
+def test_a_number_where_a_line_belongs_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec(_dialogue(_line(new=42)))
+
+
+def test_a_null_speaker_is_refused_rather_than_becoming_the_word_none():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec(_dialogue(_line(speaker=None)))
+
+
+def test_an_omitted_speaker_is_still_allowed_and_stays_a_claim():
+    _, _, rewrites = cs.parse_spec(_dialogue({"old": "the old wording",
+                                             "new": "the new wording"}))
+    assert rewrites[0].lines[0].speaker == "unstated"
+
+
+def test_a_null_sheet_name_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec({"operations": [
+            {"kind": "sprite", "sprite_id": 41,
+             "slots": [{"slot": 0, "sheet": None, "frames": 1}]}]})
+
+
+def test_a_null_portrait_name_is_refused():
+    with pytest.raises(cs.SwapSpecError, match="must be a string"):
+        cs.parse_spec({"operations": [{"kind": "portrait", "slot": 17, "png": None}]})
+
+
+def test_the_diagnostic_names_the_field_that_is_wrong():
+    with pytest.raises(cs.SwapSpecError, match="operation 0 line 1: new"):
+        cs.parse_spec(_dialogue(_line(), _line(new=None)))
+
+
+def test_a_refused_text_field_publishes_no_output(tmp_path):
+    """The refusal must happen before anything is written, so no file appears."""
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps(_dialogue(_line(new=None))), encoding="utf-8")
+    with pytest.raises(cs.SwapSpecError):
+        cs.apply_spec(b"image", spec)
+    assert [p.name for p in tmp_path.iterdir()] == ["spec.json"]
+
+
+def test_a_spec_that_is_not_json_is_refused_with_a_message(tmp_path):
+    spec = tmp_path / "spec.json"
+    spec.write_text("{not json", encoding="utf-8")
+    with pytest.raises(cs.SwapSpecError, match="is not valid JSON"):
+        cs.apply_spec(b"image", spec)
+
+
+def test_a_missing_file_is_reported_as_a_refusal_not_a_traceback(tmp_path):
+    """A missing sheet or portrait arrives as an OSError, which the guard translates."""
+    image = tmp_path / "image.bin"
+    image.write_bytes(b"base")
+
+    def transform(_image: bytes) -> tuple[bytes, dict]:
+        raise FileNotFoundError(2, "No such file or directory", "stand.png")
+
+    with pytest.raises(cs.SwapSpecError, match="could not be read"):
+        cs.guarded_apply(image, cs.sha256(b"base"), tmp_path / "out.bin", None, transform)
+    assert not (tmp_path / "out.bin").exists()
+
+
+
 def _transform(image: bytes) -> tuple[bytes, dict]:
     return image + b"!", {"note": "appended one byte"}
 

@@ -18,9 +18,12 @@ statement of anything the PNG already says.
 container occupied is written where the payload already is: one `ByteChange`
 covering exactly the bytes the re-encoded container needs, with the original
 trailing bytes left untouched rather than rewritten. A stream that does not fit
-goes through the ONE allocation authority (`webfoot.allocation`) under
-:data:`webfoot.allocation.AllocationKind.GRAPHICS_CONTAINER`, and then every
-confirmed reference to the old payload is rewritten in the same batch.
+goes through `webfoot.relocation.plan_relocation`, which is the ONE
+growth-capable container operation: it allocates through `webfoot.allocation`,
+re-encodes every dislodged reference, and emits the relocation and
+generated-allocation provenance. This module supplies the payload, the reason
+each move is legitimate, and the graphic that names each request; it owns no
+allocator, no encoder and no second planning pass of its own.
 
 **What may be rewritten, and what is not claimed.** Relocation rewrites the
 references the graphics walk actually published: one CONFIRMED
@@ -52,14 +55,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Callable, Mapping
 
-from .allocation import Allocation, AllocationKind, AllocationRequest, allocate
-from .binary import FileOffset
+from .allocation import AllocationKind, DEFAULT_ADDRESSABILITY
 from .formats import indexed_png
 from .layout import AnchorId, OwnedRegion, ReferenceClass
 from .project.format import ProjectFormatError, load_toml
 from .project.model import (GRAPHICS_FILE, GraphicsOverrides, PixelOverride,
                             ProjectValidationError)
-from .write import ByteChange, GeneratedAllocationProvenance, ReferenceRewrite, RelocationProvenance
+from .relocation import RelocationRequest, plan_relocation
+from .write import ByteChange, GeneratedAllocationProvenance, RelocationProvenance
 
 #: The allocation domain name recorded on every generated-allocation provenance
 #: this module issues, and the owner prefix every `ByteChange` it emits carries.
@@ -373,8 +376,7 @@ def plan_graphic_overrides(
     document = sprites.reference_document()
 
     changes: list[ByteChange] = []
-    requests: list[AllocationRequest] = []
-    moving: dict[str, tuple] = {}
+    requests: list[RelocationRequest] = []
     for identity in sorted(overrides):
         override = overrides[identity]
         graphic = by_name.get(identity)
@@ -401,59 +403,41 @@ def plan_graphic_overrides(
                 )
             )
             continue
-        moving[identity] = _relocation_candidate(
+        anchor, consumers, payload = _relocation_candidate(
             document, identity, graphic, payload, image
         )
         requests.append(
-            AllocationRequest(
+            RelocationRequest(
                 AnchorId(identity),
-                owner,
-                len(payload),
-                ALIGNMENT,
-                kind=AllocationKind.GRAPHICS_CONTAINER,
-                evidence=f"re-encoded {graphic.width}x{graphic.height} graphic payload",
+                payload,
+                addressability=DEFAULT_ADDRESSABILITY[AllocationKind.GRAPHICS_CONTAINER],
+                generated=(DOMAIN, identity,
+                           min(reference.source.value for reference in consumers)),
             )
         )
 
     if not requests:
         return GraphicMaterialization(changes=tuple(changes))
-
-    allocations = allocate(profile, requests, occupied=_occupied(document, reserved))
-    for allocation in allocations:
-        changes.extend(_relocation_changes(document, allocation, moving, image, profile))
-    return GraphicMaterialization(
-        changes=tuple(changes),
-        reserved=tuple(
-            OwnedRegion(allocation.range, allocation.request.owner)
-            for allocation in allocations
-        ),
-        generated_allocations=tuple(
-            _generated_provenance(allocation, moving)
-            for allocation in allocations
-            if allocation.is_expanded
-        ),
-        relocations=tuple(
-            _relocation_provenance(document, allocation, moving)
-            for allocation in allocations
-        ),
-    )
+    return _relocated(document, requests, changes, reserved)
 
 
-def _occupied(document, reserved: tuple[OwnedRegion, ...]) -> tuple[OwnedRegion, ...]:
-    """Everything the allocator must place clear of, in the established form.
+def _relocated(document, requests, changes, reserved) -> GraphicMaterialization:
+    """The relocation half, compiled by the ONE shared growth operation.
 
-    The same set `webfoot.relocation.plan_relocation` uses: every anchor, plus
-    every reference field that does not sit inside an anchor, plus the build's
-    own reservations from earlier domains.
+    ``relocation.plan_relocation`` is the general form of what this domain used
+    to do in private: it allocates through the one allocator, encodes every
+    dislodged reference against the image the placement was authorized against,
+    records the placement as `relocation` provenance and authorizes an above-EOF
+    span with `generated_allocations`. Nothing about a graphic is special to it
+    except the request this function hands it.
     """
-    occupied = [OwnedRegion(anchor.range, anchor.owner) for anchor in document.anchors]
-    for reference in document.references:
-        if not any(anchor.range.contains(reference.source) for anchor in document.anchors):
-            occupied.append(
-                OwnedRegion(reference.source_range, f"reference:{reference.target.value}")
-            )
-    occupied.extend(reserved)
-    return tuple(occupied)
+    result = plan_relocation(document, requests, reserved=reserved)
+    return GraphicMaterialization(
+        changes=tuple(changes) + result.plan.changes,
+        reserved=tuple(OwnedRegion(a.range, a.request.owner) for a in result.allocations),
+        generated_allocations=result.plan.generated_allocations,
+        relocations=result.plan.relocations,
+    )
 
 
 def _relocation_candidate(document, identity: str, graphic, payload: bytes, image: bytes):
@@ -463,6 +447,8 @@ def _relocation_candidate(document, identity: str, graphic, payload: bytes, imag
     every consumer of the payload. Three ways that can fail, and each is refused
     rather than worked around:
 
+    * the published anchor's extent disagrees with the decoded container, so no
+      placement can be justified from the graph;
     * the anchor is not published relocatable, which means the shared eligibility
       rule could not establish the payload's inbound surface;
     * nothing confirmed reaches it, so there is no owner to rewrite and moving it
@@ -470,6 +456,10 @@ def _relocation_candidate(document, identity: str, graphic, payload: bytes, imag
       an undiscovered reference takes;
     * a CANDIDATE reference reaches it, which is an unresolved numeric hit this
       toolkit will not rewrite and will not ignore.
+
+    ``plan_relocation`` re-enforces the last three from the same graph; they are
+    checked here as well so the accounting message names the graphic rather than
+    the anchor.
     """
     anchor = document.anchor(AnchorId(identity))
     if anchor.range.size != graphic.packed_size:
@@ -504,109 +494,6 @@ def _relocation_candidate(document, identity: str, graphic, payload: bytes, imag
                 "rewritten"
             )
     return anchor, consumers, payload
-
-
-def _relocation_changes(document, allocation: Allocation, moving: Mapping, image: bytes,
-                        profile) -> list[ByteChange]:
-    """The payload write plus one rewrite per confirmed consumer.
-
-    Returns all of them together because the two halves are one transaction: a
-    payload written without its consumers repointed is a graphic nothing can
-    reach, and a consumer repointed without its payload is a pointer into
-    padding. What makes the pair atomic is that this function either returns both
-    or raises - a batch with a bad member never reaches `write.plan_changes` at
-    all. (`plan_changes` itself stores the relocations without cross-checking them
-    against the changes, so it is not a second guard here.)
-    """
-    identity = allocation.request.anchor.value
-    _anchor, consumers, payload = moving[identity]
-    owner = allocation.request.owner
-    start = allocation.range.start.value
-    if allocation.is_expanded:
-        expansion = profile.generated_expansion
-        if expansion is None:
-            raise GraphicsAuthoringError(
-                f"{identity}: the allocator placed this payload above canonical EOF, "
-                "but the profile declares no generated expansion to authorize it"
-            )
-        old = bytes([expansion.padding_byte]) * allocation.range.size
-    else:
-        old = image[start : allocation.range.end]
-    changes = [
-        ByteChange(
-            offset=start,
-            old=old,
-            new=payload,
-            owner=owner,
-            reason=(
-                f"authored pixels re-encoded to {allocation.range.size} bytes, above the "
-                f"original container extent; {identity} allocated "
-                f"{allocation.storage_class.value} storage with every confirmed reference "
-                "rewritten in the same plan"
-            ),
-        )
-    ]
-    for reference in consumers:
-        # The address bound is the ALLOCATION's image, not the canonical image:
-        # an above-EOF placement is only representable against the generated
-        # image's declared size, which is exactly the authorization the allocator
-        # issued. Encoding against the canonical size would refuse every expanded
-        # placement before the retail engine ever had a chance to read it.
-        encoded = reference.encoding.encode(
-            FileOffset(start), reference.source, allocation.image_size
-        )
-        changes.append(
-            ByteChange(
-                offset=reference.source.value,
-                old=image[reference.source.value : reference.source_range.end],
-                new=encoded,
-                owner=owner,
-                reason=f"relocation reference: {identity} moved, this consumer repointed",
-            )
-        )
-    return changes
-
-
-def _relocation_provenance(document, allocation: Allocation, moving: Mapping) -> RelocationProvenance:
-    identity = allocation.request.anchor.value
-    anchor, consumers, _payload = moving[identity]
-    start = allocation.range.start.value
-    rewrites = tuple(
-        ReferenceRewrite(
-            reference=reference,
-            new_source_file_offset=reference.source.value,
-            old_target_file_offset=document.target_offset(reference).value,
-            new_target_file_offset=start,
-        )
-        for reference in consumers
-    )
-    return RelocationProvenance(
-        anchor=identity,
-        owner=allocation.request.owner,
-        old_range=anchor.range,
-        new_range=allocation.range,
-        alignment=allocation.request.alignment,
-        free_region_evidence=allocation.free_region_evidence,
-        references=rewrites,
-    )
-
-
-def _generated_provenance(allocation: Allocation, moving: Mapping) -> GeneratedAllocationProvenance:
-    """The write-layer authorization for an above-EOF placement.
-
-    ``pointer_offset`` records the lowest confirmed consumer field, which is the
-    field the allocation had to satisfy first in source order. Every consumer is
-    listed in the relocation provenance this build also emits, so the single
-    number here is a locator rather than a claim that there is only one.
-    """
-    identity = allocation.request.anchor.value
-    anchor, consumers, _payload = moving[identity]
-    return allocation.generated_allocation_provenance(
-        domain=DOMAIN,
-        resource=identity,
-        pointer_offset=min(reference.source.value for reference in consumers),
-        source_range=anchor.range,
-    )
 
 
 def graphics_overrides_with_pixels(

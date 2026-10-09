@@ -1,0 +1,28 @@
+{
+  "operations": [
+    {
+      "kind": "dialogue",
+      "selector": 2,
+      "lines": [
+        {
+          "speaker": "bulma",
+          "old": "Isn't this wonderful? Our family is back together again!",
+          "new": "Look at how mad Tulma is! Do you think I went too far this time?",
+          "record": [
+            60182,
+            112
+          ]
+        },
+        {
+          "speaker": "tulma",
+          "old": "It's great that \ue000mc\ue001 is back. Everyone seems so happy to be together.",
+          "new": "That bitch! She knew I was going to wear this!",
+          "record": [
+            60294,
+            138
+          ]
+        }
+      ]
+    }
+  ]
+}

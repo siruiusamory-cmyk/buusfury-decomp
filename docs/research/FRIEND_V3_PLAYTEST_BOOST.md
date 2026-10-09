@@ -80,26 +80,35 @@ re-hashes the canonical copy at both ends.
 Character base-stat records are 9 records of 0x12 bytes at `0x006FDA4C`; the layout is
 `tools/webfoot/formats/stat_tables.py:188-220` (level u8, pad, hp u16, ep u16, strength,
 power, endurance, speed, appearance id, technique count, 6 technique bytes). The five base
-party records are set to the widest value each field's own encoder accepts:
+party records are set to the widest value each field's own mode uses:
 
 | field | offset | value | basis |
 | --- | --- | --- | --- |
-| level | +0x00 | 200 | the game's own cap: `cmp r6,#0xc8` at `0x08013A00` on the grant path, re-read on this image |
+| level | +0x00 | 200 | the game's XP ceiling, not the u8 bound: `cmp r6,#0xc8` before the threshold lookup, reported at `tools/webfoot/stats.py:71-75` from `docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393`. The encoding is a u8 and would accept 255 |
 | hp | +0x02 | 65535 | u16 field |
 | ep | +0x04 | 65535 | u16 field |
 | strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields |
 
-Records 0..4 (Goku, Gohan, Goten, Trunks, Vegeta). Records 5..7 (Gotenks, Vegito, Gogeta)
-and 8 (Hercule) are deliberately untouched: the fusions are derived forms and Hercule is not
-one of the five playable characters. The builder asserts that the changed-byte set equals the
-union of the declared spans exactly, so a change outside those 45 bytes fails the build.
+Records 0..4 are set from `BASE_STAT_NAMES` order (Goku, Gohan, Goten, Trunks, Vegeta).
+Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. That roster split
+is an **inference, not a verified fact**: `tools/webfoot/formats/stat_tables.py:80-86` labels
+the names INFERRED, and `:77` calls all nine records "playable characters". No source in this
+repository establishes that fusions derive from the base records or that Hercule is
+unplayable. The five-record choice is therefore a bounded decision, recorded here so the
+playtest can falsify it; the fusion records are left at retail values, which is the
+conservative side of that uncertainty.
+
+The builder refuses a byte that its own field table does not account for. That catches a write
+outside the table. It cannot catch a wrong offset or width inside the table, because the table
+also drives the writes; those were checked by hand against `decode_base_stat_record` and by
+the reviewer, not by the assertion.
 
 ## 3. Verification performed
 
 | gate | result |
 | --- | --- |
-| `tests/unit/test_friend_v3_playtest_boost.py` | **5 passed** |
-| related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **172 passed** |
+| `tests/unit/test_friend_v3_playtest_boost.py` | **7 passed** |
+| related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **174 passed**; captured to ignored `build/review/related-suites.log` |
 | changed-byte census on the delivered image | 45 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
 | foundation re-run through the toolkit | reproduces `ef939dcd` then `a4c12a95` byte for byte |
 | boost re-run on the reproduced foundation | reproduces `6d7a56c6` byte for byte |
@@ -115,12 +124,12 @@ and any runtime observation of this image. See section 5.
 | item | evidence |
 | --- | --- |
 | Character-name text pass, 868 occurrences, 0 unresolved | MR !155 / !156, merged `1a45f494`, `d003ce93`; `docs/research/FRIEND_V3_COMPLETE_TEXT_PASS.md` |
-| Content pass: 7 menu edits, credits line, slot-292 crash fix | merged; `20f2c140` reproduced here |
-| Token engine for the two-glyph name tokens | merged; `cef009d9`-class output reproduced here |
-| Tulma actor sprite, 22 containers | MR !165, merge `0b3676a7`; reproduced here as `ef939dcd` |
-| Tulma portrait slot 17, and the two rewritten dialogue records | MR !166, merge `1b02222`; reproduced here as `a4c12a95` |
+| Content pass: 7 menu edits, credits line, slot-292 crash fix | merged; `20f2c140` entered this build as a digest-verified input, not rebuilt here |
+| Token engine for the two-glyph name tokens | merged; `cec009d9` is its stage-3 published digest, carried through the chain, not re-run here |
+| Tulma actor sprite, 22 containers | MR !165, merge `0b3676a7`; re-run here and reproduced as `ef939dcd` |
+| Tulma portrait slot 17, and the two rewritten dialogue records | MR !166, merge `1b02221732d7b76d38fd9e35d731e9f3317da9a4`; re-run here and reproduced as `a4c12a95` |
 | Cold-boot acceptance of the content-pass foundation | `docs/research/FRIEND_V3_COLD_BOOT_ACCEPTANCE.md`, 13,440 frames on the delivered image |
-| Tail-allocation hazard assessmement | `docs/research/FRIEND_V3_STABILITY_PASS.md`, LATENT |
+| Tail-allocation hazard assessment | `docs/research/FRIEND_V3_STABILITY_PASS.md`, LATENT |
 
 ### 4.2 Implemented, verification outstanding
 
@@ -167,9 +176,10 @@ Nothing. The boost lane is frozen at `6d7a56c6` pending review.
 ## 5. Limits of this record, stated plainly
 
 1. **No runtime observation of `6d7a56c6` exists yet.** The claim that the party starts at
-   level 200 with maximum stats is a static decode of a verified table plus the game's own
-   documented cap, not something anyone has watched. That is why the first checklist step
-   below is a started-game stat-screen check.
+   level 200 with maximum stats is a static decode of a verified table plus the game's XP
+   ceiling, which is itself a static read of one comparison. Nothing here shows that a
+   starting level of 200 with no experience is a state the game handles. That is why the
+   first checklist step below is a started-game stat-screen check.
 2. **The Bandana is not in this image.** It is a tracker item, not a silent omission.
 3. **Full-game stability is not claimed.** One human playthrough is required before anything
    stronger than "targeted checks pass" is written here.

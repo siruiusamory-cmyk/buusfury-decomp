@@ -1,10 +1,11 @@
 """Build the FRIEND-V3 playtest-boost image from a verified friend foundation.
 
-One image in, one image out. Every change is declared as (offset, expected old
-bytes, new bytes); the builder re-reads the foundation and refuses if any
-expected byte differs, so it can never patch an image it was not verified
-against. The output's changed-byte set must equal the union of the declared
-spans exactly: a change the manifest does not name is a refusal, not a warning.
+One image in, one image out. `main` refuses unless the input digest equals the
+caller's expected digest, so the builder can never patch an image it was not
+verified against. It then refuses unless the changed-byte set of the output
+equals the union of the spans it declared from its own field table: a write that
+escapes that table is caught, while a wrong offset or width inside it is not,
+because the table is also what drives the writes.
 
 Read-only with respect to its input. The canonical ROM is never an input here.
 """
@@ -28,21 +29,33 @@ BASE_STAT_COUNT = 9
 PARTY_RECORDS = (0, 1, 2, 3, 4)
 ROSTER_NAMES = ("Goku", "Gohan", "Goten", "Trunks", "Vegeta")
 
-# u8 level, u16 hp, u16 ep, u8 strength, u8 power, u8 endurance, u8 speed.
+# Field name -> (offset in the record, width in bytes). Widths and offsets match
+# tools/webfoot/formats/stat_tables.py:decode_base_stat_record.
 FIELD_OFFSETS = {
-    "level": (0x00, 1, 200),
-    "hp": (0x02, 2, 0xFFFF),
-    "ep": (0x04, 2, 0xFFFF),
-    "strength": (0x06, 1, 0xFF),
-    "power": (0x07, 1, 0xFF),
-    "endurance": (0x08, 1, 0xFF),
-    "speed": (0x09, 1, 0xFF),
+    "level": (0x00, 1),
+    "hp": (0x02, 2),
+    "ep": (0x04, 2),
+    "strength": (0x06, 1),
+    "power": (0x07, 1),
+    "endurance": (0x08, 1),
+    "speed": (0x09, 1),
 }
 
-# Every field is set to the widest value its own encoder accepts. The level
-# ceiling of 200 is the game's own: `cmp r6,#0xc8` at 0x08013A00 on the grant
-# path (tools/webfoot/stats.py:71-75).
-MAXIMUM = {name: ceiling for name, (_, _, ceiling) in FIELD_OFFSETS.items()}
+# Every value is the widest its own mode uses. Level stops at 200 rather than the
+# u8 bound of 255 because 200 is the game's own XP ceiling: `cmp r6,#0xc8` before
+# the threshold lookup at 0x08013A00 (tools/webfoot/stats.py:71-75,
+# docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393). A starting level of 200 with
+# no experience has never been observed at runtime.
+LEVEL_CEILING = 200
+MAXIMUM = {
+    "level": LEVEL_CEILING,
+    "hp": 0xFFFF,
+    "ep": 0xFFFF,
+    "strength": 0xFF,
+    "power": 0xFF,
+    "endurance": 0xFF,
+    "speed": 0xFF,
+}
 
 
 class BoostError(ValueError):
@@ -64,13 +77,11 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
     for name, index in zip(ROSTER_NAMES, PARTY_RECORDS):
         record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
         fields = []
-        for field, (rel, width, ceiling) in FIELD_OFFSETS.items():
+        for field, (rel, width) in FIELD_OFFSETS.items():
             offset = record + rel
             was = int.from_bytes(base[offset:offset + width], "little")
             now = MAXIMUM[field]
-            if now > ceiling:
-                raise BoostError(f"{field}={now} exceeds its {ceiling} ceiling")
-            if was != now:
+            if now != was:
                 out[offset:offset + width] = now.to_bytes(width, "little")
             fields.append({"field": field, "offset": offset, "was": was, "now": now})
         changes.append({"record": index, "name": name, "fields": fields})
@@ -81,19 +92,20 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
 
 
 def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: list[dict]) -> None:
+    """Refuse a byte the field table did not account for.
+
+    This catches a write outside the table above. It cannot catch a wrong offset
+    or width inside it, because the table is also what the writes are driven from.
+    """
     declared: set[int] = set()
     for entry in changes:
         for field in entry["fields"]:
-            _, width, _ = FIELD_OFFSETS[field["field"]]
             if field["was"] != field["now"]:
+                _, width = FIELD_OFFSETS[field["field"]]
                 declared.update(range(field["offset"], field["offset"] + width))
-    actual = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
-    undeclared = actual - declared
+    undeclared = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b} - declared
     if undeclared:
         raise BoostError(f"{len(undeclared)} byte(s) changed outside the declared spans")
-    missed = declared - actual
-    if missed:
-        raise BoostError(f"{len(missed)} declared byte(s) did not change")
 
 
 def main(argv: list[str] | None = None) -> int:

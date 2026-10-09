@@ -63,6 +63,13 @@ from .model import (
     write_transition_edits,
 )
 from .placements import remove_authored_placement
+from .rawbytes import (
+    RAW_BYTES_FILE,
+    RawByteDocumentError,
+    RawByteEdits,
+    raw_byte_changes,
+    read_raw_bytes,
+)
 
 __all__ = [
     "APPEARANCES_FILE",
@@ -70,6 +77,7 @@ __all__ = [
     "CHUNK_FILE",
     "LAYOUT_FILE",
     "PROJECT_FORMAT_VERSION",
+    "RAW_BYTES_FILE",
     "SPRITES_FILE",
     "STRUCTURE_FILE",
     "TRANSITION_CREATION_FILE",
@@ -97,6 +105,8 @@ __all__ = [
     "ProjectLoadError",
     "ProjectMeta",
     "ProjectValidationError",
+    "RawByteDocumentError",
+    "RawByteEdits",
     "StatProject",
     "TransitionCreations",
     "TransitionEdits",
@@ -104,7 +114,9 @@ __all__ = [
     "load_toml",
     "parse_object_template_identity",
     "parse_transition_creation_identity",
+    "raw_byte_changes",
     "read_project",
+    "read_raw_bytes",
     "remove_authored_placement",
     "transition_creation_identity",
     "write_authored_appearances",

@@ -50,6 +50,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    wait_for_text_surface,
 )
 
 #: The lowest map index whose placements the canonical image records, so the
@@ -312,6 +313,7 @@ def test_an_entities_provider_that_cannot_answer_states_its_reason(edited, monke
         raise RuntimeError(reason)
 
     monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    wait_for_text_surface(shell)
     shell.open_rom_at(row.file_offset)
     rom = shell._rom_page
     merged = shell._pending_bytes()

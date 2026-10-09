@@ -202,12 +202,18 @@ class MapPage(QWidget):
         """The byte effect of this destination's pending edits, for the ROM page.
 
         Asked on every ROM render, so it is a read of the journal-backed project
-        rather than a cached value that could lag one undo behind. A surface that
-        cannot encode the edits states why instead of answering with nothing.
+        rather than a cached value that could lag one undo behind. A destination
+        that has not read this image, and one whose surface cannot encode the
+        edits, both state why instead of answering with nothing; no project open
+        is the one case with nothing to state.
         """
         surface = self._surface
-        if surface is None or self._session.project is None:
+        if self._session.project is None:
             return PendingBytes()
+        if surface is None:
+            return PendingBytes(
+                problem=self._problem or "the records have not been read yet"
+            )
         try:
             return PendingBytes(surface.pending_bytes(self._session.project))
         except Exception as exc:  # noqa: BLE001 - the exception text is the report

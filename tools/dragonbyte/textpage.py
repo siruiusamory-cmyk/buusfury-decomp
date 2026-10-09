@@ -323,12 +323,17 @@ class TextPage(QWidget):
         A dialogue replacement rewrites a decoded container, so its bytes are not
         a file range this surface can state; the manifest's own dialogue
         provenance carries that edit. The string table's in-place edits are a
-        byte range, and they are what this provider contributes. A surface that
-        cannot encode them states why instead of contributing nothing.
+        byte range, and they are what this provider contributes. The read is off
+        the UI thread, so until it lands this states that too - the loading or
+        failure reason the page already holds - rather than contributing nothing.
         """
         surface = self._surface
-        if surface is None or self._session.project is None:
+        if self._session.project is None:
             return PendingBytes()
+        if surface is None:
+            return PendingBytes(
+                problem=self._problem or "the records have not been read yet"
+            )
         try:
             return PendingBytes(surface.pending_bytes(self._session.project))
         except Exception as exc:  # noqa: BLE001 - the exception text is the report

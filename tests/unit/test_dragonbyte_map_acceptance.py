@@ -45,6 +45,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    wait_for_text_surface,
 )
 
 #: A map whose dominant layer offers more than one chunk, so a cell can be
@@ -353,6 +354,7 @@ def test_a_maps_provider_that_cannot_answer_states_its_reason(edited, monkeypatc
         raise RuntimeError(reason)
 
     monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    wait_for_text_surface(shell)
     shell.open_rom_at(cell.offset)
     rom = shell._rom_page
     merged = shell._pending_bytes()

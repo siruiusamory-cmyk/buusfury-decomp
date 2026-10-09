@@ -221,15 +221,19 @@ class EntityPage(QWidget):
         """The byte effect of this destination's pending edits, for the ROM page.
 
         Asked on every ROM render, so it is a read of the journal-backed project
-        rather than a cached value that could lag one undo behind. No surface for
-        the open image and no open project are the two cases it answers with
-        nothing, and `refresh` states that reason on the page. A surface that
-        cannot encode the edits states why here, so the ROM surface never reads
-        this destination's silence as an answer.
+        rather than a cached value that could lag one undo behind. A destination
+        that has not read this image, and one whose surface cannot encode the
+        edits, both state why instead of answering with nothing; no project open
+        is the one case with nothing to state. `refresh` states the same unread
+        condition on the page itself.
         """
         surface = self._surface
-        if surface is None or self._session.project is None:
+        if self._session.project is None:
             return PendingBytes()
+        if surface is None:
+            return PendingBytes(
+                problem=self._problem or "the records have not been read yet"
+            )
         try:
             return PendingBytes(surface.pending_bytes(self._session.project))
         except Exception as exc:  # noqa: BLE001 - the exception text is the report

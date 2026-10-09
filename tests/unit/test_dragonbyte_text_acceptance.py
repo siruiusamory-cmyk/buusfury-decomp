@@ -617,7 +617,52 @@ def test_clause_4_a_string_edit_without_a_project_states_its_reason(
     assert not page._apply.isEnabled()
     assert "Open a project" in page._message.text()
     assert page.pending_bytes() == PendingBytes()
+    assert shell._pending_bytes().problem == ""
     assert page._open.isEnabled()
+
+    _close(shell, session)
+
+
+def test_an_unread_text_destination_states_that_and_clears_when_the_read_lands(
+    qapp, tmp_path, catalog, canonical_rom, source_project
+):
+    """The Scripts & Text read is off the UI thread, so not-read is a state.
+
+    Before the worker answers there is no surface and no answer at all, which is
+    not the same as no pending bytes: the ROM surface says the read has not landed
+    yet. When it lands the reason clears and the destination answers again.
+    """
+    session = Session()
+    session.open_rom(canonical_rom)
+    shutil.copytree(source_project, tmp_path / "project")
+    session.open_project(tmp_path / "project")
+    shell = Shell(session, tmp_path / "config")
+    page = shell._text_page
+
+    shell.show_destination("rom")
+    rom = shell._rom_page
+    stated = f"Scripts & Text: {page._problem}"
+
+    print("\nTEXT DESTINATION UNREAD | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert page._surface is None, "the worker answered before the assertion"
+    assert page._problem == "the scripts and text records are still loading"
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert rom._surface.pending == {}
+    assert rom._surface.overlay == frozenset()
+
+    wait_for_surface(page)
+    shell.show_destination("rom")
+    rom = shell._rom_page
+
+    assert page._surface is not None
+    assert page.pending_bytes().problem == ""
+    assert rom._surface.pending_problem == ""
+    assert stated not in rom._summary.text()
 
     _close(shell, session)
 

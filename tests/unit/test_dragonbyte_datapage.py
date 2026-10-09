@@ -35,6 +35,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    wait_for_text_surface,
 )
 
 
@@ -345,6 +346,7 @@ def test_a_data_provider_that_cannot_answer_states_its_reason(data_page, monkeyp
         raise RuntimeError(reason)
 
     monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    wait_for_text_surface(shell)
     page._open.click()
     rom = shell._rom_page
     merged = shell._pending_bytes()
@@ -367,6 +369,70 @@ def test_a_data_provider_that_cannot_answer_states_its_reason(data_page, monkeyp
     assert rom._surface.current_bytes(
         row.file_offset, row.size
     ) == rom._surface.canonical_bytes(row.file_offset, row.size)
+
+
+def test_a_data_destination_that_has_not_read_the_image_states_that(
+    qapp, tmp_path, catalog, canonical_rom, source_project, monkeypatch
+):
+    """An unread destination states that, and the reason clears with the read.
+
+    The first read of the image is made to fail, which is the one way this
+    destination is left with no surface while a project is open. That is not "no
+    pending bytes": it has not answered at all, and the ROM surface says so
+    rather than showing the canonical value as the answer. The second half of the
+    proof is that the reason does not survive the successful read, and that the
+    destination answers again once it has one.
+    """
+    loader = ds.load_data_surface
+
+    def refuse(*_args):
+        raise ds.DataSurfaceError("the data tables could not be read")
+
+    monkeypatch.setattr(ds, "load_data_surface", refuse)
+    session = Session()
+    session.open_rom(canonical_rom)
+    shutil.copytree(source_project, tmp_path / "project")
+    session.open_project(tmp_path / "project")
+    shell = Shell(session, tmp_path / "config")
+    page = shell._data_page
+    wait_for_text_surface(shell)
+
+    assert page._surface is None
+    assert page.pending_bytes() == PendingBytes(
+        problem="the data tables could not be read"
+    )
+
+    shell.show_destination("rom")
+    rom = shell._rom_page
+    stated = "Data: the data tables could not be read"
+
+    print("\nDATA DESTINATION UNREAD | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+    print(f"  ROM overlay        {sorted(hex(at) for at in rom._surface.overlay)}")
+
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert rom._surface.pending == {}
+    assert rom._surface.overlay == frozenset()
+
+    monkeypatch.setattr(ds, "load_data_surface", loader)
+    page.refresh()
+    assert page._surface is not None
+
+    row = page._rows[0]
+    page._field.setCurrentText("hp")
+    page._value.setText(str(row.field("hp").value + 1))
+    page._apply.click()
+    shell.open_rom_at(row.file_offset)
+    rom = shell._rom_page
+
+    assert rom._surface.pending_problem == ""
+    assert stated not in rom._summary.text()
+    assert row.file_offset in rom._surface.pending
+
+    _close(shell, session)
 
 
 def test_the_rom_page_renders_no_pending_bytes_without_a_data_edit(data_page):

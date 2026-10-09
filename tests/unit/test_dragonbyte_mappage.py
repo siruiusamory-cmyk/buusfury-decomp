@@ -36,6 +36,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    wait_for_text_surface,
 )
 
 #: A map whose dominant grid is a single chunk, so no cell may be repainted.
@@ -294,6 +295,7 @@ def test_the_rom_surface_is_asked_for_every_open_destinations_bytes(map_page):
     page._value.setText(str(layer.chunk_count))
     page._apply.click()
 
+    wait_for_text_surface(shell)
     shell.show_destination("data")
     data = shell._data_page
     data_row = data._rows[0]
@@ -321,6 +323,7 @@ def test_the_merge_states_every_destination_that_could_not_answer(map_page, monk
 
     shell.show_destination("data")
     data = shell._data_page
+    wait_for_text_surface(shell)
     monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
     monkeypatch.setattr(type(data._surface), "pending_bytes", refuse)
 

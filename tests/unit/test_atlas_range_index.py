@@ -5,6 +5,10 @@ measured half is the acceptance proof: where `build/atlas/atlas.jsonl` exists
 locally, sampled offsets are compared against direct `atlas.*` answers, and the
 index's unowned byte total against the atlas's own unknown byte sum. The atlas
 is read once per session and is never rebuilt here.
+
+The nine real-atlas tests need that locally assembled atlas. CI does not provide
+it (no canonical ROM), so they skip there and a green pipeline is not evidence
+for the acceptance proof; the proof was measured on a machine holding the image.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from tools.webfoot.atlas import (Atlas, AtlasError, AtlasObject, AtlasReference,
                                  UNKNOWN, UNKNOWN_HIGH_ENTROPY, VERIFIED_FREE,
                                  in_range, unknowns)
 from tools.webfoot.binary import FileOffset
-from tools.webfoot.layout import Provenance, ReferenceEncoding, RomRange
+from tools.webfoot.layout import LayoutError, Provenance, ReferenceEncoding, RomRange
 
 PROFILE_ID = "synthetic"
 BASE_SHA256 = "0" * 64
@@ -35,9 +39,10 @@ REAL_IMAGE_SIZE = 8388608
 REAL_ATLAS = Path("build") / "atlas" / "atlas.jsonl"
 
 #: The sampled-offset population: seeded random offsets, the first byte of this
-#: many atlas objects, and the middle of this many unknown spans. The sample is
-#: bounded because each offset is also asked of `atlas.addr` and `in_range`,
-#: whose own reference scans cost 66 ms and 135 ms per call on this image.
+#: many atlas objects, and the middle of this many unknown spans. The object
+#: population steps by len(objects) // SAMPLE_OBJECTS, so it is 129 of 11470
+#: objects, not 128. The sample is bounded because each offset is also asked of
+#: `atlas.addr` (14.31 ms per call on this image, measured) and `atlas.in_range`.
 SAMPLE_SIZE = 256
 SAMPLE_SEED = 20261009
 SAMPLE_OBJECTS = 128
@@ -142,8 +147,19 @@ def test_lookups_require_typed_input(atlas):
 
 
 def test_a_range_past_the_image_is_refused(atlas):
-    with pytest.raises(Exception):
+    with pytest.raises(LayoutError):
         RangeIndex(atlas).spans_overlapping(span(IMAGE_SIZE - 1, 2))
+
+
+def test_a_declared_extent_past_the_image_is_refused(atlas):
+    """A configuration extent is a claim about this image, so it is bounded too."""
+    with pytest.raises(AtlasError, match="out of image"):
+        RangeIndex(atlas, ((span(IMAGE_SIZE + 10, 4), "declared:probe"),))
+
+
+def test_a_declared_extent_ending_past_the_image_is_refused(atlas):
+    with pytest.raises(AtlasError, match="out of image"):
+        RangeIndex(atlas, ((span(IMAGE_SIZE - 2, 4), "declared:tail"),))
 
 
 def test_the_candidate_narrowing_never_drops_a_claiming_span(atlas):
@@ -222,13 +238,27 @@ def test_the_index_invents_no_classification(atlas):
         assert index.at(FileOffset(offset))["classification"] in vocabulary
 
 
-def test_the_scan_reports_owners_and_the_unowned_count(atlas):
-    result = RangeIndex(atlas).scan(span(0x100, 0x100))
-    assert result["range"] == span(0x100, 0x100)
-    assert result["owners"] == 2
-    assert {hit["owner"] for hit in result["hits"]} == {"fixture:table", "fixture:entry"}
-    assert result["unowned_bytes"] == 0x100
-    assert all(hit["spans"] for hit in result["hits"])
+@pytest.mark.parametrize("start,size", [
+    (0x100, 0x100), (0x110, 0x8), (0x120, 0x20), (0x108, 0x10), (0x300, 0x40)])
+def test_the_scan_reports_owners_and_the_unowned_count(atlas, start, size):
+    wanted = span(start, size)
+    result = RangeIndex(atlas).scan(wanted)
+    assert result["range"] == wanted
+    assert result["owners"] == len(result["hits"])
+    for hit in result["hits"]:
+        # A hit reports the owner's first byte inside the scanned range, never a
+        # byte of that owner outside it.
+        assert wanted.start.value <= hit["file_offset"] < wanted.end, hex(start)
+        assert hit["spans"], hit["owner"]
+
+
+def test_the_scan_anchors_a_hit_inside_the_scanned_range(atlas):
+    """An owner that begins before the range is anchored at the range's start."""
+    index = RangeIndex(atlas, ((span(0x80, 0x100), "declared:wide"),))
+    result = index.scan(span(0x100, 0x10))
+    hit = next(item for item in result["hits"] if item["owner"] == "declared:wide")
+    assert hit["file_offset"] == 0x100
+    assert hit["classification"] == UNKNOWN_HIGH_ENTROPY
 
 
 def test_the_scan_of_an_unowned_range_is_zero_hits_and_a_count(atlas):
@@ -406,10 +436,16 @@ def test_the_real_index_reuses_the_atlas_classification_vocabulary(real_atlas, r
 def test_the_real_scan_hits_are_the_atlas_answers(real_atlas, real_index):
     """`scan` must not compute a classification of its own: `at` is the source."""
     for start in (0x0, 0x1000, 0x80000, 0x400000, 0x7E0000):
-        result = real_index.scan(span(start, 0x100))
+        wanted = span(start, 0x100)
+        result = real_index.scan(wanted)
         assert result["unowned_bytes"] == sum(
-            min(item.range.end, start + 0x100) - max(item.range.start.value, start)
-            for item in unknowns(real_atlas) if item.range.overlaps(span(start, 0x100)))
+            min(item.range.end, wanted.end) - max(item.range.start.value, wanted.start.value)
+            for item in unknowns(real_atlas) if item.range.overlaps(wanted))
         for hit in result["hits"]:
-            assert hit["classification"] == real_index.at(FileOffset(hit["file_offset"]))["classification"]
+            # The owner may begin far before the range, so a hit outside the
+            # scanned range is the defect this asserts against.
+            assert wanted.start.value <= hit["file_offset"] < wanted.end, hit["owner"]
+            assert hit["owner"] in real_index.owners_of(span(hit["file_offset"], 1))
+            assert hit["classification"] == real_index.at(
+                FileOffset(hit["file_offset"]))["classification"]
             assert hit["spans"] == real_index.spans_of(hit["owner"])

@@ -682,6 +682,10 @@ class RangeIndex:
             OwnerSpan(object.range, object.identity, "atlas-object")
             for object in self.atlas.objects]
         for extent, owner in self.declared:
+            try:
+                extent.validate(self.atlas.image_size)
+            except LayoutError as exc:
+                raise AtlasError(f"declared extent for {owner!r} out of image: {exc}") from exc
             spans.append(OwnerSpan(extent, owner, DECLARED_EXTENT))
         spans.sort(key=lambda span: (span.range.start.value, span.range.size, span.owner))
         reaches: list[int] = []
@@ -731,6 +735,11 @@ class RangeIndex:
         source or a target could land here.
         """
         edges = self.atlas.references
+        # ASSUMPTION: candidates come back in descending source order, which
+        # equals atlas order only while a reference field is 4 bytes wide and
+        # sources are pairwise disjoint (every reference today). A wider or
+        # unaligned field lets two sources share a byte, and then the two
+        # orders differ and this must sort the way `in_range` does.
         by_source = tuple(index for index in
                           (self._edge_starts[at][1] for at in
                            range(bisect_left(self._edge_starts, (wanted.end, -1)) - 1,
@@ -767,7 +776,12 @@ class RangeIndex:
         return self._spans
 
     def spans_at(self, offset: FileOffset) -> tuple[OwnerSpan, ...]:
-        """Every extent claiming one byte. Empty means nobody owns it."""
+        """Every extent claiming one byte. Empty means nobody owns it.
+
+        A point outside the image is not refused, unlike a range: it answers
+        "nobody owns this" for the one-byte question, where `spans_overlapping`
+        has a whole range to justify.
+        """
         if not isinstance(offset, FileOffset):
             raise AtlasError("a range index lookup requires a typed FileOffset")
         return tuple(reversed([self._spans[index]
@@ -855,11 +869,11 @@ class RangeIndex:
         """Every owner in a range, the way `search_text` returns every phrase hit.
 
         One entry per distinct owner intersecting `wanted`, each carrying the
-        offset of its lowest claimed byte, the classification and confidence
-        `at` reports for that byte, the owner's own extents, and the references
-        intersecting it. A range no owner claims yields `hits: ()` and an
-        `unowned_bytes` count, so `UNKNOWN` is a first-class answer with a number
-        rather than a silence.
+        lowest byte that owner claims INSIDE `wanted`, the classification and
+        confidence `at` reports for that byte, the owner's own extents, and the
+        references intersecting it. A range no owner claims yields `hits: ()` and
+        an `unowned_bytes` count, so `UNKNOWN` is a first-class answer with a
+        number rather than a silence.
 
         A hit inside a compressed container would also report the container's
         offset and the offset within its decoded stream; that half needs the
@@ -869,13 +883,14 @@ class RangeIndex:
         hits = []
         for owner in self.owners_of(wanted):
             claimed = self.spans_of(owner)
-            found = min((item.range.start.value for item in claimed), default=None)
-            point = self.at(FileOffset(found)) if found is not None else None
+            inside = min(max(item.range.start.value, wanted.start.value)
+                         for item in claimed if item.range.overlaps(wanted))
+            point = self.at(FileOffset(inside))
             hits.append({
                 "owner": owner,
-                "file_offset": found,
-                "classification": point["classification"] if point else UNKNOWN,
-                "confidence": point["confidence"] if point else Confidence.UNKNOWN,
+                "file_offset": inside,
+                "classification": point["classification"],
+                "confidence": point["confidence"],
                 "spans": claimed,
                 "references": self.references(owner),
             })

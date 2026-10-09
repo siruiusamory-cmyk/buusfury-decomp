@@ -37,7 +37,7 @@ from .rawbytes import (
     claimed_by,
     write_raw_document,
 )
-from . import dataedits, mapedits
+from . import dataedits, mapedits, textedits
 
 
 class JournalError(Exception):
@@ -191,6 +191,16 @@ DOCUMENT_ADAPTERS: dict[str, _DocumentAdapter] = {
         install=mapedits.install,
         validate=mapedits.validate,
         write=mapedits.write,
+    ),
+    # The Scripts & Text destination's authored string table. A SEPARATE target
+    # from "dialogues" on purpose: the two authored text documents reach two
+    # independent systems in the image, and Save writes one payload per target, so
+    # one shared target would let a string edit overwrite a dialogue replacement.
+    textedits.TEXT_TARGET: _DocumentAdapter(
+        read=textedits.read,
+        install=textedits.install,
+        validate=textedits.validate,
+        write=textedits.write,
     ),
 }
 

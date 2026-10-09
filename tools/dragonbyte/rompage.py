@@ -26,7 +26,6 @@ shell's one confirmed raw-write path.
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    QAbstractTableModel,
     QModelIndex,
     QObject,
     QRunnable,
@@ -65,6 +64,7 @@ from .romsurface import (
     write_gate,
 )
 from .session import Session
+from .tablemodel import RowsModel
 
 #: The view names, in the order the switch offers them. The third appears only
 #: after a search, so a view the user has not asked for is never an option.
@@ -136,51 +136,6 @@ class _IndexTask(QRunnable):
         self.signals.finished.emit(self._token, index, problem)
 
 
-class _RowsModel(QAbstractTableModel):
-    """A read-only table over strings the page has already rendered.
-
-    A model rather than one widget per row: an assembled range index for a whole
-    image covers it in thousands of spans, and a widget each is the pattern
-    `docs/desktop-ui.md` forbids.
-    """
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._headers: tuple[str, ...] = ()
-        self._rows: tuple[tuple[str, ...], ...] = ()
-
-    def set_rows(
-        self, headers: tuple[str, ...], rows: tuple[tuple[str, ...], ...]
-    ) -> None:
-        self.beginResetModel()
-        self._headers = tuple(headers)
-        self._rows = tuple(rows)
-        self.endResetModel()
-
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._rows)
-
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else len(self._headers)
-
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or role != Qt.ItemDataRole.DisplayRole:
-            return None
-        return self._rows[index.row()][index.column()]
-
-    def headerData(
-        self,
-        section: int,
-        orientation: Qt.Orientation,
-        role: int = Qt.ItemDataRole.DisplayRole,
-    ):
-        if role != Qt.ItemDataRole.DisplayRole:
-            return None
-        if orientation != Qt.Orientation.Horizontal:
-            return None
-        return self._headers[section]
-
-
 class RomPage(QWidget):
     """The ROM destination's centre page."""
 
@@ -191,6 +146,9 @@ class RomPage(QWidget):
         #: The shell's one confirmed raw-write path, so a write from this page is
         #: the same write as a write from anywhere else.
         self._write_handler = None
+        #: Asked for the byte effect of the project's semantic edits. None until
+        #: the shell wires the destination that owns them.
+        self._pending_provider = None
         #: The range index and the one attempt to load it. It is expensive and
         #: immutable per image, so it is loaded once, on a worker, and never per
         #: repaint or per status refresh.
@@ -240,7 +198,7 @@ class RomPage(QWidget):
         self._find_button = QPushButton("Find")
         self._find_button.setToolTip(SEARCH_SCOPE)
 
-        self._model = _RowsModel(self)
+        self._model = RowsModel(self)
         self._table = QTableView()
         self._table.setObjectName("romTable")
         self._table.setModel(self._model)
@@ -338,6 +296,15 @@ class RomPage(QWidget):
         """The shell's one write path: this page never writes bytes itself."""
         self._write_handler = handler
 
+    def set_pending_provider(self, provider) -> None:
+        """The byte effect of the project's semantic edits, asked on every render.
+
+        The Data destination owns those edits and their codecs; this page renders
+        whatever the provider answers, so a stat edit appears here as a changed
+        value without this page knowing what a stat is.
+        """
+        self._pending_provider = provider
+
     # -- rendering ------------------------------------------------------------
 
     def refresh(self) -> None:
@@ -397,12 +364,14 @@ class RomPage(QWidget):
         if session.base_image is None or session.profile is None:
             return None
         self._ensure_index()
+        extra = self._pending_provider() if self._pending_provider is not None else None
         return surface_for(
             session.base_image,
             session.profile,
             session.journal,
             index=self._index,
             index_problem=self._index_problem,
+            extra_pending=extra,
         )
 
     def _ensure_index(self) -> None:
@@ -691,6 +660,31 @@ class RomPage(QWidget):
         if self._surface is None or self._extent is None:
             return
         self._caret = self._extent.start.value
+        if self._views.currentText() != BYTES_VIEW:
+            self._views.setCurrentText(BYTES_VIEW)
+        else:
+            self._render()
+
+    def focus_offset(self, offset: int) -> None:
+        """Point the one selection at `offset` and show the bytes there.
+
+        The route another destination takes to hand this surface a selection.
+        The offset is a file offset, which is the spelling the one selection
+        already uses, so no conversion happens here and none is needed.
+        """
+        if self._surface is None:
+            return
+        if not 0 <= offset < self._surface.image_size:
+            self._report(
+                f"file offset 0x{offset:06X} is outside the "
+                f"{self._surface.image_size}-byte open image."
+            )
+            return
+        self._caret = offset
+        self._message.setText(
+            f"Go to address: file offset 0x{offset:06X} selected from the Data "
+            "destination"
+        )
         if self._views.currentText() != BYTES_VIEW:
             self._views.setCurrentText(BYTES_VIEW)
         else:

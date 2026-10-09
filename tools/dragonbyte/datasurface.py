@@ -27,15 +27,16 @@ No Qt is imported: a test drives every answer with no window open.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
 from tools.webfoot import maps as maps_mod
 from tools.webfoot import stats as stats_mod
-from tools.webfoot.binary import GBA_ROM_BASE
+from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
 from tools.webfoot.formats import stat_tables as st
 from tools.webfoot.formats.map_entry import MAP_ENTRY_SIZE
+from tools.webfoot.layout import RomRange
 from tools.webfoot.maps import MapIdentity, Maps, load_maps
 from tools.webfoot.profile import RomProfile, RomProfileCatalog
 from tools.webfoot.rom import RomIdentification
@@ -360,6 +361,37 @@ class DataSurface:
         if project is None:
             return {}
         return project.maps
+
+
+def span(row: RecordRow) -> RomRange:
+    """The byte extent one record row proves, as the ROM surface's own unit."""
+    return RomRange(FileOffset(row.file_offset), row.size)
+
+
+def with_field(payload: Any, row: RecordRow, name: str, value: int) -> Any:
+    """The authored data documents with one record's one field set.
+
+    Returns a new payload and mutates nothing, so the journal's `before` snapshot
+    stays the value the project actually held. The record must already be
+    authored: a row that is not editable carries the reason and is never edited.
+    """
+    if row.kind == ENEMY:
+        return replace(
+            payload,
+            enemies={**payload.enemies, row.key: {**payload.enemies[row.key], name: value}},
+        )
+    if row.kind == CHARACTER:
+        return replace(
+            payload,
+            characters={
+                **payload.characters,
+                row.key: {**payload.characters[row.key], name: value},
+            },
+        )
+    index = row.key.index
+    return replace(
+        payload, maps={**payload.maps, index: {**payload.maps[index], name: value}}
+    )
 
 
 def load_data_surface(

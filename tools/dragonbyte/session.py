@@ -141,6 +141,16 @@ class Session:
         return self.identification is not None
 
     @property
+    def catalog(self) -> RomProfileCatalog | None:
+        """The profile catalog this session resolved when it opened its image.
+
+        Read-only, and None before an image is open: a destination that needs to
+        load a second table from the same file asks for the catalog the open
+        already settled rather than resolving a second one from configuration.
+        """
+        return self._catalog
+
+    @property
     def has_project(self) -> bool:
         return self.project is not None
 

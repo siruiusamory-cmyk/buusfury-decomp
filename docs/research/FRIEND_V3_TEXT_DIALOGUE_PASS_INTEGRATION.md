@@ -1,7 +1,7 @@
 # FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: integration record
 
-The change range is `59203721..HEAD`, four commits. This document is what the merge request
-carries: what was built, what is proven, what is not, and what the next ticket inherits.
+The change range is `59203721..HEAD`. This document is what the merge request carries: what
+was built, what is proven, what is not, and what the next ticket inherits.
 
 ## What ships
 
@@ -10,15 +10,43 @@ and reproduced byte-identically on every run:
 
 | field | value |
 | --- | --- |
-| file | `v3-mainline-text-dialogue-pass.gba` |
+| file | `v3-mainline-text-dialogue-pass-wt.gba` |
 | bytes | 10,141,220 (248 more than the foundation) |
-| SHA-256 | `d2a25f9a56c9980e27ad4a6f4c23d653e87d15b71b908ee27bced48b88885543` |
+| SHA-256 | `26dba4598425bef9b88fceda0ced8510ae7abd504a4f4c00806abb2658546f7d` |
 | base | pre-BOOST Tulma-complete foundation `a4c12a95…` |
 | not an ancestor | the BOOST speedrun image `acd98c2a…`, preserved as a separate testing derivative |
 
-The artifact lives under the ignored `build/` tree and is not in git. The builder
-`tools/research/build_friend_v3_text_derivative.py` produces it from the foundation with two
-stages: the owner-approved text batch, then the trailing-pad repair.
+The artifact lives under the ignored `build/` tree and is not in git. Two tracked tools
+produce it from the foundation, in order:
+`tools/research/build_friend_v3_text_derivative.py` (the approved text batch, then the
+trailing-pad repair) and `tools/research/apply_friend_v3_world_tournament.py` (the owner's
+World Tournament lines). The run recorded here is the pair, reproduced twice.
+
+## The World Tournament script, and what could be placed
+
+The owner authored 18 lines and the owner's instruction is that no line is shortened. Ten are
+written into their own fixed spans with the tail filled by space units, so every offset in the
+container stays where it was and the image size does not change. Five lines **grow** their
+record and are left byte-identical with the overflow each needs; the owner's wording is
+unmodified and those records move to the successor engine ticket:
+
+| record | line | overflow |
+| --- | --- | --- |
+| `3:7406:136` | Uub, "Hey sis…" | +17 units |
+| `3:7542:42` | Videl, okonomiyaki | +12 units |
+| `3:7664:60` | Videl, "EXCUSE ME?!" | +13 units |
+| `3:9112:62` | Idasa, "You really made me look bad earlier." | +5 units |
+| `3:9892:486` | line 18, the adopted-sibling and age passage | +15 units |
+
+Records the owner marked NO CHANGE (`3:8550:414`, `3:8964:148`, `3:9570:92`) are untouched.
+The ten placed lines carry **219 units of padding** in total, because an exact-length write
+cannot remove the slack its record's fixed span imposes. That is the trade for landing the
+wording now, and the same engine ticket removes it.
+
+Line 18 needed one discovery before it could even be measured: the record's passage reads
+`Championship between eight-year-old Uub    and seven-year-old Videl!`, with the rename's
+four-unit pad inside `Uub    and`. Searching for the unpadded wording finds nothing.
+
 
 ## Lineage correction, and the evidence for it
 
@@ -51,7 +79,7 @@ checked in both directions.
 | trailing-pad repair, four checks on the real image | PASS |
 | container payload identical after the repair | yes |
 | BOOST-only bytes in the finished image | none, on all 25 offsets |
-| deterministic rebuild | byte-identical nine times |
+| deterministic rebuild | byte-identical on every run, including the final pair reproduced twice |
 | unit tests | `tests/unit/test_dialogue_trim_padding.py` 4 passed; runtime gates 93 passed, 34 skipped |
 
 ## NOT verified, and stated rather than implied
@@ -68,8 +96,9 @@ checked in both directions.
   derivative.** All three need the handle-format work; they are deferred to a successor
   engine ticket by owner decision, and `dialogue_repack.plan_group` is not called by any
   stage here.
-- **The World Tournament rewrite is not in this derivative.** Its records are located and
-  preserved untouched; the wording is owner-authored and awaits implementation.
+- **The five World Tournament lines that grow their record are not in this derivative**, nor
+  is the sibling and age passage in line 18. They are measured, unmodified, and recorded above
+  with the overflow each needs; they move to the successor engine ticket.
 
 ## Save compatibility
 

@@ -40,7 +40,6 @@ inventory's own docstring warns about.
 ## b. The engine's table access is unbounded, but the table is not
 
 The selector is isolated and scaled at `0x08012240`:
-
 ```
 0x08012240  6868   ldr r0,[r5,#4]      ; the packed handle
 0x08012242  4962   ldr r1,[pc,#0x188]  ; 0x080728AC, the table base

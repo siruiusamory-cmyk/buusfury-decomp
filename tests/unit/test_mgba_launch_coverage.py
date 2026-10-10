@@ -154,6 +154,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "sys.executable"):
         "runs this interpreter on the application under the offscreen platform "
         "to prove start-up does not crash; it starts no emulator",
+    ("tests/unit/test_dragonbyte_release.py",
+     "_run_module",
+     "sys.executable"):
+        "runs this interpreter on the application module to read the version flag "
+        "and the packaged-smoke report; it starts no emulator",
+    ("tests/unit/test_dragonbyte_release.py",
+     "test_the_application_runs_from_the_shim_the_spec_freezes",
+     "sys.executable"):
+        "runs this interpreter on the frozen build's own entry shim to prove the "
+        "shim reaches the product; it starts no emulator",
     ("tests/unit/test_dragonbyte_romsurface.py",
      "test_the_surface_module_imports_with_no_pyside6_leak",
      "sys.executable"):

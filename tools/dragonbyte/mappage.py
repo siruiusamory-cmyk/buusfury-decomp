@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSplitter,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -35,6 +36,7 @@ from . import mapsurface as ms, theme
 from .inspector import SUPPORT_ROLES, InspectorContext
 from .journal import EditKind
 from .mapedits import MAPS_TARGET, read as read_maps
+from .mappreview import MapPreview
 from .romsurface import PendingBytes
 from .session import Session
 from .tablemodel import RowsModel
@@ -131,6 +133,11 @@ class MapPage(QWidget):
         self._message.setWordWrap(True)
         self._editor = QWidget()
         self._editor.setObjectName("mapFieldEditor")
+        #: The read-only spatial preview of the same map, below the table. It
+        #: renders through the SDK and paints what the SDK produced; the table
+        #: above stays the authoring surface it was.
+        self._preview = MapPreview()
+        self._preview.set_cell_handler(self._on_preview_cell)
 
         editor_row = QHBoxLayout(self._editor)
         editor_row.setContentsMargins(0, 0, 0, 0)
@@ -165,7 +172,13 @@ class MapPage(QWidget):
         top.addWidget(QLabel("Layer:"))
         top.addWidget(self._layers)
         layout.addLayout(top)
-        layout.addWidget(self._table, 1)
+        centre = QSplitter(Qt.Orientation.Vertical)
+        centre.addWidget(self._table)
+        centre.addWidget(self._preview)
+        centre.setStretchFactor(0, 1)
+        centre.setStretchFactor(1, 0)
+        self._centre = centre
+        layout.addWidget(centre, 1)
         layout.addWidget(self._summary)
         layout.addWidget(self._editor)
         layout.addWidget(self._detail)
@@ -254,6 +267,7 @@ class MapPage(QWidget):
 
     def _render_layout(self) -> None:
         self._layers.setVisible(True)
+        self._preview.setVisible(True)
         layers = self._surface.layers(self._map_index)
         self._fill_layers(layers)
         layer = self._current_layer()
@@ -268,6 +282,7 @@ class MapPage(QWidget):
             )
             self._detail.clear()
             self._render_editor()
+            self._render_preview(layer)
             self._publish_selection(None)
             return
         rows = self._surface.cells(
@@ -281,9 +296,45 @@ class MapPage(QWidget):
         self._message.setText(self._records_message(rows))
         self._select_caret()
         self._render_editor()
+        self._render_preview(layer)
+
+    def _render_preview(self, layer) -> None:
+        """Hand the preview the same map, layer and cell the table is showing.
+
+        One selection, two surfaces: the layer is the one the layer switch chose
+        and the cell is the one the table's caret is on, so the two can never
+        disagree about what is selected.
+        """
+        self._preview.show_map(
+            self._session.base_image, self._map_index, self._map_caption()
+        )
+        if layer is None:
+            self._preview.select(self._slot, 0, 0, None)
+            return
+        row = self._caret_row()
+        cell = (row.column, row.row) if isinstance(row, ms.CellRow) else None
+        self._preview.select(layer.slot, layer.columns, layer.rows, cell)
+
+    def _on_preview_cell(self, column: int, row: int) -> None:
+        """Select the cell a click on the preview landed on, in the one table."""
+        at = next(
+            (
+                index
+                for index, item in enumerate(self._rows)
+                if item.column == column and item.row == row
+            ),
+            None,
+        )
+        if at is None:
+            return
+        self._caret = self._rows[at].identity
+        self._select_row(at)
+        self._render_editor()
 
     def _render_warps(self) -> None:
         self._layers.setVisible(False)
+        # The preview is a layout view: a warp record has no cell to draw.
+        self._preview.setVisible(False)
         rows = self._surface.warps(self._session.project, self._map_index)
         self._rows = rows
         self._model.set_rows(
@@ -296,6 +347,7 @@ class MapPage(QWidget):
 
     def _render_unavailable(self) -> None:
         self._layers.setVisible(False)
+        self._preview.setVisible(False)
         self._rows = ()
         self._model.set_rows(_LAYOUT_HEADERS, ())
         self._summary.setText("")
@@ -620,6 +672,7 @@ class MapPage(QWidget):
                 session.profile,
                 session.base_image,
             )
+            self._problem = ""
         except ms.MapSurfaceError as exc:
             self._surface = None
             self._problem = str(exc)

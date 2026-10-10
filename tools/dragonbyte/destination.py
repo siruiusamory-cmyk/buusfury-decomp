@@ -66,8 +66,9 @@ DESTINATIONS: tuple[Destination, ...] = (
         label="Graphics",
         group=SEMANTIC,
         foundation_summary=(
-            "Actor sprites, frames, appearance records and object palettes are "
-            "not implemented in the foundation build."
+            "Actor sprite identities, their shared graphics payloads, the "
+            "appearance-definition records and the one global object palette, "
+            "whose entries are recoloured through the one journal."
         ),
     ),
     Destination(

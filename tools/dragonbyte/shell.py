@@ -43,6 +43,7 @@ from . import diagnostics, theme
 from .datapage import DataPage
 from .destination import DESTINATIONS, ROM, Destination, destination
 from .entitypage import EntityPage
+from .graphicspage import GraphicsPage
 from .inspector import InspectorPane, support_state_text
 from .journal import EditKind
 from .mappage import MapPage
@@ -60,6 +61,7 @@ DATA_DESTINATION = "data"
 MAPS_DESTINATION = "maps"
 ENTITY_DESTINATION = "entities"
 TEXT_DESTINATION = "scripts_text"
+GRAPHICS_DESTINATION = "graphics"
 
 #: The window's starting size. A narrower window is allowed; this is what a user
 #: sees first, with the centre editor and the inspector both usable.
@@ -175,6 +177,11 @@ class Shell(QMainWindow):
         #: read-only records, and the two text systems as separate editing worlds.
         #: Its edits go through the same one `apply_edit`.
         self._text_page: TextPage | None = None
+        #: The Graphics destination's page: actor sprites, payloads, appearance
+        #: records and the one global object palette, whose palette entries are its
+        #: one editable relation. Its edits go through the same one `apply_edit`,
+        #: and the ROM page asks it for their byte effect beside the other four.
+        self._graphics_page: GraphicsPage | None = None
         self._inspector = InspectorPane()
         self._inspector.setMinimumWidth(theme.INSPECTOR_MIN_WIDTH)
         for candidate in DESTINATIONS:
@@ -210,6 +217,13 @@ class Shell(QMainWindow):
                 text_page.set_selection_handler(self._inspector.set_context)
                 self._text_page = text_page
                 page = text_page
+            elif candidate.id == GRAPHICS_DESTINATION:
+                graphics_page = GraphicsPage(self._session)
+                graphics_page.set_edit_handler(self.apply_edit)
+                graphics_page.set_open_bytes_handler(self.open_rom_at)
+                graphics_page.set_selection_handler(self._inspector.set_context)
+                self._graphics_page = graphics_page
+                page = graphics_page
             else:
                 page = _FoundationPage(candidate)
             self._pages[candidate.id] = page
@@ -220,6 +234,7 @@ class Shell(QMainWindow):
             or self._map_page is not None
             or self._entity_page is not None
             or self._text_page is not None
+            or self._graphics_page is not None
         ):
             # One journal, several views: the ROM page shows an edit's bytes because
             # the page that made it is the only thing that knows how to encode
@@ -712,6 +727,10 @@ class Shell(QMainWindow):
             # The Scripts & Text destination renders the project's strings and the
             # dialogue document, by the same rule again.
             self._text_page.refresh()
+        if self._graphics_page is not None and current is self._graphics_page:
+            # The Graphics destination renders the project's palette overrides, by
+            # the same rule again.
+            self._graphics_page.refresh()
 
     def _pending_bytes(self) -> PendingBytes:
         """Every open destination's byte effect, merged for the ROM surface.
@@ -730,6 +749,7 @@ class Shell(QMainWindow):
             MAPS_DESTINATION,
             ENTITY_DESTINATION,
             TEXT_DESTINATION,
+            GRAPHICS_DESTINATION,
         ):
             page = self._pages[destination_id]
             label = destination(destination_id).label

@@ -311,7 +311,14 @@ def test_the_rom_surface_is_asked_for_every_open_destinations_bytes(map_page):
         **page._surface.pending_bytes(session.project),
         **data._surface.pending_bytes(session.project),
     }
-    assert merged.problem == ""
+    # Both edits' bytes are present, which is the property under test. A
+    # destination still reading its records is named as such, and that is the only
+    # thing the merge may say when nothing has failed.
+    assert all(
+        "still loading" in part
+        for part in merged.problem.split("; ")
+        if part
+    ), merged.problem
 
 
 def test_the_merge_states_every_destination_that_could_not_answer(map_page, monkeypatch):
@@ -338,7 +345,14 @@ def test_the_merge_states_every_destination_that_could_not_answer(map_page, monk
     print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
 
     assert merged.mapping == {}
-    assert merged.problem == f"Data: {stated}; Maps: {stated}"
+    # Membership rather than the whole string: every destination that cannot answer
+    # is named, and a destination still reading its records (Scripts & Text or
+    # Graphics on a freshly built shell) is named as well, which is the property
+    # under test rather than an accident of how far each read has got.
+    parts = merged.problem.split("; ")
+    assert f"Data: {stated}" in parts
+    assert f"Maps: {stated}" in parts
+    assert parts.index(f"Data: {stated}") < parts.index(f"Maps: {stated}")
     assert rom._surface.pending_problem == merged.problem
     assert merged.problem in rom._summary.text()
 

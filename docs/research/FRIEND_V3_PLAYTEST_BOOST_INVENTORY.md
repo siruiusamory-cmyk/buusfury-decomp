@@ -89,7 +89,49 @@ writes other starting bytes or can take one more with the Miso Soup write's own 
 
 
 
-## 5. Unchanged and still true
+## 5. The Bandana grant: built, proven to fire, and WITHDRAWN because it hangs
+
+An experiment that reached its stated goal and still could not ship. It is recorded so the next
+attempt starts here instead of repeating it.
+
+**What was built.** The save-block init at `0x08004838` zeroes the equipment count and rebuilds
+the per-character blocks. A Thumb hook replaced one instruction of that function so the game's
+own add routine, `0x08004448`, appends gear id 126 once per fresh save block. The trampoline
+lives in a 4,348-byte zero run at `0x083C22FC`, saves the registers it clobbers, passes the
+save-block base from `r4` and the id from a literal, and returns with `bx lr`.
+
+**What it achieved.** MEASURED on `00d814d5…`: the equipment count at `0x0300114C` read **1**
+for every one of 277 samples from frame 30 to frame 8,310. The hook fires, once.
+
+**Why it was withdrawn.** The game hangs. In the same run the program counter never left
+`0x083C2308` and `0x083C230A`, both inside the trampoline, and the save file grew from 8,192 to
+32,768 bytes. In game that is a freeze.
+
+**The isolating experiment.** A structure-only variant of the same hook, with the identical
+branch, the identical `push`/`pop`/`bx lr` and only the call removed, boots normally.
+
+| variant | image | count | program counter | save |
+| --- | --- | --- | --- | --- |
+| no hook, control | `a4c12a95` foundation | 0 | varied, normal boot | 8,192 B |
+| structure-only, no call | `1d408290` | 0 | varied | 8,192 B |
+| full hook with the call | `00d814d5` | 1 | stuck in the trampoline | 32,768 B |
+
+So the branch, the stack handling and the return are sound, and the failure comes from calling
+`0x08004448` at that site or from its effect.
+
+**What is not established.** Why the call fails. Two candidates the evidence does not separate:
+`r4` may not hold the save-block base on every path into the init, and the save path may enter
+the init only as a scratch-pointer provider and then overwrite the block. The datum that
+separates them is a runtime read of `r4` at the hook, or a call from a site proven to be the
+player's new game.
+
+**Consequence for the deliverable.** The builder does not apply the hook, and the delivered
+image is the stat-only `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`.
+The patch code stays in the builder and stays covered by tests so it cannot drift while it
+waits for the missing datum.
+
+## 6. Unchanged and still true
+
 
 - The image `acd98c2a` and its build pipeline are untouched. `build/fv3boost001/build.ps1`
   reproduces it.

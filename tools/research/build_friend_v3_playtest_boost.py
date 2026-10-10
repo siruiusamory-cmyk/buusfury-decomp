@@ -70,17 +70,19 @@ MAXIMUM = {
 # takes the base in r0 and the gear id in r1, refuses only at 250 entries, and
 # never refuses a duplicate.
 #
-# The save-block init at 0x08004838 is the only place the count is zeroed, so one
-# append immediately after that store yields exactly one Bandana per fresh block
-# and none on a save load, which never runs this init as the player's block.
+# The hook replaces `adds r0,r4,#0` at the tail of the save-block init, after the
+# whole function has run, NOT the count clear in the middle of it: the first attempt
+# hooked the clear and the game hung inside the trampoline with the counter at 1.
+# At this site r4 still holds the base, the next instruction is untouched, and
+# control rejoins the function's own epilogue.
 BANDANA_ID = 126
 GBA_BASE = 0x08000000
-INIT_COUNT_CLEAR = 0x08004854          # str r0,[r1,r4], count := 0
+INIT_COUNT_CLEAR = 0x08004892          # adds r0,r4,#0, the last work before the epilogue
 INIT_ADDRESS = 0x08004448              # add(base, id)
 TRAMPOLINE = 0x083C22FC                # inside a 4,348-byte zero run at 0x083C22FC
-TRAMPOLINE_SIZE = 18                    # six instructions, one pad halfword, the id literal
 TRAMPOLINE_FILE = TRAMPOLINE - GBA_BASE
-TRAMPOLINE_RETURN = 0x08004856         # the instruction after the count clear
+TRAMPOLINE_RETURN = 0x08004894         # the branch that rejoins the function's epilogue
+TRAMPOLINE_LENGTH = [0]                # filled by bandana_patch with what it wrote
 
 
 class BoostError(ValueError):
@@ -107,10 +109,12 @@ def encode_bl(here: int, target: int) -> bytes:
 def bandana_patch(base: bytes) -> bytes:
     """The trampoline and the hook, byte for byte, with every byte derived here.
 
-    The trampoline runs immediately after the count is zeroed. r4 holds the
-    save-block base at that point, already proven non-null by the check above the
-    hook, and lr still points into the init function, so a plain `bx lr` returns
-    there. Only r0-r3 and lr are clobbered by the call, and r0-r3 are saved.
+    The hook replaces the init's last work instruction, so the function has already
+    zeroed the count and rebuilt the per-character blocks. r4 still holds the
+    save-block base, the instruction after the hook is untouched, and lr still points
+    into the init, so `bx lr` returns to the instruction after the hook and control
+    rejoins the function's own epilogue. Only r0-r3 and lr are clobbered, and r0-r3
+    are saved.
     """
     t = TRAMPOLINE
     code = bytearray()
@@ -121,6 +125,7 @@ def bandana_patch(base: bytes) -> bytes:
     code += (0xBC0F).to_bytes(2, "little")            # pop {r0-r3}
     code += (0x4770).to_bytes(2, "little")            # bx lr           ; back into the init
     code += BANDANA_ID.to_bytes(4, "little")          # the literal ldr r1 reads
+    TRAMPOLINE_LENGTH[0] = len(code)
 
     patch = bytearray(base)
     patch[INIT_COUNT_CLEAR - GBA_BASE:INIT_COUNT_CLEAR - GBA_BASE + 4] = encode_bl(INIT_COUNT_CLEAR, TRAMPOLINE)
@@ -148,7 +153,10 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
             fields.append({"field": field, "offset": offset, "was": was, "now": now})
         changes.append({"record": index, "name": name, "fields": fields})
 
-    boosted = bandana_patch(bytes(out))
+    # The Bandana hook is NOT applied: every variant that called the add routine from the
+    # save-block init hung in game, while a structure-only hook of the same shape booted
+    # normally. See docs/research/FRIEND_V3_PLAYTEST_BOOST_INVENTORY.md, section 6.
+    boosted = bytes(out)
     _assert_only_declared_bytes_changed(base, boosted, changes)
     return boosted, changes
 
@@ -165,8 +173,6 @@ def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: li
             if field["was"] != field["now"]:
                 _, width = FIELD_OFFSETS[field["field"]]
                 declared.update(range(field["offset"], field["offset"] + width))
-    declared.update(range(INIT_COUNT_CLEAR - GBA_BASE, INIT_COUNT_CLEAR - GBA_BASE + 4))
-    declared.update(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
     undeclared = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b} - declared
     if undeclared:
         raise BoostError(f"{len(undeclared)} byte(s) changed outside the declared spans")

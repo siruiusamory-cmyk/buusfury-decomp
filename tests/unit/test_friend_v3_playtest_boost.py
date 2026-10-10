@@ -30,15 +30,16 @@ from tools.research.build_friend_v3_playtest_boost import (  # noqa: E402
     PARTY_RECORDS,
     TRAMPOLINE,
     TRAMPOLINE_FILE,
-    TRAMPOLINE_SIZE,
+    TRAMPOLINE_LENGTH,
     _assert_only_declared_bytes_changed,
+    bandana_patch,
     plan,
 )
 
 
 def synthetic_base() -> bytearray:
     """An image whose base-stat table is entirely at a non-maximum value."""
-    size = max(BASE_STAT_TABLE + BASE_STAT_COUNT * BASE_STAT_RECORD_SIZE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE)
+    size = max(BASE_STAT_TABLE + BASE_STAT_COUNT * BASE_STAT_RECORD_SIZE, TRAMPOLINE_FILE + 32)
     base = bytearray(size)
     for index in range(BASE_STAT_COUNT):
         record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
@@ -69,7 +70,7 @@ def test_changed_bytes_are_exactly_the_declared_fields() -> None:
 
     # The Bandana hook is the only other region the builder is allowed to touch.
     hook = set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4))
-    hook |= set(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
+    hook |= set(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_LENGTH[0]))
 
     actual = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
     assert actual - hook == expected
@@ -127,18 +128,48 @@ def test_an_image_too_small_for_the_table_is_refused() -> None:
         plan(bytes(BASE_STAT_TABLE + 1))
 
 
-def test_an_already_maxed_image_changes_only_the_bandana_hook() -> None:
-    """With every stat already at its maximum, the hook is the only remaining change."""
+def test_an_already_maxed_image_produces_no_change() -> None:
+    """With every stat already at its maximum, plan() writes nothing.
+
+    The Bandana hook is encoded but deliberately not applied, so this also pins that
+    the shipped build carries no trampoline until the hang is resolved.
+    """
     base = bytearray(synthetic_base())
     for index in PARTY_RECORDS:
         for name, (_, width) in FIELD_OFFSETS.items():
             _write(base, index, name, MAXIMUM[name])
     boosted, _ = plan(bytes(base))
-    changed = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
-    allowed = set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4)) | set(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
-    assert changed <= allowed
-    assert changed & set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4))
-    assert int.from_bytes(boosted[TRAMPOLINE_FILE + 14:TRAMPOLINE_FILE + 16], "little") == BANDANA_ID
-    assert boosted[BASE_STAT_TABLE:BASE_STAT_TABLE + 5 * BASE_STAT_RECORD_SIZE] == bytes(
-        base[BASE_STAT_TABLE:BASE_STAT_TABLE + 5 * BASE_STAT_RECORD_SIZE]
-    )
+    assert boosted == bytes(base)
+
+
+def test_the_bandana_patch_encodes_the_literal_and_the_hook_site() -> None:
+    """The patch is tested even though it is not applied, so it cannot drift unwatched."""
+    base = bytes(synthetic_base())
+    patched = bandana_patch(base)
+    offset = TRAMPOLINE_FILE + 14
+    assert int.from_bytes(patched[offset:offset + 2], "little") == BANDANA_ID
+    hook = INIT_COUNT_CLEAR - 0x08000000
+    assert patched[hook:hook + 4] != base[hook:hook + 4]
+
+def test_fusion_and_non_party_records_are_untouched() -> None:
+    base = bytes(synthetic_base())
+    boosted, _ = plan(base)
+    for index in (5, 6, 7, 8):
+        record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
+        assert boosted[record:record + BASE_STAT_RECORD_SIZE] == base[record:record + BASE_STAT_RECORD_SIZE]
+
+
+def test_a_byte_outside_the_declared_spans_is_refused() -> None:
+    """The guard's only reachable case: a write the field table did not declare."""
+    base = bytes(synthetic_base())
+    boosted, changes = plan(base)
+    tampered = bytearray(boosted)
+    stray = BASE_STAT_TABLE + 0x0C  # inside a record, outside every declared field
+    tampered[stray] ^= 0xFF
+    with pytest.raises(BoostError, match="outside the declared spans"):
+        _assert_only_declared_bytes_changed(base, bytes(tampered), changes)
+
+
+def test_an_image_too_small_for_the_table_is_refused() -> None:
+    with pytest.raises(BoostError, match="smaller than the character base-stat table"):
+        plan(bytes(BASE_STAT_TABLE + 1))

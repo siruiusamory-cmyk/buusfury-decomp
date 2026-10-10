@@ -3,10 +3,10 @@
 Two properties are pinned here beyond the stat fields:
 
   * the Bandana hook and its trampoline are the only other regions the builder may touch;
-  * the trampoline's PUSH ORDER puts the epilogue address where the pop delivers it to pc.
-    The earlier defect pushed r4, then r5, then the epilogue address and popped
-    {r4, r5, pc}, which handed pc the original r4. The word count was balanced, so only an
-    order-aware assertion catches it.
+  * the trampoline's frame leaves LR on the stack for the init's own epilogue to pop into
+    pc, and restores r0-r4 itself. An earlier version pushed r4, r5 and an epilogue address
+    and popped {r4, r5, pc}, which handed pc the ORIGINAL r4. The word count stayed
+    balanced, so only an order-aware assertion catches that.
 """
 
 from __future__ import annotations
@@ -137,22 +137,76 @@ def test_an_already_maxed_image_changes_only_the_hook_and_the_trampoline() -> No
     assert changed <= allowed, sorted(changed - allowed)
 
 
-def test_the_trampoline_push_order_puts_the_epilogue_where_pc_reads_it() -> None:
-    """Assert the ORDER, not the count: a balanced frame can still pop the wrong word."""
-    patched = bandana_patch(bytes(synthetic_base()))
-    assert _half(patched, 2) == 0xB410, f"+4 is not push {{r4}}: {_half(patched, 2):#06x}"
-    assert _half(patched, 3) == 0xB420, f"+6 is not push {{r5}}: {_half(patched, 3):#06x}"
-    assert _half(patched, 7) == 0xBD10, f"+14 is not pop {{r4, pc}}: {_half(patched, 7):#06x}"
+def _operands(text: str) -> list[str]:
+    """Register names from a capstone operand string like `{r4, pc}` or `r4, r5`."""
+    import re
+
+    return re.findall(r"r\d+|pc|lr|sp", text)
 
 
-def test_both_trampoline_literals_land_where_their_ldr_computes() -> None:
+def _instructions(patched: bytes, count: int) -> list[tuple[int, str, list[str]]]:
+    import capstone
+
+    md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
+    blob = patched[TRAMPOLINE_FILE:TRAMPOLINE_FILE + count * 2]
+    return [(ins.address, ins.mnemonic, _operands(ins.op_str)) for ins in md.disasm(blob, TRAMPOLINE)]
+
+
+def _literal_value(patched: bytes, address: int) -> int:
+    """What the PC-relative LDR at `address` reads, computed the way the processor does."""
+    offset = address - TRAMPOLINE
+    half = int.from_bytes(patched[TRAMPOLINE_FILE + offset:TRAMPOLINE_FILE + offset + 2], "little")
+    literal = ((address + 4) & ~3) + (half & 0xFF) * 4
+    return int.from_bytes(patched[literal - 0x08000000:literal - 0x08000000 + 4], "little")
+
+
+def test_the_frame_delivers_the_epilogue_to_pc_and_restores_r4() -> None:
+    """Decode which pushed word reaches which pop slot, using the disassembler's own operands.
+
+    Asserting the emitted halfwords is not enough: two single-register pushes build the reverse
+    of one merged push, and an earlier version sent the caller's r4 to pc while its halfword
+    assertions still passed.
+    """
     patched = bandana_patch(bytes(synthetic_base()))
-    for index, wanted in ((0, BANDANA_ID), (1, TRAMPOLINE_RETURN)):
-        here = TRAMPOLINE + index * 2
-        half = _half(patched, index)
-        literal = ((here + 4) & ~3) + (half & 0xFF) * 4
-        got = int.from_bytes(patched[literal - 0x08000000:literal - 0x08000000 + 4], "little")
-        assert got == wanted, f"literal for +{index * 2} is {got:#x}, wanted {wanted:#x}"
+    instructions = _instructions(patched, 12)
+
+    pushed: list[str] = []
+    popped: list[str] = []
+    for _, mnemonic, operands in instructions:
+        if mnemonic == "push":
+            pushed += operands
+        elif mnemonic == "pop":
+            popped = operands
+            break
+
+    assert pushed, "no push found"
+    assert popped, "no pop found"
+    # A pop takes the lowest address first, and the last word pushed is at the lowest address.
+    mapping = dict(zip(popped, reversed(pushed)))
+    assert mapping.get("r4") == "r4", f"r4 receives {mapping.get('r4')}, not the caller's r4"
+    assert "pc" in mapping, f"pc is not popped: {popped}"
+
+    # Whatever register pc takes must be loaded from the epilogue literal before the pop.
+    epilogue_reg = mapping["pc"]
+    loads = [
+        address
+        for address, mnemonic, operands in instructions
+        if mnemonic == "ldr" and operands and operands[0] == epilogue_reg
+    ]
+    assert loads, f"nothing loads {epilogue_reg}, the register pc takes"
+    assert _literal_value(patched, loads[0]) == TRAMPOLINE_RETURN, (
+        f"{epilogue_reg} holds {_literal_value(patched, loads[0]):#x}, not the epilogue"
+    )
+
+
+def test_the_gear_id_literal_lands_where_its_ldr_computes() -> None:
+    patched = bandana_patch(bytes(synthetic_base()))
+    off = TRAMPOLINE_FILE
+    here = TRAMPOLINE + 0
+    h = int.from_bytes(patched[off:off + 2], "little")
+    literal = ((here + 4) & ~3) + (h & 0xFF) * 4
+    got = int.from_bytes(patched[literal - 0x08000000:literal - 0x08000000 + 4], "little")
+    assert got == BANDANA_ID, f"the gear id literal is {got:#x}, wanted {BANDANA_ID}"
 
 
 def test_the_hook_branches_to_the_trampoline() -> None:
@@ -164,6 +218,14 @@ def test_the_trampoline_calls_the_add_routine() -> None:
     patched = bandana_patch(bytes(synthetic_base()))
     bl_at = TRAMPOLINE_FILE + 10
     assert patched[bl_at:bl_at + 4] == encode_bl(TRAMPOLINE + 10, INIT_ADDRESS)
+
+
+def test_the_displaced_adds_is_replayed_before_and_after_the_call() -> None:
+    """r0 is live at the continuation, so it is replayed after the call as well."""
+    patched = bandana_patch(bytes(synthetic_base()))
+    off = TRAMPOLINE_FILE
+    assert int.from_bytes(patched[off + 8:off + 10], "little") == 0x1C20
+    assert int.from_bytes(patched[off + 14:off + 16], "little") == 0x1C20
 
 
 def test_a_byte_outside_the_declared_spans_is_refused() -> None:

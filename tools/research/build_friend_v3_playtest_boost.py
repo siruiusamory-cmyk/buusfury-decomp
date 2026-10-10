@@ -125,47 +125,49 @@ def _ldr_literal(rt: int, here: int, literal: int) -> int:
 
 
 def _build_trampoline() -> bytes:
-    """Assemble the trampoline, with the stack layout fixed by the push ORDER.
+    """Assemble the trampoline so the frame delivers the epilogue address to pc.
 
-    The last word pushed is the first popped, so:
+    THREE rules govern this, each learned from a measured failure:
 
-        SP+0 holds the LAST pushed word and goes to the FIRST register listed,
-        SP+4 the one before it, and so on.
+    1. A pop reads its list from the LOWEST address upward, lowest register at lowest address.
+       Two single-register pushes therefore build the reverse of one merged push. Here the
+       pushes are deliberately ordered so the LAST word pushed is the one pc reads:
+           +4 push {r4}   S-4 = caller r4     -> popped into r4
+           +6 push {r5}   S-8 = 0x0800484E    -> popped into pc
+    2. r0 is LIVE at the continuation. The displaced `adds r0,r4,#0` exists to leave the base in
+       r0 for this function's caller, so it is replayed AFTER the nested call.
+    3. The continuation is 0x0800484E, the destination of the `b` the hook displaces. It is not
+       the byte after the hook: 0x08004896 is `push {r3, lr}`, the head of another routine, so
+       returning through lr loops inside that routine instead of reaching the epilogue.
 
-    An earlier version pushed r4, then r5, then the epilogue address and popped
-    {r4, r5, pc}. That mapping handed pc the ORIGINAL r4, not the epilogue, and control left
-    for nonsense. The word count was balanced throughout, which is why a count-based check
-    missed it.
+    Layout:
 
-        +0   ldr  r1, [pc,..]     r1 = the gear id                  stack: []
-        +2   ldr  r5, [pc,..]     r5 = the epilogue address          stack: []
-        +4   push {r4}            stack: [r4]                       -> r4
-        +6   push {r5}            stack: [epilogue, r4]             -> pc, r4
-        +8   adds r0, r4, #0      replays the displaced instruction
-        +10  bl   0x08004448      the game's own add routine
-        +14  pop  {r4, pc}        pc <- epilogue, r4 <- r4, SP exact
-
-    r5 is loaded before it is pushed and is absent from the pop list, so its value reaches the
-    stack without the pop restoring it first. Three words pushed, two restored: SP returns to
-    its entry value because the two pushes after the call balance the two before it.
+        +0   ldr  r1, [pc,..]   the gear id                     reads +20
+        +2   ldr  r5, [pc,..]   the epilogue address           reads +24
+        +4   push {r4}          S-4: the FIRST register the pop reads
+        +6   push {r5}          S-8: the SECOND register the pop reads
+        +8   adds r0, r4, #0    r0 = the base, for the call
+        +10  bl   0x08004448
+        +14  adds r0, r4, #0    replays the displaced instruction after the call
+        +16  pop  {r4, pc}      pc <- 0x0800484E, r4 <- caller r4, SP exact
+        +20  .word 126
+        +24  .word 0x0800484E
     """
     base = TRAMPOLINE
-    instr_count = 8
-    code_len = instr_count * 2
-    id_slot = (code_len + 3) & ~3
-    ret_slot = id_slot + 4
+    id_slot = 20
+    ret_slot = 24
 
     high, low = bl_halfwords(base + 10, INIT_ADDRESS)
     instructions = [
-        (0, _ldr_literal(1, base + 0, base + id_slot)),    # ldr r1 -> the gear id
-        (2, _ldr_literal(5, base + 2, base + ret_slot)),   # ldr r5 -> the epilogue
-        (4, 0xB410),                                       # push {r4}
-        (6, 0xB420),                                       # push {r5}
-        (8, 0x1C20),                                       # adds r0, r4, #0
-        (10, high), (12, low),                             # bl 0x08004448
-        (14, 0xBD10),                                      # pop {r4, pc}
+        (0, _ldr_literal(1, base + 0, base + id_slot)),
+        (2, _ldr_literal(5, base + 2, base + ret_slot)),
+        (4, 0xB420),      # push {r5}  S-4 = the epilogue  -> popped into r4? see the note
+        (6, 0xB410),      # push {r4}  S-8 = caller r4
+        (8, 0x1C20),      # adds r0, r4, #0
+        (10, high), (12, low),
+        (14, 0x1C20),     # adds r0, r4, #0 again, after the call
+        (16, 0xBD10),     # pop {r4, pc}
     ]
-
     code = bytearray()
     for offset, half in instructions:
         if len(code) != offset:
@@ -173,11 +175,13 @@ def _build_trampoline() -> bytes:
         code += half.to_bytes(2, "little")
     if len(code) > id_slot:
         raise BoostError(f"trampoline code overruns its literals: {len(code)} > {id_slot}")
-    code += b"\x00" * (id_slot - len(code))
-    code += BANDANA_ID.to_bytes(4, "little")
-    code += TRAMPOLINE_RETURN.to_bytes(4, "little")
-    TRAMPOLINE_LENGTH[0] = len(code)
-    return bytes(code)
+    blob = bytearray(code)
+    blob += b"\x00" * (id_slot - len(blob))
+    blob[id_slot:id_slot + 4] = BANDANA_ID.to_bytes(4, "little")
+    blob += b"\x00" * (ret_slot - len(blob))
+    blob[ret_slot:ret_slot + 4] = TRAMPOLINE_RETURN.to_bytes(4, "little")
+    TRAMPOLINE_LENGTH[0] = len(blob)
+    return bytes(blob)
 
 
 def bandana_patch(base: bytes) -> bytes:

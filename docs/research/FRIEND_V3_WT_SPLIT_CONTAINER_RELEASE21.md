@@ -92,10 +92,13 @@ labels. The observer's liveness channel fired 54,428 times in that run, so the s
 panel's own table-load sites is a fact about the route the text took, not an unproven
 instrument. The screenshot is `scanner-screen-bulma-frame2160.png` in the ignored run tree.
 
-**The two dialogue rows are not yet runtime-verified.** They are in the registration scene,
-which no available save or state has been shown to reach. That is stated rather than implied:
-this release is static-only for those two rows, and the run to check them is prepared when the
-owner can drive the scene, exactly as the World Tournament scene was.
+**The two dialogue rows are owner-attested at runtime.** The owner played
+`v3-wt-split-2-1-a.gba` (sha256 `018757c4…`) in the registration scene and confirmed both lines:
+Master Roshi at `2:60922` and Oolong at `2:60432`. That is human attestation against this
+image's own digest, not a capture, and it carries the weight a player's report carries and no
+more: no screenshot or observer log exists for those two rows. A driven run with the observer
+would upgrade it to a machine observation, and it is prepared the way the World Tournament
+scene was.
 
 ## Continuity note, for the owner only
 

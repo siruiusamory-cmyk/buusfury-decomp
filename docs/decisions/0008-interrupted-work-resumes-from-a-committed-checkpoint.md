@@ -47,7 +47,9 @@ written record of what remains.
 - Resumption begins with measurement - remote, commit, tree, gates - and the
   measurements are recorded where the next contributor reads them.
 - The evidence for a resumption is durable repository and record state, so it
-  survives a lost terminal, a restarted machine and a change of contributor.
+  survives a lost terminal and a change of contributor. A host restart is not
+  claimed here: the controlled stop and an uncontrolled process kill are both
+  measured, and a machine losing power is not.
 - Work that is deliberately local stays local, and its record says so, so no
   later contributor publishes it as an accident of caution.
 - A resumed step may legitimately wait rather than proceed when ownership of the

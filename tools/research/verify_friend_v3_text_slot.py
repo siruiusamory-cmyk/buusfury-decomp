@@ -16,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.research.friend_v3_text_approvals import APPROVED_REPLACEMENTS  # noqa: E402
+
 TABLE_START = 0x6BCE8
 ROM_BASE = 0x08000000
 TERMINATOR = b"\x00\x00"
@@ -55,12 +57,18 @@ def main() -> int:
             problems.append(message)
 
     offset, text = read_slot(image, slot)
-    check(text == edit["new_text"], f"slot {slot} reads the owner's replacement exactly")
-    if text != edit["new_text"]:
-        print(f"     expected {edit['new_text']!r}")
+    expected = APPROVED_REPLACEMENTS.get(slot)
+    if expected is None:
+        raise SystemExit(f"slot {slot} has no approved wording in "
+                         "tools/research/friend_v3_text_approvals.py")
+    check(text == expected, f"slot {slot} reads the owner's approved wording exactly")
+    if text != expected:
+        print(f"     expected {expected!r}")
         print(f"     got      {text!r}")
     check(offset == edit["new_offset"],
           f"slot {slot} points at the write the plan made (file 0x{offset:X})")
+    check(edit["new_text"] == expected,
+          "the manifest's own copy of the wording agrees with the tracked approval")
 
     # Every other slot still resolves to its own text: compare all 1534 slot readings.
     drifted = []
@@ -74,17 +82,26 @@ def main() -> int:
             drifted.append(index)
     check(not drifted, f"the other 1,533 slots read the same text (drifted: {drifted[:8]})")
 
-    # 0.1846: every differing byte is either the moved pointer, the appended string, or the
-    # old span's own bytes past the new terminator.
+    # Every differing byte must be the moved pointer or the appended string. The old span is
+    # NOT in the allowed set: leaving it unchanged is a claim this checks rather than assumes.
     allowed = set(range(manifest["input_bytes"], len(image)))
     allowed.update(range(TABLE_START + slot * 4, TABLE_START + slot * 4 + 4))
-    allowed.update(range(edit["old_offset"], edit["old_offset"] + edit["old_span_bytes"]))
     stray = [index for index in range(min(len(image), len(against)))
              if image[index] != against[index] and index not in allowed]
-    check(not stray, f"0 differing bytes outside the declared site (found {len(stray)})")
+    check(not stray, f"0 differing bytes outside the pointer and the append "
+                     f"(found {len(stray)})")
     if stray:
         print(f"     first stray offsets: {[hex(o) for o in stray[:8]]}")
+    old_start = edit["old_offset"]
+    old_end = old_start + edit["old_span_bytes"]
+    untouched = image[old_start:old_end] == against[old_start:old_end]
+    check(untouched, f"the old {edit['old_span_bytes']}-byte span at file "
+                     f"0x{old_start:X} is byte-identical to the base")
+    differing = sum(1 for index in range(min(len(image), len(against)))
+                    if image[index] != against[index])
     check(len(image) == manifest["output_bytes"], "the output byte count matches the manifest")
+    print(f"     {differing} differing byte(s) in the shared range, "
+          f"{len(image) - len(against)} appended")
 
     print(f"\n{'VERIFY PASS' if not problems else 'VERIFY FAIL: ' + str(len(problems))}")
     return 1 if problems else 0

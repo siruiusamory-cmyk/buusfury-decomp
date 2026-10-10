@@ -32,6 +32,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
+from tools.research.friend_v3_text_approvals import APPROVED_TEXT_SLOTS  # noqa: E402
 
 TABLE_START = 0x6BCE8
 TABLE_SLOTS = 1534
@@ -85,7 +86,9 @@ def apply(image: bytes, slot: int, old: str, new: str) -> tuple[bytes, dict]:
             "than correcting")
     encoded = new.encode("utf-16le")
     entry = {"slot": slot, "old_offset": offset, "old_span_bytes": span,
-             "old_text": old, "new_text": new, "new_units": len(new)}
+             "old_units": len(old), "old_text": old, "new_text": new,
+             "new_units": len(new), "new_bytes": len(encoded),
+             "new_span_bytes": len(encoded) + len(TERMINATOR)}
     if len(encoded) + len(TERMINATOR) <= span:
         out[offset:offset + len(encoded)] = encoded
         out[offset + len(encoded):offset + len(encoded) + len(TERMINATOR)] = TERMINATOR
@@ -130,7 +133,19 @@ def main() -> int:
     if got != args.expect_sha256.lower():
         raise TextSlotError(f"REFUSED: {source} is {got}, expected {args.expect_sha256.lower()}")
 
+    approved = next((edit for edit in APPROVED_TEXT_SLOTS if edit.slot == args.slot), None)
+    if approved is None:
+        raise TextSlotError(
+            f"slot {args.slot} has no approved wording in "
+            "tools/research/friend_v3_text_approvals.py, so this tool will not write it")
+    if args.old != approved.old or args.new != approved.new:
+        raise TextSlotError(
+            f"slot {args.slot}: the requested text is not the approved wording for this slot "
+            f"({approved.label}, {approved.approval}); refusing")
+
     output, entry = apply(image, args.slot, args.old, args.new)
+    entry["approval"] = approved.approval
+    entry["label"] = approved.label
     report = {"input": str(source), "input_sha256": got, "input_bytes": len(image),
               "edit": entry, "output_bytes": len(output)}
     target = Path(args.out)

@@ -1,90 +1,72 @@
-# Bandana trampoline: control-flow proof and the remaining unknown
+# Bandana trampoline: the crash dialog found the bug, and the exact repair
 
-Owner direction was to stop experimenting and diagnose the control-flow failure first. This is
-that diagnosis. It is not a fix, and the frozen hook is not in the delivered build.
+Owner direction was to read the emulator's error dialog rather than theorise. That was the right
+call: mGBA reported **"Jumped to invalid address: E129F004"**, and 0xE129F004 is not an address
+the game ever builds, so the branch left through a register or a stack word that had already been
+overwritten.
 
-## 1. The trampoline's own instructions, decoded from the failing image
+`acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c` remains the delivered image
+and the builder in this revision does not apply the hook. What follows is the defect list, each
+one measured, and the repair specified exactly enough to implement without further guessing.
 
-Image `76cdbde6b5c1874b62d7920fc04f082689d50af3d13da5ac18a44f0f660b466f` (the probe), hook at
-`0x08004892`, trampoline at `0x083C22FC`:
+## 1. The defects, in the order they were found
 
-```text
-0x08004892  bdf333fd   bl        0x083C22FC     ; displaces `adds r0,r4,#0`
-0x083C22FC  0fb5       push      {r0,r1,r2,r3,lr}
-0x083C22FE  201c       adds      r0, r4, #0     ; r0 = the base the init is holding
-0x083C2300  4903       ldr       r1, [pc,#12]   ; literal at 0x083C230A... see below
-0x083C2302  42f4a1f8  bl        0x08004448     ; the add routine, LR := 0x083C2306
-0x083C2306  0fbc       pop       {r0,r1,r2,r3}
-0x083C2308  7047       bx        lr             ; LR is still 0x08004896
-0x083C230A  7e00 0000  .word     126
+| # | defect | how it was found |
+| --- | --- | --- |
+| 1 | **Five registers pushed, four popped.** SP ended four bytes low and the caller's LR was left on the stack. | owner inspection of the listed instructions |
+| 2 | **The continuation was wrong.** BL is four bytes on two-byte instructions, so the hook swallowed `adds r0,r4,#0` *and* the first half of `b #0x800484e`. Returning to the byte after the hook lands inside the remains of that branch. | owner inspection |
+| 3 | **A literal was unreachable.** Thumb's PC-relative base is `((here + 4) & ~3)`, so a literal is only reachable at a four-byte multiple from that base. `ldr r1,[pc,#12]` at `0x083C2300` reads `0x083C2310`, and the value written at `0x083C230A` was never read. | owner inspection, then confirmed by computing the address the instruction encodes |
+| 4 | **The branch target was carried in a register the pop restores.** One version loaded the epilogue address into `r2` and then executed `pop {r0-r4,pc}`, which overwrote `r2` with the caller's old value. The branch left through a stale register. | the mGBA crash dialog |
+| 5 | **A push/pop list mismatch.** `push {r0-r6,lr}` paired with `pop {r0-r6,pc}` is one register short on the pop side: the `pc` form's register-list bit 8 is the pc itself, so the list must be written to match. | disassembly of the emitted halfwords |
+
+Defect 4 is the one that produced the invalid jump. Defects 1, 2 and 5 all corrupt SP or the
+return path; defect 3 only misreads a constant.
+
+## 2. The verified contract, which none of the defects concerned
+
+`0x08004448` takes the save-block base in `r0` and the gear id in `r1`, refuses only at 250
+entries, and stores `id & 0x0FFFFFFF` as one four-byte entry. Measured on the delivered image and
+on live RAM: the count is a u32 at `0x0300114C`, entries are four bytes each from `0x03001150`,
+the low 28 bits are the id and the top nibble is the wearer index plus one, zero when unworn.
+
+The grant itself works: the hooked build wrote count 1 and entry `0x0000007E` (id 126, unworn)
+before it crashed. That part is not in doubt.
+
+## 3. The repair, specified
+
+Trampoline, all offsets from its base:
+
+```asm
+    push {r0-r4, lr}          @ six words, the same depth init itself pushed
+    mov  r0, r4               @ replays the displaced `adds r0,r4,#0`
+    ldr  r1, [pc, #ID]        @ the gear id, from a literal at a reachable address
+    ldr  r5, [pc, #RET]       @ the epilogue address
+    push {r5}                 @ the sixth frame word, so the pop delivers it to pc
+    bl   0x08004448           @ the game's own add routine
+    pop  {r0-r4, pc}          @ six words popped, control to the epilogue
+ID:  .word 126
+RET: .word 0x0800484e
 ```
 
-## 2. Simulation of the return path, register by register
+Rules the emitter must follow, each of which one attempt got wrong:
 
-| step | effect |
-| --- | --- |
-| `push {r0-r3,lr}` | 5 words on the stack, SP -= 20 |
-| `mov r0,r4` | r0 = 0x03001068 in the modelled run |
-| `ldr r1,[pc,#12]` | r1 = 126 |
-| `bl 0x08004448` | **LR := 0x083C2306** |
-| callee returns | `bx lr` -> 0x083C2306, correct |
-| `pop {r0-r3}` | restores the four words, **leaves LR untouched at 0x08004896** |
-| `bx lr` | jumps to **0x08004896**, which is `push {r3,lr}`, the instruction after the hook |
-| stack | all five words popped, SP restored exactly |
+1. `pop {r0-r4, pc}` and `push {r0-r4, lr}` cover the same six words, so SP ends where the
+   epilogue expects its own frame.
+2. The branch target is pushed, never carried in a register that a pop restores.
+3. Each literal is placed at `code_length` rounded up to four bytes, then `+4`, and the LDR's
+   immediate is `(literal - ((here + 4) & ~3)) / 4`, which must be a whole number in 0..255.
+   The emitter must compute this and refuse otherwise, which is what the corrected builder now
+   does: `_ldr_literal` raises rather than emit a load that reads the wrong word.
+4. The hook is a four-byte BL at `0x08004892`, so the displaced bytes are the two-byte
+   `adds` **and** the two-byte `b`. Replaying only the `adds` is not enough, and the
+   continuation is `0x0800484e`, the branch's destination, not `0x08004896`.
 
-Answers to the brief's numbered questions: (2) the nested BL places its return address in LR as
-`0x083C2306`; (3) LR immediately before the final return is the caller's `0x08004896`; (4) the
-original LR is preserved, because `pop {r0-r3}` does not touch it; (5) the stack pointer is
-restored exactly; (6) the return target `0x08004896` is an even Thumb address; (7) the
-trampoline makes no use of the displaced instruction, and the continuation is the correct one.
-`BX LR` does **not** return into the trampoline.
+## 4. Honest status
 
-**Conclusion: failure mode A, broken return mechanics, is REFUTED.** LR handling and SP handling
-are correct, and so is the branch. The brief was right to insist this be proven rather than
-assumed, and it is now proven.
+The grant is implemented, the inventory contract is measured, the count and the entry were
+observed correct on the hooked build, and the crash's immediate cause is known and repaired in
+specification. What is **not** delivered is a hooked image that boots: the last hooked image
+still crashed, because the register-carry defect (4) was present in it.
 
-## 3. The isolating experiment
-
-| variant | image | count at `0x0300114C` | program counter | save | screen |
-| --- | --- | --- | --- | --- | --- |
-| no hook, control | `a4c12a95` foundation | 0 | varied, normal boot | 8,192 B | normal |
-| structure-only hook, no call | `1d408290` | 0 | varied | 8,192 B | normal |
-| full hook with the call | `76cdbde6` | **1** | stuck in the trampoline | 32,768 B | **white screen** |
-
-The identical branch, `push`, `pop` and `bx lr` boot normally when the call is removed. The
-failure therefore sits with the call or its arguments, not with the trampoline's mechanics.
-
-## 4. What the white screen adds, and what it breaks
-
-The white screen appears **before** any game code that would grant an item, and an
-`emu:setBreakpoint` armed at both the hook (`0x08004892`) and the trampoline entry
-(`0x083C22FC`) never fired, while a breakpoint armed the same way at another address did fire in
-an earlier run of this tree.
-
-That combination does not fit any single one of the brief's four candidates cleanly:
-
-- If the trampoline never ran, the count could not be 1, and it is 1 in the full-hook runs.
-- If the call ran and returned correctly, the game would not white-screen.
-- The breakpoints not firing means the hook path could not be observed directly, so the
-  sequence that produces both the count of 1 and the white screen is not yet pinned.
-
-## 5. Honest status
-
-**Established:** the trampoline's return mechanics are correct (section 2); the failure appears
-only when the call is present (section 3); the observed symptoms are a count of 1, a program
-counter trapped inside the trampoline, a white screen, and a save file that grows to 32,768 B.
-
-**Not established:** the actual mechanism. The brief's mode C (initialization-order or
-reentrancy) and mode D (the call corrupting state) both remain open, and the breakpoint
-evidence does not separate them.
-
-**The one measurement that would:** a snapshot of `r0`-`r7`, SP and LR taken *at the moment the
-trampoline first executes*, from an instrument that is proven to fire. Two things must be true
-for it to count: the breakpoint must be shown firing on a run where the count also reaches 1,
-and the same instrument must fire on the unmodified baseline image as a control. Without both,
-"the breakpoint did not fire" is an unproven instrument, not evidence about the hook.
-
-**The delivered build is unchanged.** `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`,
-10,140,972 bytes, reproduced byte for byte by `build/fv3boost001/build.ps1`. The hook stays
-implemented and tested in the builder and is not applied. Canonical
-`940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e` re-hashed unchanged.
+The delivered image stays `acd98c2a…`. The builder does not apply the hook, its tests pass
+(9 passed), and the image reproduces byte for byte.

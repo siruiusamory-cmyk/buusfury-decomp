@@ -140,7 +140,6 @@ including the 96 shared-tail records and the four grown rows. `plan_group`'s ref
 no row is planned that the record identity does not carry, and no wording is truncated to fit.
 
 ## 4. Runtime proof
-
 Delegated to the runtime lane under `docs/skills/mgba-runtime.md`. The instrument and its
 result are recorded in `docs/research/FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md` when the run
 closes; the claim and the exact breakpoints are not stated here ahead of the measurement.
@@ -153,6 +152,45 @@ What the run has to show, stated now so a later reading cannot widen it:
 2. a throwaway image whose table slot 7 names an appended container, whose target record's
    handle words name selector 7, and where the copied record's bytes come from the appended
    region.
+
+## This route already has a precedent in the project's own history
+
+A search of the cross-session record found it after the measurements above were taken, and
+it belongs here because two earlier nodes reached the opposite conclusion.
+
+**Measured now, read-only, on the private image `C:\Dev\log1-remake\roms\v3-renames-spill.gba`
+(10,170,280 bytes, sha256 prefix `4be840dd`, 2026-10-04):** its table sits at file `0x9B2EA8`,
+seven of its slots are live containers, and **slot 7 holds a real kind-0 container**:
+pointer `0x089A9994`, declared and decoded 38,156 bytes, at file `0x9A9994`. Its six dialogue
+containers were simultaneously reduced to 65,266 / 65,424 / 65,272 / 65,148 / 65,136 /
+65,242 bytes, each under the ceiling. No word of that image's game code differs from this one
+in the reaches measured here.
+
+That is the same data edit this document plans, at an earlier revision of the image: records
+whose spans had to move were carried by selector 7 and their handles repointed, and the
+origin containers were left smaller rather than rewritten. Node `3dceafd2` records the intent
+("their handles are repointed there", 38,156 bytes) and whether that image was ever loaded in
+an emulator is not recorded anywhere found - so it is corroboration of the mechanism's shape,
+**not** the runtime proof this ticket owes.
+
+**Two earlier nodes are contradicted by the bytes and by that image, and the correction is
+recorded rather than quietly dropped:**
+
+- `b63df963` and `ced8eea1` state that "the selector is not something a ROM edit can
+  reassign" because the selector "lives in the handle word the game's script data carries".
+  The handle word is a packed u32 sitting in this image at 3,010 file offsets, and
+  rewriting one is a four-byte data edit; the dialogue dispatch reads those words and looks
+  the selector up in the table. Measured here: 2,814 records carrying 3,010 handle sites,
+  every one in-image.
+- The same nodes read the 65,534-byte start ceiling as a property of the image rather than of
+  one container, and concluded that containers 0 and 2 "cannot" take the repair "by any
+  re-layout". The ceiling is per container; a second container removes it. The measurement
+  that survives from those nodes is the one this document re-derives: full duplication does
+  not fit (572,888 bytes of record text against 384 KiB in selectors 0-5), which is exactly
+  why the targeted route above is the one to plan.
+
+The prior image also settles nothing about the risk in item 3 below, because it was never
+observed running.
 
 ## What is still unproven, named
 

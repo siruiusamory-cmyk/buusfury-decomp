@@ -62,18 +62,16 @@ from tests.gates import (
     gates_for,
     relative_test_path,
 )
+from tests.rom_support import (
+    CANONICAL_ROM_SHA256 as _CANONICAL_ROM_SHA256,
+    ROM_DEFAULT as _ROM_DEFAULT,
+    ROM_ENVIRONMENT_VARIABLES as _ROM_ENVIRONMENT_VARIABLES,
+    mutable_rom_copy,
+)
 
 #: Set by :func:`pytest_configure` when pytest's own temporary root is unusable
 #: and this module redirected the process temp root to an isolated one.
 _REDIRECTED_TEMPROOT: tuple[Path, str] | None = None
-
-#: The canonical Buu's Fury image every ROM-gated family reads, in the two
-#: spellings the suite accepts, plus the default location under the repo root.
-_ROM_ENVIRONMENT_VARIABLES = ("WEBFOOT_BUU_ROM", "LOGX_CANONICAL_ROM")
-_ROM_DEFAULT = Path("roms") / "Dragon Ball Z - Buu's Fury (U).gba"
-_CANONICAL_ROM_SHA256 = (
-    "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
-)
 
 #: Set this to force the required-GUI-surface guard to fail a session outside
 #: CI, so the guard can be mutation-tested on a developer machine.
@@ -82,6 +80,43 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: Environment variables that mean "this run is CI, so a collapsed required GUI
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
+
+
+# --- a mutable ROM fixture that cannot share a file with a protected input -----
+#
+# OWNER R3, 2026-10-09, after the incident. A test that mutates ROM bytes must
+# never do it at the canonical path - that path is a hard link shared with other
+# worktrees, so one in-place write changed every tree at once. Every helper below
+# lives in `tests/rom_support.py` so a test module can import it without depending
+# on conftest import order; this module keeps only the fixture that hands the
+# suite's mutable ROM copy over.
+
+
+@pytest.fixture
+def mutable_rom(tmp_path):
+    """A mutable copy of the canonical image, sharing no file with a protected input.
+
+    The safety this fixture exists for is in `rom_support.mutable_rom_copy`: the
+    copy is created in pytest's temporary root and its file identity is proved
+    distinct from every protected repository input before it is returned.
+    """
+    return mutable_rom_copy(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_destination_policy_cache():
+    """Keep one test's protected-input index out of another's.
+
+    `tools.webfoot.destination` caches the protected-input index per checkout root,
+    which is what keeps the check cheap on every emitted image. A test that points
+    the policy at a temporary root must not leave that root's index behind for a
+    later test to read, so the cache is cleared around every test.
+    """
+    from tools.webfoot import destination
+
+    destination._PROTECTED_CACHE.clear()
+    yield
+    destination._PROTECTED_CACHE.clear()
 
 #: Every candidate test file pytest offered to this session's collection, as
 #: :func:`_path_key` strings. Populated by :func:`pytest_collect_file`.

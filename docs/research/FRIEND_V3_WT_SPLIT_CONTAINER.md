@@ -18,8 +18,9 @@ ticket's note about a third address**.
 | what | address | bytes | instruction |
 | --- | --- | --- | --- |
 | table base literal | file `0x123CC` | `645b7b08` (retail) / `e89c9a08` (release) | `0x087B5B64` / `0x089A9CE8` |
-| loader A, table read | `0x08012242`-`0x08012248` | `6249 8006 000e 0858` | `ldr r1,[pc,#0x188]` / `lsls r0,#0x1A` / `lsrs r0,#0x18` / `ldr r0,[r1,r0]` |
-| loader B, table read | `0x080122C8`-`0x080122CE` | `4940 8006 000e 0858` | `ldr r1,[pc,#0x100]` / the same three |
+| loader A, table read | `0x08012242`-`0x08012248` | `6249` `8006` `000e` `0858` | `ldr r1,[pc,#0x188]` / `lsls r0,#0x1A` / `lsrs r0,#0x18` / `ldr r0,[r1,r0]` |
+| loader B, table read | `0x080122C8`-`0x080122CE` | `4940` `8006` `000e` `0858` | `ldr r1,[pc,#0x100]` / the same three |
+| **the two mask words, decoded** | `0x08012244` / `0x08012246` | `8006` / `000e` | Thumb `0x0680` = `lsls r0,r0,#26`; `0x0E00` = `lsrs r0,r0,#24` |
 
 Loader A's entry is `0x08012230`, loader B's is `0x080122B4`. Both load the handle from the
 record's `+0x04`, both take the selector as `(handle << 26) >> 24` - that is `selector * 4`,
@@ -152,6 +153,13 @@ What the run has to show, stated now so a later reading cannot widen it:
 2. a throwaway image whose table slot 7 names an appended container, whose target record's
    handle words name selector 7, and where the copied record's bytes come from the appended
    region.
+
+The first census run came back `target silent / liveness fires` and was rejected as an
+instrument defect rather than accepted as a negative: the observer's derived word address was
+`site - 8` (`0x08012240`, a code word) where the handle load is at `site - 4`, so it never
+read a handle. That run is retained as the reason the read address is now stated with the
+offset, and it is why the two mask words are decoded byte-by-byte in section 1 above: the
+same run raised a layout disagreement that the decoded words settle, not a redesign.
 
 ## This route already has a precedent in the project's own history
 

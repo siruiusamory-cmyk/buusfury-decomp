@@ -95,9 +95,17 @@ repointed, and the covering record still reads exactly what it read before.
 
 ## Runtime check
 
-Recorded in `FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md` and in the release's own run: the World
-Tournament scene in mGBA on this candidate, which this release exists to get in front of a
-stream. The verdict and its exact row are stated there and not restated here.
+Cold boot on this candidate with the battery save (`v3.sav`, the map-134 route save), no
+savestate, driven by hand through the junior division scene. Fourteen of the fifteen rows were
+resolved by the engine out of the appended container with their approved wording, and
+Idasa's mother's line was photographed on screen; the operator confirmed the scene played.
+Row 18 is static-verified only and is not claimed as seen. The full evidence, the exact
+addresses and the one correction it forced are in
+`FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`.
+
+The same run proved the table has **two** runtime consumers, not one: `0x080122CE` fires eight
+times in a run containing a level-up. Both read the same literal, so the single table word this
+release writes is seen by both.
 
 ## Save compatibility
 

@@ -138,3 +138,68 @@ appended container, and the handle words of the records that move.
 5. **The selector-13 case is untouched.** Three record-shaped words inside dialogue payloads
    carry selector 13 (see the route document). The split uses selector 7, where no such word
    exists inside a payload.
+
+## Release 2: the World Tournament scene, on the real candidate
+
+The release-2 candidate `v3-wt-split.gba` (`build/fv3wt001/release2/v3-wt-split-a.gba`, sha256
+`0b5ac8f470277f3c674710e07ce9d744433acd6a331736a628e00d6f72a6ef22`, 10,143,256 bytes) was
+loaded **cold**, with no savestate, on the battery save `v3.sav` (sha256
+`29f89867cdfb1e6e9956f461727b2e01bff91929351bd47e23c2c2a5af44e66a`, the recorded map-133 ->
+map-134 route save) and driven by hand from the tournament grounds.
+
+Run directory `build/friendv3-coldboot/fv3wt001-wt-route`. The candidate digest was re-verified
+before the run and again after; the battery save is a copy and its source was not written.
+
+**Instrument proven.** All four breakpoints `ok=true` before the session started. Liveness
+dispatch `0x08046AA4` fired 1,033,711 times in 24,420 frames; `site_a` 51; `site_b` **8**;
+copier 51.
+
+**The census first: the second loader is not dead after all.** The earlier census saw
+`site_b = 0` and the route document recorded the table as having one runtime consumer. That
+statement was scoped to the scene it measured, and this run falsifies the general form: with a
+level-up and a stat screen in the run, `0x080122CE` fires. Its eight hits resolve selectors 5,
+3 and 0 and read the same containers site A does. **The split therefore has two consumers to
+satisfy, and both load the same literal**, so the single table word this release writes is seen
+by both. Nothing about the route changes; the earlier sentence does.
+
+**The proof: fourteen of the fifteen rows were resolved by the engine out of the appended
+container, with their approved wording.** Every line below is a `sites.csv` row: the engine's
+index 7, the resolved container `0x089ABE24`, and the units the copier was about to take.
+Semicolons are the log's own substitution for commas inside text.
+
+| record | resolved start | text read from the appended container |
+| --- | --- | --- |
+| `3:7406:136` | 0 | `#Hey sis, if you win the tournament, what do you think you'll get with the prize Zeni?` |
+| `3:7542:42` | 172 | `#Uh, tons of okonomiyaki, I guess!` |
+| `3:7584:80` | 240 | `#Sheesh, Videl! How are you not fat?` |
+| `3:7664:60` | 312 | `#EXCUSE ME?! What are you going to get then?` |
+| `3:7724:72` | 400 | `#Candy. Lots and lots of candy.` |
+| `3:7796:204` | 462 | `#And you call me fat. Hey, isn't that kind of meta?` |
+| `3:8000:214` | 564 | `#Hey, half pint! We don't take too kindly to your folk around here.` |
+| `3:8214:118` | 698 | `#Huh? Do you mean brown people?` |
+| `3:8332:218` | 760 | `#What?! No! My mom may be racist, but I'm not! Geez, I meant adopted kids!` |
+| `3:9112:62` | 908 | `You really made me look bad earlier.` |
+| `3:9174:114` | 980 | `#Bruh. You were still totally a dick.` |
+| `3:9288:282` | 1054 | `#That's my baby Idasa down there! Oooooo! Idasa! I wish they would match Idasa up with a whiter kid! This is a disgrace!` |
+| `3:9662:116` | 1294 | `#Get him, Uub! You make that boy sorry his mom is racist!` |
+| `3:9778:114` | 1408 | `Noooo! My baby! That was unfair! That thing cheated!` |
+
+**And on screen.** `shot_021900.png` (and the identical `shot_022200.png`) shows the junior
+division arena with the dialogue box reading `That's my baby Idasa down there! Oooooo! Idasa! I
+wish they would match Idasa up with a whiter kid! This is a` and Idasa's mother's portrait,
+which is record `3:9288:282`, row 14 of the owner's table, resolved from the appended
+container. The operator drove the scene and confirmed the lines played.
+
+**One row was not observed.** `3:9892:486` (row 18, the announcer's championship passage) has
+no row in `sites.csv`: the run did not reach that announcement, or its record was resolved
+after the operator stopped. It is verified statically (it resolves through slot 7 and reads
+the approved passage back, checked by the release verifier) and is **not** claimed as seen at
+runtime.
+
+## Release 2 verdict
+
+**RUNTIME-VERIFIED on the release candidate**: fourteen of the fifteen rows resolved out of the
+appended container with their approved wording, one of them photographed on screen in the
+junior division scene, and the operator drove the scene and confirmed it played. Row 18 is
+static-verified only, and that limit is stated rather than folded into the claim.
+

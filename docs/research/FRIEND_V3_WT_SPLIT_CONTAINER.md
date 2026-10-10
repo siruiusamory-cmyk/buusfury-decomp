@@ -226,9 +226,12 @@ items below and leaves the rest:
 5. **Save compatibility is unchanged by this route**, because no save layout, base-stat table
    or game code is touched - but that is inherited reasoning, not a measurement of this
    route.
-6. **Proven by the engine at runtime, and it needs saying plainly**: the derivative reads the
-   table from **one** site, `0x08012248`. The second site a previous ticket named,
-   `0x080122CE`, never fired in any corrected run. The split has one consumer to satisfy.
+6. **Proven by the engine at runtime**: the derivative reads the table from `0x08012248`. A
+   later, longer run falsified the *general* form of the claim that `0x080122CE` never runs:
+   with a level-up and a stat screen in the run, it fires eight times and reads the same
+   containers site A does. Both sites load the same literal, so the one table word this
+   release writes is seen by both. The sentence that called site B dead is corrected in
+   `FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`; the route is unchanged.
 
 ## Verdict
 

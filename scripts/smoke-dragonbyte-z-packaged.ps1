@@ -19,7 +19,7 @@
 
 [CmdletBinding()]
 param(
-    [string] $DistDir = 'dist',
+    [string] $DistDir = 'build/packaged',
     [string] $BuildName = 'DragonByte Z',
     [string] $CanonicalRom = "roms/Dragon Ball Z - Buu's Fury (U).gba",
     [string] $WorkDir = 'build/dragonbyte-z-packaged'

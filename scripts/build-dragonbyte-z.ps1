@@ -17,9 +17,9 @@
 # file in `dist\`. The reasons are in the spec's docstring.
 #
 # `dist\` is shared with the public site: `npm run build` (Astro) empties it, with
-# no prompt, and removes the frozen build. Measured here once, and it is why
-# `docs/testing.md`'s advice to build the site first means running `site_check`
-# BEFORE this script rather than after.
+# no prompt, and removed a finished freeze once. The freeze therefore no longer
+# lands there: `--distpath build/packaged` puts the artefact under the ignored build
+# tree, where generated output belongs, and leaves `dist\` to the site alone.
 
 [CmdletBinding()]
 param(
@@ -49,6 +49,8 @@ try {
 
     $arguments = @('-m', 'PyInstaller', '--noconfirm')
     if ($Clean) { $arguments += '--clean' }
+    # `dist\` belongs to the public site build, which empties it without asking.
+    $arguments += @('--distpath', 'build/packaged')
     $arguments += $spec
 
     # PyInstaller logs INFO to stderr, and Windows PowerShell treats a native
@@ -62,7 +64,7 @@ try {
     $ErrorActionPreference = $previous
     if ($exitCode -ne 0) { throw "PyInstaller exited $exitCode" }
 
-    $exe = Join-Path (Join-Path 'dist' $BuildName) "$BuildName.exe"
+    $exe = Join-Path (Join-Path 'build/packaged' $BuildName) "$BuildName.exe"
     if (-not (Test-Path $exe)) { throw "PyInstaller reported success but no executable is at $exe" }
 
     # The identity is a build output, so it is read back from the artefact rather

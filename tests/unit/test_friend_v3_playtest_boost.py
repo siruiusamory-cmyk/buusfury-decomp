@@ -1,12 +1,9 @@
-"""The playtest boost changes the maximum number of bytes, and only those bytes.
+"""The playtest image changes the maxed stat fields, and nothing else.
 
-Two properties are pinned here beyond the stat fields:
-
-  * the Bandana hook and its trampoline are the only other regions the builder may touch;
-  * the trampoline's frame leaves LR on the stack for the init's own epilogue to pop into
-    pc, and restores r0-r4 itself. An earlier version pushed r4, r5 and an epilogue address
-    and popped {r4, r5, pc}, which handed pc the ORIGINAL r4. The word count stayed
-    balanced, so only an order-aware assertion catches that.
+The Bandana startup injection was cancelled by the owner on 2026-10-09 because the hook it used
+made the main menu selection arrow visibly wrong. These tests therefore pin the opposite of what
+they used to: the delivered image must contain the stat boost and must NOT contain the hook,
+the trampoline, or any other byte outside the five declared fields.
 """
 
 from __future__ import annotations
@@ -21,30 +18,23 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.research.build_friend_v3_playtest_boost import (  # noqa: E402
-    BANDANA_ID,
     BASE_STAT_COUNT,
     BASE_STAT_RECORD_SIZE,
     BASE_STAT_TABLE,
     BoostError,
     FIELD_OFFSETS,
-    HOOK,
     HOOK_FILE,
-    INIT_ADDRESS,
     MAXIMUM,
     PARTY_RECORDS,
-    TRAMPOLINE,
     TRAMPOLINE_FILE,
     TRAMPOLINE_LENGTH,
-    TRAMPOLINE_RETURN,
     _assert_only_declared_bytes_changed,
-    bandana_patch,
-    encode_bl,
     plan,
 )
 
 
 def synthetic_base() -> bytearray:
-    """A base whose stat table is below maximum and which is large enough for the patch."""
+    """A base whose stat table is below maximum and large enough for the patch."""
     size = max(BASE_STAT_TABLE + BASE_STAT_COUNT * BASE_STAT_RECORD_SIZE, TRAMPOLINE_FILE + 64)
     base = bytearray(size)
     for index in range(BASE_STAT_COUNT):
@@ -63,28 +53,41 @@ def _write(base: bytearray, record: int, field: str, value: int) -> None:
     base[offset:offset + width] = value.to_bytes(width, "little")
 
 
-def _half(patched: bytes, index: int) -> int:
-    off = TRAMPOLINE_FILE + index * 2
-    return int.from_bytes(patched[off:off + 2], "little")
-
-
-def test_changed_bytes_are_the_stat_fields_plus_the_hook_and_trampoline() -> None:
-    base = bytes(synthetic_base())
-    boosted, changes = plan(base)
-
-    expected = set()
+def _declared_bytes() -> set[int]:
+    declared: set[int] = set()
     for index in PARTY_RECORDS:
         record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
         for rel, width in FIELD_OFFSETS.values():
-            expected.update(range(record + rel, record + rel + width))
+            declared.update(range(record + rel, record + rel + width))
+    return declared
 
+
+def test_changed_bytes_are_exactly_the_declared_stat_fields() -> None:
+    base = bytes(synthetic_base())
+    boosted, changes = plan(base)
     actual = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
-    assert expected <= actual
-    allowed = expected | set(range(HOOK_FILE, HOOK_FILE + 4)) | set(
-        range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_LENGTH[0])
-    )
-    assert actual <= allowed, sorted(actual - allowed)
+    assert actual == _declared_bytes(), sorted(actual ^ _declared_bytes())
     assert [entry["name"] for entry in changes] == ["Goku", "Gohan", "Goten", "Trunks", "Vegeta"]
+
+
+def test_the_bandana_hook_is_not_applied() -> None:
+    """The cancelled injection must not reach a playtest image."""
+    base = bytes(synthetic_base())
+    boosted, _ = plan(base)
+    assert boosted[HOOK_FILE:HOOK_FILE + 4] == base[HOOK_FILE:HOOK_FILE + 4], (
+        "the hook region changed: the cancelled Bandana injection is active"
+    )
+    run = TRAMPOLINE_LENGTH[0] or 64
+    assert boosted[TRAMPOLINE_FILE:TRAMPOLINE_FILE + run] == base[TRAMPOLINE_FILE:TRAMPOLINE_FILE + run], (
+        "the trampoline region changed: the cancelled Bandana injection is active"
+    )
+
+
+def test_bandana_patch_has_no_caller_in_the_build_path() -> None:
+    """A caller reappearing means the cancelled hook became reachable again."""
+    source = (ROOT / "tools" / "research" / "build_friend_v3_playtest_boost.py").read_text(encoding="utf-8")
+    assert "boosted = bandana_patch(" not in source
+    assert "bandana_patch(bytes(out))" not in source
 
 
 def test_hp_and_ep_keep_their_bytes_because_0xFFFF_reads_as_negative() -> None:
@@ -124,108 +127,13 @@ def test_an_image_too_small_for_the_table_is_refused() -> None:
         plan(bytes(BASE_STAT_TABLE + 1))
 
 
-def test_an_already_maxed_image_changes_only_the_hook_and_the_trampoline() -> None:
+def test_an_already_maxed_image_is_returned_unchanged() -> None:
     base = bytearray(synthetic_base())
     for index in PARTY_RECORDS:
         for name, (_, width) in FIELD_OFFSETS.items():
             _write(base, index, name, MAXIMUM[name])
     boosted, _ = plan(bytes(base))
-    changed = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
-    allowed = set(range(HOOK_FILE, HOOK_FILE + 4)) | set(
-        range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_LENGTH[0])
-    )
-    assert changed <= allowed, sorted(changed - allowed)
-
-
-def _operands(text: str) -> list[str]:
-    """Register names from a capstone operand string like `{r4, pc}` or `r4, r5`."""
-    import re
-
-    return re.findall(r"r\d+|pc|lr|sp", text)
-
-
-def _instructions(patched: bytes, count: int) -> list[tuple[int, str, list[str]]]:
-    import capstone
-
-    md = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
-    blob = patched[TRAMPOLINE_FILE:TRAMPOLINE_FILE + count * 2]
-    return [(ins.address, ins.mnemonic, _operands(ins.op_str)) for ins in md.disasm(blob, TRAMPOLINE)]
-
-
-def _literal_value(patched: bytes, address: int) -> int:
-    """What the PC-relative LDR at `address` reads, computed the way the processor does."""
-    offset = address - TRAMPOLINE
-    half = int.from_bytes(patched[TRAMPOLINE_FILE + offset:TRAMPOLINE_FILE + offset + 2], "little")
-    literal = ((address + 4) & ~3) + (half & 0xFF) * 4
-    return int.from_bytes(patched[literal - 0x08000000:literal - 0x08000000 + 4], "little")
-
-
-def test_the_frame_delivers_the_epilogue_to_pc_and_restores_r4() -> None:
-    """Decode which pushed word reaches which pop slot, using the disassembler's own operands.
-
-    Asserting the emitted halfwords is not enough: two single-register pushes build the reverse
-    of one merged push, and an earlier version sent the caller's r4 to pc while its halfword
-    assertions still passed.
-    """
-    patched = bandana_patch(bytes(synthetic_base()))
-    instructions = _instructions(patched, 12)
-
-    pushed: list[str] = []
-    popped: list[str] = []
-    for _, mnemonic, operands in instructions:
-        if mnemonic == "push":
-            pushed += operands
-        elif mnemonic == "pop":
-            popped = operands
-            break
-
-    assert pushed, "no push found"
-    assert popped, "no pop found"
-    # A pop takes the lowest address first, and the last word pushed is at the lowest address.
-    mapping = dict(zip(popped, reversed(pushed)))
-    assert mapping.get("r4") == "r4", f"r4 receives {mapping.get('r4')}, not the caller's r4"
-    assert "pc" in mapping, f"pc is not popped: {popped}"
-
-    # Whatever register pc takes must be loaded from the epilogue literal before the pop.
-    epilogue_reg = mapping["pc"]
-    loads = [
-        address
-        for address, mnemonic, operands in instructions
-        if mnemonic == "ldr" and operands and operands[0] == epilogue_reg
-    ]
-    assert loads, f"nothing loads {epilogue_reg}, the register pc takes"
-    assert _literal_value(patched, loads[0]) == TRAMPOLINE_RETURN, (
-        f"{epilogue_reg} holds {_literal_value(patched, loads[0]):#x}, not the epilogue"
-    )
-
-
-def test_the_gear_id_literal_lands_where_its_ldr_computes() -> None:
-    patched = bandana_patch(bytes(synthetic_base()))
-    off = TRAMPOLINE_FILE
-    here = TRAMPOLINE + 0
-    h = int.from_bytes(patched[off:off + 2], "little")
-    literal = ((here + 4) & ~3) + (h & 0xFF) * 4
-    got = int.from_bytes(patched[literal - 0x08000000:literal - 0x08000000 + 4], "little")
-    assert got == BANDANA_ID, f"the gear id literal is {got:#x}, wanted {BANDANA_ID}"
-
-
-def test_the_hook_branches_to_the_trampoline() -> None:
-    patched = bandana_patch(bytes(synthetic_base()))
-    assert patched[HOOK_FILE:HOOK_FILE + 4] == encode_bl(HOOK, TRAMPOLINE)
-
-
-def test_the_trampoline_calls_the_add_routine() -> None:
-    patched = bandana_patch(bytes(synthetic_base()))
-    bl_at = TRAMPOLINE_FILE + 10
-    assert patched[bl_at:bl_at + 4] == encode_bl(TRAMPOLINE + 10, INIT_ADDRESS)
-
-
-def test_the_displaced_adds_is_replayed_before_and_after_the_call() -> None:
-    """r0 is live at the continuation, so it is replayed after the call as well."""
-    patched = bandana_patch(bytes(synthetic_base()))
-    off = TRAMPOLINE_FILE
-    assert int.from_bytes(patched[off + 8:off + 10], "little") == 0x1C20
-    assert int.from_bytes(patched[off + 14:off + 16], "little") == 0x1C20
+    assert boosted == bytes(base)
 
 
 def test_a_byte_outside_the_declared_spans_is_refused() -> None:

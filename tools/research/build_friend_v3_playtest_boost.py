@@ -185,7 +185,11 @@ def _build_trampoline() -> bytes:
 
 
 def bandana_patch(base: bytes) -> bytes:
-    """The hook and the trampoline, byte for byte, with every byte derived here.
+    """UNUSED RESEARCH: the Bandana startup injection was CANCELLED BY OWNER 2026-10-09.
+
+    Nothing calls this. The hook it applies was measured to make the main menu selection arrow
+    visibly wrong, so it must never reach a playtest image. The delivered ROM is produced by
+    `plan` without it.
 
     The hook is four bytes of BL on two-byte instructions, so it displaces TWO halfwords:
     `adds r0,r4,#0` at 0x08004892 and the first half of `b #0x800484e` at 0x08004894. Both
@@ -219,7 +223,10 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
             fields.append({"field": field, "offset": offset, "was": was, "now": now})
         changes.append({"record": index, "name": name, "fields": fields})
 
-    boosted = bandana_patch(bytes(out))
+    # The Bandana startup injection was CANCELLED BY OWNER on 2026-10-09. `bandana_patch`
+    # below is retained as documented research and has no caller: this build produces the
+    # stat-only playtest image, and the hook cannot be enabled by accident from here.
+    boosted = bytes(out)
     _assert_only_declared_bytes_changed(base, boosted, changes)
     return boosted, changes
 
@@ -236,8 +243,6 @@ def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: li
             if field["was"] != field["now"]:
                 _, width = FIELD_OFFSETS[field["field"]]
                 declared.update(range(field["offset"], field["offset"] + width))
-    declared.update(range(HOOK_FILE, HOOK_FILE + 4))
-    declared.update(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_LENGTH[0]))
     undeclared = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b} - declared
     if undeclared:
         raise BoostError(f"{len(undeclared)} byte(s) changed outside the declared spans")

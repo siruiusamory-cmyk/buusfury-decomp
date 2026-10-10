@@ -119,15 +119,29 @@ the reviewer, not by the assertion.
 
 | gate | result |
 | --- | --- |
-| `tests/unit/test_friend_v3_playtest_boost.py` | **8 passed** |
+| `tests/unit/test_friend_v3_playtest_boost.py` | **10 passed**, including a test that fails if the cancelled Bandana hook regains a caller |
 | related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **175 passed**; captured to ignored `build/review/related-suites.log` |
 | changed-byte census on the delivered image | 25 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
 | foundation re-run through the toolkit | reproduces `ef939dcd` then `a4c12a95` byte for byte |
-| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, and reproduced `6d7a56c6` before the hp and ep fields were dropped |
+| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, twice, identical hashes |
+| cancelled-hook exclusion | bytes at `0x08004892` (`20 1c db e7`) and the whole trampoline run at `0x083C22FC` are byte-identical to the foundation; no injection is present |
 | canonical ROM digest after every run | `940ad5f0...` unchanged |
 
-Not yet performed, and not claimed: independent review of the frozen candidate, GitLab CI,
-and any runtime observation of this image. See section 5.
+Runtime smoke test on the delivered image, isolated mGBA, fresh 8192-byte save, operator-confirmed:
+
+| check | result |
+| --- | --- |
+| cold boot | reaches the title screen |
+| title screen artwork | correct |
+| menu selection and frame rate | **72.7 fps**, normal; the arrow glitch belongs to the cancelled hook, and the control foundation image is clean |
+| New Game | begins, gameplay reachable |
+| progression | no crash and no softlock observed in the smoke window; 679 observer frames, 15 distinct PCs, PC inside GBA ROM |
+| equipment at `0x0300114C` | **0** on a fresh save, as expected with the injection cancelled |
+| save file | 8192 bytes, valid |
+| injected equipment | none |
+
+Still not performed, and not claimed: chapter-by-chapter progression, independent review of this
+final candidate, and GitLab CI. See section 5.
 
 ## 4. The authoritative modification tracker
 
@@ -142,17 +156,19 @@ and any runtime observation of this image. See section 5.
 | Tulma portrait slot 17, and the two rewritten dialogue records | MR !166, merge `1b02221732d7b76d38fd9e35d731e9f3317da9a4`; re-run here and reproduced as `a4c12a95` |
 | Cold-boot acceptance of the content-pass foundation | `docs/research/FRIEND_V3_COLD_BOOT_ACCEPTANCE.md`, 13,440 frames on the delivered image |
 | Tail-allocation hazard assessment | `docs/research/FRIEND_V3_STABILITY_PASS.md`, LATENT |
+| five characters at level 200, STR/POW/END/SPD 255, foundation HP/EP | static decode of the base-stat table plus a fresh-save smoke test on the delivered image; the table write is byte-censused to 25 bytes and the ROM boots and plays |
+| the delivered image excludes the cancelled Bandana hook | byte comparison against the foundation at the hook and trampoline regions; enforced by a unit test |
 
 ### 4.2 Implemented, verification outstanding
 
 | item | what is missing |
 | --- | --- |
-| the playtest boost (`acd98c2a`) | independent review and CI |
 | Tulma graphics runtime confirmation | the human-played encounter session the graphics ticket names |
+| chapter-by-chapter progression | **pending human playtest.** Nothing here walks a chapter |
 
 ### 4.3 In progress
 
-Nothing. The boost lane is frozen at `acd98c2a` pending review.
+Nothing. The feature set is frozen at `acd98c2a`.
 
 ### 4.4 Approved future changes
 
@@ -160,6 +176,7 @@ Nothing. The boost lane is frozen at `acd98c2a` pending review.
 | --- | --- |
 | R3 bounded ROM destination safety | owner authorization 2026-10-09, assigned to the raw-write lane |
 | R1 filesystem migration | owner authorized as a *conditional, prepared, unexecuted* plan. **Not authorized to execute**, and not executed here |
+| all creative changes (boss replacements, difficulty, new dialogue) | **deferred** by the owner's 2026-10-09 playtest decision |
 
 ### 4.5 Owner-reserved creative decisions, recorded and awaiting the owner
 
@@ -180,7 +197,7 @@ Nothing. The boost lane is frozen at `acd98c2a` pending review.
 
 | item | state |
 | --- | --- |
-| the Bandana starting item | **ID AND STORAGE MEASURED, GRANT NOT WRITTEN.** Id 126, through the gear table at file `0x6F82EC` that the renderer `0x0801D988` names in its literal pool at `0x0801DC74`; 162 records of `0x2C` bytes, name index at `+0x00`. Storage was read from the game's own add routine in this image, and the equip transition was read on the canonical retail image driven by the operator's completed save: a u32 count at `0x0300114C` and one 4-byte word per item whose top nibble is the wearer index plus one and whose low 28 bits are the gear id, measured by decompiling the game's own add routine. Equipping the bandana on a completed save moved `0x0000007E` to `0x1000007E` and cleared the amulet it replaced. What is missing is the new-game call site, so no call site can yet be chosen from evidence. See the completion record beside this one, section 2 |
+| the Bandana starting item | **CANCELLED BY OWNER, 2026-10-09.** The requirement is withdrawn; the Bandana is obtained through normal gameplay. The injection was implemented and reached a correct grant on a cold boot (count 1, entry `0x0000007E`) but made the main menu selection arrow visibly wrong, so it is excluded from the delivered image. The hook has no caller: `bandana_patch` is retained as documented research only, and a unit test fails if a call site reappears. Research record: `docs/research/FRIEND_V3_PLAYTEST_BOOST_TRAMPOLINE.md` |
 | zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
 | latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
 | the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |

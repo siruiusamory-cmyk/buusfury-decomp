@@ -21,6 +21,12 @@ Two layers are tested, because they refuse different things and both must hold:
 The checkout under test is a private temporary one: the protected-input policy is
 read from a `.gitignore` this file writes, so nothing here reads, writes or even
 needs the real repository's ROM inputs.
+
+OWNER R3 second half, 2026-10-10: a declared protected name is protected before
+anything creates it. The policy kept a listed name only when the directory already
+existed, and the writers create a destination's parent directory, so a ROM write
+could create `exports/` - or `dumps/`, `dump/`, `stock/`, `extracted/` - and publish
+inside it. `roms/` refused correctly only because it exists in every checkout.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ from tools.webfoot.authored_image import (
     refuse_canonical_destination,
     save_authored_image,
 )
+from tools.webfoot.character_swap import write_staged
 from tools.webfoot.write import ByteChange, WriteError, emit_image, plan_changes
 
 IGNORE_TEXT = "\n".join(
@@ -45,6 +52,12 @@ IGNORE_TEXT = "\n".join(
         "roms/",
         "roms",
         "*.gba",
+        "# Extracted/generated game data",
+        "extracted/",
+        "dump/",
+        "dumps/",
+        "stock/",
+        "exports/",
         "build/",
         "",
     )
@@ -59,6 +72,20 @@ ROM_BYTES = b"protected canonical rom bytes" * 4
 _ANY_REFUSAL = (
     r"protected ROM input|refusing to write the output over the input"
     r"|the requested output path is the source ROM"
+)
+
+#: The declared names `checkout` does not create. `roms` is the one it does, which
+#: is why the defect was invisible: the only protected name with a directory was
+#: the only one that refused.
+MISSING_NAMES = tuple(
+    name for name in destination_sdk.PROTECTED_INPUT_DIRECTORIES if name != "roms"
+)
+
+#: Case-insensitivity is a property of the filesystem, not of the host's name, so
+#: the case-variation tests state what they need instead of assuming Windows.
+CASE_INSENSITIVE = pytest.mark.skipif(
+    os.path.normcase("A") != os.path.normcase("a"),
+    reason="this filesystem is case-sensitive, so a case variation is another directory",
 )
 
 
@@ -344,3 +371,214 @@ def test_save_authored_image_refuses_the_protected_pathname(checkout: Path):
         )
 
     assert _digest(_rom(checkout).read_bytes()) == before
+
+
+# --- a declared name is protected before anything creates it, OWNER R3 2026-10-10 ---
+
+
+def _directory_link(target: Path, link: Path) -> None:
+    """A directory link at `link`, or a skip where this host refuses to make one.
+
+    `target` may be absent: the link is then dangling, and resolution still follows
+    the target text the link carries.
+    """
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:  # pragma: no cover - host policy
+        pytest.skip(f"this host cannot create a directory link: {exc}")
+    if not link.is_symlink():  # pragma: no cover - defensive
+        pytest.skip("the host accepted the call but created no directory link")
+
+
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_an_existing_protected_directory_is_refused(checkout: Path, name: str):
+    """Case 1: the directory is there, so the walk found it before this change too."""
+    protected = checkout / name
+    protected.mkdir()
+    before = _digest(_rom(checkout).read_bytes())
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        destination_sdk.refuse_rom_destination(_rom(checkout), protected / "derivative.gba")
+
+    assert list(protected.iterdir()) == []
+    assert _digest(_rom(checkout).read_bytes()) == before
+
+
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_a_protected_directory_that_does_not_exist_yet_is_refused(checkout: Path, name: str):
+    """Case 2, the measured defect: nothing created the directory, so nothing protected it.
+
+    The refusal must name the resolved destination and the protected component, must
+    not create the directory, and must leave the source ROM byte-for-byte.
+    """
+    protected = checkout / name
+    destination = protected / "derivative.gba"
+    before = _digest(_rom(checkout).read_bytes())
+
+    with pytest.raises(WriteError, match="protected ROM input directory") as refusal:
+        destination_sdk.refuse_rom_destination(_rom(checkout), destination)
+
+    message = str(refusal.value)
+    assert str(destination.resolve()) in message
+    assert str(protected.resolve()) in message
+    assert not protected.exists()
+    assert _digest(_rom(checkout).read_bytes()) == before
+
+
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_a_nested_destination_in_a_missing_protected_directory_is_refused(
+    checkout: Path, name: str
+):
+    """Case 3: the nearest existing ancestor is the repository root, and the rest is read."""
+    protected = checkout / name
+    destination = protected / "deeper" / "still" / "derivative.gba"
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        destination_sdk.refuse_rom_destination(_rom(checkout), destination)
+
+    assert not protected.exists()
+
+
+def test_a_junction_alias_into_missing_protected_storage_is_refused(checkout: Path):
+    """Case 4: an unprotected alias name, resolved onto a protected component that is absent.
+
+    The link is dangling because the protected directory was never created; the
+    destination is refused by what the alias points AT, never by the name it was
+    reached under.
+    """
+    protected = checkout / "exports"
+    alias = checkout / "route-into-exports"
+    _directory_link(protected, alias)
+
+    with pytest.raises(WriteError, match="protected ROM input directory") as refusal:
+        destination_sdk.refuse_rom_destination(_rom(checkout), alias / "derivative.gba")
+
+    assert str(protected.resolve()) in str(refusal.value)
+    assert not protected.exists()
+
+
+def test_an_external_alias_resolving_into_protected_storage_is_refused(
+    checkout: Path, tmp_path: Path
+):
+    """Case 4 from outside the checkout: the chosen path leaves, the resolution does not."""
+    protected = checkout / "dumps"
+    protected.mkdir()
+    alias = tmp_path / "a-friendly-output-folder"
+    _directory_link(protected, alias)
+
+    with pytest.raises(WriteError, match="protected ROM input directory") as refusal:
+        destination_sdk.refuse_rom_destination(_rom(checkout), alias / "derivative.gba")
+
+    assert str(protected.resolve()) in str(refusal.value)
+    assert list(protected.iterdir()) == []
+
+
+@CASE_INSENSITIVE
+@pytest.mark.parametrize("spelling", (str.upper, str.title), ids=("upper", "title"))
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_a_case_variation_of_a_missing_name_is_refused(
+    checkout: Path, name: str, spelling
+):
+    """Case 5: a Windows path component is case-insensitive, and the directory is absent."""
+    destination = checkout / spelling(name) / "derivative.gba"
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        destination_sdk.refuse_rom_destination(_rom(checkout), destination)
+
+    assert not (checkout / name).exists()
+
+
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_authorized_build_output_is_allowed_whatever_the_directory_is_called(
+    checkout: Path, name: str
+):
+    """Case 6: `build/` is the authorized derivative location, so the word is not banned."""
+    destination = checkout / "build" / name / "derivative.gba"
+
+    destination_sdk.refuse_rom_destination(_rom(checkout), destination)
+
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("name", MISSING_NAMES)
+def test_an_external_derivative_under_a_protected_name_is_allowed(
+    checkout: Path, tmp_path: Path, name: str
+):
+    """Case 7: the policy is the repository's, not the word's."""
+    outside = tmp_path / name / "derivative.gba"
+
+    destination_sdk.refuse_rom_destination(_rom(checkout), outside)
+
+    assert not outside.exists()
+
+
+def test_emit_image_refuses_a_missing_protected_directory(checkout: Path):
+    """The production write path, not a standalone check: the directory is never created.
+
+    `emit_image` refuses both destinations it writes before `publish_new_files`
+    reaches its `mkdir(parents=True)`.
+    """
+    base = _rom(checkout).read_bytes()
+    plan = _plan_for(base)
+    destination = checkout / "dumps" / "brand-new.gba"
+    before = _digest(base)
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        emit_image(_rom(checkout), destination, plan)
+
+    assert not (checkout / "dumps").exists()
+    assert _digest(_rom(checkout).read_bytes()) == before
+
+
+def test_emit_image_refuses_a_manifest_in_a_missing_protected_directory(
+    checkout: Path, tmp_path: Path
+):
+    """The provenance document answers the same policy, and nothing is published."""
+    plan = _plan_for(_rom(checkout).read_bytes())
+    derivative = tmp_path / "derivative.gba"
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        emit_image(
+            _rom(checkout),
+            derivative,
+            plan,
+            manifest_path=checkout / "exports" / "provenance.json",
+        )
+
+    assert not (checkout / "exports").exists()
+    assert not derivative.exists()
+
+
+def test_write_staged_refuses_a_missing_protected_directory(checkout: Path):
+    """The publication boundary that calls `mkdir`, reached with the protected name absent."""
+    destination = checkout / "stock" / "out.bin"
+    before = _digest(_rom(checkout).read_bytes())
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        write_staged(destination, b"x", _rom(checkout))
+
+    assert not (checkout / "stock").exists()
+    assert _digest(_rom(checkout).read_bytes()) == before
+
+
+def test_a_refusal_leaves_the_source_the_destination_and_a_neighbour_unchanged(
+    checkout: Path,
+):
+    """Case 8: source ROM, refused destination and a pre-existing neighbour, all unchanged."""
+    protected = checkout / "exports"
+    protected.mkdir()
+    neighbour = protected / "kept.bin"
+    neighbour.write_bytes(b"an existing file in a protected directory")
+    destination = protected / "brand-new.gba"
+    base = _rom(checkout).read_bytes()
+    plan = _plan_for(base)
+    before_rom = _digest(base)
+    before_neighbour = _digest(neighbour.read_bytes())
+
+    with pytest.raises(WriteError, match="protected ROM input directory"):
+        emit_image(_rom(checkout), destination, plan)
+
+    assert not destination.exists()
+    assert [entry.name for entry in protected.iterdir()] == ["kept.bin"]
+    assert _digest(_rom(checkout).read_bytes()) == before_rom
+    assert _digest(neighbour.read_bytes()) == before_neighbour

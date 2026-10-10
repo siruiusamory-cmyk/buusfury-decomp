@@ -527,6 +527,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_container_route_watch.lua')
     )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3: the boss-fight measurement
+    # observer. Hercule's and Olibu's enemy stat records are to be retuned, and the fields
+    # that decide a fight are the record's maximum hit points and the two bytes its
+    # damage calculator consumes as the attacker's attack term. This observer arms the
+    # damage calculator, the branch selector that chooses between those two bytes, the
+    # computed-damage store and the target's hit-point store, with the dispatch thunk as the
+    # liveness channel. It reads registers and memory and writes host files inside the run
+    # directory only; no emulated write, no key press.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_bossfight_watch.lua')
+    )
     # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: the matching INPUT DRIVER, in its own
     # file because the rule keeps driving code out of the observer. It presses A once per
     # 120 frames between frames 300 and 1500 and then releases the keys, because the run
@@ -535,6 +546,16 @@ $allowedLua = @(
     # no file and touches no emulated memory; it only presses keys.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_input_driver.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3: the stand-still driver, which dofiles
+    # the boss-fight observer from the path in FV3WT001_OBSERVER and then presses A only long
+    # enough to clear the pre-fight dialogue and start the battle. It exists so an enemy's swing
+    # cadence can be measured on several builds without the owner fighting each one. It presses
+    # keys and writes one marker file inside the run directory; it never touches emulated memory.
+    # The observer it loads stays read-only and unmodified, which is the separation the rule
+    # requires. Bounded: it releases the keys and removes its own callback at frame 1080.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_stand_still.lua')
     )
     # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: a one-shot read-only probe that decides
     # whether the emulated GBA can address a container APPENDED past the end of the image

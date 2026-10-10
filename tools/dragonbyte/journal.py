@@ -37,7 +37,7 @@ from .rawbytes import (
     claimed_by,
     write_raw_document,
 )
-from . import dataedits, mapedits, textedits
+from . import dataedits, graphicsedits, mapedits, textedits
 
 
 class JournalError(Exception):
@@ -201,6 +201,16 @@ DOCUMENT_ADAPTERS: dict[str, _DocumentAdapter] = {
         install=textedits.install,
         validate=textedits.validate,
         write=textedits.write,
+    ),
+    # The Graphics destination's authored object-palette overrides, registered for
+    # the same reason and in the same shape. The pixel half of the same SDK
+    # document is derived from the project's own PNGs rather than authored here, so
+    # this target owns the palette table and nothing else.
+    graphicsedits.GRAPHICS_TARGET: _DocumentAdapter(
+        read=graphicsedits.read,
+        install=graphicsedits.install,
+        validate=graphicsedits.validate,
+        write=graphicsedits.write,
     ),
 }
 

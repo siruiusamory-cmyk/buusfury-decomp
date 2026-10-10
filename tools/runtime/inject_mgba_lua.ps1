@@ -478,6 +478,13 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\boost001_input_driver.lua')
     )
+    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the register dump at the Bandana hook,
+    # the add routine's entry and its exit. It exists to test whether the hook's
+    # failure is an argument problem or a return problem. Read-only: registers and
+    # memory only, no key, no write to emulated state.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\boost001_addcall_watch.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

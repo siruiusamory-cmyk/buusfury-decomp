@@ -150,6 +150,13 @@ map-134 route save) and driven by hand from the tournament grounds.
 Run directory `build/friendv3-coldboot/fv3wt001-wt-route`. The candidate digest was re-verified
 before the run and again after; the battery save is a copy and its source was not written.
 
+**Which files this section quotes.** The session was ended by closing the window, so the
+observer's own shutdown path never ran: there is no `marker.txt` and no summary block. The
+numbers below come from `route.csv` (last row `24420,1033711,51,8,51,0x08090010,138`) and from
+`sites.csv`, both of which are frozen in the run directory. The same numbers also appear in the
+live `histogram.txt` heartbeat tail. Nothing in this section depends on a file that was not
+written.
+
 **Instrument proven.** All four breakpoints `ok=true` before the session started. Liveness
 dispatch `0x08046AA4` fired 1,033,711 times in 24,420 frames; `site_a` 51; `site_b` **8**;
 copier 51.
@@ -164,8 +171,10 @@ by both. Nothing about the route changes; the earlier sentence does.
 
 **The proof: fourteen of the fifteen rows were resolved by the engine out of the appended
 container, with their approved wording.** Every line below is a `sites.csv` row: the engine's
-index 7, the resolved container `0x089ABE24`, and the units the copier was about to take.
-Semicolons are the log's own substitution for commas inside text.
+index 7, the resolved container `0x089ABE24`, and the units the record's own handle names, read
+back from the resolved container at `container + 8 + start` (the observer reads them from that
+address; it is not the copier's own register). The log substitutes a semicolon for every comma
+inside text, so the punctuation style in this table is the log's, not the ROM's.
 
 | record | resolved start | text read from the appended container |
 | --- | --- | --- |

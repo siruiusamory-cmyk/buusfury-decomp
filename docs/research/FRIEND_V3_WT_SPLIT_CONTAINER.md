@@ -212,10 +212,10 @@ items below and leaves the rest:
    3, across nine resolutions in a run whose dispatch channel fired 102,995 times.
 2. **A selector used by a record word elsewhere.** 462 record-shaped words in the image carry
    a selector above 6 and sit outside every dialogue payload; 3 more (selector 13) sit inside
-   one. Slot **7 carries none inside a payload and 9 elsewhere**. The runtime census shows the
-   engine resolving only the selectors records actually name, so those words are never
-   resolved in the scene measured - but that is one scene, and slot 7 remains the safest
-   available choice on this evidence rather than a proven-safe one for every scene.
+   one. **Slot 7 carries no word inside a payload, and nine elsewhere.** The runtime census
+   shows the engine resolving only the selectors records actually name, so those words are
+   never resolved in the scene measured - but that is one scene, and slot 7 remains the
+   safest available choice on this evidence rather than a proven-safe one for every scene.
 3. **The pad reference is retail, and the World Tournament records are already renamed.** The
    join for those rows is a per-row decision to be measured against the row's own `#` prefix,
    as recorded above.

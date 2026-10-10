@@ -35,6 +35,12 @@ ROM_BASE = 0x08000000
 TABLE_LITERAL = 0x123CC
 TABLE_SLOTS = 64
 
+#: The owner's wording and row 18's passage, imported from the builder so a check of the
+#: product cannot be satisfied by the product's own manifest. A manifest is written by the
+#: builder; if the verifier read the expected text out of it, a wrong wording would pass.
+from tools.research.build_friend_v3_world_tournament_split import (  # noqa: E402
+    OWNER_ROWS, WT18_NEW, WT18_OLD, WT18_RECORD)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -57,12 +63,26 @@ def main() -> int:
     check(table == manifest["table_file_offset"],
           f"the literal names the same table as the input (file 0x{table:X})")
 
-    # 1 and 2: the engine's route resolves each placed row to its approved wording.
+    # 1 and 2: the engine's route resolves each placed row to the owner's wording. The
+    # expected text is recomputed here from the builder's row table, never read out of the
+    # manifest, so a manifest carrying a wrong wording cannot satisfy this check.
+    approved = {key: text for key, text in OWNER_ROWS}
     for row in manifest["rows"]:
         handle = int.from_bytes(image[row["sites"][0]:row["sites"][0] + 4], "little")
         selector, start, length = unpack_handle(handle)
         check(selector == manifest["table_slot_selector"],
               f"{row['record']} handle names selector {selector}")
+        prefix = row["current"][:1] if row["current"][:1] in "#!" else ""
+        if row["record"] == WT18_RECORD:
+            if WT18_OLD not in row["current"]:
+                check(False, f"{row['record']} does not carry the passage to replace")
+                continue
+            expected = row["current"].replace(WT18_OLD, WT18_NEW)
+        else:
+            if row["record"] not in approved or approved[row["record"]] is None:
+                check(False, f"{row['record']} is not a row the owner approved")
+                continue
+            expected = prefix + approved[row["record"]]
         pointer = int.from_bytes(image[table + selector * 4:table + selector * 4 + 4],
                                  "little")
         inside = ROM_BASE <= pointer < ROM_BASE + len(image)
@@ -73,9 +93,9 @@ def main() -> int:
         container = webfoot_lz.unpack(image, pointer - ROM_BASE)
         check(container.kind == 0, f"{row['record']} container is the stored form")
         got = bytes(container.data)[start:start + length].decode("utf-16le")
-        check(got == row["text"], f"{row['record']} reads the approved wording exactly")
-        if got != row["text"]:
-            print(f"     expected {row['text']!r}")
+        check(got == expected, f"{row['record']} reads the owner's wording exactly")
+        if got != expected:
+            print(f"     expected {expected!r}")
             print(f"     got      {got!r}")
 
     # 4: the three unchanged rows match the input byte for byte.
@@ -84,8 +104,12 @@ def main() -> int:
         check(record_bytes(against, start, length) == record_bytes(image, start, length),
               f"{key} unchanged against the input")
 
-    # 5: every other slot is byte-identical to the input's own word.
+    # 5: every other slot WORD is byte-identical to the input's own word at the same index.
+    # This compares the table, not the containers: a slot word that moved would change a
+    # container's home, and the extent comparison below is what proves the homes did not move.
     old_table = int.from_bytes(against[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    check(old_table == table, "the table base is unchanged, so both slot words sit at the "
+                              "same file offsets")
     slot = manifest["table_slot_selector"]
     check(manifest["table_slot_file_offset"] == table + 4 * slot,
           f"the manifest's slot offset is slot {slot} of this table")
@@ -96,7 +120,8 @@ def main() -> int:
     check(all(image[table + 4 * index:table + 4 * index + 4]
               == against[old_table + 4 * index:old_table + 4 * index + 4]
               for index in others),
-          f"the other {len(others)} table slots are unchanged")
+          f"the other {len(others)} slot words are unchanged; with the table basis unchanged "
+          f"that means every other container keeps its home")
 
     # 3: the differing bytes are exactly the declared sites.
     allowed = set(range(manifest["container_file_offset"],

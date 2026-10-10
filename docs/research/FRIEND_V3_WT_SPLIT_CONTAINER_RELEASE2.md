@@ -9,7 +9,7 @@ owner World Tournament rows on the split-container route. Route evidence is
 
 | field | value |
 | --- | --- |
-| file | `v3-wt-split.gba` |
+| file | `v3-wt-split-a.gba` |
 | bytes | 10,143,256 |
 | SHA-256 | `0b5ac8f470277f3c674710e07ce9d744433acd6a331736a628e00d6f72a6ef22` |
 | base | `v3-mainline-text-dialogue-pass.gba`, sha256 `d2a25f9a56c9980e27ad4a6f4c23d653e87d15b71b908ee27bced48b88885543`, 10,141,220 bytes |
@@ -36,7 +36,10 @@ Three changes, and nothing else:
 
 No container byte of the original image moves, and no game code changes.
 
-## The fifteen rows
+## The eighteen World Tournament rows
+
+Fifteen rows are placed, three are untouched by owner decision. This table is all eighteen so
+the no-change rows are visible rather than implied.
 
 | # | Speaker | Record | Units before | Units now | Route |
 | --- | --- | --- | --- | --- | --- |
@@ -83,15 +86,17 @@ repointed, and the covering record still reads exactly what it read before.
 
 | check | result |
 | --- | --- |
-| every placed row resolves through the table the literal names, indexed by its handle's selector, and reads the approved wording back exactly | PASS, 15 of 15 |
+| every placed row resolves through the table the literal names, indexed by its handle's selector, and reads the owner's wording back exactly, with the expected text recomputed from the row table rather than read out of the manifest | PASS, 15 of 15 |
 | the three unchanged rows are byte-identical to the base | PASS |
 | the seven live slots are byte-identical to the base | PASS |
-| the other 63 table slots are byte-identical to the base | PASS |
-| bytes differing from the base outside the declared sites | 0 |
+| the other 63 slot words are byte-identical to the base, and with the table basis unchanged that means every other container keeps its home | PASS |
+| bytes differing from the base outside the declared sites, computed independently of the project's verifier and grouped into runs | 0 stray, 17 runs, 62 bytes, all declared |
 | output byte count matches the manifest | PASS |
 | reproduced twice | byte-identical, both `0b5ac8f4…` |
 | BOOST absence: the 25 bytes the BOOST builder declares all hold the foundation's byte | PASS, 25 of 25, and the BOOST image differs at all 25 (the check is not vacuous) |
-| the row table's own integrity (unique identities, three no-change rows, unshortened wordings) | `tests/unit/test_friend_v3_world_tournament_rows.py`, PASS |
+| the row table's own integrity: every one of the eighteen wordings, the three no-change rows, row 18's presence and its passage | `tests/unit/test_friend_v3_world_tournament_rows.py`, PASS |
+| every one of the fifteen handles occurs in the base image exactly as many times as the inventory reports sites, so no second carrier keeps an old handle | PASS, 15 of 15 |
+| the covering record `3:6232:3872` has one handle site at file `0x2FE434`, it carries a valid record word, and it is not repointed | PASS |
 
 ## Runtime check
 
@@ -121,6 +126,19 @@ made on this image.
   is release 3, on the same route.
 - The 133 padded records that can be repaired in place: also release 3.
 - Any change to a record the owner marked NO CHANGE, or to a record outside the eighteen.
+- **The covering record `3:6232:3872` is left live with its old text and its old handle.** This
+  is an open item, not a closed one. The record's own bytes are untouched, which is exactly why
+  the fifteen rows can move without disturbing it, and it still reads the retail championship
+  passage. Evidence for the mechanism: the fifteen rows resolve on selector 7 and are read by
+  the scene. Inference, not evidence: that nothing reads the covering record directly. It has
+  one handle site, at file `0x2FE434`, carrying a valid record word; that site is not repointed
+  and no observation in this release's run shows the record being read. If a scene does read it,
+  the old passage can still appear there. Recorded for release 3 to settle.
+- **Nine record-shaped words elsewhere in the image carry selector 7** and now resolve to the
+  appended container instead of the IWRAM word the slot used to hold. None of them sits inside
+  a dialogue payload, and none was resolved in the measured scene; their spans were never
+  checked against a 2,028-byte container, so a scene that read one would read container bytes
+  as text. Accepted and stated, not proven safe.
 
 ## Continuity implications for owner review
 

@@ -135,9 +135,6 @@ def plan(image: bytes) -> tuple[list[dict], list[str]]:
                      "source_selector": 3,
                      "source_container_offset": offset, "source_start": start,
                      "source_length": length})
-    for key, _approved in OWNER_ROWS:
-        if key not in index:
-            notes.append(f"{key}: absent from this image")
     return rows, notes
 
 

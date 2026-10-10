@@ -10,42 +10,33 @@ and reproduced byte-identically on every run:
 
 | field | value |
 | --- | --- |
-| file | `v3-mainline-text-dialogue-pass-wt.gba` |
+| file | `v3-mainline-text-dialogue-pass.gba` |
 | bytes | 10,141,220 (248 more than the foundation) |
-| SHA-256 | `26dba4598425bef9b88fceda0ced8510ae7abd504a4f4c00806abb2658546f7d` |
+| SHA-256 | `d2a25f9a56c9980e27ad4a6f4c23d653e87d15b71b908ee27bced48b88885543` |
 | base | pre-BOOST Tulma-complete foundation `a4c12a95…` |
 | not an ancestor | the BOOST speedrun image `acd98c2a…`, preserved as a separate testing derivative |
 
-The artifact lives under the ignored `build/` tree and is not in git. Two tracked tools
-produce it from the foundation, in order:
-`tools/research/build_friend_v3_text_derivative.py` (the approved text batch, then the
-trailing-pad repair) and `tools/research/apply_friend_v3_world_tournament.py` (the owner's
-World Tournament lines). The run recorded here is the pair, reproduced twice.
+The artifact lives under the ignored `build/` tree and is not in git.
+`tools/research/build_friend_v3_text_derivative.py` produces it from the foundation in two
+stages: the approved text batch, then the trailing-pad repair.
 
-## The World Tournament script, and what could be placed
+## The World Tournament scene is exactly retail in this release
 
-The owner authored 18 lines and the owner's instruction is that no line is shortened. Ten are
-written into their own fixed spans with the tail filled by space units, so every offset in the
-container stays where it was and the image size does not change. Five lines **grow** their
-record and are left byte-identical with the overflow each needs; the owner's wording is
-unmodified and those records move to the successor engine ticket:
+The owner's script is approved and **held for the successor ticket**. Five of its fifteen lines
+grow their record, so landing the other ten would have left the scene mixing new replies with
+old prompts and carrying 219 units of visible padding on the placed lines. The owner therefore
+chose to keep the whole scene retail here and land every line together, with the container work
+that makes them fit.
 
-| record | line | overflow |
-| --- | --- | --- |
-| `3:7406:136` | Uub, "Hey sis…" | +17 units |
-| `3:7542:42` | Videl, okonomiyaki | +12 units |
-| `3:7664:60` | Videl, "EXCUSE ME?!" | +13 units |
-| `3:9112:62` | Idasa, "You really made me look bad earlier." | +5 units |
-| `3:9892:486` | line 18, the adopted-sibling and age passage | +15 units |
+`tools/research/apply_friend_v3_world_tournament.py` stays in the tree: it is correct and
+reusable, and the successor ticket starts from it. It is simply **not run** by this release's
+build. Proof rather than assertion: `build/fv3text001/verify_wt_retail.py` compares all
+eighteen records the script names against the foundation and reports **0 differences**.
 
-Records the owner marked NO CHANGE (`3:8550:414`, `3:8964:148`, `3:9570:92`) are untouched.
-The ten placed lines carry **219 units of padding** in total, because an exact-length write
-cannot remove the slack its record's fixed span imposes. That is the trade for landing the
-wording now, and the same engine ticket removes it.
-
-Line 18 needed one discovery before it could even be measured: the record's passage reads
-`Championship between eight-year-old Uub    and seven-year-old Videl!`, with the rename's
-four-unit pad inside `Uub    and`. Searching for the unpadded wording finds nothing.
+One discovery from that work is recorded here because the successor needs it: the announcer
+record reads `Championship between eight-year-old Uub    and seven-year-old Videl!`, with the
+rename's four-unit pad inside `Uub    and`, so searching for the unpadded wording finds nothing.
+Line 18 needs 15 more units than its span holds.
 
 
 ## Lineage correction, and the evidence for it

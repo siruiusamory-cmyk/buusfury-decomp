@@ -9,9 +9,9 @@ itself stays `FRIEND_V3_TRACKER.md`.
 | item | value |
 | --- | --- |
 | image read | `v3-playtest-boost.gba`, 10,140,972 bytes, sha256 `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c` |
-| copy read | `C:\Users\hears\.dsh\work\log1-protected-rom-backups\friend-v3-playtest-boost-001-final\v3-playtest-boost.gba` (read-only; hash re-verified before and after every read) |
+| copy read | the protected baseline backup of this image, held outside the repository (read-only; hash re-verified before and after every read) |
 | retail comparison | canonical `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, 8,388,608 bytes |
-| worktree | `C:\Dev\log1-remake-friend-v3-idasa-uub-001`, branch `ticket/friend-v3-idasa-uub-dialogue-locate-001`, cut from live `origin/master` `59203721566bcd28edb645dc9cc21de9dec99b67` |
+| worktree | ticket worktree on branch `ticket/friend-v3-idasa-uub-dialogue-locate-001`, cut from live `origin/master` `59203721566bcd28edb645dc9cc21de9dec99b67` |
 | scratch tools (git-ignored) | `build/fv3idasa001/locate.py` (record census), `scene.py` (script table with portrait operand resolved) |
 
 Method: decode the dialogue containers through the table the image's own literal at file `0x123CC`
@@ -213,7 +213,7 @@ already renamed by the same map.
 ## 10. Provenance
 
 Reading tools: `build/fv3idasa001/locate.py`, `build/fv3idasa001/scene.py` (both git-ignored), run
-from `C:\Dev\log1-remake-friend-v3-idasa-uub-001` on 2026-10-10, Python 3.12.10. Container decode via
+from the ticket worktree root on 2026-10-10, Python 3.12.10. Container decode via
 `tools/webfoot/formats/webfoot_lz.py`; record enumeration via
 `tools/webfoot/compressed_dialogue.py`. The independent static lane read the same records with its own
 decoder and reported the same 31 records, the same spans and the same single site per record.

@@ -1,0 +1,159 @@
+# FRIEND-V3 release 3: the two boss encounters, the aggressive profile and the wording tail
+
+Ticket: `FRIEND-V3-WT-SPLIT-CONTAINER-001`, release 3. Owner decision to ship: 2026-10-10.
+Cut from release 2.1, and nothing else.
+
+## 1. Identity
+
+| | |
+| --- | --- |
+| image | `v3-release3.gba` |
+| sha256 | `a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30` |
+| bytes | 10,146,168 |
+| cut from | release 2.1, `018757c4e0dda9f463364675f32b307dff9e5ad89c7a0b932939aec320032389` |
+| reproduced | twice, from two independent output directories, byte-identical |
+
+The chain and every intermediate digest, as the builder records them:
+
+| stage | tool | result |
+| --- | --- | --- |
+| boss retune | `apply_friend_v3_boss_retune.py` | `1d59e0da6f4d7639a23f97c9e0892dc8f7a6cbc6453a9236b5250c37aa467650` |
+| behaviour profile | `apply_friend_v3_behaviour_profile.py` | `682eb7f48d0496b9d5658bb5a8c42c43140ec9282f569c6357d1588ed5a78a74` |
+| wording | `apply_friend_v3_dialogue_text.py` | `a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30` |
+
+One command reproduces it, and it refuses unless the result equals the frozen digest:
+
+```
+python -m tools.research.build_friend_v3_release3 \
+    --image <release 2.1>.gba \
+    --expect-sha256 018757c4e0dda9f463364675f32b307dff9e5ad89c7a0b932939aec320032389 \
+    --out v3-release3.gba --manifest v3-release3.manifest.json
+```
+
+## 2. What it changes
+
+### 2.1 The two encounters
+
+| record | file offset | was | now |
+| --- | --- | --- | --- |
+| Hercule (selector 45) | `0x711760` | hp 20, str 5, pow 5 | hp 2,500, str 40, pow 30 |
+| Olibu (selector 85) | `0x711BC0` | hp 565, str 13, pow 0 | hp 1,500, str 22, pow 16 |
+
+Endurance and level are untouched, deliberately: endurance is the DEFENDER's term, so raising it
+would shorten the player's own damage and double-count the length the hit points already set.
+
+**Where those numbers come from, measured rather than modelled.** A normally levelled character
+dealt 46 to 50 a blow. The enemy's own bite was measured at three strengths in the emulator:
+
+| enemy strength | damage per landed blow | source |
+| --- | --- | --- |
+| 13 (retail) | 4 to 9 | measured |
+| 22 | 29 | measured, and the owner called it right |
+| 30 | 5 to 62, mostly ~60 | measured in the Hercule run |
+| 35 | 88 to 90 | measured |
+| 72 | 603, which killed the player in two blows | measured |
+
+The bite grows faster than linearly: between 22 and 30 it grew by 2.07 for a 1.36 times increase,
+which is an exponent near 2.3, so the cubic is an upper bound and every prediction here says so.
+Olibu's 22 was chosen after the owner fought 35 and 72 and rejected both. Hercule's 40 is a
+prediction over an arithmetic curve: against the 925 maximum hit points measured on the player in
+his own fight it takes about seven blows, so it is a boss rather than a two-shot, and the owner
+locked it on that basis.
+
+### 2.2 The aggressive profile, per enemy
+
+Both bosses now run a copy of their own fight family's behaviour tree, written into an appended
+block, with only their behaviour rows repointed. No shared node is edited, so the other ten
+selectors that resolve into the same tree are unchanged.
+
+| | retail | release 3 |
+| --- | --- | --- |
+| attack arm's position in the decision list | child[1] | **child[0]** |
+| entry gate | r100 | r150 |
+| swing radius | r50 | r150 |
+| swing chance per evaluation | 12% | 50% |
+| the swing's action row | 206 | **204** |
+| measured swings, stand-still run | 1 to 3 landed in a fight | **41 swings in 812 frames, 19.8 frames apart** |
+| player's own cadence for comparison | | ~25 frames |
+
+Two of those three levers were found by measurement rather than by reading:
+
+* Moving the attack arm to the front was the decisive change. A build that only raised the attack's
+  own numbers measured one landed blow in twenty seconds, because the hub is a first-true OR and a
+  passive branch sat ahead of the attack.
+* The action row decides the cadence. Raising the chance from 50% to its ceiling changed the swing
+  count not at all (37 in 22 seconds against 25 in 21), and cutting the post-attack wait from 18
+  units to 6 changed it not at all either (34 in 22.8 seconds). Row 204 nearly halved the interval.
+* Rows 205 and 207 to 209 were never measured, so 204 is the fastest **measured** row, not the
+  fastest that exists.
+
+### 2.3 The wording tail
+
+| change | records | result |
+| --- | --- | --- |
+| spaced "Great Soy Man" -> "Great Soyman" | 1 (`1:19302:588`) | 0 spaced forms remain in the image |
+| the ten records where retail says "Kakarot" and this image said "Yamcha" -> "Bandit" | 5 spans covering all ten | each reads "Bandit" with single spacing |
+
+Both live inside the dialogue containers rather than the text table, so they were written by
+`apply_friend_v3_dialogue_text.py` at each record's own unit count: no later record moves, and both
+containers went back at exactly their original packed size. The tool reads every record back and
+proves that only the edited spans changed, comparing whitespace-insensitively because a pad
+absorbed inside a phrase moves a space within a record that covers the same bytes.
+
+## 3. Verification
+
+| check | result |
+| --- | --- |
+| boss retune verifier | PASS: the other 149 enemy records byte-identical, 0 differing bytes outside the six declared fields |
+| profile verifier | PASS: the appended nodes are the family's own bytes with only the declared patches, rows and records as the manifest says, 0 stray bytes |
+| wording tool readback | PASS: 6 edits, every other record reads unchanged |
+| focused tests | 6 in `tests/unit/test_friend_v3_boss_profile.py`, including the two drift guards |
+| full suite | 212 passed, 1 skipped (a locally absent atlas), on the frozen tree |
+| reproduction | twice, byte-identical |
+| runtime | both bosses fought in the emulator on this content; the owner beat Olibu and beat Hercule |
+
+## 4. Save guidance
+
+**Battery saves are compatible.** Nothing in this release moves a save-visible structure: the
+changes are two 28-byte enemy records, an appended behaviour block, and wording inside two dialogue
+containers. A save made on release 2.1 loads and plays.
+
+**Savestates are not.** A savestate taken while an enemy is on screen restores that enemy's actor,
+and an actor carries its stats COPIED out of the record when it was built. A state taken at the
+fight therefore plays with the old hit points and the old attack bytes, and will look as if the
+retune did nothing. To see the retune, load a battery save, or a state taken before the enemy is
+built. This was measured: an early attempt to check the retune from a state taken with the enemy on
+screen showed retail numbers.
+
+**Text changes are the same for both.** A savestate restores the dialogue the engine had already
+copied, so a line will read its old wording until the scene is entered again from a save.
+
+## 5. What is deliberately not in this release
+
+**Interior double spaces.** Measured on this image: **424 interior runs of two or more spaces over
+212 records**, against 26 records in the canonical ROM. The gap is the artifact of the earlier
+rename pass, which replaced longer words with shorter ones and left the difference as spaces.
+
+It is not in release 3 because it cannot be fixed in place, and that was measured rather than
+assumed:
+
+* these containers are chain-shared: selector 4 holds 486 live handles over 65,322 bytes of
+  payload, selector 5 holds 460 over 65,394, so records cover each other;
+* of the 424 runs, only **135 are covered by exactly one live record**. The other 289 are covered
+  by two or more;
+* an in-place pass was built, run and discarded: it collapsed 118 runs and the measured total moved
+  from 424 to 419, because each payback space lands inside a covering record and re-creates a run;
+
+The correct fix is a container rebuild with every handle word rewritten, which is a ticket of its
+own (release 4). The failed attempt is recorded as pitfall P-023 so it is not repeated.
+
+## 6. Limits that travel with these claims
+
+* The appended behaviour block sits past the header's declared 8 MiB cart size, exactly like the
+  containers releases 2 and 2.1 appended. It reads because mGBA serves the whole file; that is an
+  emulator behaviour, not a hardware claim.
+* A stand-still run measures the ENEMY's cadence with the player held still, and input automation is
+  stimulus, never evidence about the player. One fight recorded 7 swings where another recorded 34 on
+  a byte-identical profile, because a boss kept staggered never reaches his attack arm. Cadence
+  claims are quoted with the run that produced them.
+* Hercule's strength 40 is arithmetic over one measured point, not a measurement.

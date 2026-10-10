@@ -19,7 +19,30 @@ import pytest
 
 from tools.research import apply_friend_v3_behaviour_profile as profile
 from tools.research import verify_friend_v3_behaviour_profile as verifier
-from tools.research.friend_v3_text_approvals import APPROVED_BOSS_PROFILES
+from tools.research.friend_v3_text_approvals import (
+    APPROVED_BOSS_PROFILES, APPROVED_DIALOGUE_TEXT_EDITS, APPROVED_RELEASES)
+
+
+def test_the_release_identity_is_well_formed_and_derived_from_the_approvals() -> None:
+    """The builder asserts this digest, so a drifted constant would either fail every build or
+    certify the wrong image. Pin the shape and the field values that were measured."""
+    release = next(r for r in APPROVED_RELEASES if r.name == "release-3")
+    assert len(release.base_sha256) == 64
+    assert len(release.output_sha256) == 64
+    assert release.output_bytes == release.base_bytes + 168      # the appended profile block
+    assert release.stages == ("boss-retune", "behaviour-profile", "dialogue-wording")
+
+
+def test_the_approved_wording_edits_are_the_six_measured_ones() -> None:
+    """Six edits: one spacing repair and five spans covering the ten Kakarot lines. Each new
+    string is no longer than the old one, which is what lets the tool write it inside the record."""
+    assert len(APPROVED_DIALOGUE_TEXT_EDITS) == 6
+    assert sum(1 for edit in APPROVED_DIALOGUE_TEXT_EDITS if edit.new.startswith("Bandit")) == 5
+    assert [edit.selector for edit in APPROVED_DIALOGUE_TEXT_EDITS] == [1, 1, 1, 1, 2, 2]
+    for edit in APPROVED_DIALOGUE_TEXT_EDITS:
+        assert len(edit.new) <= len(edit.old), edit
+        assert edit.old != edit.new
+
 
 ROM_BASE = 0x08000000
 IMAGE_SIZE = 0x800000

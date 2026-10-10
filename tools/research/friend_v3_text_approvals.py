@@ -160,6 +160,91 @@ APPROVED_BOSS_RETUNES: tuple[ApprovedBossRetune, ...] = (
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovedDialogueTextEdit:
+    """One approved wording change inside a packed or stored dialogue container record."""
+
+    selector: int
+    start: int
+    length: int
+    old: str
+    new: str
+    approval: str
+
+
+#: Wording inside dialogue containers, from the owner decision log (2026-10-10). The spans are
+#: positions in the release-3 build, and the tool that applies them refuses unless the record
+#: holds the old text exactly once.
+#:
+#: The six edits are one spacing repair and the tail of the rename pass:
+#:   * "Great Soy Man" -> "Great Soyman", so one character reads the same everywhere it appears.
+#:     Twenty-odd records already read "Great Soyman" and four table slots do too.
+#:   * The records where the canonical ROM says "Kakarot" and this image says "Yamcha" now say
+#:     "Bandit". Retail has Kakarot in ten records; five carry the phrase on their own and five are
+#:     longer chains covering the same words, so five spans cover all ten. Each replacement also
+#:     absorbs the double space the earlier rename left behind it.
+APPROVED_DIALOGUE_TEXT_EDITS: tuple[ApprovedDialogueTextEdit, ...] = (
+    ApprovedDialogueTextEdit(
+        selector=1, start=19302, length=588,
+        old="Great Soy Man", new="Great Soyman",
+        approval="owner decision 2026-10-10: the spaced form becomes the name used everywhere else",
+    ),
+    ApprovedDialogueTextEdit(
+        selector=1, start=29082, length=292, old="Yamcha", new="Bandit",
+        approval="owner decision 2026-10-10: retail says Kakarot here",
+    ),
+    ApprovedDialogueTextEdit(
+        selector=1, start=30850, length=378, old="Yamcha  also", new="Bandit also",
+        approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
+    ),
+    ApprovedDialogueTextEdit(
+        selector=1, start=22326, length=418, old="Yamcha's  boy", new="Bandit's boy",
+        approval="owner decision 2026-10-10: retail says Kakarot's boy, pad absorbed",
+    ),
+    ApprovedDialogueTextEdit(
+        selector=2, start=29690, length=208, old="Yamcha  once", new="Bandit once",
+        approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
+    ),
+    ApprovedDialogueTextEdit(
+        selector=2, start=950, length=144, old="Yamcha  is", new="Bandit is",
+        approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedRelease:
+    """One shipped release: the image it was cut from, the chain, and the digest it must equal."""
+
+    name: str
+    base_sha256: str
+    base_bytes: int
+    output_sha256: str
+    output_bytes: int
+    stages: tuple[str, ...]
+    notes: str
+
+
+#: Release 3's frozen identity. The builder asserts this digest, so a byte that drifts anywhere in
+#: the chain fails the build rather than shipping quietly. The intermediate digests are recorded
+#: beside it: retune, then profile, then wording.
+APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
+    ApprovedRelease(
+        name="release-3",
+        base_sha256="018757c4e0dda9f463364675f32b307dff9e5ad89c7a0b932939aec320032389",
+        base_bytes=10146000,
+        output_sha256="a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30",
+        output_bytes=10146168,
+        stages=("boss-retune", "behaviour-profile", "dialogue-wording"),
+        notes="Hercule's and Olibu's encounters retuned and given the measured aggressive profile, "
+              "the Great Soyman spacing repaired, and the ten Kakarot lines reading Bandit. "
+              "Interior double spaces are NOT in this release: they are measured at 424 runs over "
+              "212 records and need a container rebuild with every handle rewritten, which is "
+              "release 4.",
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovedDialogueRow:
     """One approved dialogue record: its identity, its old text and its approved wording."""
 

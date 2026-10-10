@@ -78,7 +78,14 @@ if ($expected -notmatch '^[0-9A-F]{64}$') {
 }
 $romInfo = Get-Item -LiteralPath $resolvedRom
 $romHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedRom).Hash
-if ($romInfo.Length -ne $ExpectedRomSize -or $romHashBefore -ne $expected) {
+if ($romInfo.Length -ne $ExpectedRomSize) {
+    # The size stays an EQUALITY test, exactly like the digest: a caller names the size it
+    # expects and a mismatch is refused. It is a parameter because a legitimate derivative
+    # can grow, and pinning the retail-and-boost length here would refuse every grown
+    # image rather than the wrong one. There is still no wildcard and no skip.
+    throw "ROM size mismatch; run refused. Expected $ExpectedRomSize byte(s), found $($romInfo.Length)"
+}
+if ($romHashBefore -ne $expected) {
     throw "ROM identity mismatch; run refused. Expected $expected, found $romHashBefore"
 }
 

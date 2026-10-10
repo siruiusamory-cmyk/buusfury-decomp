@@ -51,6 +51,37 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv3_coldboot_probe.lua')
     )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the padding-repair render
+    # observer. The trailing-pad repair shortens a record's handle by its pad, so the
+    # engine copies fewer units; static reading says no other record's span changes,
+    # because no byte moves, and only the engine can say whether the shortened record
+    # still DISPLAYS correctly and whether the space units left in the stream are drawn
+    # or collapsed. It logs every copy with its longest space run, counts the dialogue
+    # record copier at 0x0801227A as a liveness channel, and screenshots on a cadence.
+    # It reads registers and memory, arms one breakpoint, writes host files inside the
+    # run directory only, and never touches input or emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\padtrim001_render_watch.lua')
+    )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the emulator API probe. The render
+    # observer's breakpoint arm failed with "Error calling function (invoking failed)"
+    # while the game was visibly rendering dialogue, and its heartbeat logged an
+    # implausible pc, so two explanations remained: the arm signature is wrong, or the
+    # build's function-call bridge is broken. This probe tries each plausible signature in
+    # its own pcall and records the outcome, so the answer is measured. It arms
+    # breakpoints, reads registers, writes one host file in the run directory, and never
+    # touches input or emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mgba_api_probe.lua')
+    )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the pc and breakpoint-fire probe. The
+    # render observer's channel stayed silent with a live game, and its pc read was a single
+    # constant, so two questions remained: is the pc read unreliable, and do breakpoints fire
+    # at all. This probe arms the dialogue copier plus a dispatch thunk a live game must pass
+    # constantly, samples the pc every frame and counts distinct values. Read-only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mgba_pc_probe.lua')
+    )
     # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
     # set: the dialogue input driver. It is DRIVING CODE in its own file, which is
     # why it is separate from the observer above. It presses A once every 180

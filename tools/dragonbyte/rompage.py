@@ -105,7 +105,7 @@ _SEARCH_HEADERS = ("Address", "File offset", "Classification", "Confidence", "Ow
 #: and never by an elided one, and a window too narrow to hold them all scrolls
 #: rather than eliding an identity away.
 _COLUMN_WIDTHS = {
-    RANGES_VIEW: (112, 88, 76, 190, 96, 170),
+    RANGES_VIEW: (112, 88, 76, 190, 88, 170),
     BYTES_VIEW: (112, 88, 264, 264, 88),
     SEARCH_VIEW: (112, 88, 170, 90),
 }

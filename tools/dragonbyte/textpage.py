@@ -172,6 +172,18 @@ class _SurfaceTask(QRunnable):
             problem = ""
         except Exception as exc:  # a worker boundary: report, never die silently
             surface, problem = None, f"these records could not be read: {exc}"
+        if surface is not None:
+            try:
+                # The two per-mode row lists decode lazily, and measured on the UI
+                # thread their first switch cost 1.802 s (Spoken dialogue) and
+                # 7.383 s (Event resources). Warming them here is what puts that
+                # work on the worker that already owns this read, under the same
+                # request token; a cache that cannot be filled is not a failed
+                # read, so the mode that needs it still states its own reason.
+                surface.dialogue_rows()
+                surface.event_rows()
+            except Exception:  # noqa: BLE001 - the mode's own render states it
+                pass
         try:
             self.signals.finished.emit(self._token, surface, problem)
         except RuntimeError:
@@ -380,6 +392,10 @@ class TextPage(QWidget):
             self._surface = None
             self._surface_for = None
             self._problem = ""
+            # The image went away while a read was running, so the loading state
+            # goes with it: `_render_unavailable` prints `_problem` while this is
+            # true, and an empty problem is an empty message.
+            self._surface_loading = False
             return
         if self._surface_requested and self._surface_for == session.rom_path:
             return

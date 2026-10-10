@@ -48,6 +48,7 @@ from tools.webfoot.layout import Provenance, RomRange  # noqa: E402
 from tools.webfoot.project import read_project  # noqa: E402
 from tools.webfoot.write import ByteChange, apply_plan, plan_changes  # noqa: E402
 
+from tools.dragonbyte.inspector import InspectorContext  # noqa: E402
 from tools.dragonbyte.journal import project_authority  # noqa: E402
 from tools.dragonbyte.rawbytes import declared_extents  # noqa: E402
 from tools.dragonbyte.romsurface import (  # noqa: E402
@@ -67,8 +68,10 @@ from tools.dragonbyte.romsurface import (  # noqa: E402
     parse_pattern,
     parse_target,
     range_rows,
+    range_selection_context,
     row_offset,
     search_bytes,
+    selection_context,
     surface_for,
     target_for_address,
     target_for_offset,
@@ -400,11 +403,19 @@ def test_the_ascii_gutter_prints_printable_bytes_and_dots_for_the_rest(profile):
     assert ascii_gutter(b"A\x00\x7F z") == "A.." + " z"
 
 
-def test_the_jump_list_is_the_profiles_own_declared_table_list(profile, index):
+def test_the_jump_list_is_the_open_indexs_own_declared_table_list(profile, index):
     surface = surface_for(IMAGE, profile, _journal(), index=index)
 
-    assert declared_tables(surface) == declared_extents(profile)
-    assert declared_tables(surface), "the packaged profile declares a table"
+    # The index's declared layer is the authority once an index is loaded, and the
+    # profile's own list is what production puts there: `load_index` builds the
+    # index with `declared_extents(profile)`, so the jump list and the write
+    # refusal read one list.
+    assert declared_tables(surface) == index.declared
+    assert declared_tables(surface)
+    assert declared_tables(surface_for(IMAGE, profile, _journal())) == declared_extents(
+        profile
+    )
+    assert declared_extents(profile), "the packaged profile declares a table"
 
 
 # --- raw search ---------------------------------------------------------------
@@ -896,7 +907,20 @@ def test_the_write_gate_is_open_once_the_index_has_answered(index, profile):
 
     assert gate.available
     assert "saved with the project" in gate.reason
-    assert "no build path applies it" in gate.reason
+    # The build path applies a raw write now, so the gate must not claim otherwise.
+    assert "applied to the image by the build path" in gate.reason
+
+
+def test_the_raw_write_sentence_names_the_build_path_that_applies_it(rom_page):
+    """The sentence where the user writes says what the build actually does."""
+    from tools.dragonbyte.rompage import JOURNAL_LOCAL
+
+    page, _shell, _session_ = rom_page
+
+    assert page._write_note.text() == JOURNAL_LOCAL
+    assert "build path" in JOURNAL_LOCAL
+    assert "no build path" not in JOURNAL_LOCAL
+    assert page._write_button.toolTip() == write_gate(page._surface).reason
 
 
 def test_the_strip_and_the_write_path_use_one_ownership_floor(
@@ -1047,8 +1071,12 @@ def test_the_write_controls_are_disabled_with_their_reason_without_an_index(
     _close(shell, session)
 
 
-def test_the_page_says_no_build_applies_a_raw_write_yet(rom_page):
-    """No string implies a build applies a raw write, because none does."""
+def test_the_page_says_the_build_applies_a_raw_write(rom_page):
+    """The sentence where the user writes names the build path that applies it.
+
+    It asserted the opposite until the build integration landed and made the old
+    claim false: an authored raw write is now minted into the plan.
+    """
     page, _shell, _session_ = rom_page
 
     note = page._write_note.text()
@@ -1056,9 +1084,10 @@ def test_the_page_says_no_build_applies_a_raw_write_yet(rom_page):
     assert "saved with the project" in note
     assert "shown in this surface" in note
     assert "build path applies it" in note.lower()
+    assert "no build path" not in note.lower()
     assert "takes effect" not in note
     assert page._write_note.isVisibleTo(page)
-    assert "build path applies it" in page._write_button.toolTip().lower()
+    assert "applied to the image by the build path" in page._write_button.toolTip().lower()
 
 
 def test_the_range_view_headers_name_both_spellings(rom_page):
@@ -1314,3 +1343,250 @@ def test_a_stale_index_answer_is_dropped_without_installing_or_leaking(qapp):
     assert page._index_tasks == {}
     assert page._index is None
     assert page._index_problem == ""
+
+
+# --- the visual-readiness pass: one selection, one inspector, one jump list ----
+
+
+def _inspector(shell):
+    """The shell's one inspector pane, found rather than reached for."""
+    from tools.dragonbyte.inspector import InspectorPane
+
+    panes = shell.findChildren(InspectorPane)
+    assert len(panes) == 1
+    return panes[0]
+
+
+def _pane_text(pane) -> str:
+    return " ".join(
+        (
+            pane._friendly.text(),
+            pane._stable.text(),
+            pane._support.text(),
+            pane._detail.text(),
+        )
+    )
+
+
+def test_the_selection_context_carries_the_identity_the_extent_and_the_restriction(
+    atlas, index, profile
+):
+    """The headless half: what a range says about itself, in the pane's own tiers."""
+    surface = surface_for(IMAGE, profile, _journal(), index=index)
+    rows = range_rows(surface)
+
+    def containing(offset: int):
+        return next(row for row in rows if row.span.start.value <= offset < row.span.end)
+
+    owned = range_selection_context(surface, containing(OWNED_OFFSET))
+    assert owned.friendly == "fixture:table"
+    assert owned.support == "Read-only"
+    assert owned.stable.startswith(f"0x{GBA_ROM_BASE + OWNED_OFFSET:08X}")
+    assert "0x000100 + 0x000100 byte(s)" in owned.stable
+    assert owned.detail.startswith(UNKNOWN_HIGH_ENTROPY + " / OBSERVED")
+
+    declared = range_selection_context(surface, containing(DECLARED_OFFSET))
+    assert declared.friendly == "declared:test-table"
+    assert declared.support == "Read-only"
+
+    unmapped = range_selection_context(surface, containing(0x40))
+    assert unmapped.friendly == "no semantic owner known"
+    assert unmapped.support == "Not mapped"
+    assert UNKNOWN in unmapped.detail
+
+    # The declared layer owns the bytes it covers, so the free row is read with an
+    # index that carries no declared extent, and its own rows.
+    undeclared = surface_for(IMAGE, profile, _journal(), index=RangeIndex(atlas))
+    free_row = next(
+        row
+        for row in range_rows(undeclared)
+        if row.span.start.value <= FREE_OFFSET < row.span.end
+    )
+    assert free_row.owners == ()
+    free = range_selection_context(undeclared, free_row)
+    assert free.support == "Editable"
+    assert free.friendly == "no semantic owner known"
+    assert "a raw write is offered here" in free.detail
+
+    single = selection_context(undeclared, FREE_OFFSET)
+    assert "file offset 0x000400 | 1 byte(s)" in single.detail
+    assert single.stable.endswith("+ 0x000001 byte(s)")
+
+
+def test_the_selection_context_states_the_closed_write_gate_with_no_index(profile):
+    surface = surface_for(IMAGE, profile, _journal(), index_problem="no atlas here")
+    answer = selection_context(surface, FREE_OFFSET)
+
+    assert answer.support == "Not mapped"
+    assert answer.friendly == "no semantic owner known"
+    assert "no atlas here" in answer.detail
+    assert "A raw write is disabled" in answer.detail
+
+
+def test_the_first_render_selects_a_real_row_and_the_inspector_publishes_it(rom_page):
+    """The initial-row question, resolved: the first row IS the selection."""
+    page, shell, _session_ = rom_page
+    pane = _inspector(shell)
+
+    current = page._table.selectionModel().currentIndex()
+    assert current.isValid(), "a highlighted row must be an actual selection"
+    row = page._range_rows[current.row()]
+    assert page._caret == row.span.start.value, "the caret is the selected row's own start"
+
+    answer = range_selection_context(page._surface, row)
+    assert pane._friendly.text() == answer.friendly
+    assert pane._stable.text() == answer.stable
+    assert pane._support.text().endswith(answer.support)
+    assert pane._detail.text() == answer.detail
+    assert row.classification in pane._detail.text()
+    assert "Nothing is selected" not in _pane_text(pane)
+
+
+@pytest.mark.parametrize("path", ("programmatic", "keyboard", "mouse"))
+def test_every_selection_path_publishes_the_same_context(rom_page, path):
+    """Mouse, keyboard and programmatic selection are one path, not three."""
+    from PySide6.QtCore import Qt as QtCore
+    from PySide6.QtTest import QTest
+
+    page, shell, _session_ = rom_page
+    pane = _inspector(shell)
+    target = 2
+    row = page._range_rows[target]
+    answer = range_selection_context(page._surface, row)
+
+    shell.show()
+    QTest.qWait(20)
+    page._table.setCurrentIndex(page._model.index(0, 0))
+    if path == "keyboard":
+        page._table.setFocus()
+        for _ in range(target):
+            QTest.keyClick(page._table, QtCore.Key.Key_Down)
+    elif path == "mouse":
+        rectangle = page._table.visualRect(page._model.index(target, 0))
+        assert not rectangle.isEmpty(), "the target row is not laid out to click"
+        QTest.mouseClick(
+            page._table.viewport(), QtCore.MouseButton.LeftButton, pos=rectangle.center()
+        )
+    else:
+        page._table.setCurrentIndex(page._model.index(target, 0))
+
+    assert page._caret == row.span.start.value, path
+    assert pane._friendly.text() == answer.friendly, path
+    assert pane._stable.text() == answer.stable, path
+    assert pane._support.text().endswith(answer.support), path
+    shell.hide()
+
+
+def test_a_click_through_the_table_publishes_that_rows_own_identity(rom_page):
+    """The measured defect: row 0x08719000 highlighted with an empty pane."""
+    from PySide6.QtTest import QTest
+
+    page, shell, _session_ = rom_page
+    pane = _inspector(shell)
+    target = len(page._range_rows) - 1
+    row = page._range_rows[target]
+
+    shell.show()
+    QTest.qWait(20)
+    page._table.selectRow(target)
+    page._table.setCurrentIndex(page._model.index(target, 0))
+    QTest.qWait(10)
+
+    assert pane._friendly.text() == range_selection_context(page._surface, row).friendly
+    assert f"0x{row.span.start.value:06X}" in pane._stable.text()
+    assert "Nothing is selected" not in _pane_text(pane)
+    shell.hide()
+
+
+def test_another_pages_late_answer_cannot_republish_over_rom(rom_page):
+    """One inspector, told only by the destination that is on screen."""
+    page, shell, _session_ = rom_page
+    pane = _inspector(shell)
+    before = _pane_text(pane)
+
+    shell._text_page._publish_selection(
+        InspectorContext(friendly="a stale row", stable="stale:0001", support="Read-only")
+    )
+
+    assert _pane_text(pane) == before
+    assert "a stale row" not in _pane_text(pane)
+
+
+def test_no_rom_leaves_no_current_row_and_the_inspectors_empty_state(qapp, tmp_path):
+    from tools.dragonbyte.shell import Shell
+
+    session = Session()
+    shell = Shell(session, tmp_path / "config")
+    shell.show_destination("rom")
+    page = shell._rom_page
+    pane = _inspector(shell)
+
+    assert not page._table.selectionModel().currentIndex().isValid()
+    assert "Nothing is selected" in pane._friendly.text()
+    assert "ROM is the active destination" in pane._detail.text()
+    _close(shell, session)
+
+
+def test_the_jump_list_is_the_open_indexs_own_declared_layer(rom_page):
+    page, _shell, _session_ = rom_page
+
+    expected = [
+        f"{owner} (0x{span.start.value:06X})"
+        for span, owner in declared_tables(page._surface)
+        if span.start.value < page._surface.image_size
+    ]
+    assert expected, "the open index declares a table inside the image"
+    assert [page._jump.itemText(at) for at in range(page._jump.count())] == expected
+    assert page._jump.isEnabled()
+
+
+def test_a_jump_selects_the_atlas_coverage_row_holding_the_declared_table(rom_page):
+    """The jump lands on a coverage row the atlas already produced, not a new one."""
+    page, _shell, _session_ = rom_page
+    position = 0
+    start = page._jump.itemData(position)
+    assert start is not None
+
+    page._jump.setCurrentIndex(position)
+    page._on_jump(position)
+
+    current = page._table.selectionModel().currentIndex()
+    assert current.isValid(), "a jump must select a row"
+    row = page._range_rows[current.row()]
+    assert row.span.start.value <= start < row.span.end
+    # The caret stays at the table's own first byte, not the row's start, so a
+    # write after a jump lands where the jump named.
+    assert page._caret == start
+    assert page._message.text().startswith("Jump to ")
+
+
+def test_a_jump_goes_through_the_one_selection_from_the_bytes_view(rom_page):
+    page, _shell, _session_ = rom_page
+    start = page._jump.itemData(0)
+
+    page._views.setCurrentText("Bytes")
+    assert page._views.currentText() == "Bytes"
+    page._jump.setCurrentIndex(0)
+    page._on_jump(0)
+
+    assert page._views.currentText() == "Ranges"
+    current = page._table.selectionModel().currentIndex()
+    assert current.isValid()
+    row = page._range_rows[current.row()]
+    assert row.span.start.value <= start < row.span.end
+
+
+def test_the_range_table_keeps_identity_columns_wide_and_elides_in_the_middle(rom_page):
+    from PySide6.QtCore import Qt as QtCore
+
+    page, _shell, _session_ = rom_page
+
+    assert page._table.textElideMode() == QtCore.TextElideMode.ElideMiddle
+    assert (
+        page._model.headerData(6, QtCore.Orientation.Horizontal) == "Preview (bytes)"
+    )
+    assert page._table.columnWidth(3) >= 190, "Classification"
+    assert page._table.columnWidth(5) >= 170, "Owner"
+    assert page._table.horizontalHeader().stretchLastSection()
+    assert page._goto.placeholderText() == "address or offset"
+    assert "image address" in page._goto.toolTip()

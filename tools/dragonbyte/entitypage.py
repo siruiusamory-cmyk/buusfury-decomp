@@ -68,6 +68,12 @@ _BEHAVIOUR_HEADERS = (
 )
 _FAMILY_HEADERS = ("Family", "Pointer slot", "Stride", "Support")
 
+#: Column widths for the object-family view. The last column takes the leftover
+#: width, so a support word and a family name are read in full rather than elided
+#: beside empty space. Only this view is pinned: the record views carry identities
+#: of their own and keep the reader's widths.
+_FAMILY_WIDTHS = (170, 96, 64)
+
 #: What the family mode says, because no row on it can be edited or opened.
 _NO_FAMILY_EDITOR = (
     "The unmodelled families have no reader and no writer in this build, so this "
@@ -113,6 +119,9 @@ class EntityPage(QWidget):
         self._rows: tuple = ()
         self._caret = ""
         self._mode = es.PLACEMENTS
+        #: The view the column widths were last set for, so a reader's own width
+        #: survives a re-render and is only reset when the view changes.
+        self._columns_for = None
         self._map_index = 0
         self._maps_for = None
         self._applying = False
@@ -135,6 +144,9 @@ class EntityPage(QWidget):
         self._table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
         self._table.verticalHeader().setVisible(False)
         self._table.setWordWrap(False)
+        # Elide in the middle, so a long family name keeps both its ends.
+        self._table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self._table.horizontalHeader().setStretchLastSection(True)
 
         self._summary = QLabel()
         self._summary.setProperty("dbzRole", "hint")
@@ -328,8 +340,17 @@ class EntityPage(QWidget):
         )
         self._summary.setText(es.family_summary(rows))
         self._message.setText(_NO_FAMILY_EDITOR)
+        self._apply_columns()
         self._select_caret()
         self._render_editor()
+
+    def _apply_columns(self) -> None:
+        """The object-family view's widths, once, when it is the view on screen."""
+        if self._mode != es.FAMILIES or self._columns_for == self._mode:
+            return
+        self._columns_for = self._mode
+        for column, width in enumerate(_FAMILY_WIDTHS):
+            self._table.setColumnWidth(column, width)
 
     def _render_unavailable(self) -> None:
         self._maps.setVisible(False)
@@ -613,6 +634,7 @@ class EntityPage(QWidget):
         )
         self._caret = ""
         self._field.clear()
+        self._columns_for = None
         self.refresh()
 
     def _on_map_changed(self, _position: int) -> None:
@@ -661,6 +683,7 @@ class EntityPage(QWidget):
                 session.profile,
                 session.base_image,
             )
+            self._problem = ""
         except es.EntitySurfaceError as exc:
             self._surface = None
             self._problem = str(exc)

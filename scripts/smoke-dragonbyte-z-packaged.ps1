@@ -71,8 +71,26 @@ size = $baseSize
     [System.IO.File]::WriteAllText((Join-Path $project 'project.toml'), $toml, $script:Utf8)
 
     # --- the frozen build reports its version ------------------------------
-    $visible = (& $exe --version | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "$exe --version exited $LASTEXITCODE" }
+    # Through Start-Process rather than `& $exe`: a GUI-subsystem process has no
+    # console for PowerShell to redirect, so `& $exe --version` returned no output
+    # and no exit code at all. Measured here.
+    #
+    # Every argument is quoted: Start-Process joins the list into one command line
+    # itself and does NOT quote an item that contains spaces, so an unquoted
+    # `roms\Dragon Ball Z - Buu's Fury (U).gba` reached the application as
+    # `...\roms\Dragon` and the ROM open failed. Also measured here.
+    function Invoke-Packaged {
+        param([string[]] $Arguments, [string] $StdOut)
+        $quoted = @($Arguments | ForEach-Object { '"' + $_ + '"' })
+        $process = Start-Process -FilePath $exe -ArgumentList $quoted -NoNewWindow `
+            -Wait -PassThru -RedirectStandardOutput $StdOut -RedirectStandardError "$StdOut.err"
+        return $process.ExitCode
+    }
+
+    $versionFile = Join-Path $work 'version.txt'
+    $versionExit = Invoke-Packaged -Arguments @('--version') -StdOut $versionFile
+    if ($versionExit -ne 0) { throw "$exe --version exited $versionExit" }
+    $visible = (Get-Content $versionFile -Raw).Trim()
     $recorded = (& python -m tools.webfoot.release_identity | Select-Object -First 1).Trim()
     if ($visible -ne $recorded) {
         throw "the packaged build reports '$visible' and this checkout records '$recorded'"
@@ -80,8 +98,9 @@ size = $baseSize
 
     # --- the frozen build opens the project --------------------------------
     $report = Join-Path $work 'packaged-smoke.json'
-    & $exe --smoke $project --smoke-rom $rom --smoke-report $report
-    $exitCode = $LASTEXITCODE
+    $exitCode = Invoke-Packaged -Arguments @(
+        '--smoke', $project, '--smoke-rom', $rom, '--smoke-report', $report
+    ) -StdOut (Join-Path $work 'smoke-stdout.txt')
     if (-not (Test-Path $report)) { throw "the packaged build exited $exitCode and wrote no report" }
     if ($exitCode -ne 0) { throw "the packaged build exited $exitCode (see $report)" }
 
@@ -111,6 +130,7 @@ size = $baseSize
     Write-Host "PACKAGED EXE SMOKE: PASS"
     Write-Host "  executable        : $($item.FullName)"
     Write-Host "  executable sha256 : $digest"
+    Write-Host "  executable mtime  : $($item.LastWriteTimeUtc.ToString('o'))"
     Write-Host "  visible version   : $visible"
     Write-Host "  build commit      : $($document.identity.build.commit)"
     Write-Host "  build source      : $($document.identity.build.source)"

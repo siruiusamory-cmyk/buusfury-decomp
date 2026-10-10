@@ -123,6 +123,22 @@ def test_the_spec_freezes_the_product_and_not_the_beta():
     assert [name for name, _line in imported if "workbench" in name] == []
 
 
+def test_the_console_script_runs_the_product_and_not_the_beta():
+    """The installed command must reach the product.
+
+    ``dragonbyte-z`` is what a user types after an install, and it named the beta
+    workbench. The spec template and this entry point are two ways the same
+    mistake can be made, so both are checked.
+    """
+    import tomllib
+
+    document = tomllib.loads(
+        (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+
+    assert document["project"]["scripts"]["dragonbyte-z"] == "tools.dragonbyte.app:main"
+
+
 def test_the_spec_carries_the_identity_the_icon_and_the_profile_catalog():
     spec = SPEC.read_text(encoding="utf-8")
 

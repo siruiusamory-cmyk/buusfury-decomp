@@ -98,6 +98,11 @@ GLOBAL_ACTIONS: tuple[tuple[str, str], ...] = (
 #: never a decision taken here.
 EDIT_ACTIONS: tuple[str, ...] = ("Save", "Undo", "Redo")
 
+#: One label for the four unavailable actions, rather than a suffix on each of
+#: them: it states the same fact once and leaves the bar its width at the 960x640
+#: minimum. Each action still carries its own reason as its tooltip.
+NOT_AVAILABLE_LABEL = "Not available in the foundation build:"
+
 
 class _FoundationPage(QWidget):
     """One destination's centre page: what it is, and what is not built yet."""
@@ -188,40 +193,41 @@ class Shell(QMainWindow):
             if candidate.group == ROM:
                 page: QWidget = RomPage(self._session)
                 page.set_write_handler(self.apply_raw_write)
+                page.set_selection_handler(self._selection_for(page))
                 self._rom_page = page
             elif candidate.id == MAPS_DESTINATION:
                 map_page = MapPage(self._session)
                 map_page.set_edit_handler(self.apply_edit)
                 map_page.set_open_bytes_handler(self.open_rom_at)
-                map_page.set_selection_handler(self._inspector.set_context)
+                map_page.set_selection_handler(self._selection_for(map_page))
                 self._map_page = map_page
                 page = map_page
             elif candidate.id == DATA_DESTINATION:
                 data_page = DataPage(self._session)
                 data_page.set_edit_handler(self.apply_edit)
                 data_page.set_open_bytes_handler(self.open_rom_at)
-                data_page.set_selection_handler(self._inspector.set_context)
+                data_page.set_selection_handler(self._selection_for(data_page))
                 self._data_page = data_page
                 page = data_page
             elif candidate.id == ENTITY_DESTINATION:
                 entity_page = EntityPage(self._session)
                 entity_page.set_edit_handler(self.apply_edit)
                 entity_page.set_open_bytes_handler(self.open_rom_at)
-                entity_page.set_selection_handler(self._inspector.set_context)
+                entity_page.set_selection_handler(self._selection_for(entity_page))
                 self._entity_page = entity_page
                 page = entity_page
             elif candidate.id == TEXT_DESTINATION:
                 text_page = TextPage(self._session)
                 text_page.set_edit_handler(self.apply_edit)
                 text_page.set_open_bytes_handler(self.open_rom_at)
-                text_page.set_selection_handler(self._inspector.set_context)
+                text_page.set_selection_handler(self._selection_for(text_page))
                 self._text_page = text_page
                 page = text_page
             elif candidate.id == GRAPHICS_DESTINATION:
                 graphics_page = GraphicsPage(self._session)
                 graphics_page.set_edit_handler(self.apply_edit)
                 graphics_page.set_open_bytes_handler(self.open_rom_at)
-                graphics_page.set_selection_handler(self._inspector.set_context)
+                graphics_page.set_selection_handler(self._selection_for(graphics_page))
                 self._graphics_page = graphics_page
                 page = graphics_page
             else:
@@ -351,6 +357,12 @@ class Shell(QMainWindow):
         self._identity_label.setProperty("dbzRole", "technical")
         bar.addWidget(self._identity_label)
         bar.addWidget(self._spacer())
+        # A greyed control with no visible reason reads as broken, so the four say
+        # what they are once, in the product's own words, instead of each carrying
+        # a suffix that does not fit the bar at the supported minimum size.
+        unavailable = QLabel(NOT_AVAILABLE_LABEL)
+        unavailable.setProperty("dbzRole", "status")
+        bar.addWidget(unavailable)
         for label, reason in GLOBAL_ACTIONS:
             self._place_action(bar, self._global_actions[label], label, reason)
         # The edit actions share the row group with the global ones: the same
@@ -432,6 +444,22 @@ class Shell(QMainWindow):
         status.addPermanentWidget(self._status_message)
 
     # -- wiring ---------------------------------------------------------------
+
+    def _selection_for(self, page: QWidget):
+        """The inspector's handler for one destination's page.
+
+        Every page publishes what it has selected, but only while it is the page
+        on screen. A page can answer a worker late, or refresh while another
+        destination is showing, and its selection is then a claim about rows
+        nobody is looking at: publishing that would leave one destination's
+        identity beside another destination's rows.
+        """
+
+        def publish(context) -> None:
+            if self._page_stack.currentWidget() is page:
+                self._inspector.set_context(context)
+
+        return publish
 
     def show_destination(self, destination_id: str, *, record: bool = True) -> None:
         """Show one destination and clear the inspector to its empty state."""
@@ -590,7 +618,14 @@ class Shell(QMainWindow):
         session = self._session
         problem = session.raw_write_problem(offset, new, atlas=atlas)
         if problem:
-            self._report_failure("Write bytes", problem)
+            # The claiming owner can be an identity only the SDK's own records
+            # name, which is not a row this window can open, so the refusal also
+            # says where a modelled object is edited.
+            self._report_failure(
+                "Write bytes",
+                f"{problem} A modelled object is edited in the destination that "
+                "owns it: Maps, Entities, Scripts & Text, Graphics or Data.",
+            )
             return
         before = session.journal.raw_edits().bytes_by_offset.get(
             offset, (session.base_image or b"")[offset : offset + len(new)]
@@ -751,7 +786,12 @@ class Shell(QMainWindow):
             TEXT_DESTINATION,
             GRAPHICS_DESTINATION,
         ):
-            page = self._pages[destination_id]
+            page = self._pages.get(destination_id)
+            if page is None:
+                # A destination with no page contributes no bytes and states
+                # nothing: the registry and the pages are built together, so this
+                # is a rename that drifted, not a reason to fail the ROM render.
+                continue
             label = destination(destination_id).label
             try:
                 answer = page.pending_bytes()

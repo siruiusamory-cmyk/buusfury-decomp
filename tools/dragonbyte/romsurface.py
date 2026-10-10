@@ -43,7 +43,13 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Mapping
 
-from tools.webfoot.atlas import DECLARED_EXTENT, AtlasError, Confidence, RangeIndex
+from tools.webfoot.atlas import (
+    DECLARED_EXTENT,
+    UNKNOWN_CLASSIFICATIONS,
+    AtlasError,
+    Confidence,
+    RangeIndex,
+)
 from tools.webfoot.binary import (
     GBA_ROM_BASE,
     BinaryAddressError,
@@ -487,6 +493,116 @@ def ownership(surface: RomSurface, offset: int) -> Ownership:
     )
 
 
+# --- what one selection says about itself -------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionContext:
+    """One ROM selection's identity, in the four tiers the inspector renders.
+
+    Headless on purpose, exactly like the rest of this module: the page maps
+    these onto the shared pane's own context. The classification, the confidence,
+    the owner, the extent and the editing restriction the owner asked to see are
+    all decided here, so the page states none of them a second time.
+    """
+
+    friendly: str
+    stable: str
+    support: str
+    detail: str
+
+
+def _restriction(surface: RomSurface, owners: tuple[str, ...]) -> tuple[str, str]:
+    """The support word for one selection, and the sentence that justifies it.
+
+    The word is the product's editing restriction, which is the one question this
+    surface answers: bytes a structure owns are refused here and edited where they
+    are modelled, bytes nobody owns are written behind the confirmation, and with
+    no range index at all nothing is established and the write gate is closed.
+    """
+    if owners:
+        return (
+            "Read-only",
+            "a structure owns these bytes, so a raw write is refused here and the "
+            "change is offered as the semantic edit where it is modelled",
+        )
+    gate = write_gate(surface)
+    if not gate.available:
+        return "Not mapped", gate.reason
+    return (
+        "Editable",
+        "a raw write is offered here behind the confirmation, and it is saved "
+        "with the project",
+    )
+
+
+def _selection(
+    surface: RomSurface,
+    *,
+    address: int,
+    classification: str,
+    confidence: Confidence | None,
+    owners: tuple[str, ...],
+    shapes: tuple[str, ...],
+    span: RomRange,
+    problem: str = "",
+) -> SelectionContext:
+    word, restriction = _restriction(surface, owners)
+    if problem or (word == "Editable" and classification in UNKNOWN_CLASSIFICATIONS):
+        # Nothing here has an established meaning: either the index is absent, or
+        # the atlas classifies the bytes and knows no structure they belong to.
+        word = "Not mapped"
+    parts = [f"{classification or 'unclassified'} / {confidence.value if confidence else 'UNKNOWN'}"]
+    if shapes:
+        parts.append(
+            f"{len(shapes)} known shape(s) below the ownership floor: "
+            + ", ".join(shapes)
+        )
+    parts.append(f"file offset 0x{span.start.value:06X} | {span.size} byte(s)")
+    if problem:
+        parts.append(problem)
+    parts.append(restriction)
+    return SelectionContext(
+        friendly=", ".join(owners) if owners else "no semantic owner known",
+        stable=f"0x{address:08X} | 0x{span.start.value:06X} + 0x{span.size:06X} byte(s)",
+        support=word,
+        detail=" | ".join(parts),
+    )
+
+
+def selection_context(surface: RomSurface, offset: int) -> SelectionContext:
+    """One byte's selection, from the answer the ownership strip already renders."""
+    known = ownership(surface, offset)
+    return _selection(
+        surface,
+        address=known.address,
+        classification=known.classification,
+        confidence=known.confidence,
+        owners=known.owners,
+        shapes=known.shapes,
+        span=selection_extent(surface, offset),
+        problem=known.problem,
+    )
+
+
+def range_selection_context(surface: RomSurface, row: RangeRow) -> SelectionContext:
+    """One coverage row's selection, from the row the table is already showing.
+
+    The row's own classification, confidence and owners are used rather than a
+    second query at its first byte, so the pane and the Owner column cannot
+    disagree about the same span.
+    """
+    return _selection(
+        surface,
+        address=row.address,
+        classification=row.classification,
+        confidence=row.confidence,
+        owners=row.owners,
+        shapes=row.shapes,
+        span=row.span,
+    )
+
+
 def summary(surface: RomSurface) -> str:
     """One line about the whole image, and the reason any part of it is missing."""
     if surface.index is None:
@@ -565,11 +681,17 @@ def range_rows(surface: RomSurface) -> tuple[RangeRow, ...]:
 
 
 def declared_tables(surface: RomSurface) -> tuple[tuple[RomRange, str], ...]:
-    """The profile's declared table extents: the range view's jump list.
+    """The range view's jump list: the declared extents the open index holds.
 
-    The one source is the same list the raw byte authority refuses against, so a
-    table a jump offers and a table a write is refused by cannot disagree.
+    The index is the authority once one is loaded, because the index is what the
+    coverage rows were built from and what the raw-write refusal consults; without
+    one the profile's own list is the only list there is. In production the two
+    are the same list - `load_index` supplies `declared_extents(profile)` to the
+    index - so this reads one list from the object that also refuses the write,
+    rather than deriving a second one beside it.
     """
+    if surface.index is not None:
+        return tuple(surface.index.declared)
     return declared_extents(surface.profile)
 
 

@@ -46,19 +46,23 @@ from PySide6.QtWidgets import (
 )
 
 from . import theme
+from .inspector import InspectorContext
 from .romsurface import (
     BYTE_VIEW_ROWS,
     DEFAULT_SEARCH_HITS,
     SEARCH_SCOPE,
     SurfaceError,
     byte_rows,
+    declared_tables,
     load_index,
     open_bytes,
     ownership,
     parse_pattern,
     parse_target,
     range_rows,
+    range_selection_context,
     search_bytes,
+    selection_context,
     selection_extent,
     surface_for,
     summary,
@@ -80,7 +84,7 @@ _RANGE_HEADERS = (
     "Classification",
     "Confidence",
     "Owner",
-    "Preview",
+    "Preview (bytes)",
 )
 _BYTE_HEADERS = (
     "Address",
@@ -92,12 +96,31 @@ _BYTE_HEADERS = (
 )
 _SEARCH_HEADERS = ("Address", "File offset", "Classification", "Confidence", "Owner")
 
+#: Column widths per view, so a technical identity is not squeezed by the columns
+#: that carry a fixed number of digits. `Classification` and `Owner` carry the
+#: atlas's own words, which are the longest in the row and the ones a reader
+#: compares; the last column takes whatever is left, and a window too narrow to
+#: hold them scrolls rather than eliding the identity away.
+_COLUMN_WIDTHS = {
+    RANGES_VIEW: (88, 88, 76, 190, 96, 170),
+    BYTES_VIEW: (88, 88, 264, 264, 88),
+    SEARCH_VIEW: (88, 88, 170, 90),
+}
+
 #: Said where the user writes, because it is the one thing a write here does not
 #: do: no build path reads the project's raw byte document, so the write is not
 #: in any image yet and must not be described as if it were.
 JOURNAL_LOCAL = (
     "A raw write is saved with the project and shown in this surface. No build "
     "path applies it to an image yet."
+)
+
+#: The destination's own exception, in the product's words: a raw address is the
+#: primary label here rather than a diagnostic, which is why the image address
+#: leads every row and the file offset follows it.
+ADDRESS_FIRST = (
+    "This surface is address-first: the image address leads and the file offset "
+    "follows it."
 )
 
 
@@ -159,6 +182,9 @@ class RomPage(QWidget):
         #: The shell's one confirmed raw-write path, so a write from this page is
         #: the same write as a write from anywhere else.
         self._write_handler = None
+        #: The shell's one inspector, told what this page has selected. None until
+        #: the shell wires it.
+        self._selection_handler = None
         #: Asked for the byte effect of the project's semantic edits. None until
         #: the shell wires the destination that owns them.
         self._pending_provider = None
@@ -184,12 +210,18 @@ class RomPage(QWidget):
         self._pool = QThreadPool.globalInstance()
         self._surface = None
         self._mode = RANGES_VIEW
+        #: The view the column widths were last set for, so a reader's own width
+        #: survives a re-render and is only reset when the view changes.
+        self._columns_for = None
         self._range_rows: tuple = ()
         self._byte_rows: tuple = ()
         self._hits: tuple = ()
         self._hits_truncated = False
         #: The one selection both views share, as a file offset.
         self._caret = 0
+        #: True while this page is pointing the table at a row itself, so the
+        #: row-change handler does not overwrite the caret it was given.
+        self._selecting = False
         #: What the caret is, and the extent something has proven for it.
         self._what = "the ROM surface"
         self._extent = None
@@ -201,15 +233,24 @@ class RomPage(QWidget):
 
         self._goto = QLineEdit()
         self._goto.setObjectName("romGoToAddress")
-        self._goto.setPlaceholderText("image address or file offset")
+        self._goto.setPlaceholderText("address or offset")
+        self._goto.setToolTip(
+            "An image address (0x08xxxxxx) or a file offset (0x0xxxxx)."
+        )
         self._goto.setAccessibleName("Go to address")
         self._goto_button = QPushButton("Go")
 
+        #: The declared-table jump list: the range index's own declared spans, so
+        #: a table the jump offers and a table a write is refused by are one list.
+        self._jump = QComboBox()
+        self._jump.setObjectName("romJumpList")
+        self._jump.setAccessibleName("Jump to a declared table")
+
         self._find = QLineEdit()
         self._find.setObjectName("romFindBytes")
-        self._find.setPlaceholderText("hex bytes, for example DE AD BE EF")
-        self._find.setAccessibleName("Find bytes")
+        self._find.setPlaceholderText("hex bytes")
         self._find.setToolTip(SEARCH_SCOPE)
+        self._find.setAccessibleName("Find bytes")
         self._find_button = QPushButton("Find")
         self._find_button.setToolTip(SEARCH_SCOPE)
 
@@ -222,6 +263,12 @@ class RomPage(QWidget):
         self._table.setFont(theme.mono_font())
         self._table.verticalHeader().setVisible(False)
         self._table.setWordWrap(False)
+        # The elide is in the middle: a truncated owner keeps its head and its
+        # tail, so `function:func.08001304` never reads as `function:func.08001340`.
+        self._table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        # Whatever width is left over belongs to the last column, which at a wide
+        # window is the byte preview and at a narrow one is the scrollbar's.
+        self._table.horizontalHeader().setStretchLastSection(True)
 
         self._empty = QLabel(
             "Open a ROM image to see its ranges, its ownership and its bytes."
@@ -269,10 +316,18 @@ class RomPage(QWidget):
         tools.addWidget(QLabel("Go to address:"))
         tools.addWidget(self._goto, 1)
         tools.addWidget(self._goto_button)
-        tools.addSpacing(theme.SPACE_LG)
-        tools.addWidget(QLabel("Find bytes:"))
-        tools.addWidget(self._find, 1)
-        tools.addWidget(self._find_button)
+
+        # The jump list gets its own row rather than sharing one: a declared table
+        # name is long, and at the 960x640 minimum a shared row truncated both the
+        # name and the address field.
+        jump = QHBoxLayout()
+        jump.setSpacing(theme.SPACE_SM)
+        jump.addWidget(QLabel("Jump to:"))
+        jump.addWidget(self._jump, 1)
+        jump.addSpacing(theme.SPACE_LG)
+        jump.addWidget(QLabel("Find bytes:"))
+        jump.addWidget(self._find, 1)
+        jump.addWidget(self._find_button)
 
         write = QHBoxLayout()
         write.setSpacing(theme.SPACE_SM)
@@ -289,6 +344,7 @@ class RomPage(QWidget):
         )
         layout.setSpacing(theme.SPACE_SM)
         layout.addLayout(tools)
+        layout.addLayout(jump)
         layout.addWidget(self._table, 1)
         layout.addWidget(self._empty)
         layout.addWidget(self._summary)
@@ -302,6 +358,7 @@ class RomPage(QWidget):
         self._goto.returnPressed.connect(self._on_go)
         self._find_button.clicked.connect(self._on_find)
         self._find.returnPressed.connect(self._on_find)
+        self._jump.activated.connect(self._on_jump)
         self._open_button.clicked.connect(self._on_open_bytes)
         self._write_button.clicked.connect(self._on_write)
         self._index_signals.finished.connect(self._index_ready)
@@ -310,6 +367,10 @@ class RomPage(QWidget):
     def set_write_handler(self, handler) -> None:
         """The shell's one write path: this page never writes bytes itself."""
         self._write_handler = handler
+
+    def set_selection_handler(self, handler) -> None:
+        """The shell's one inspector, told what this page has selected."""
+        self._selection_handler = handler
 
     def set_pending_provider(self, provider) -> None:
         """What the project's semantic edits amount to, asked on every render.
@@ -336,16 +397,22 @@ class RomPage(QWidget):
             )
             self._open_button.setEnabled(False)
             self._open_button.setToolTip("Open a ROM first.")
+            for widget in (self._write_hex, self._write_button):
+                widget.setToolTip("Open a ROM first.")
+            self._write_note.setText("Open a ROM first.")
+            self._jump.setToolTip("Open a ROM first.")
             for widget in (
                 self._views,
                 self._goto,
                 self._goto_button,
                 self._find,
                 self._find_button,
+                self._jump,
                 self._write_hex,
                 self._write_button,
             ):
                 widget.setEnabled(False)
+            self._publish_nothing()
             return
         self._table.setVisible(True)
         self._empty.setVisible(False)
@@ -358,10 +425,46 @@ class RomPage(QWidget):
         ):
             widget.setEnabled(True)
         self._refresh_write_controls()
+        self._render_jump_list()
         if not 0 <= self._caret < self._surface.image_size:
             self._caret = 0
-        self._summary.setText(summary(self._surface))
+        self._summary.setText(f"{summary(self._surface)} {ADDRESS_FIRST}")
         self._render()
+
+    def _render_jump_list(self) -> None:
+        """The declared-table jump list, from the range index's own declared layer.
+
+        One list, and it is the index's: the same spans the raw byte authority
+        refuses a write against, so a table a jump offers and a table a write is
+        refused by cannot disagree. No second index and no second vocabulary are
+        built here - the page names what the model already holds, and a jump
+        selects the atlas coverage row that contains the table's first byte.
+
+        A jump needs rows to land on, so it is offered only while the range index
+        is loaded, and it states that reason when it is not.
+        """
+        rows = [
+            (span, owner)
+            for span, owner in declared_tables(self._surface)
+            # A declared table that begins past the open image has no coverage row
+            # to land on, so it is not offered as a jump.
+            if span.start.value < self._surface.image_size
+        ]
+        labels = [f"{owner} (0x{span.start.value:06X})" for span, owner in rows]
+        if [self._jump.itemText(at) for at in range(self._jump.count())] != labels:
+            self._jump.blockSignals(True)
+            self._jump.clear()
+            for (span, _owner), label in zip(rows, labels):
+                self._jump.addItem(label, span.start.value)
+            self._jump.blockSignals(False)
+        available = bool(rows) and self._surface.index is not None
+        self._jump.setEnabled(available)
+        self._jump.setToolTip(
+            ""
+            if available
+            else "A declared table is a range, so a jump needs the range index: "
+            + (self._surface.index_problem or "the index is not loaded")
+        )
 
     def _refresh_write_controls(self) -> None:
         """Render the model's raw-write gate on the two write controls.
@@ -375,6 +478,9 @@ class RomPage(QWidget):
             widget.setEnabled(gate.available)
             widget.setToolTip(gate.reason)
         self._write_button.setAccessibleName(f"Write. {gate.reason}")
+        # A control that cannot act states its reason where the control is, not
+        # only in the summary line at the foot of the page.
+        self._write_note.setText(JOURNAL_LOCAL if gate.available else gate.reason)
 
     def _build_surface(self):
         session = self._session
@@ -452,7 +558,20 @@ class RomPage(QWidget):
             self._render_search()
         else:
             self._render_ranges()
+        self._apply_columns()
         self._describe_caret()
+
+    def _apply_columns(self) -> None:
+        """Give this view's columns their widths once, when the view changes.
+
+        Once per view rather than once per render: a reader who widened a column
+        to read a long identity keeps that width until the view changes.
+        """
+        if self._columns_for == self._mode:
+            return
+        self._columns_for = self._mode
+        for column, width in enumerate(_COLUMN_WIDTHS[self._mode]):
+            self._table.setColumnWidth(column, width)
 
     def _range_row_at(self, offset: int):
         return next(
@@ -527,7 +646,17 @@ class RomPage(QWidget):
     # -- selection ------------------------------------------------------------
 
     def _select_row_at(self, offset: int) -> None:
-        """Point the table at the row holding `offset`, without re-entering."""
+        """Make the row holding `offset` the table's current row.
+
+        The row becomes the table's current row rather than only being selected:
+        the caret, the status line and the inspector all describe the current row,
+        and a highlight with no current row is a row nothing is selected in. The
+        caret itself is NOT moved to the row's start. `Go to address` names a
+        byte, a raw write goes at the caret, and a range that covers 0x400 starts
+        at 0x200: snapping the caret would silently move the write. The guard
+        replaces the blocked-signal shortcut, which stopped the row from becoming
+        current at all and left the inspector empty.
+        """
         if self._mode == BYTES_VIEW:
             index = next(
                 (
@@ -557,13 +686,17 @@ class RomPage(QWidget):
             )
         if index is None:
             return
-        selection = self._table.selectionModel()
-        selection.blockSignals(True)
-        self._table.selectRow(index)
-        selection.blockSignals(False)
+        self._selecting = True
+        try:
+            self._table.setCurrentIndex(self._model.index(index, 0))
+            self._table.selectRow(index)
+        finally:
+            self._selecting = False
 
     def _on_row_changed(self, current: QModelIndex, previous: QModelIndex) -> None:
-        if not current.isValid() or self._surface is None:
+        if self._selecting or not current.isValid() or self._surface is None:
+            # A row this page pointed at is already the selection: its caret was
+            # set by the caller, and `_render` describes it after this returns.
             return
         row = current.row()
         if self._mode == BYTES_VIEW:
@@ -586,7 +719,10 @@ class RomPage(QWidget):
         A range row proves its whole coverage span; a byte row and a search hit
         prove the one byte they name. The `what` is the owner where the index
         reports one, so `Open bytes` can say what it would open without this page
-        inventing a name for it.
+        inventing a name for it. The same selection is published to the shell's
+        one inspector, so the highlighted row and the pane can never disagree:
+        either a row is selected and the pane carries its identity, or nothing is
+        highlighted and the pane says nothing is selected.
         """
         if self._surface is None:
             return
@@ -596,6 +732,7 @@ class RomPage(QWidget):
                 self._what = ", ".join(row.owners) or "this range"
                 self._extent = row.span
                 self._show_selection()
+                self._publish(range_selection_context(self._surface, row))
                 return
         if self._mode == SEARCH_VIEW:
             hit = next(
@@ -605,12 +742,32 @@ class RomPage(QWidget):
                 self._what = ", ".join(hit.owners) or "this hit"
                 self._extent = selection_extent(self._surface, self._caret)
                 self._show_selection()
+                self._publish(selection_context(self._surface, self._caret))
                 return
         if not 0 <= self._caret < self._surface.image_size:
             return
         self._what = "this byte"
         self._extent = selection_extent(self._surface, self._caret)
         self._show_selection()
+        self._publish(selection_context(self._surface, self._caret))
+
+    def _publish(self, answer) -> None:
+        """Hand one model answer to the shared inspector, in its own vocabulary."""
+        if self._selection_handler is None:
+            return
+        self._selection_handler(
+            InspectorContext(
+                friendly=answer.friendly,
+                stable=answer.stable,
+                support=answer.support,
+                detail=answer.detail,
+            )
+        )
+
+    def _publish_nothing(self) -> None:
+        """No selection: the pane's own empty state, never a stale context."""
+        if self._selection_handler is not None:
+            self._selection_handler(None)
 
     def _show_selection(self) -> None:
         """The ownership strip and the Open bytes state, both from the model."""
@@ -629,6 +786,23 @@ class RomPage(QWidget):
     def _on_view_changed(self, view: str) -> None:
         self._mode = view
         self._render()
+
+    def _on_jump(self, _position: int) -> None:
+        """Jump to a declared table's first byte, through the one selection."""
+        if self._surface is None:
+            return
+        start = self._jump.currentData()
+        if start is None:
+            return
+        name = self._jump.currentText()
+        self._caret = int(start)
+        if self._mode != RANGES_VIEW:
+            self._views.setCurrentText(RANGES_VIEW)
+        else:
+            self._render()
+        self._message.setText(
+            f"Jump to {name}: file offset 0x{self._caret:06X} selected"
+        )
 
     def _on_go(self) -> None:
         if self._surface is None:

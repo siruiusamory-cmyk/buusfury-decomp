@@ -361,8 +361,10 @@ def test_a_data_provider_that_cannot_answer_states_its_reason(data_page, monkeyp
     assert page.pending_bytes() == PendingBytes(
         problem=f"the pending bytes could not be stated: {reason}"
     )
-    assert merged.problem == stated
-    assert rom._surface.pending_problem == stated
+    # Membership: this destination's reason is one of the reasons the one merge
+    # carries, and a destination still reading its records is named beside it.
+    assert stated in merged.problem.split("; ")
+    assert stated in rom._surface.pending_problem.split("; ")
     assert stated in rom._summary.text()
     assert row.file_offset in rom._surface.overlay
     assert row.file_offset not in rom._surface.pending
@@ -412,7 +414,7 @@ def test_a_data_destination_that_has_not_read_the_image_states_that(
     print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
     print(f"  ROM overlay        {sorted(hex(at) for at in rom._surface.overlay)}")
 
-    assert rom._surface.pending_problem == stated
+    assert stated in rom._surface.pending_problem.split("; ")
     assert stated in rom._summary.text()
     assert rom._surface.pending == {}
     assert rom._surface.overlay == frozenset()
@@ -428,7 +430,9 @@ def test_a_data_destination_that_has_not_read_the_image_states_that(
     shell.open_rom_at(row.file_offset)
     rom = shell._rom_page
 
-    assert rom._surface.pending_problem == ""
+    # This destination's reason is gone once it has read the image; another
+    # destination still reading its own records is that destination's reason.
+    assert stated not in rom._surface.pending_problem.split("; ")
     assert stated not in rom._summary.text()
     assert row.file_offset in rom._surface.pending
 

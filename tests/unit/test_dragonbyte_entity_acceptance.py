@@ -328,8 +328,10 @@ def test_an_entities_provider_that_cannot_answer_states_its_reason(edited, monke
     assert page.pending_bytes() == PendingBytes(
         problem=f"the pending bytes could not be stated: {reason}"
     )
-    assert merged.problem == stated
-    assert rom._surface.pending_problem == stated
+    # Membership: this destination's reason is one of the reasons the one merge
+    # carries, and a destination still reading its records is named beside it.
+    assert stated in merged.problem.split("; ")
+    assert stated in rom._surface.pending_problem.split("; ")
     assert stated in rom._summary.text()
     assert row.file_offset in rom._surface.overlay
     assert row.file_offset not in rom._surface.pending

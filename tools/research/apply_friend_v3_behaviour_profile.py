@@ -16,7 +16,7 @@ copy differs in exactly two things:
 
 Everything else - the AUX delegation, the two distance-gated transitions, the shared completion
 sequence, the spawn payload - is reused by pointer, so this is the family's own behaviour with a
-different appetite, not a new AI.
+different appetite rather than a new one.
 
 WHERE THE BYTES GO. The block is APPENDED at the end of the image, 4-byte aligned, and the new
 rows point at it with absolute addresses. Appending is the route this project already ships for

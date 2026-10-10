@@ -26,7 +26,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -34,6 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.research import apply_friend_v3_behaviour_profile as profile_stage  # noqa: E402
+from tools.research import apply_friend_v3_boss_retune as retune_stage  # noqa: E402
+from tools.research import apply_friend_v3_dialogue_text as wording_stage  # noqa: E402
 from tools.research.friend_v3_text_approvals import (  # noqa: E402
     APPROVED_BOSS_PROFILES, APPROVED_BOSS_RETUNES, APPROVED_DIALOGUE_TEXT_EDITS, APPROVED_RELEASES)
 from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
@@ -49,13 +51,23 @@ def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def run(command: list[str]) -> str:
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        tail = (result.stderr or result.stdout or "").strip().splitlines()
-        raise Release3Error(f"stage failed: {' '.join(command[2:4])}\n  "
-                            + "\n  ".join(tail[-4:]))
-    return (result.stdout or "").strip()
+def run_stage(module, arguments: list[str]) -> None:
+    """Run one stage's command line in this process.
+
+    In-process rather than through a child process on purpose: a second interpreter is a process
+    start the tree's launch-coverage test has to classify, and there is nothing here that needs a
+    fresh interpreter. The stage's own argparse still parses its arguments and its own refusals
+    still raise, so a stage that disagrees with the chain stops the build.
+    """
+    saved = sys.argv
+    sys.argv = [module.__name__, *arguments]
+    try:
+        module.main()
+    except SystemExit as exit_code:
+        if exit_code.code not in (0, None):
+            raise Release3Error(f"stage {module.__name__} refused with {exit_code.code}") from None
+    finally:
+        sys.argv = saved
 
 
 def main() -> int:
@@ -94,7 +106,7 @@ def main() -> int:
     retune_out = workdir / f"{stem}.1-retune.gba"
     arguments = ["--image", str(source), "--expect-sha256", got,
                  "--out", str(retune_out), "--manifest", str(workdir / f"{stem}.1-retune.json")]
-    print(run([sys.executable, "-m", "tools.research.apply_friend_v3_boss_retune", *arguments]))
+    run_stage(retune_stage, arguments)
     document["stages"].append({"name": "boss-retune", "output": str(retune_out),
                                "sha256": sha256_bytes(retune_out.read_bytes())})
 
@@ -114,7 +126,7 @@ def main() -> int:
         arguments += ["--attack-action", str(profile.attack_action_row)]
     for selector in profile.selectors:
         arguments += ["--record", str(selector)]
-    print(run([sys.executable, "-m", "tools.research.apply_friend_v3_behaviour_profile", *arguments]))
+    run_stage(profile_stage, arguments)
     document["stages"].append({"name": "behaviour-profile", "output": str(profile_out),
                                "sha256": sha256_bytes(profile_out.read_bytes())})
 
@@ -124,7 +136,7 @@ def main() -> int:
                  "--out", str(target), "--manifest", str(workdir / f"{stem}.3-wording.json")]
     for edit in APPROVED_DIALOGUE_TEXT_EDITS:
         arguments += ["--edit", f"{edit.selector}:{edit.start}:{edit.length}:{edit.old}:{edit.new}"]
-    print(run([sys.executable, "-m", "tools.research.apply_friend_v3_dialogue_text", *arguments]))
+    run_stage(wording_stage, arguments)
 
     final = target.read_bytes()
     digest = sha256_bytes(final)

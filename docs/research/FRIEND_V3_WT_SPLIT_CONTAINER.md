@@ -166,8 +166,9 @@ same run raised a layout disagreement that the decoded words settle, not a redes
 A search of the cross-session record found it after the measurements above were taken, and
 it belongs here because two earlier nodes reached the opposite conclusion.
 
-**Measured now, read-only, on the private image `C:\Dev\log1-remake\roms\v3-renames-spill.gba`
-(10,170,280 bytes, sha256 prefix `4be840dd`, 2026-10-04):** its table sits at file `0x9B2EA8`,
+**Measured now, read-only, on the private image `v3-renames-spill.gba` under the local
+`roms` store (10,170,280 bytes, sha256 prefix `4be840dd`, 2026-10-04):** its table sits at file
+`0x9B2EA8`,
 seven of its slots are live containers, and **slot 7 holds a real kind-0 container**:
 pointer `0x089A9994`, declared and decoded 38,156 bytes, at file `0x9A9994`. Its six dialogue
 containers were simultaneously reduced to 65,266 / 65,424 / 65,272 / 65,148 / 65,136 /

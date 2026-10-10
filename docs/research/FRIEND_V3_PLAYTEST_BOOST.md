@@ -127,7 +127,9 @@ the reviewer, not by the assertion.
 | cancelled-hook exclusion | bytes at `0x08004892` (`20 1c db e7`) and the whole trampoline run at `0x083C22FC` are byte-identical to the foundation; no injection is present |
 | canonical ROM digest after every run | `940ad5f0...` unchanged |
 
-Runtime smoke test on the delivered image, isolated mGBA, fresh 8192-byte save, operator-confirmed:
+Runtime smoke test on the delivered image, isolated mGBA, fresh 8192-byte save, operator-confirmed.
+The run directory was created by hand, so this is a recorded observation without a manifest or ROM
+copy beside it; the reproducible form is the build plus the launcher in section 2.
 
 | check | result |
 | --- | --- |
@@ -204,12 +206,16 @@ Nothing. The feature set is frozen at `acd98c2a`.
 
 ## 5. Limits of this record, stated plainly
 
-1. **The runtime evidence belongs to the superseded image.** The claim that the party starts at
-   level 200 with maximum stats is a static decode of a verified table plus the game's XP
-   ceiling, which is itself a static read of one comparison. Nothing here shows that a
-   starting level of 200 with no experience is a state the game handles. That is why the
-   first checklist step below is a started-game stat-screen check.
-2. **The Bandana is not in this image.** It is a tracker item, not a silent omission.
+1. **The runtime smoke test is a 60-second observation, not a campaign.** It was run on the
+   delivered image at the time of writing, from a fresh save, and it reached the title screen and
+   a started New Game at 72.7 fps with equipment count 0. It left no ROM copy or manifest under
+   `build/fv3boost001/runtime/`, because the run directory was created by hand rather than by the
+   launcher's manifest path, so it is a recorded observation rather than a replayable artifact.
+   The claim that the party starts at level 200 with maximum stats is a static decode of a
+   verified table plus the game's XP ceiling; nothing here shows that a starting level of 200 with
+   no experience is a state the game handles. That is why the first checklist step is a
+   started-game stat-screen check.
+2. **The Bandana is not in this image.** Cancelled by owner; see the tracker row above.
 3. **Full-game stability is not claimed.** One human playthrough is required before anything
    stronger than "targeted checks pass" is written here.
 4. **The pipeline record above was exercised from `20f2c140` forward.** Steps 1 to 5 carry

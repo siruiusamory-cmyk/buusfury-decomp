@@ -20,6 +20,12 @@ Verify before playing:
 
 It must print the hash above. If it does not, the build was modified and the playtest is invalid.
 
+**Getting the file.** The ROM itself is never committed, so it is handed over out of band. To
+rebuild it instead, run `build/fv3boost001/build.ps1` from the repository root. That script reads
+an unpacked foundation image from the ignored `build/fv3boost001/staging/` directory, so it needs
+that directory present; it refuses rather than guessing if it is missing. Either route must end at
+the hash above.
+
 ## 2. How to launch
 
 Load that file in any GBA emulator. mGBA is what the evidence was produced on; any current
@@ -50,11 +56,15 @@ save-state artifact rather than a build defect. To start genuinely clean, delete
 
 | change | what to expect |
 | --- | --- |
-| Five playable characters at level 200 | Goku, Gohan, Goten, Trunks and Vegeta start at the level ceiling |
+| five party slots at level 200 | the first five party records start at the level ceiling |
 | STR, POW, END and SPD at 255 | maximum for those four attributes |
 | HP and EP left at retail values | deliberately not raised: `0xFFFF` reads as negative and broke energy attacks, so HP/EP were excluded |
-| character names, menu text, credits | the completed text pass |
+| character names, menu text, credits | the completed text pass, which renames identities: Goku reads as **Yamcha**, and Chi-Chi as **Tulma**. Krillin, Gohan, Goten, Trunks, Vegeta and Tien keep their names |
 | Tulma | replaced actor sprite, portrait slot 17, and two rewritten dialogue records |
+
+**Read the roster before reporting a stat defect.** The boosted slots wear the build's renamed
+identities, so a level 200 character may be one you did not expect under that name. If a stat looks
+wrong, note which character you selected and what the status screen showed.
 
 Everything else is retail: items, shops, enemies, progression and controls. Nothing was remapped
 or removed, and no item is added to your inventory at the start.
@@ -75,8 +85,9 @@ or removed, and no item is added to your inventory at the start.
 
 ## 6. Chapter-by-chapter checklist
 
-These are the walkthrough's chapter names for this game, in order. It has twelve chapters and one
-short epilogue chapter, not eight sagas, and this guide previously listed invented ones. Source:
+These are the walkthrough's chapter names for this game, in order. The source has twelve
+walkthrough sections, and the twelfth is the short closing chapter. This guide previously listed
+invented saga names. Source:
 [Gamer's Temple walkthrough][chapters].
 
 Tick what you actually played. Leave the rest blank; a blank is honest and useful.

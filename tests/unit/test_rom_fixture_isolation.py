@@ -11,7 +11,9 @@ catches it, and this file proves the check itself fires:
 * it accepts a copy made in pytest's temporary root;
 * it REFUSES a path that shares a file with a protected repository input;
 * the fixture every ROM-gated test uses passes that check;
-* the canonical repository image is left byte-identical by reading it.
+* the canonical repository image is left byte-identical by reading it;
+* the protected-name mirror this helper scans equals the policy tuple, so the
+  guard cannot silently narrow to fewer names than the policy protects.
 
 The refusal is driven with a genuine hard link to a genuine protected input,
 created in a temporary directory, so the rule is proved against the filesystem's
@@ -36,6 +38,7 @@ from tests.rom_support import (
     mutable_rom_copy,
     protected_input_identity,
 )
+from tools.webfoot.destination import PROTECTED_INPUT_DIRECTORIES
 
 
 def test_a_copy_in_a_temporary_root_is_accepted(tmp_path: Path):
@@ -84,3 +87,21 @@ def test_reading_the_canonical_image_leaves_it_unchanged():
     assert before == CANONICAL_ROM_SHA256
     assert_canonical_unchanged()
     assert rom_support.canonical_rom_sha256() == CANONICAL_ROM_SHA256
+
+
+def test_the_protected_input_mirror_matches_the_policy_tuple():
+    """The guard scans a copy of the policy list, so a drift between the two narrows it.
+
+    Measured before this was closed: the mirror omitted `dumps`, so
+    `protected_input_identity` scanned every protected directory except that one
+    and a fixture hard-linked to a ROM under `dumps/` would have passed the
+    preventive check. The check is now that the two lists are one list.
+    """
+    mirror = rom_support.PROTECTED_INPUT_DIRECTORIES
+
+    assert mirror == PROTECTED_INPUT_DIRECTORIES, (
+        f"tests/rom_support.PROTECTED_INPUT_DIRECTORIES is {mirror}, but "
+        f"tools.webfoot.destination.PROTECTED_INPUT_DIRECTORIES is "
+        f"{PROTECTED_INPUT_DIRECTORIES}; make the mirror equal the policy tuple, or "
+        "the fixture-identity guard is absent for the names it omits"
+    )

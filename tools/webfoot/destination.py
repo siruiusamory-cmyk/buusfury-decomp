@@ -16,7 +16,10 @@ Three shapes are refused, and the message names which one:
 * the destination lies inside a protected input directory, including one reached
   through a directory junction or symlink, because the destination directory is
   resolved before it is compared and the junction is therefore not a way around
-  the rule.
+  the rule. A listed name is protected whether or not the directory exists yet:
+  the writers create a destination's parent directory, so a name that stopped
+  being protected until something created it could be created by the write it was
+  meant to refuse, and in a fresh checkout none of these directories exists.
 
 **What is deliberately NOT refused.** A distinct derivative file whose directory
 merely *contains* a protected input: a new `<profile>_modified.gba` beside the ROM
@@ -79,10 +82,14 @@ def repository_root() -> Path:
 
 
 def _declared_protected_directories(root: Path) -> tuple[Path, ...]:
-    """The protected input directories this checkout actually declares, resolved.
+    """The protected input directories this checkout declares, resolved.
 
     Read from `IGNORE_FILE`, restricted to the candidate list above, and resolved
-    so a junction or symlink to the directory IS the directory.
+    so a junction or symlink to the directory IS the directory. A declared name is
+    returned whether or not the directory exists yet - see the module docstring -
+    and `resolve()` on a name that does not exist resolves the nearest existing
+    ancestor and keeps the remaining components, which is the spelling a
+    destination under it has to be compared against.
     """
     try:
         text = (root / IGNORE_FILE).read_text(encoding="utf-8")
@@ -97,9 +104,8 @@ def _declared_protected_directories(root: Path) -> tuple[Path, ...]:
             declared.add(entry.rstrip("/"))
     directories = []
     for name in PROTECTED_INPUT_DIRECTORIES:
-        path = root / name
-        if name in declared and path.is_dir():
-            directories.append(path.resolve())
+        if name in declared:
+            directories.append((root / name).resolve())
     return tuple(directories)
 
 
@@ -175,11 +181,18 @@ def refuse_rom_destination(rom_path: str | Path, destination: str | Path) -> Non
                 f"input {other}, which is read-only on every write path"
             )
 
+    # `normcase` folds case exactly where the platform does - a path component is
+    # case-insensitive on Windows, so `EXPORTS` and `exports` are one directory -
+    # and leaves a case-sensitive filesystem alone. `resolved.parents` starts at
+    # `resolved.parent`, so this covers a file directly inside the directory and
+    # every path nested deeper below it.
     for directory in directories:
-        if resolved.parent == directory or directory in resolved.parents:
+        key = os.path.normcase(str(directory))
+        if any(os.path.normcase(str(parent)) == key for parent in resolved.parents):
             raise WriteError(
-                f"refusing to write {target}: its resolved path is inside the "
-                f"protected ROM input directory {directory}, and that covers every "
-                "path inside it however it is reached - a junction or symlink to it "
+                f"refusing to write {target}: its resolved path {resolved} is "
+                f"inside the protected ROM input directory {directory}, and that "
+                "covers every path inside it whether or not the directory exists "
+                "yet and however it is reached - a junction or symlink to it "
                 "resolves here; choose an output path outside it"
             )

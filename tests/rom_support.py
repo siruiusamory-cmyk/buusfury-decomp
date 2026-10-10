@@ -32,7 +32,10 @@ CANONICAL_ROM_SHA256 = (
 )
 
 #: The directories `tools.webfoot.destination` treats as protected ROM inputs.
-PROTECTED_INPUT_DIRECTORIES = ("roms", "extracted", "dump", "stock", "exports")
+#: `test_the_protected_input_mirror_matches_the_policy_tuple` fails when this mirror
+#: and the policy tuple stop agreeing: a narrower mirror is a guard silently absent
+#: for the names it omits, which is how `dumps` went uncovered here.
+PROTECTED_INPUT_DIRECTORIES = ("roms", "extracted", "dump", "dumps", "stock", "exports")
 
 
 def canonical_rom_path() -> Path | None:

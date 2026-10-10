@@ -125,6 +125,30 @@ def armed(qapp, tmp_path, catalog, canonical_rom, source_project):
 # --- driving the page, through the widgets a user drives ----------------------
 
 
+def test_the_object_family_view_reads_its_own_labels_at_the_minimum_size(armed):
+    """The measured defect: `Family not mo...` and `Not support...` beside empty space."""
+    from PySide6.QtCore import Qt as QtCore
+
+    from tools.dragonbyte import entitysurface as es
+
+    page, _shell, _session, _project = armed
+    page._modes.setCurrentText("Object families")
+    assert page._mode == es.FAMILIES
+
+    assert page._table.textElideMode() == QtCore.TextElideMode.ElideMiddle
+    assert page._table.horizontalHeader().stretchLastSection()
+    # The family label the capture truncated, and the support word beside it, both
+    # need the width the empty space to their right was taking.
+    assert page._table.columnWidth(0) >= 170
+    # The model always rendered the whole word; the column was what cut it off, so
+    # this pins both halves: the full word, and a column with room for it.
+    supports = [
+        page._model.data(page._model.index(row, 3)) for row in range(len(page._rows))
+    ]
+    assert supports[0].endswith("Editable with limits")
+    assert any(cell.endswith("Not supported yet") for cell in supports)
+
+
 def _choose_map(page, index: int) -> None:
     page._maps.setCurrentIndex(page._maps.findData(index))
     assert page._map_index == index

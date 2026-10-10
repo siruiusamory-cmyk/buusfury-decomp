@@ -518,6 +518,7 @@ class DataPage(QWidget):
                 session.profile,
                 session.base_image,
             )
+            self._problem = ""
         except ds.DataSurfaceError as exc:
             self._surface = None
             self._problem = str(exc)

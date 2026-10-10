@@ -48,6 +48,7 @@ from .journal import EditKind
 from .mappage import MapPage
 from .rawbytes import raw_owner
 from .rompage import RomPage
+from .romsurface import PendingBytes
 from .session import Session, SessionError
 from .settings import Settings
 from .textpage import TextPage
@@ -712,28 +713,37 @@ class Shell(QMainWindow):
             # dialogue document, by the same rule again.
             self._text_page.refresh()
 
-    def _pending_bytes(self) -> dict[int, bytes]:
+    def _pending_bytes(self) -> PendingBytes:
         """Every open destination's byte effect, merged for the ROM surface.
 
         One provider because the ROM page has one question: what does the project
-        currently build here. A destination that cannot answer for itself (an
-        image it has not read, a document it cannot plan) contributes nothing
-        rather than stopping the surface from rendering.
+        currently build here. A destination that cannot answer contributes no
+        bytes and states why, and the reasons travel with the merge, so the ROM
+        page can never show a partial answer as the whole one. The catch here is
+        the last resort: every destination already states its own reason, and one
+        that raises anyway is named rather than dropped.
         """
         merged: dict[int, bytes] = {}
-        for page in (
-            self._data_page,
-            self._map_page,
-            self._entity_page,
-            self._text_page,
+        problems: list[str] = []
+        for destination_id in (
+            DATA_DESTINATION,
+            MAPS_DESTINATION,
+            ENTITY_DESTINATION,
+            TEXT_DESTINATION,
         ):
-            if page is None:
-                continue
+            page = self._pages[destination_id]
+            label = destination(destination_id).label
             try:
-                merged.update(page.pending_bytes())
-            except Exception:  # noqa: BLE001 - a provider boundary
+                answer = page.pending_bytes()
+            except Exception as exc:  # noqa: BLE001 - the reason is kept, not dropped
+                problems.append(
+                    f"{label}: the pending bytes could not be stated: {exc}"
+                )
                 continue
-        return merged
+            merged.update(answer.mapping)
+            if answer.problem:
+                problems.append(f"{label}: {answer.problem}")
+        return PendingBytes(merged, "; ".join(problems))
 
     def _refresh_edit_actions(self) -> None:
         """Render the session's answer about Save, Undo and Redo.

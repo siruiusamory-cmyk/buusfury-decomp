@@ -36,6 +36,7 @@ pytest.importorskip("PySide6.QtWidgets")
 from tools.dragonbyte import dataedits  # noqa: E402
 from tools.dragonbyte import entitypage  # noqa: E402
 from tools.dragonbyte import entitysurface as es  # noqa: E402
+from tools.dragonbyte.romsurface import PendingBytes  # noqa: E402
 from tools.dragonbyte.session import Session  # noqa: E402
 from tools.dragonbyte.shell import Shell  # noqa: E402
 from tools.webfoot.build import build_project, extract_project  # noqa: E402
@@ -49,6 +50,7 @@ from tests.unit.test_dragonbyte_state import (  # noqa: E402
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    wait_for_text_surface,
 )
 
 #: The lowest map index whose placements the canonical image records, so the
@@ -282,7 +284,7 @@ def test_clause_2_the_change_is_visible_in_the_rom_surface(edited):
     print(f"  ROM caret             file offset 0x{rom._caret:06X}")
     print(f"  ROM changed column    {cells}")
     print(f"  ROM overlay           {sorted(hex(at) for at in rom._surface.overlay)}")
-    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes())}")
+    print(f"  shell's one provider  {sorted(hex(at) for at in shell._pending_bytes().mapping)}")
 
     assert session.navigation.current.destination == "rom"
     assert rom._caret == row.file_offset
@@ -293,8 +295,47 @@ def test_clause_2_the_change_is_visible_in_the_rom_surface(edited):
     )
     assert (
         rom._surface.pending[row.file_offset]
-        == shell._pending_bytes()[row.file_offset]
+        == shell._pending_bytes().mapping[row.file_offset]
     )
+
+
+def test_an_entities_provider_that_cannot_answer_states_its_reason(edited, monkeypatch):
+    """An Entities provider that cannot encode its edit says so; never silent.
+
+    This destination had no boundary of its own: a raise from the SDK used to
+    reach the shell and be dropped. It now states the reason that the shell
+    aggregates onto the ROM surface, beside the journal claim it could not fill.
+    """
+    page, shell, _session, _project_dir, row = edited
+    reason = "the placement codec refused the record"
+
+    def refuse(_surface, _project):
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(type(page._surface), "pending_bytes", refuse)
+    wait_for_text_surface(shell)
+    shell.open_rom_at(row.file_offset)
+    rom = shell._rom_page
+    merged = shell._pending_bytes()
+    stated = f"Entities: the pending bytes could not be stated: {reason}"
+
+    print("\nENTITIES PROVIDER FAILURE | the reason reaches the ROM surface")
+    print(f"  page provider      {page.pending_bytes()}")
+    print(f"  shell's merge      {merged.problem}")
+    print(f"  ROM summary        {rom._summary.text()}")
+    print(f"  ROM pending bytes  {sorted(hex(at) for at in rom._surface.pending)}")
+
+    assert page.pending_bytes() == PendingBytes(
+        problem=f"the pending bytes could not be stated: {reason}"
+    )
+    assert merged.problem == stated
+    assert rom._surface.pending_problem == stated
+    assert stated in rom._summary.text()
+    assert row.file_offset in rom._surface.overlay
+    assert row.file_offset not in rom._surface.pending
+    assert rom._surface.current_bytes(
+        row.file_offset, row.size
+    ) == rom._surface.canonical_bytes(row.file_offset, row.size)
 
 
 # --- clause 3: one stack ------------------------------------------------------
@@ -475,7 +516,7 @@ def test_clause_4_a_placement_with_no_project_states_its_reason(
     assert row.note == f"this project authors no placement record for {row.identity}"
     assert not page._apply.isEnabled()
     assert page._open.isEnabled()
-    assert page.pending_bytes() == {}
+    assert page.pending_bytes() == PendingBytes()
     assert "nothing to edit" in page._message.text()
     assert "Open a project to move one" in page._summary.text()
 

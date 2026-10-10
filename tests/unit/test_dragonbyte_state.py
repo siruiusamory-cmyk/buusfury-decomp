@@ -780,6 +780,24 @@ def _close(shell, session: Session) -> None:
     shell.close()
 
 
+def wait_for_text_surface(shell, timeout_ms: int = 120_000) -> None:
+    """Let the Scripts & Text read land, so every destination has answered.
+
+    That read runs off the UI thread by design, so a test that needs every
+    destination read before it asserts on the ROM surface spins the event loop,
+    exactly as a user's window does. A destination still loading states that on
+    the ROM surface, which would otherwise be measured as part of the test.
+    """
+    from PySide6.QtCore import QDeadlineTimer, QEventLoop
+
+    page = shell._text_page
+    deadline = QDeadlineTimer(timeout_ms)
+    while page._surface_loading and not deadline.hasExpired():
+        QEventLoop().processEvents()
+    assert not page._surface_loading, "the text surface never finished loading"
+    assert page._surface is not None, page._problem
+
+
 def test_the_edit_actions_exist_and_their_state_equals_the_session_answer(
     qapp, tmp_path
 ):

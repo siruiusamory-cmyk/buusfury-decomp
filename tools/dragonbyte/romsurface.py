@@ -210,6 +210,20 @@ def target_for_address(address: int, image_size: int) -> RomTarget:
 
 
 @dataclass(frozen=True, slots=True)
+class PendingBytes:
+    """What one destination can state about the project's pending byte edits.
+
+    `mapping` is the byte effect the destination could encode. `problem` is why
+    the rest is missing: empty when the mapping is the whole answer, and the
+    stated reason otherwise, so no caller can mistake a partial answer for a
+    complete one by reading the mapping alone.
+    """
+
+    mapping: Mapping[int, bytes] = field(default_factory=dict)
+    problem: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class RomSurface:
     """One image, the index that answers for it, and what the project changed.
 
@@ -224,6 +238,9 @@ class RomSurface:
     index: RangeIndex | None = None
     #: Why there is no index, when there is none. Empty when there is one.
     index_problem: str = ""
+    #: Why the pending bytes are not the whole answer, when a destination could
+    #: not state its byte effect. Empty when every destination answered.
+    pending_problem: str = ""
     pending: Mapping[int, bytes] = field(default_factory=dict)
     overlay: frozenset[int] = frozenset()
     #: The index's owners split by the raw byte authority's floor: the ones whose
@@ -351,6 +368,7 @@ def surface_for(
     index: RangeIndex | None = None,
     index_problem: str = "",
     extra_pending: Mapping[int, bytes] | None = None,
+    pending_problem: str = "",
 ) -> RomSurface:
     """The surface over one open image, its profile and its journal.
 
@@ -363,6 +381,10 @@ def surface_for(
     the surface can show the changed value rather than only the claimed range.
     A domain whose edit has no byte value before a build supplies nothing, and
     the overlay alone says the bytes are claimed.
+
+    `pending_problem` is why `extra_pending` is not the whole of what the
+    destinations hold. It is rendered beside the index's own problem, so an
+    incomplete byte column is stated rather than shown as the image's answer.
     """
     pending = dict(journal.raw_edits().bytes_by_offset)
     if extra_pending:
@@ -372,6 +394,7 @@ def surface_for(
         profile=profile,
         index=index,
         index_problem=index_problem,
+        pending_problem=pending_problem,
         pending=pending,
         overlay=pending_offsets(journal),
     )
@@ -465,15 +488,19 @@ def ownership(surface: RomSurface, offset: int) -> Ownership:
 
 
 def summary(surface: RomSurface) -> str:
-    """One line about the whole image, from the index's own totals."""
+    """One line about the whole image, and the reason any part of it is missing."""
     if surface.index is None:
-        return f"{len(surface.image)} bytes. {surface.index_problem}."
-    overview = surface.index.overview()
-    return (
-        f"{overview['image_size']} bytes, {overview['coverage_spans']} coverage "
-        f"spans, {overview['objects']} atlas objects, {overview['owners']} owners, "
-        f"{overview['unowned_bytes']} bytes nobody owns"
-    )
+        line = f"{len(surface.image)} bytes. {surface.index_problem}."
+    else:
+        overview = surface.index.overview()
+        line = (
+            f"{overview['image_size']} bytes, {overview['coverage_spans']} coverage "
+            f"spans, {overview['objects']} atlas objects, {overview['owners']} owners, "
+            f"{overview['unowned_bytes']} bytes nobody owns"
+        )
+    if surface.pending_problem:
+        return f"{line} {surface.pending_problem}."
+    return line
 
 
 # --- the ranges view ----------------------------------------------------------

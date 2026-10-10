@@ -8,8 +8,8 @@ Cut from release 2.1, and nothing else.
 | | |
 | --- | --- |
 | image | `v3-release3.gba` |
-| sha256 | `a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30` |
-| bytes | 10,146,168 |
+| sha256 | `521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd` |
+| bytes | 10,146,136 |
 | cut from | release 2.1, `018757c4e0dda9f463364675f32b307dff9e5ad89c7a0b932939aec320032389` |
 | reproduced | twice, from two independent output directories, byte-identical |
 
@@ -19,7 +19,7 @@ The chain and every intermediate digest, as the builder records them:
 | --- | --- | --- |
 | boss retune | `apply_friend_v3_boss_retune.py` | `1d59e0da6f4d7639a23f97c9e0892dc8f7a6cbc6453a9236b5250c37aa467650` |
 | behaviour profile | `apply_friend_v3_behaviour_profile.py` | `682eb7f48d0496b9d5658bb5a8c42c43140ec9282f569c6357d1588ed5a78a74` |
-| wording | `apply_friend_v3_dialogue_text.py` | `a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30` |
+| wording | `apply_friend_v3_dialogue_text.py` | `521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd` |
 
 One command reproduces it, and it refuses unless the result equals the frozen digest:
 
@@ -101,8 +101,20 @@ now unmeasured, so release 3 ships without it.
 
 | change | records | result |
 | --- | --- | --- |
-| spaced "Great Soy Man" -> "Great Soyman" | 1 (`1:19302:588`) | 0 spaced forms remain in the image |
-| the ten records where retail says "Kakarot" and this image said "Yamcha" -> "Bandit" | 5 spans covering all ten | each reads "Bandit" with single spacing |
+| spaced "Great Soy Man" -> "Great Soyman" | 1 (`1:38856:252`) | 0 spaced forms remain in the image |
+| the records where retail says "Kakarot" and this image said "Yamcha" -> "Bandit" | 4 spans | **seven of the ten Kakarot lines read "Bandit"**; see the deferral below |
+
+The spans are BYTE coordinates: `tools/webfoot/handles.py:unpack_handle` already returns decoded
+start and length in bytes, and an earlier version of this tool scaled them by the two-byte unit a
+second time, which doubled every window and damaged 28 records in the withdrawn `a72f1ecd` build.
+The spans were re-derived with a byte-correct search after that defect was found by review.
+
+One phrase is deliberately NOT applied: **"If Yamcha is coming back to fight in the World
+Tournament"**. Every span that carries it has another live record's boundary inside it - `2:1948:252`
+contains `1976:128`, and the chained records `2:528:2450` and `2:560:3562` fail the same test - so
+the replacement's shift would cut that record and its text would lose a character. The wording tool
+refuses such a span by name. That phrase, three of the ten records, moves to release 4 with the
+container rebuild.
 
 Both live inside the dialogue containers rather than the text table, so they were written by
 `apply_friend_v3_dialogue_text.py` at each record's own unit count: no later record moves, and both
@@ -115,12 +127,11 @@ absorbed inside a phrase moves a space within a record that covers the same byte
 | check | result |
 | --- | --- |
 | boss retune verifier | PASS: the other 149 enemy records byte-identical, 0 differing bytes outside the six declared fields |
-| profile verifier | PASS: the appended nodes are the family's own bytes with only the declared patches, rows and records as the manifest says, 0 stray bytes |
-| wording tool readback | PASS: 6 edits, every other record reads unchanged |
-| focused tests | 6 in `tests/unit/test_friend_v3_boss_profile.py`, including the two drift guards |
-| full suite | 212 passed, 1 skipped (a locally absent atlas), on the frozen tree |
-| reproduction | twice, byte-identical |
-| runtime | both bosses fought in the emulator on this content; the owner beat Olibu and beat Hercule |
+| profile verifier | PASS: the appended nodes are the family's own bytes with only the declared patches, the probability leaf reaches the copied spawn INSIDE the block, both borrowed rows are proven unnamed, 0 stray bytes |
+| wording tool readback | PASS: 5 edits; every record outside an edited span is character-identical once spaces are ignored, and no character is lost, gained or reordered anywhere |
+| focused tests | 9 in `tests/unit/test_friend_v3_boss_profile.py`, including one test per blocking finding and the two drift guards |
+| reproduction | twice, from two independent output directories, byte-identical |
+| runtime | measured on the withdrawn candidate: both bosses were fought in the emulator and the owner beat each. **Not yet re-checked on this candidate**: the image changed with the fixes (the swing chain is now the retail one and the wording spans moved), so a claim that this exact image was played would be unsupported |
 
 ## 4. Save guidance
 

@@ -184,14 +184,14 @@ class ApprovedDialogueTextEdit:
 #: every window and damaged 28 records; the coordinates below were re-derived with a byte-correct
 #: search after that defect was found by review.
 #:
-#: The seven edits are two spacing repairs and the tail of the rename pass:
-#:   * "Great Soy Man" -> "Great Soyman" in the two records that carry the spaced form, so the name
+#: The five edits are one spacing repair and the tail of the rename pass:
+#:   * "Great Soy Man" -> "Great Soyman" in the record that carries the spaced form, so the name
 #:     reads the same everywhere. Twenty-odd records already read "Great Soyman" and four table
 #:     slots do too.
-#:   * The five phrases where the canonical ROM says "Kakarot" and this image says "Yamcha" now say
-#:     "Bandit". Retail has Kakarot in ten records; five carry the phrase on their own and five are
-#:     longer chains covering the same words, so five spans cover all ten. Each replacement also
-#:     absorbs the double space the earlier rename left behind it.
+#:   * Four phrases where the canonical ROM says "Kakarot" and this image says "Yamcha" now say
+#:     "Bandit", which covers seven of the ten Kakarot records; the other three carry a fifth phrase
+#:     whose spans cannot be edited in place and are deferred. Each replacement also absorbs the
+#:     double space the earlier rename left behind it.
 APPROVED_DIALOGUE_TEXT_EDITS: tuple[ApprovedDialogueTextEdit, ...] = (
     ApprovedDialogueTextEdit(
         selector=1, start=38856, length=252,
@@ -249,7 +249,7 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         output_bytes=10146136,
         stages=("boss-retune", "behaviour-profile", "dialogue-wording"),
         notes="Hercule's and Olibu's encounters retuned and given the profile the owner fought, "
-              "the Great Soyman spacing repaired, and five of the ten Kakarot lines reading "
+              "the Great Soyman spacing repaired, and seven of the ten Kakarot lines reading "
               "Bandit. Review B1 measured that the action-row change was never reachable (the "
               "appended copy's leaf pointed at the retail shared spawn), so the profile ships with "
               "the retail swing chain, and one phrase (\"If Yamcha is coming back\", three records) "

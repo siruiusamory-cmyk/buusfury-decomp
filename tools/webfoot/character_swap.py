@@ -6,6 +6,9 @@ owns the file system, which is where the two rules that must not be duplicated l
 
 * the source is an input on every path and an output on none, checked by file identity before
   anything is read, so a hard link of the image cannot be written through;
+* both destinations answer the shared R3 protected-input policy, twice: once before the image is
+  read and again at the staged write, so a protected destination is refused before a directory or
+  a `.partial` file exists;
 * an image and a report are staged into sibling temporary files and renamed into place, so a
   reader never sees a partial write.
 
@@ -49,6 +52,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from tools.webfoot.destination import refuse_rom_destination
 from tools.webfoot.dialogue_edit import (DialogueEditError, DialogueRewrite, LineEdit,
                                          rewrite_dialogue)
 from tools.webfoot.sprite_swap import (DONOR_GEOMETRY, PortraitSwap, SheetSlot, SpriteGeometry,
@@ -64,8 +68,15 @@ def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def write_staged(path: Path, data: bytes) -> None:
-    """Write through a sibling temporary file, then rename, so a partial is never visible."""
+def write_staged(path: Path, data: bytes, source: Path) -> None:
+    """Write through a sibling temporary file, then rename, so a partial is never visible.
+
+    `refuse_rom_destination` is the first statement, because this is the last code that runs
+    before the destination directory and its `.partial` file are created: a protected
+    destination is refused before either exists. OWNER R3, the same policy every other writer
+    answers, re-applied here rather than assumed from the caller's earlier check.
+    """
+    refuse_rom_destination(source, path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".",
                                      suffix=".partial", delete=False) as handle:
@@ -268,11 +279,18 @@ def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
     One implementation of the two rules that must not be duplicated: the source-alias refusal
     and the staged write. A caller supplies its own transform (bytes to bytes plus a report)
     and its own error type, so a preset refuses in the vocabulary its callers already match.
+
+    Both destinations answer OWNER R3's protected-input policy here, before the image is read
+    and before the transform runs, so a refusal costs nothing and creates nothing. The publish
+    boundary re-checks in `write_staged`, which is where the destination directory is made.
     """
     ensure_not_source_alias(image_path, out_path)
     if report_path is not None:
         ensure_not_source_alias(image_path, report_path)
         ensure_not_source_alias(out_path, report_path)
+    refuse_rom_destination(image_path, out_path)
+    if report_path is not None:
+        refuse_rom_destination(image_path, report_path)
     try:
         image = image_path.read_bytes()
     except OSError as exc:
@@ -293,10 +311,11 @@ def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
         "path": str(image_path), "sha256": digest, "size": len(image),
         "output_path": str(out_path), "output_sha256": sha256(out), "output_size": len(out),
     }
-    write_staged(out_path, out)
+    write_staged(out_path, out, image_path)
     if report_path is not None:
         write_staged(report_path,
-                     (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+                     (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+                     image_path)
     if sha256(image_path.read_bytes()) != digest:
         raise error("the source image changed during the build")
     return report

@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
 from tools.webfoot import character_swap as cs
+from tools.webfoot import destination as destination_sdk
 from tools.webfoot import sprite_swap
 from tools.webfoot.sprite_swap import SpriteSwapError
 
@@ -280,3 +282,173 @@ def test_guarded_apply_leaves_no_partial_files_behind_after_a_refusal(tmp_path):
 def test_the_engine_refuses_a_pass_with_nothing_to_do(tmp_path):
     with pytest.raises(SpriteSwapError, match="no operation was given"):
         sprite_swap.swap(b"", tmp_path)
+
+
+# --- the shared R3 destination policy, on the production publish path --------------------------
+#
+# The destination rule is `tools.webfoot.destination`, reused as it is. These tests drive it
+# through the production path - `guarded_apply`, `write_staged` and the module's own `main` - and
+# prove that a refusal leaves the source, the protected inputs, an existing destination and the
+# protected directory itself exactly as they were, with no `.partial` file created.
+#
+# The checkout under test is private to this module: the policy is read from a `.gitignore` this
+# file writes into a temporary root, so nothing here reads or writes the real repository's ROM
+# inputs.
+
+ROM_NAME = "Dragon Ball Z - Buu's Fury (U).gba"
+ROM_BYTES = b"protected canonical rom bytes" * 4
+
+
+@pytest.fixture(autouse=True)
+def _isolate_protected_input_index():
+    """One root's protected-input index must not be read by another test's run."""
+    destination_sdk._PROTECTED_CACHE.clear()
+    yield
+    destination_sdk._PROTECTED_CACHE.clear()
+
+
+@pytest.fixture
+def protected_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A private checkout whose `roms/` directory holds one protected ROM."""
+    root = tmp_path / "checkout"
+    (root / "roms").mkdir(parents=True)
+    (root / ".gitignore").write_text("roms/\nroms\n", encoding="utf-8")
+    (root / "roms" / ROM_NAME).write_bytes(ROM_BYTES)
+    monkeypatch.setattr(destination_sdk, "repository_root", lambda: root)
+    return root
+
+
+def _source(tmp_path: Path) -> Path:
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"base")
+    return source
+
+
+def _protected_names(checkout: Path) -> list[str]:
+    return sorted(p.name for p in (checkout / "roms").iterdir())
+
+
+def test_guarded_apply_refuses_a_new_name_in_a_protected_directory(
+        protected_checkout: Path, tmp_path: Path):
+    """The hole this closes: the guard used to run only against the source itself."""
+    source = _source(tmp_path)
+    destination = protected_checkout / "roms" / "derivative.gba"
+    before = (protected_checkout / "roms" / ROM_NAME).read_bytes()
+
+    with pytest.raises(cs.WriteError, match="protected ROM input directory"):
+        cs.guarded_apply(source, cs.sha256(b"base"), destination, None, _transform)
+
+    assert not destination.exists()
+    assert not list((protected_checkout / "roms").glob("*.partial"))
+    assert _protected_names(protected_checkout) == [ROM_NAME]
+    assert (protected_checkout / "roms" / ROM_NAME).read_bytes() == before
+    assert source.read_bytes() == b"base"
+
+
+def test_guarded_apply_refuses_a_report_in_a_protected_directory(
+        protected_checkout: Path, tmp_path: Path):
+    """The policy is about the path, so it covers the report destination too."""
+    source = _source(tmp_path)
+    destination = protected_checkout / "roms" / "report.json"
+
+    with pytest.raises(cs.WriteError, match="protected ROM input directory"):
+        cs.guarded_apply(source, cs.sha256(b"base"), tmp_path / "out.bin", destination,
+                         _transform)
+
+    assert not destination.exists()
+    assert not (tmp_path / "out.bin").exists(), "the report refusal must precede the publish"
+    assert _protected_names(protected_checkout) == [ROM_NAME]
+
+
+def test_guarded_apply_refuses_a_hardlink_of_a_protected_rom(
+        protected_checkout: Path, tmp_path: Path):
+    """A different name and a different directory, one file: identity is what refuses this."""
+    source = _source(tmp_path)
+    protected = protected_checkout / "roms" / ROM_NAME
+    alias = tmp_path / "alias.gba"
+    os.link(protected, alias)
+
+    with pytest.raises(cs.WriteError, match="same file under a different name"):
+        cs.guarded_apply(source, cs.sha256(b"base"), alias, None, _transform)
+
+    assert protected.read_bytes() == ROM_BYTES
+    assert alias.read_bytes() == ROM_BYTES
+    assert not list(tmp_path.glob("*.partial"))
+
+
+def test_guarded_apply_refuses_a_junction_route_into_a_protected_directory(
+        protected_checkout: Path, tmp_path: Path):
+    """A directory alias is not a way around the rule; the destination path is resolved."""
+    route = tmp_path / "route-to-roms"
+    try:
+        os.symlink(protected_checkout / "roms", route, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:  # pragma: no cover - host policy
+        pytest.skip(f"this host cannot create a directory link: {exc}")
+    if not route.is_dir():  # pragma: no cover - defensive
+        pytest.skip("the host accepted the call but created no directory link")
+
+    with pytest.raises(cs.WriteError, match="protected ROM input directory"):
+        cs.guarded_apply(_source(tmp_path), cs.sha256(b"base"), route / "anything.gba", None,
+                         _transform)
+
+    assert _protected_names(protected_checkout) == [ROM_NAME]
+
+
+def test_write_staged_refuses_before_creating_anything_in_a_protected_directory(
+        protected_checkout: Path, tmp_path: Path):
+    """The publish boundary itself refuses: no directory and no `.partial` file is created.
+
+    `write_staged` is the function that calls `mkdir` and creates the temporary file, so this is
+    the call a guard placed only beside the source-alias checks would have left reachable.
+    """
+    destination = protected_checkout / "roms" / "made-up" / "out.gba"
+
+    with pytest.raises(cs.WriteError, match="protected ROM input directory"):
+        cs.write_staged(destination, b"x", _source(tmp_path))
+
+    assert not (protected_checkout / "roms" / "made-up").exists()
+    assert _protected_names(protected_checkout) == [ROM_NAME]
+
+
+def test_the_cli_refuses_a_protected_destination_and_never_reaches_the_spec(
+        protected_checkout: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """Direct CLI invocation: exit 2, the rule named, and no file or directory created."""
+    source = _source(tmp_path)
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps(_dialogue(_line())), encoding="utf-8")
+    destination = protected_checkout / "roms" / "cli-output.gba"
+
+    code = cs.main(["--image", str(source), "--expect-sha256", cs.sha256(b"base"),
+                    "--spec", str(spec), "--out", str(destination)])
+
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "refused:" in captured.err
+    assert "protected ROM input directory" in captured.err
+    assert not destination.exists()
+    assert _protected_names(protected_checkout) == [ROM_NAME]
+
+
+def test_the_cli_still_writes_a_legitimate_derivative(tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch,
+                                                      capsys: pytest.CaptureFixture[str]):
+    """Requirement 5: a safe output location is still written, directory and all.
+
+    Only the pixel and dialogue engines are stubbed here; the guard, the staged write, the exit
+    code and the report are the production ones.
+    """
+    source = _source(tmp_path)
+    spec = tmp_path / "spec.json"
+    spec.write_text("{}", encoding="utf-8")
+    destination = tmp_path / "output" / "derivative.gba"
+    report = tmp_path / "output" / "derivative.json"
+    monkeypatch.setattr(cs, "apply_spec",
+                        lambda image, path: (image + b"!", {"note": "n", "passes": []}))
+
+    code = cs.main(["--image", str(source), "--expect-sha256", cs.sha256(b"base"),
+                    "--spec", str(spec), "--out", str(destination), "--report", str(report)])
+
+    assert code == 0
+    assert destination.read_bytes() == b"base!"
+    assert json.loads(report.read_text(encoding="utf-8"))["note"] == "n"
+    assert cs.sha256(destination.read_bytes()) in capsys.readouterr().out

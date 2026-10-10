@@ -200,17 +200,21 @@ recorded rather than quietly dropped:**
 The prior image also settles nothing about the risk in item 3 below, because it was never
 observed running.
 
-## What is still unproven, named
+## What the runtime run then settled, and what is still unproven
 
-1. **No runtime observation yet.** Everything above is bytes and arithmetic. The selector
-   census and the split proof are the runtime lane's job, and this document does not claim
-   them.
+The runtime lane's report is `FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`. It settles two of the
+items below and leaves the rest:
+
+1. ~~No runtime observation yet.~~ **Settled.** A selector-7 container was resolved by the
+   engine (`r1` = the table base, engine index 7, five times) and rendered on screen
+   (`ZZSPLITZZ...` in the dialogue box); on the unmodified image every resolved selector was
+   3, across nine resolutions in a run whose dispatch channel fired 102,995 times.
 2. **A selector used by a record word elsewhere.** 462 record-shaped words in the image carry
    a selector above 6 and sit outside every dialogue payload; 3 more (selector 13) sit inside
-   one. Slot **7 carries none inside a payload and 9 elsewhere**. Writing a live container
-   into a slot changes what those words mean *if and only if* the engine ever parses one of
-   them as a record, which the selector census is the only instrument that can answer. Slot 7
-   is the safest available choice on this evidence, not a proven-safe one.
+   one. Slot **7 carries none inside a payload and 9 elsewhere**. The runtime census shows the
+   engine resolving only the selectors records actually name, so those words are never
+   resolved in the scene measured - but that is one scene, and slot 7 remains the safest
+   available choice on this evidence rather than a proven-safe one for every scene.
 3. **The pad reference is retail, and the World Tournament records are already renamed.** The
    join for those rows is a per-row decision to be measured against the row's own `#` prefix,
    as recorded above.
@@ -221,14 +225,15 @@ observed running.
 5. **Save compatibility is unchanged by this route**, because no save layout, base-stat table
    or game code is touched - but that is inherited reasoning, not a measurement of this
    route.
+6. **Proven by the engine at runtime, and it needs saying plainly**: the derivative reads the
+   table from **one** site, `0x08012248`. The second site a previous ticket named,
+   `0x080122CE`, never fired in any corrected run. The split has one consumer to satisfy.
 
 ## Verdict
 
-**SPLIT ROUTE PROVEN** statically for the data edit: one table word, one appended container,
-113 handle words, no engine change, no literal repoint, and the arithmetic fits with 17,488
-bytes of slack. The runtime half of item 4 above is the remaining gate, and the ticket's own
-acceptance says the route is proven only with runtime evidence; until that run is recorded,
-this document's static verdict is **UNPROVEN at the ticket's gate**.
+**SPLIT ROUTE PROVEN**, statically and at runtime: one table word in dead copied data, one
+appended container, 113 handle words, no engine change, no literal repoint, 17,488 bytes of
+slack, and the engine resolving and rendering a selector-7 record.
 
-Final verdict for phase A: `PHASE A: PROVEN` on the measurements above, with the runtime
-proof recorded separately in `FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`.
+Final verdict for phase A: `PHASE A: PROVEN`.
+

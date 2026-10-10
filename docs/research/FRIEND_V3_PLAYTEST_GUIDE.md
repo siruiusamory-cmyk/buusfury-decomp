@@ -59,7 +59,7 @@ save-state artifact rather than a build defect. To start genuinely clean, delete
 | five party slots at level 200 | the first five party records start at the level ceiling |
 | STR, POW, END and SPD at 255 | maximum for those four attributes |
 | HP and EP left at retail values | deliberately not raised: `0xFFFF` reads as negative and broke energy attacks, so HP/EP were excluded |
-| character names, menu text, credits | the completed text pass, which renames identities: Goku reads as **Yamcha**, and Chi-Chi as **Tulma**. Krillin, Gohan, Goten, Trunks, Vegeta and Tien keep their names |
+| character names, menu text, credits | the completed text pass renames identities: Goku reads as **Yamcha**, Gohan as **Krillin**, Krillin as **Goku**, Goten as **Videl**, Trunks as **Uub**, Vegeta as **Tien**, Chi-Chi as **Bulma** and retail Bulma as **Tulma**. The full table, with its evidence, is section 4.2 of `FRIEND_V3_PLAYTEST_BOOST.md` |
 | Tulma | replaced actor sprite, portrait slot 17, and two rewritten dialogue records |
 
 **Read the roster before reporting a stat defect.** The boosted slots wear the build's renamed
@@ -72,8 +72,9 @@ or removed, and no item is added to your inventory at the start.
 ## 5. Known limitations
 
 1. **No chapter was walked.** Progression past the smoke-test window is unverified.
-2. **Tulma's encounter is unconfirmed.** The graphics and dialogue are in the image, but no
-   scripted in-game encounter has been observed.
+2. **Tulma's scene is unconfirmed on this image.** Her art, portrait and two rewritten lines
+   were seen in the World Tournament registration scene on earlier images in the same chain;
+   that scene has not been reached on this one.
 3. **The level cap of 200 is a code constant, not a table.** Nothing was done about raising it.
 4. **Late-game stability is not claimed.** Two hazard records remain open as latent:
    zero composition-buffer slack (297 of 297 slots) and a latent tail-write hazard,
@@ -120,6 +121,7 @@ Also worth watching for, because they are what this build touches:
 | e | a Tulma appearance matches the intended art and dialogue | [ ] |
 | f | save, quit, reload preserves progress and inventory | [ ] |
 | g | the Grand Kai does not show `The game will not run on this hardware` | [ ] |
+| h | switching to each boosted character and back keeps its level and stats | [ ] |
 
 ## 7. Reporting a bug
 

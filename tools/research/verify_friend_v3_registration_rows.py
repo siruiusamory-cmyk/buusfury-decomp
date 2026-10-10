@@ -80,19 +80,33 @@ def main() -> int:
 
     table = int.from_bytes(image[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
 
-    def resolved(selector: int) -> tuple[int, bytes]:
-        pointer = int.from_bytes(image[table + selector * 4:table + selector * 4 + 4],
+    def resolved_in(source: bytes, selector: int) -> tuple[int, bytes]:
+        literal = int.from_bytes(source[TABLE_LITERAL:TABLE_LITERAL + 4],
+                                 "little") - ROM_BASE
+        pointer = int.from_bytes(source[literal + selector * 4:literal + selector * 4 + 4],
                                  "little")
-        if not ROM_BASE <= pointer < ROM_BASE + len(image):
+        if not ROM_BASE <= pointer < ROM_BASE + len(source):
             raise SystemExit(f"selector {selector} does not resolve inside the image")
-        container = webfoot_lz.unpack(image, pointer - ROM_BASE)
+        container = webfoot_lz.unpack(source, pointer - ROM_BASE)
         return pointer - ROM_BASE, bytes(container.data)
 
-    # 1: the two new dialogue rows.
+    def resolved(selector: int) -> tuple[int, bytes]:
+        return resolved_in(image, selector)
+
+    # 1: the two new dialogue rows. The handle site is recomputed from the BASELINE image's
+    # own inventory, not read out of the manifest the builder wrote: after the write those
+    # records' handles name selector 7, so the finished image's inventory no longer lists them
+    # under their original coordinates, while the baseline's does.
+    container_two_baseline = resolved_in(against, 2)[1]
     for row in APPROVED_DIALOGUE_ROWS:
-        sites = [change["site"] for change in manifest["site_changes"]
-                 if change["key"] == row.key]
-        check(bool(sites), f"{row.key} has a repointed handle site")
+        sites = sorted(
+            site for record in cd.dialogue_record_inventory(against, row.selector,
+                                                            len(container_two_baseline))
+            if record.handle.decoded_start == row.start
+            and record.handle.decoded_length == row.length
+            for site in record.sites)
+        check(bool(sites),
+              f"{row.key} has a handle site the baseline's own inventory reports")
         if not sites:
             continue
         handle = int.from_bytes(image[sites[0]:sites[0] + 4], "little")
@@ -117,22 +131,34 @@ def main() -> int:
           f"text slot {slot} reads its approved wording from its new home")
 
     # 3: the fifteen World Tournament rows still resolve inside their container's declared
-    # size. Their handles are read from the record words that carry them, NOT from the
-    # inventory's own key: release 2 rewrote those handles to selector 7 with the container-7
-    # start offsets, so a check that assumed the container-3 coordinates would compare two
-    # different coordinate spaces and fail for the wrong reason.
+    # size, AT THE SITES THAT CARRY THEM. Their handles were rewritten by release 2 to selector
+    # 7 with the container-7 start offsets, so this reads each handle from the image at a site
+    # the baseline itself reports, then checks the text at the start that handle names. A
+    # substring test over the payload would pass even if the records had been reordered, which
+    # is the failure this step exists to catch.
     container_offset, payload = resolved(7)
     declared = int.from_bytes(image[container_offset + 4:container_offset + 8], "little")
     check(len(payload) == declared,
           f"the selector-7 container declares {declared} bytes and decodes to {len(payload)}")
-    found = sorted(cd.dialogue_record_inventory(image, 7, declared),
-                   key=lambda record: record.handle.decoded_start)
-    carried = [payload[record.handle.decoded_start:
-                       record.handle.decoded_start + record.handle.decoded_length]
-               .decode("utf-16le") for record in found]
-    print(f"     the selector-7 container carries {len(carried)} record word(s)")
+    baseline_sites = sorted(
+        site for record in cd.dialogue_record_inventory(against, 7, declared)
+        for site in record.sites)
+    check(bool(baseline_sites),
+          f"the baseline reports {len(baseline_sites)} handle site(s) in container 7")
     for key, expected in WT_ROWS:
-        check(expected in carried, f"{key} still reads its release-2 wording in container 7")
+        _selector, _start, _length = (int(part) for part in key.split(":"))
+        hit = None
+        for site in baseline_sites:
+            selector, start, length = unpack_handle(
+                int.from_bytes(image[site:site + 4], "little"))
+            if (selector == 7 and length and start + length <= len(payload)
+                    and payload[start:start + length].decode("utf-16le") == expected):
+                hit = (site, start, length)
+                break
+        check(hit is not None,
+              f"{key} still reads its release-2 wording at a handle site in container 7")
+        if hit is not None:
+            print(f"     {key} -> site 0x{hit[0]:06X}, start {hit[1]}, length {hit[2]}")
 
     # 4: the differing bytes are the declared sites plus the append, and the base is intact.
     allowed = set(range(len(against), len(image)))

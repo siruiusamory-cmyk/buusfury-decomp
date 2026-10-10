@@ -73,13 +73,15 @@ own output back and refuses if the carried prefix does not hold the release-2 wo
 | both dialogue rows resolve through the table and read the owner's wording exactly | PASS |
 | text slot 1083 reads the owner's wording from its new home, recomputed from the tracked approval constant | PASS |
 | the selector-7 container declares 2,266 bytes and decodes to 2,266 | PASS |
-| the container carries 18 record words: the fifteen World Tournament rows plus the two new records and the copied string | PASS |
-| all fifteen World Tournament rows still read their release-2 wording | PASS |
+| all fifteen World Tournament rows still read their release-2 wording, resolved from a handle site the baseline image itself reports, at the start offset that handle names | PASS, 15 of 15 |
+| the 18 "record words" the container yields to the inventory are not 18 records: three records were placed, the rest are text units that happen to decode as handles. Nothing is claimed from that count | noted |
 | bytes differing from the base outside the declared sites | 0 |
 | differing bytes in the base | 12, exactly three sites of four bytes |
-| reproduced twice | byte-identical, both `018757c4…` |
+| reproduced from the release-2 base in one chain (`build_friend_v3_release21.py`), which is the check an independent rebuild needs | byte-identical, `018757c4…` |
+| reproduced twice from the intermediate | byte-identical, both `018757c4…` |
 | BOOST absence, re-measured on this image: the 25 bytes the BOOST builder declares all hold the foundation's byte | PASS, 25 of 25, and the BOOST image differs at all 25 so the check is not vacuous |
 | relocation guard, its refusal path and its word alignment | `tests/unit/test_friend_v3_text_slot.py`, 6 passed |
+| the container prefix arithmetic: the carried payload, the new record's offset, the declared size, the unaligned-input pad, and the refusal on a site that does not carry the expected handle | `tests/unit/test_friend_v3_registration_rows.py`, 5 passed |
 
 ## Runtime
 

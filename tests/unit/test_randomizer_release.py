@@ -16,6 +16,13 @@ that from being undone.
 
 Two rules live here: one about the module graph, one about the identity the
 executable claims. Both are cheap to keep and expensive to lose silently.
+
+:data:`PRODUCTS` is the release guard's own list rather than a second copy of it,
+which is what makes a fourth product impossible to register with the guard and
+leave out of these rules. One entry is an installed application instead of an
+archive, so the graph rule carries a control for each shape, the firewall rule is
+an archive rule and says so, and the identity rules read whichever module owns the
+identity for that product.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from tools.quality import public_release
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PREFIX = "tools.webfoot"
+APPLICATION_PREFIX = "tools.dragonbyte"
 
 #: The entry script each spec template freezes, and the product identity beside
 #: it. The list is the release guard's own, not a second copy of it: a product
@@ -40,6 +48,12 @@ PREFIX = "tools.webfoot"
 PRODUCTS = tuple(
     (product.package, product.build_name) for product in public_release.PRODUCTS
 )
+
+#: The packages whose build an installed application's own entry module freezes:
+#: the application lives outside ``tools/webfoot``, so the walk below has to be
+#: told where to start and which root to follow. Everything else about the rules
+#: here - the closure, the identity, the spec wiring - applies to both shapes.
+APPLICATION_ENTRY_MODULES = {"dragonbyte": "tools.dragonbyte._pyinstaller_entry"}
 
 #: Modules the frozen randomizers carried before EXE-PACKAGE-HYGIENE-001 and must
 #: not reach again. Measured, not guessed: this is the difference between the
@@ -80,14 +94,54 @@ COMMAND_SURFACE = (
     "tools.webfoot.formats.indexed_png",
 )
 
-#: Modules a correct closure must contain. Without these a broken walker could
-#: return an empty set and pass every rule below by proving nothing.
-REQUIRED = (
-    "tools.webfoot.catalog",
-    "tools.webfoot.write",
-    "tools.webfoot.randomizer.service",
-    "tools.webfoot.enemy_randomizer.planner",
-)
+#: A frozen build of one product shape reaches modules no other shape reaches.
+#: Without naming them, a broken walker could return a small set and pass every
+#: rule below by proving nothing.
+REQUIRED_BY_SHAPE = {
+    "archive": (
+        "tools.webfoot.catalog",
+        "tools.webfoot.write",
+        "tools.webfoot.randomizer.service",
+        "tools.webfoot.enemy_randomizer.planner",
+    ),
+    "installed": (
+        "tools.dragonbyte.app",
+        "tools.dragonbyte.session",
+        "tools.dragonbyte.shell",
+        "tools.webfoot.catalog",
+        "tools.webfoot.write",
+        "tools.webfoot.release_identity",
+    ),
+}
+
+#: The shapes, named once, so the parametrized rules below cannot disagree about
+#: which products each applies to.
+_ARCHIVE = "archive"
+_INSTALLED = "installed"
+
+
+def _shape(package: str) -> str:
+    product = next(item for item in public_release.PRODUCTS if item.package == package)
+    return product.release_shape
+
+
+def _roots(package: str) -> tuple[str, ...]:
+    if _shape(package) == _INSTALLED:
+        return (PREFIX, APPLICATION_PREFIX)
+    return (PREFIX,)
+
+
+def _identity_module(package: str) -> str:
+    """The module that owns a product's identity, per shape.
+
+    A randomizer carries ``TOOL_NAME``/``TOOL_VERSION`` in its own ``service.py``;
+    an installed application reads the repository's one identity authority, which
+    is the whole reason its version resource is a second spelling of that module
+    and not a second identity.
+    """
+    if _shape(package) == _INSTALLED:
+        return "tools/webfoot/release_identity.py"
+    return f"tools/webfoot/{package}/service.py"
 
 _VERSION_STRING = re.compile(r'StringStruct\("(\w+)",\s*"((?:[^"\\]|\\.)*)"\)')
 _VERSION_TUPLE = re.compile(r"\b(filevers|prodvers)=\(([^)]*)\)")
@@ -127,12 +181,18 @@ def _imported_names(source: Path, package: str) -> set[str]:
     ``from .cli import ...`` inside a function that a frozen build still bundles
     and a live interpreter never runs.
 
-    Only names under :data:`PREFIX` are resolved, and a submodule alias is probed
-    only when the base is a package. Both limits exist to keep this from
-    importing anything: ``find_spec`` imports a name's parents, so probing
-    ``PySide6.QtWidgets.QApplication`` would load a widget toolkit, and so would
-    probing ``...enemyrand.gui.main``, whose parent module imports one.
+    Only names under :data:`PREFIX` or :data:`APPLICATION_PREFIX` are resolved, and
+    a submodule alias is probed only when the base is a package. Both limits exist
+    to keep this from importing anything: ``find_spec`` imports a name's parents,
+    so probing ``PySide6.QtWidgets.QApplication`` would load a widget toolkit, and
+    so would probing ``...enemyrand.gui.main``, whose parent module imports one.
     """
+    def is_project(name: str) -> bool:
+        return any(
+            name == root or name.startswith(root + ".")
+            for root in (PREFIX, APPLICATION_PREFIX)
+        )
+
     found: set[str] = set()
     for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Import):
@@ -141,7 +201,7 @@ def _imported_names(source: Path, package: str) -> set[str]:
             base = _base_module(node, package)
             if base:
                 found.add(base)
-            if base != PREFIX and not base.startswith(PREFIX + "."):
+            if not is_project(base):
                 continue
             if not _is_package(base):
                 continue
@@ -151,23 +211,27 @@ def _imported_names(source: Path, package: str) -> set[str]:
     return found
 
 
-def _project_closure(entry: Path) -> set[str]:
+def _project_closure(entry: Path, roots: tuple[str, ...] = (PREFIX,)) -> set[str]:
     """Every project module reachable from an entry script, packages included.
 
     Importing ``a.b.c`` also runs ``a`` and ``a.b``, so a package's ``__init__``
-    is part of the graph whether or not anything names it.
+    is part of the graph whether or not anything names it. ``roots`` names the
+    packages whose contents count: a randomizer's graph is ``tools.webfoot`` alone,
+    and the installed application's reaches ``tools.dragonbyte`` as well.
     """
+    def is_project(name: str) -> bool:
+        return any(name == root or name.startswith(root + ".") for root in roots)
+
     reached: set[str] = set()
     pending = list(_imported_names(entry, ""))
     while pending:
         name = pending.pop()
-        if name in reached or not name.startswith(PREFIX):
+        if name in reached or not is_project(name):
             continue
         reached.add(name)
         parent = name.rpartition(".")[0]
-        while parent.startswith(PREFIX) and parent not in reached:
+        while is_project(parent) and parent not in reached:
             reached.add(parent)
-            pending.append(parent)
             parent = parent.rpartition(".")[0]
         path = _module_path(name)
         if path is not None:
@@ -177,28 +241,49 @@ def _project_closure(entry: Path) -> set[str]:
 
 
 def _entry(package: str) -> Path:
+    if package in APPLICATION_ENTRY_MODULES:
+        return REPO_ROOT / Path(*APPLICATION_ENTRY_MODULES[package].split(".")).with_suffix(
+            ".py"
+        )
     return REPO_ROOT / "tools" / "webfoot" / package / "_pyinstaller_entry.py"
 
 
 @pytest.mark.parametrize("package,build_name", PRODUCTS, ids=[p[0] for p in PRODUCTS])
 def test_the_walk_sees_a_closure_worth_checking(package: str, build_name: str):
-    """A control for the two rules below: the graph must actually be walked.
+    """A control for the rules below: the graph must actually be walked.
 
-    Measured against the shipped builds, the walk returns the same 68 project
-    modules each executable carries. If it ever returns a small set - because an
-    entry point moved, or a resolution changed - this fails rather than letting
-    the rules pass on nothing.
+    Measured against the shipped randomizer builds, the walk returns the same 68
+    project modules each executable carries. The installed application reaches its
+    own package as well, so its required set is its own - and both are checked, so
+    a walk that returned a small set for either shape fails here rather than letting
+    the rules below pass on nothing.
     """
-    reached = _project_closure(_entry(package))
+    reached = _project_closure(_entry(package), _roots(package))
 
-    missing = sorted(name for name in REQUIRED if name not in reached)
+    required = REQUIRED_BY_SHAPE[_shape(package)]
+    missing = sorted(name for name in required if name not in reached)
     assert missing == [], f"the walk from {package} missed {missing}"
     assert len(reached) >= 60, f"the walk from {package} found only {len(reached)} modules"
 
 
 @pytest.mark.parametrize("package,build_name", PRODUCTS, ids=[p[0] for p in PRODUCTS])
-def test_a_release_reaches_no_part_of_the_command_surface(package: str, build_name: str):
-    reached = _project_closure(_entry(package))
+def test_an_archive_release_reaches_no_part_of_the_command_surface(
+    package: str, build_name: str
+):
+    """An archive rule, and archived products only.
+
+    A randomizer's release bundles what its entry point can reach, and it runs one
+    job; reaching the command surface there means shipping an entire CLI for a
+    function that has its own module. The installed application is not held to this
+    rule because its destinations legitimately call the atlas, the map reader, the
+    text reader and the graphics readers - that is the product, not an accident of
+    reachability - and it is named as an exception here rather than left to be
+    discovered.
+    """
+    if _shape(package) != _ARCHIVE:
+        pytest.skip(f"{build_name} is an installed application, not an archive")
+
+    reached = _project_closure(_entry(package), _roots(package))
     offenders = sorted(
         name
         for name in reached
@@ -220,26 +305,51 @@ def test_the_version_resource_names_the_product_it_is_built_into(package: str, b
     Read by parsing rather than by evaluating the file: the expression in it is
     PyInstaller's, and a build-time dependency on PyInstaller would make this
     test skip in the portable gate, which is where it is worth the most.
+
+    Which module owns the identity depends on the shape (see
+    :func:`_identity_module`), and the comparison is between four-field tuples
+    built from each side rather than between two spellings of the same number, so a
+    three-field randomizer version and a four-field application version are checked
+    by one rule.
     """
-    service = REPO_ROOT / "tools" / "webfoot" / package / "service.py"
-    source = service.read_text(encoding="utf-8")
+    source_path = REPO_ROOT / _identity_module(package)
+    source = source_path.read_text(encoding="utf-8")
 
     def constant(name: str) -> str:
         match = re.search(rf'^{name} = "([^"]*)"$', source, flags=re.MULTILINE)
-        assert match is not None, f"{service.name} does not define {name}"
+        assert match is not None, f"{source_path.name} does not define {name}"
         return match.group(1)
+
+    def four_fields(spelling: str) -> tuple[int, ...]:
+        """The four numeric fields of a version, ignoring a pre-release suffix.
+
+        A Windows resource cannot carry ``dev0``, so the product identity's
+        pre-release form (``0.9.0.dev0``) and the resource's four fields
+        (``0.9.0.0``) are the SAME version spelled where each is legal. Dropping a
+        suffix that is not a number is what lets one rule check both shapes.
+        """
+        numeric = [part for part in re.split(r"[.,]", spelling.strip("() ")) if part.strip()]
+        numeric = [part for part in numeric if part.strip().isdigit()]
+        padded = numeric if len(numeric) >= 4 else [*numeric, *(["0"] * (4 - len(numeric)))]
+        assert len(padded[:4]) == 4, f"{spelling!r} is not four numeric fields"
+        return tuple(int(part) for part in padded[:4])
+
+    if _shape(package) == _INSTALLED:
+        product_name = constant("PRODUCT_NAME")
+        product_version = constant("PRODUCT_VERSION")
+    else:
+        product_name = constant("TOOL_NAME")
+        product_version = constant("TOOL_VERSION")
 
     resource = REPO_ROOT / f"{build_name}.version.txt"
     text = resource.read_text(encoding="utf-8")
     fields = dict(_VERSION_STRING.findall(text))
 
-    assert fields["ProductName"] == constant("TOOL_NAME"), (
-        f"{resource.name} names a different product than {service.name} reports"
+    assert fields["ProductName"] == product_name, (
+        f"{resource.name} names a different product than {source_path.name} reports"
     )
-    version = constant("TOOL_VERSION")
-    padded = ".".join([*version.split("."), *(["0"] * (4 - version.count(".") - 1))])
-    assert fields["FileVersion"] == padded
-    assert fields["ProductVersion"] == padded
+    assert fields["FileVersion"] == fields["ProductVersion"]
+    assert four_fields(fields["FileVersion"]) == four_fields(product_version)
     assert fields["OriginalFilename"] == f"{build_name}.exe"
     assert fields["InternalName"] == build_name
 
@@ -250,10 +360,10 @@ def test_the_version_resource_names_the_product_it_is_built_into(package: str, b
         name: tuple(int(part) for part in value.split(","))
         for name, value in _VERSION_TUPLE.findall(text)
     }
-    expected = tuple(int(part) for part in padded.split("."))
-    assert numeric == {"filevers": expected, "prodvers": expected}, (
-        f"{resource.name} declares {numeric}, which is not {expected}"
-    )
+    assert numeric == {
+        "filevers": four_fields(product_version),
+        "prodvers": four_fields(product_version),
+    }, f"{resource.name} declares {numeric}"
 
 
 @pytest.mark.parametrize("package,build_name", PRODUCTS, ids=[p[0] for p in PRODUCTS])
@@ -264,8 +374,14 @@ def test_the_packaging_script_names_the_version_the_product_reports(package: str
     independent literal; before RELEASE-ARTEFACT-001 nothing tied it to the
     product's own ``TOOL_VERSION``, so a release could be named v0.2.0 while the
     executable inside reported 0.1.0. N-30's portable half.
+
+    This is an archive rule: it is about the name of a zip. A product that ships an
+    installed directory declares no packaging script and no archive name, and is
+    skipped here rather than checked against a rule that does not describe it.
     """
     product = next(item for item in public_release.PRODUCTS if item.package == package)
+    if product.packager is None:
+        pytest.skip(f"{build_name} ships an installed directory, not a named archive")
     script = (REPO_ROOT / product.packager).read_text(encoding="utf-8")
 
     declared = re.search(r"\$Version\s*=\s*'([^']*)'", script)

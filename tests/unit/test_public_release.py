@@ -177,7 +177,11 @@ def _codes(root: Path, product: ReleaseProduct = FUTURE) -> set[str]:
 def test_the_current_release_definitions_are_clean():
     report = release.scan()
 
-    assert report["products"] == ["Buu-Fury-Warp-Randomizer", "Enemy-Randomizer"]
+    # The registry is the authority on which products exist, so this asserts the
+    # report covers every one of them rather than restating their names.
+    assert report["products"] == sorted(
+        product.build_name for product in release.PRODUCTS
+    )
     assert report["files_scanned"] >= 10
     assert report["findings"] == [], json.dumps(report["findings"], indent=2)
 

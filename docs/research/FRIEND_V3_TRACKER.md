@@ -17,7 +17,8 @@ Short names used in the evidence columns: text-pass = `FRIEND_V3_COMPLETE_TEXT_P
 content pass = `FRIEND_V3_CONTENT_PASS.md`; content-pass plan = `FRIEND_V3_CONTENT_PASS_PLAN.md`;
 cold-boot = `FRIEND_V3_COLD_BOOT_ACCEPTANCE.md`; Tulma record = `FRIEND_V3_TULMA_GRAPHICS.md`;
 stability record = `FRIEND_V3_STABILITY_PASS.md`; inventory = `FRIEND_V3_PLAYTEST_BOOST_INVENTORY.md`;
-completion record = `FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md`.
+completion record = `FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md`; Idasa/Uub record =
+`FRIEND_V3_IDASA_UUB_DIALOGUE.md`.
 
 ## 1. Current image
 
@@ -134,7 +135,7 @@ records display as, and whether base-stat record 8 is Videl (external RAM map) o
 | A9 | chapter and saga titles | IMPLEMENTED for chapter 2 `Great Soyman` and chapter 5 `Majin Tien`; no other title text recorded | ROM-VERIFIED | text-pass section 5, item 5 | P3 | none unless the owner supplies title text | C |
 | A10 | credits line `Cale Aaron Cymek` | IMPLEMENTED; present since at least the content-pass foundation; origin not recorded | ROM-VERIFIED at file `0x949FFE`; not seen at runtime | text-pass section 7 | P1 | read the end credits | H |
 | A11 | five orphaned retail strings with no table entry or reference | left in place by decision | ROM-VERIFIED unreachable by the checks applied | text-pass section 4 | P3 | reopen only if one appears on screen | none |
-| A12 | Idasa and Uub interaction dialogue | PLANNED / NOT IMPLEMENTED | none: the text is recorded nowhere | text-pass section 5, item 4; Idasa is pool slot 1016 | P2 | owner writes the lines; then one dialogue edit with the merged toolkit | C, then E |
+| A12 | Idasa and Uub interaction dialogue | LOCATED AND READ, NOT IMPLEMENTED; the image already reads the renamed names | ROM-VERIFIED: every record, handle and single reference site is in the Idasa/Uub record, and each owner-confirmed speaker agrees with the record's portrait operand; observed in play by the owner, no capture | Idasa/Uub record sections 2 to 4; text-pass section 5, item 4 | P2 | owner decides the two open questions in the Idasa/Uub record (section 5, the wealth line; section 6, the two characters named Uub); no other change proposed | C |
 
 **B. Tulma**
 
@@ -276,7 +277,8 @@ The `FRIEND-V3-PLAYTEST-001` charter `in_scope`:
 2. A6: confirm `back into Krillin` in slot 1347.
 3. A7: keep slot 1193 or approve rewording.
 4. A8: keep `Great Soy Man` or approve `Great Soyman`.
-5. A12: write the Idasa and Uub lines.
+5. A12: the Idasa and Uub lines are located and already read correctly; decide the wealth line
+   (Idasa/Uub record section 5) and the two characters named Uub (section 6).
 6. B3: accept Tulma's look after seeing it in play.
 7. B8: whether more palette freedom is wanted.
 8. C1 to C4: approve or drop Dabura to Broly (noting retail already has a Broly boss), choose Spopovich's replacement, set Hercule's and Olibu's difficulty.

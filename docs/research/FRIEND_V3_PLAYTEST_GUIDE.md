@@ -22,8 +22,8 @@ It must print the hash above. If it does not, the build was modified and the pla
 
 ## 2. How to launch
 
-Load that file in any GBA emulator. mGBA is what the evidence was produced on:
-`C:\Dev\log1-remake\build\tools\mgba-dev\extracted\mGBA-build-2026-08-27-.../mGBA.exe`.
+Load that file in any GBA emulator. mGBA is what the evidence was produced on; any current
+build of it works.
 
 Nothing else is required. There is no patcher to run and no per-session setup.
 

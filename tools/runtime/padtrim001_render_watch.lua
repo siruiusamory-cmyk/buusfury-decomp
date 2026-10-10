@@ -122,7 +122,7 @@ local function run()
     local arm_error = "none"
     local breakpoint_id = nil
     local ok_arm, arm_result = pcall(function()
-        return emu:setBreakpoint(function()
+        breakpoint_id = emu:setBreakpoint(function()
             copier_hits = copier_hits + 1
             if rows < ROW_LIMIT then
                 for _, name in ipairs({ "r1", "r0", "r2", "r3" }) do

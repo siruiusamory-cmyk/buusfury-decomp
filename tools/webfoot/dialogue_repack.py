@@ -42,6 +42,7 @@ from pathlib import Path
 from tools.webfoot import compressed_dialogue as cd
 from tools.webfoot.formats import webfoot_lz
 from tools.webfoot.handles import HANDLE_START_MAX_BYTES, pack_handle
+from tools.webfoot.write import WriteError, ensure_not_source_alias
 
 ROM_BASE = 0x08000000
 TABLE_LITERAL = 0x123CC
@@ -529,6 +530,10 @@ def plan_group(selector: int, stream: bytes, records, region: tuple[int, int],
     # Collect every claim first, then require the claims about any one unit to agree. A
     # last-write-wins composition would silently let one record's wording win over another
     # that reads the same byte, which is the corruption mode this project measured twice.
+    # A caller that passes no replacement map is asking for a pure re-layout; treating it as
+    # an empty map is what the docstring already describes. Indexing it would raise
+    # AttributeError on None, which is what an earlier revision did.
+    replacements = replacements or {}
     claims: dict[tuple[int, int], str] = {}
     for record in inside:
         key = f"{selector}:{record.handle.decoded_start}:{record.handle.decoded_length}"
@@ -702,7 +707,23 @@ def main() -> int:
             )
         if args.out and len(result["rebuilt"]) <= len(stream):
             payload_at = pointer - ROM_BASE + CONTAINER_HEADER
-            output[payload_at:payload_at + len(stream)] = result["rebuilt"]
+            # AN IN-PLACE WRITE MUST BE EXACTLY AS LONG AS THE CONTAINER. Slicing a shorter
+            # rebuild into a bytearray shortens the whole image and shifts every byte after
+            # this container, which would invalidate every pointer in it. The duplication
+            # path does not pad its own output, so the padding is applied here, once, for
+            # every route: a payload shorter than the stream is completed with space units,
+            # which no record reads because the spans were verified against the unpadded
+            # rebuild.
+            payload = result["rebuilt"]
+            if len(payload) < len(stream):
+                payload = payload + bytes(SPACE.to_bytes(2, "little")) * (
+                    (len(stream) - len(payload)) // 2)
+            if len(payload) != len(stream):
+                raise RepackError(
+                    f"selector {selector}: the rebuild is {len(payload)} bytes against a "
+                    f"{len(stream)}-byte container and cannot be written in place"
+                )
+            output[payload_at:payload_at + len(stream)] = payload
             for span in result["spans"]:
                 for site in span["sites"]:
                     # The handle fields are BYTE values; pack_handle divides them into
@@ -769,7 +790,19 @@ def main() -> int:
                          "key": span["record"], "new_key": span["new_key"]})
                     output[site:site + 4] = handle
         target = Path(args.out)
-        target.write_bytes(bytes(output))
+        # THE INPUT IS NEVER THE OUTPUT, and the write is staged and read back before it is
+        # published. The sibling writers in tools/research already did this; this module was
+        # the one write path without it, which is what the second review found.
+        try:
+            ensure_not_source_alias(source, target)
+        except WriteError as error:
+            raise RepackError(f"REFUSED: {error}") from error
+        staged = target.with_name(target.name + ".staged")
+        staged.write_bytes(bytes(output))
+        if staged.read_bytes() != bytes(output):
+            raise RepackError(f"REFUSED: the staged write at {staged} does not match "
+                              "the plan")
+        staged.replace(target)
         report["output"] = str(target)
         report["output_sha256"] = sha256_bytes(bytes(output))
         report["output_bytes"] = len(output)

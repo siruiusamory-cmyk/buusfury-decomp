@@ -21,6 +21,50 @@ from tools.research import apply_friend_v3_behaviour_profile as profile
 from tools.research import verify_friend_v3_behaviour_profile as verifier
 from tools.research.friend_v3_text_approvals import (
     APPROVED_BOSS_PROFILES, APPROVED_DIALOGUE_TEXT_EDITS, APPROVED_RELEASES)
+from tools.webfoot.handles import unpack_handle as _unpack
+
+
+def test_the_copied_spawn_is_the_one_the_leaf_reaches() -> None:
+    """B1. The block is serialised AFTER the probability leaf's child is patched. An earlier
+    version serialised first, so the leaf still pointed at the retail shared spawn and the copied
+    spawn and SET nodes were dead bytes - while the verifier, asserting the retail pointer,
+    confirmed it. This asserts the leaf reaches the copy, which is the whole point of copying it."""
+    image = synthetic()
+    block, offsets = profile.build_block(image, IMAGE_SIZE, 22500, 22500, 32768, 799, 90,
+                                         attack_first=True, attack_action=204)
+    leaf = offsets["attack_rand"] - IMAGE_SIZE
+    child = struct.unpack_from("<I", block, leaf + 0x10)[0]
+    assert child == ROM_BASE + offsets["spawn"], "the leaf must reach the copied spawn"
+    assert child != ROM_BASE + profile.FAMILY_ATTACK_SPAWN, "the retail spawn is not the copy"
+
+
+def test_a_populated_behaviour_row_is_refused() -> None:
+    """B2. Rows 799 and 90 are borrowed, so the tool must prove nothing resolves them: a record's
+    `+0x08` or a SET/AUX parameter that names a row means something else already runs it."""
+    image = synthetic()
+    free, _why = profile.row_is_free(image, 799)
+    assert free, "row 799 is unnamed in the canonical image and is the profile's to borrow"
+    # A record that names the row makes it live, and the proof must then refuse it.
+    live = bytearray(image)
+    struct.pack_into("<I", live, RECORD_AT + profile.BEHAVIOUR_FIELD, 799)
+    free, why = profile.row_is_free(bytes(live), 799)
+    assert not free and "names row 799" in why
+    # The shared hub row is named by a SET node, which is the other way a row goes live.
+    free, why = profile.row_is_free(image, 204)
+    assert not free and "pushes row 204" in why
+
+
+def test_a_record_span_is_bytes_not_units() -> None:
+    """B3. `unpack_handle` returns decoded start and length in BYTES, so a record's text is
+    `stream[start:start+length]`. Scaling by the two-byte unit again doubles the window and moves
+    the edit: that defect corrupted 28 records in an earlier release-3 build."""
+    from tools.research.apply_friend_v3_dialogue_text import record_text
+    stream = ("0123456789" * 40).encode("utf-16le")          # 800 bytes
+    handle = 1 | (50 << 6) | (10 << 21)                     # 50 halfwords in, 10 halfwords long
+    selector, start, length = _unpack(handle)
+    assert (selector, start, length) == (1, 100, 20), "the decoder's fields are bytes"
+    assert record_text(stream, start, length) == stream[100:120].decode("utf-16le")
+    assert record_text(stream, start, length) != stream[200:240].decode("utf-16le")
 
 
 def test_the_release_identity_is_well_formed_and_derived_from_the_approvals() -> None:
@@ -29,16 +73,19 @@ def test_the_release_identity_is_well_formed_and_derived_from_the_approvals() ->
     release = next(r for r in APPROVED_RELEASES if r.name == "release-3")
     assert len(release.base_sha256) == 64
     assert len(release.output_sha256) == 64
-    assert release.output_bytes == release.base_bytes + 168      # the appended profile block
+    assert release.output_bytes == release.base_bytes + 136      # the appended profile block
     assert release.stages == ("boss-retune", "behaviour-profile", "dialogue-wording")
 
 
-def test_the_approved_wording_edits_are_the_six_measured_ones() -> None:
-    """Six edits: one spacing repair and five spans covering the ten Kakarot lines. Each new
-    string is no longer than the old one, which is what lets the tool write it inside the record."""
-    assert len(APPROVED_DIALOGUE_TEXT_EDITS) == 6
-    assert sum(1 for edit in APPROVED_DIALOGUE_TEXT_EDITS if edit.new.startswith("Bandit")) == 5
-    assert [edit.selector for edit in APPROVED_DIALOGUE_TEXT_EDITS] == [1, 1, 1, 1, 2, 2]
+def test_the_approved_wording_edits_are_the_measured_ones() -> None:
+    """Five edits: one spacing repair and four spans covering seven of the ten Kakarot lines. Each
+    new string is no longer than the old one, which is what lets the tool write it inside the
+    record. The spans are BYTE coordinates (B3). The phrase "If Yamcha  is" is deliberately absent:
+    every span carrying it has another record's boundary inside it, so it moves to release 4."""
+    assert len(APPROVED_DIALOGUE_TEXT_EDITS) == 5
+    assert sum(1 for edit in APPROVED_DIALOGUE_TEXT_EDITS if edit.new.startswith("Bandit")) == 4
+    assert sum(1 for edit in APPROVED_DIALOGUE_TEXT_EDITS if edit.new == "Great Soyman") == 1
+    assert [edit.selector for edit in APPROVED_DIALOGUE_TEXT_EDITS] == [1, 1, 1, 1, 2]
     for edit in APPROVED_DIALOGUE_TEXT_EDITS:
         assert len(edit.new) <= len(edit.old), edit
         assert edit.old != edit.new
@@ -82,7 +129,10 @@ def test_the_approved_profile_matches_what_was_measured() -> None:
     assert approved.attack_radius_squared == 22500
     assert approved.attack_percent == 50.0
     assert approved.attack_first is True
-    assert approved.attack_action_row == 204
+    # B1: the action-row lever was unreachable in every build, because the appended copy's leaf
+    # still pointed at the retail spawn. The approved profile therefore carries the retail swing
+    # chain, which is what the owner fought and approved.
+    assert approved.attack_action_row is None
 
 
 def test_the_profile_refuses_an_image_that_already_carries_it() -> None:

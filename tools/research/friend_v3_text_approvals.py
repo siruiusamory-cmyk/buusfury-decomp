@@ -106,10 +106,13 @@ APPROVED_BOSS_PROFILES: tuple[ApprovedBossProfile, ...] = (
         attack_radius_squared=22500,
         attack_percent=50.0,
         attack_first=True,
-        attack_action_row=204,
-        approval="FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3 owner scope, 2026-10-10: built by "
-                 "the coordinator's instruction, measured by sweep, and accepted by the owner "
-                 "after he fought it and lost",
+        attack_action_row=None,
+        approval="FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3 owner scope, 2026-10-10: accepted by "
+                 "the owner after he fought the build. The action-row change is NOT part of it: "
+                 "review B1 then measured that the appended copy's probability leaf pointed at the "
+                 "retail shared spawn in every build, so the lever never ran and its apparent "
+                 "cadence gain was an artifact of holding the player still. What the owner actually "
+                 "approved is this profile with the retail swing chain",
     ),
 )
 
@@ -175,39 +178,49 @@ class ApprovedDialogueTextEdit:
 #: positions in the release-3 build, and the tool that applies them refuses unless the record
 #: holds the old text exactly once.
 #:
-#: The six edits are one spacing repair and the tail of the rename pass:
-#:   * "Great Soy Man" -> "Great Soyman", so one character reads the same everywhere it appears.
-#:     Twenty-odd records already read "Great Soyman" and four table slots do too.
-#:   * The records where the canonical ROM says "Kakarot" and this image says "Yamcha" now say
+#: SPANS ARE IN BYTES. `tools/webfoot/handles.py:unpack_handle` already returns decoded start and
+#: length in bytes, so a record's span is `stream[start:start+length]` with no further scaling. An
+#: earlier version of the wording tool multiplied by the two-byte unit a second time, which doubled
+#: every window and damaged 28 records; the coordinates below were re-derived with a byte-correct
+#: search after that defect was found by review.
+#:
+#: The seven edits are two spacing repairs and the tail of the rename pass:
+#:   * "Great Soy Man" -> "Great Soyman" in the two records that carry the spaced form, so the name
+#:     reads the same everywhere. Twenty-odd records already read "Great Soyman" and four table
+#:     slots do too.
+#:   * The five phrases where the canonical ROM says "Kakarot" and this image says "Yamcha" now say
 #:     "Bandit". Retail has Kakarot in ten records; five carry the phrase on their own and five are
 #:     longer chains covering the same words, so five spans cover all ten. Each replacement also
 #:     absorbs the double space the earlier rename left behind it.
 APPROVED_DIALOGUE_TEXT_EDITS: tuple[ApprovedDialogueTextEdit, ...] = (
     ApprovedDialogueTextEdit(
-        selector=1, start=19302, length=588,
+        selector=1, start=38856, length=252,
         old="Great Soy Man", new="Great Soyman",
         approval="owner decision 2026-10-10: the spaced form becomes the name used everywhere else",
     ),
+    # The longer record 1:37530:2416 covers this span, so one edit serves both readers; editing the
+    # covering record as well would be refused because the phrase is already replaced by then.
     ApprovedDialogueTextEdit(
-        selector=1, start=29082, length=292, old="Yamcha", new="Bandit",
+        selector=1, start=58162, length=46, old="Yamcha", new="Bandit",
         approval="owner decision 2026-10-10: retail says Kakarot here",
     ),
     ApprovedDialogueTextEdit(
-        selector=1, start=30850, length=378, old="Yamcha  also", new="Bandit also",
+        selector=1, start=62104, length=138, old="Yamcha  also", new="Bandit also",
         approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
     ),
     ApprovedDialogueTextEdit(
-        selector=1, start=22326, length=418, old="Yamcha's  boy", new="Bandit's boy",
+        selector=1, start=44704, length=468, old="Yamcha's  boy", new="Bandit's boy",
         approval="owner decision 2026-10-10: retail says Kakarot's boy, pad absorbed",
     ),
     ApprovedDialogueTextEdit(
-        selector=2, start=29690, length=208, old="Yamcha  once", new="Bandit once",
+        selector=2, start=59518, length=102, old="Yamcha  once", new="Bandit once",
         approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
     ),
-    ApprovedDialogueTextEdit(
-        selector=2, start=950, length=144, old="Yamcha  is", new="Bandit is",
-        approval="owner decision 2026-10-10: retail says Kakarot here, pad absorbed",
-    ),
+    # NOT APPLIED YET: "If Yamcha  is coming back to fight in the World Tournament" (retail says
+    # Kakarot). Every span that carries it has another live record's boundary inside it - 2:1948:252
+    # contains 1976:128, and the chained records 2:528:2450 and 2:560:3562 have the same problem -
+    # so the replacement's shift would cut that record. The wording tool refuses it by name, and it
+    # moves to release 4 with the container rebuild. Three of the ten Kakarot lines keep "Yamcha".
 )
 
 
@@ -232,14 +245,17 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         name="release-3",
         base_sha256="018757c4e0dda9f463364675f32b307dff9e5ad89c7a0b932939aec320032389",
         base_bytes=10146000,
-        output_sha256="a72f1ecd447173e76f9ac01b955cec8ff93d987854c2418966e05f916ae10c30",
-        output_bytes=10146168,
+        output_sha256="521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd",
+        output_bytes=10146136,
         stages=("boss-retune", "behaviour-profile", "dialogue-wording"),
-        notes="Hercule's and Olibu's encounters retuned and given the measured aggressive profile, "
-              "the Great Soyman spacing repaired, and the ten Kakarot lines reading Bandit. "
-              "Interior double spaces are NOT in this release: they are measured at 424 runs over "
-              "212 records and need a container rebuild with every handle rewritten, which is "
-              "release 4.",
+        notes="Hercule's and Olibu's encounters retuned and given the profile the owner fought, "
+              "the Great Soyman spacing repaired, and five of the ten Kakarot lines reading "
+              "Bandit. Review B1 measured that the action-row change was never reachable (the "
+              "appended copy's leaf pointed at the retail shared spawn), so the profile ships with "
+              "the retail swing chain, and one phrase (\"If Yamcha is coming back\", three records) "
+              "cannot be edited in place because a record boundary sits inside every span that "
+              "carries it. Interior double spaces and that phrase are release 4, which needs a "
+              "container rebuild with every handle rewritten.",
     ),
 )
 

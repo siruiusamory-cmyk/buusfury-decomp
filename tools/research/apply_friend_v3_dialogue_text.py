@@ -72,8 +72,32 @@ def read_stream(image: bytes, selector: int) -> tuple[bytes, int, int]:
     return bytes(container.data), offset, container.kind
 
 
+def boundary_safe(live: list[tuple[int, int]], start: int, length: int) -> str:
+    """Whether an edit inside this span can shift text without cutting another record.
+
+    A replacement shortens the record's own text, and the difference is paid back as spaces at the
+    END of the span. Everything between the edit and that pad therefore moves. A record that merely
+    CONTAINS the span reads the new wording, which is the intent, but a record whose start or end
+    lies strictly INSIDE the span is cut by the move: measured on the release-3 chain, one such
+    record lost its first character and gained one at its end. Such a span cannot be edited in
+    place; it needs the container rebuilt with every handle rewritten.
+    """
+    end = start + length
+    for other_start, other_length in live:
+        other_end = other_start + other_length
+        if (other_start, other_length) == (start, length):
+            continue
+        if start < other_start < end or start < other_end < end:
+            return (f"record {other_start}:{other_length} has a boundary inside this span")
+    return ""
+
+
 def record_text(stream: bytes, start: int, length: int) -> str:
-    return stream[start * UNIT:(start + length) * UNIT].decode("utf-16le")
+    """The record's text. `unpack_handle` already returns both fields in BYTES (handles.py), so a
+    span is `stream[start:start+length]` with no further scaling. Multiplying by the unit size here
+    doubled every window and moved every edit: that is the defect this docstring exists to prevent,
+    and the earlier unit-scaled version corrupted 28 records in the release-3 image."""
+    return stream[start:start + length].decode("utf-16le")
 
 
 def inventory(image: bytes, selector: int, stream: bytes) -> list[tuple[int, int]]:
@@ -125,34 +149,51 @@ def main() -> int:
     }
 
     edit_records: dict[int, list[tuple[int, int, str, str, int]]] = {}
+    live_by_selector: dict[int, list[tuple[int, int]]] = {}
+    for selector in range(CONTAINER_SELECTORS):
+        pointer = container_pointer(image, selector)
+        if pointer < ROM_BASE:
+            continue
+        stream, _offset, _kind = read_stream(image, selector)
+        live_by_selector[selector] = inventory(image, selector, stream)
     for selector, changes in sorted(edits.items()):
         stream = bytearray(streams[selector])
         records = before[selector]
+        live = live_by_selector[selector]
         for start, length, old, new in changes:
+            if start + length > len(stream):
+                raise DialogueTextError(
+                    f"REFUSED: {selector}:{start}:{length} reaches past the container's "
+                    f"{len(stream)}-byte payload, so it is not a live record")
+            unsafe = boundary_safe(live, start, length)
+            if unsafe:
+                raise DialogueTextError(
+                    f"REFUSED: {selector}:{start}:{length} cannot be edited in place: {unsafe}. "
+                    "This span needs the container rebuilt with every handle rewritten.")
             text = record_text(bytes(stream), start, length)
             if text.count(old) != 1:
                 raise DialogueTextError(
                     f"REFUSED: {selector}:{start}:{length} holds {old!r} "
                     f"{text.count(old)} time(s), expected exactly once")
-            if len(new) * UNIT > len(old) * UNIT:
+            if len(new) > len(old):
                 raise DialogueTextError(
                     f"REFUSED: {selector}:{start}:{length}: {new!r} is longer than {old!r}")
             replaced = text.replace(old, new)
-            # Keep the record's own unit count so no later record moves: pad the tail.
-            pad = length - len(replaced)
-            if pad < 0:
+            # Keep the record's own BYTE count so no later record moves: pad the tail.
+            pad_units = (length - len(replaced.encode("utf-16le"))) // UNIT
+            if pad_units < 0:
                 raise DialogueTextError(f"REFUSED: {selector}:{start}:{length}: the replacement "
                                         f"does not fit the record's own span")
-            replaced = replaced + " " * pad
+            replaced = replaced + " " * pad_units
             encoded = replaced.encode("utf-16le")
-            if len(encoded) != length * UNIT:
+            if len(encoded) != length:
                 raise DialogueTextError(f"REFUSED: {selector}:{start}:{length}: the padded record "
-                                        f"is {len(encoded)} bytes, not {length * UNIT}")
-            stream[start * UNIT:(start + length) * UNIT] = encoded
-            edit_records.setdefault(selector, []).append((start, length, old, new, pad))
+                                        f"is {len(encoded)} bytes, not {length}")
+            stream[start:start + length] = encoded
+            edit_records.setdefault(selector, []).append((start, length, old, new, pad_units))
             document["edits"].append({
                 "selector": selector, "start": start, "length": length,
-                "old": old, "new": new, "padded_with": pad,
+                "old": old, "new": new, "padded_with": pad_units,
             })
 
         # A container is either stored (kind 0) or packed (kinds 1 and 2), and it has to go back
@@ -202,13 +243,12 @@ def main() -> int:
         raise DialogueTextError("REFUSED: the staged write does not match the plan")
     staged.replace(target)
 
-    # Readback. The containers are chained: one record's span can sit inside another's, so a
-    # covering record legitimately reads the new wording too. What must hold for EVERY record is
-    # that its words, punctuation and control units are unchanged apart from the edits whose span
-    # lies INSIDE that record - never every occurrence of the word, which is why the expectation
-    # is built from the spans and not by substituting the word everywhere. The comparison is the
-    # project's whitespace-insensitive one, because absorbing a pad moves a space within the
-    # covering record.
+    # Readback. The containers are chained: a record's span can sit inside another's, so a covering
+    # record legitimately reads the new wording, and the payback pad moves to a different place
+    # inside it. What must hold for EVERY record is a character-level invariant: its text with all
+    # spaces removed must equal its old text with all spaces removed and the approved word swaps
+    # applied. That catches a lost, gained or reordered character anywhere, including in a covering
+    # record, without pretending to predict where a pad lands.
     written = target.read_bytes()
     applied = {selector: [(start, length, old, new) for start, length, old, new, _pad in changes]
                for selector, changes in edit_records.items()}
@@ -216,19 +256,17 @@ def main() -> int:
     for selector, records in before.items():
         stream, _offset, _kind = read_stream(written, selector)
         for start, length, text in records:
+            # Only a record whose span CONTAINS an edited span may read different words. Every
+            # other record must be character-identical once spaces are ignored.
             expected = text
             for estart, elength, old, new in applied.get(selector, []):
                 if start <= estart and estart + elength <= start + length:
-                    offset = estart - start
-                    span = expected[offset:offset + elength]
-                    expected = (expected[:offset] + span.replace(old, new)
-                                + " " * (elength - len(span.replace(old, new)))
-                                + expected[offset + elength:])
+                    expected = expected.replace(old, new)
             now = record_text(stream, start, length)
-            if dr.normalised(now) != dr.normalised(expected):
+            if now.replace(" ", "") != expected.replace(" ", ""):
                 problems += 1
-                print(f"FAIL {selector}:{start}:{length}: reads {now[:60]!r}, "
-                      f"expected {expected[:60]!r}")
+                print(f"FAIL {selector}:{start}:{length}: characters changed beyond the swap\n"
+                      f"     reads  {now[:80]!r}\n     expect {expected[:80]!r}")
     for selector, changes in sorted(edits.items()):
         stream, _offset, _kind = read_stream(written, selector)
         for start, length, old, _new in changes:

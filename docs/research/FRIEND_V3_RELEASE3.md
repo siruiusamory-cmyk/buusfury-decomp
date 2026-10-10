@@ -55,10 +55,15 @@ dealt 46 to 50 a blow. The enemy's own bite was measured at three strengths in t
 
 The bite grows faster than linearly: between 22 and 30 it grew by 2.07 for a 1.36 times increase,
 which is an exponent near 2.3, so the cubic is an upper bound and every prediction here says so.
-Olibu's 22 was chosen after the owner fought 35 and 72 and rejected both. Hercule's 40 is a
-prediction over an arithmetic curve: against the 925 maximum hit points measured on the player in
-his own fight it takes about seven blows, so it is a boss rather than a two-shot, and the owner
-locked it on that basis.
+Olibu's 22 was chosen after the owner fought 35 and 72 and rejected both.
+
+**Hercule's 40 is unmeasured and owner-locked.** It was never fought at 40. An earlier version of
+this document justified it with "about seven blows against the player's measured 925", and that
+basis was wrong: 925 is an ENEMY's hit points in that log (actor `0x0202BEF0`, a target the player
+damages), not the player's, so the player's own maximum is never captured anywhere in the
+repository. What is measured about STR 30 in that run is small: two blows, 62 and 58. The owner
+decided to keep 2,500/40/30 without a runtime check, and the value stands on his decision rather
+than on evidence.
 
 ### 2.2 The aggressive profile, per enemy
 
@@ -72,20 +77,25 @@ selectors that resolve into the same tree are unchanged.
 | entry gate | r100 | r150 |
 | swing radius | r50 | r150 |
 | swing chance per evaluation | 12% | 50% |
-| the swing's action row | 206 | **204** |
-| measured swings, stand-still run | 1 to 3 landed in a fight | **41 swings in 812 frames, 19.8 frames apart** |
-| player's own cadence for comparison | | ~25 frames |
+| the swing's action row | 206 | **206, unchanged** |
 
-Two of those three levers were found by measurement rather than by reading:
+Two levers were found by measurement rather than by reading:
 
-* Moving the attack arm to the front was the decisive change. A build that only raised the attack's
-  own numbers measured one landed blow in twenty seconds, because the hub is a first-true OR and a
-  passive branch sat ahead of the attack.
-* The action row decides the cadence. Raising the chance from 50% to its ceiling changed the swing
-  count not at all (37 in 22 seconds against 25 in 21), and cutting the post-attack wait from 18
-  units to 6 changed it not at all either (34 in 22.8 seconds). Row 204 nearly halved the interval.
-* Rows 205 and 207 to 209 were never measured, so 204 is the fastest **measured** row, not the
-  fastest that exists.
+* Moving the attack arm to the front was the decisive change, and it is what the owner felt. A build
+  that only raised the attack's own numbers measured one landed blow in twenty seconds, because the
+  hub is a first-true OR and a passive branch sat ahead of the attack.
+* The chance leaf is NOT a rate lever: raising it from 50% to its ceiling changed the swing count
+  not at all (37 in 22 seconds against 25 in 21).
+
+**The cadence claim is retracted.** An earlier version of this document said the swing's action row
+was moved to 204 and measured 19.8 frames per swing, nearly halving retail's interval. Review B1
+then measured that the appended copy's probability leaf pointed at the retail shared spawn in every
+build - the tool serialised the block before patching that word - so the copied spawn and SET nodes
+were dead bytes and the action row never changed in ANY build, including the one the owner fought.
+The 41-swings-in-812-frames run was therefore the same chain as the plain profile, measured with the
+player held still, and the interval difference is a condition of the run rather than an effect of the
+action row. The tool's ordering defect is fixed and covered by a test, but the action-row lever is
+now unmeasured, so release 3 ships without it.
 
 ### 2.3 The wording tail
 
@@ -130,19 +140,22 @@ copied, so a line will read its old wording until the scene is entered again fro
 
 ## 5. What is deliberately not in this release
 
-**Interior double spaces.** Measured on this image: **424 interior runs of two or more spaces over
-212 records**, against 26 records in the canonical ROM. The gap is the artifact of the earlier
-rename pass, which replaced longer words with shorter ones and left the difference as spaces.
+**Interior double spaces.** Measured on this image in BYTE coordinates: **349 interior runs of two or
+more spaces over 238 records**, against **24** records in the canonical ROM. The gap is the artifact
+of the earlier rename pass, which replaced longer words with shorter ones and left the difference as
+spaces. (An earlier version of this document quoted 424 runs over 212 records, against 26 in retail.
+Those figures came from windows scaled by the two-byte unit a second time, which is the B3 defect;
+they are corrected here and the measurement scripts now read byte spans.)
 
 It is not in release 3 because it cannot be fixed in place, and that was measured rather than
 assumed:
 
-* these containers are chain-shared: selector 4 holds 486 live handles over 65,322 bytes of
-  payload, selector 5 holds 460 over 65,394, so records cover each other;
-* of the 424 runs, only **135 are covered by exactly one live record**. The other 289 are covered
-  by two or more;
-* an in-place pass was built, run and discarded: it collapsed 118 runs and the measured total moved
-  from 424 to 419, because each payback space lands inside a covering record and re-creates a run;
+* these containers are chain-shared: records cover each other, so a run is often inside more than
+  one live record;
+* of the 349 runs, **147 are covered by exactly one live record**. The other 202 are covered by two
+  or more;
+* an in-place pass was built, run and discarded: it collapsed 118 runs and the measured total barely
+  moved, because each payback space lands inside a covering record and re-creates a run;
 
 The correct fix is a container rebuild with every handle word rewritten, which is a ticket of its
 own (release 4). The failed attempt is recorded as pitfall P-023 so it is not repeated.

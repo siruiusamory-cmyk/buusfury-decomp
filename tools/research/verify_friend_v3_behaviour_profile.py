@@ -24,6 +24,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# The row-freeness proof lives in the builder, and the verifier re-derives it from the base image
+# rather than trusting the manifest's prose about it.
+from tools.research import apply_friend_v3_behaviour_profile as builder  # noqa: E402
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 ROM_BASE = 0x08000000
 BEHAVIOUR_TABLE = 0x70F514
 BEHAVIOUR_ROW_STRIDE = 8
@@ -82,8 +88,23 @@ def main() -> int:
           f"the attack radius reads {u32(image, at_attack + 0x0C)}")
     check(u32(image, at_chance + 0x0C) == profile["attack_probability_raw"],
           f"the attack probability reads {u32(image, at_chance + 0x0C)}")
-    check(u32(image, at_chance + 0x10) == ROM_BASE + FAMILY_ATTACK_SPAWN,
-          "the probability leaf still spawns through the family's own spawn node")
+    # The probability leaf's child must be WHERE THE MANIFEST SAYS. Asserting the retail spawn
+    # pointer instead is how an earlier version of this verifier certified a build whose copied
+    # nodes were dead bytes: the tool serialised the block before patching that word, so the leaf
+    # still pointed at the retail shared spawn and the profile's action change never ran. The
+    # expectation now comes from the manifest, and a copy that exists must be the one reached.
+    leaf_child = u32(image, at_chance + 0x10)
+    if "spawn" in manifest["nodes"]:
+        check(leaf_child == int(manifest["nodes"]["spawn"], 16),
+              f"the probability leaf reaches the copied spawn at {manifest['nodes']['spawn']} "
+              f"(it reads 0x{leaf_child:08X})")
+        check(manifest["nodes"]["spawn"] != f"0x{ROM_BASE + FAMILY_ATTACK_SPAWN:08X}",
+              "the copied spawn is not the retail node, so the copy is not dead weight")
+        check(u32(image, int(manifest["nodes"]["set_action"], 16)) == profile["attack_action_row"],
+              "the copied SET node carries the requested action row")
+    else:
+        check(leaf_child == ROM_BASE + FAMILY_ATTACK_SPAWN,
+              "with no action change, the leaf spawns through the family's own node")
     check(image[at_set_gate + 12:at_set_gate + 16] ==
           struct.pack("<I", manifest["records"][0]["behaviour_row_after"]),
           "the gate's SET node pushes the profile row")
@@ -105,6 +126,11 @@ def main() -> int:
               f"row {entry['row']} names {entry['node']}")
         check(u32(image, entry["file_offset"] + 4) == FAMILY_ROW_SECONDARY,
               f"row {entry['row']}'s secondary word is the family's own")
+        # B2: a borrowed row is only safe when it was proven unnamed. The manifest records the
+        # proof, and the verifier re-derives it from the image rather than trusting the prose.
+        if "freeness_proof" in entry:
+            free, why = builder.row_is_free(against, entry["row"])
+            check(free, f"row {entry['row']} was free in the base image ({why or 'no reference'})")
 
     # 4: the differing bytes.
     allowed = set(range(len(against), len(image)))

@@ -77,6 +77,9 @@ LEAF_SIZE = 20
 SET_ENTRY = 0x0801890B
 SET_UPDATE = 0x08018921
 SET_EXIT = 0x08018937
+AUX_ENTRY = 0x08019285          # pushes another behaviour row, so its parameter is a row index
+#: The record table holds 151 records; one past the last is enough to catch a straggler.
+RECORD_TABLE_ROWS = 152
 
 
 class ProfileError(ValueError):
@@ -94,6 +97,40 @@ def u32(payload: bytes, offset: int) -> int:
 def set_node(row: int) -> bytes:
     """A SET node: 16 bytes carrying the behaviour row it pushes."""
     return struct.pack("<IIII", SET_ENTRY, SET_UPDATE, SET_EXIT, row)
+
+
+def row_is_free(image: bytes, row: int) -> tuple[bool, str]:
+    """Whether a behaviour row can be repointed without changing another enemy's behaviour.
+
+    Two things can name a row and both are scanned, because either one made a row live:
+
+    * a record's `+0x08`, which is the only path the engine uses to give an enemy its behaviour;
+    * a SET or AUX node's parameter, which pushes a row at runtime. SET's entry is 0x0801890B and
+      AUX's is 0x08019285, and a node stores `{entry, update, exit, param}`, so the parameter is the
+      word at `entry + 0x0C`.
+
+    The count of all-zero rows is not the test: measured on the canonical image the table holds 898
+    populated rows out of 900 candidates and only rows 830 and 835 are entirely zero, and those two
+    sit past the table's last valid row. A row that no record and no SET/AUX names is the only safe
+    thing to borrow, and this proves it rather than assuming it.
+    """
+    for selector in range(RECORD_TABLE_ROWS):
+        field = RECORD_TABLE + selector * RECORD_STRIDE + BEHAVIOUR_FIELD
+        if u32(image, field) == row:
+            return False, f"record {selector} names row {row}"
+    for entry in (SET_ENTRY, AUX_ENTRY):
+        needle = entry.to_bytes(4, "little")
+        start = 0
+        while True:
+            at = image.find(needle, start, len(image))
+            if at == -1:
+                break
+            start = at + 1
+            if at % 4:
+                continue
+            if u32(image, at + 0x0C) == row:
+                return False, f"a node at file 0x{at:X} pushes row {row}"
+    return True, ""
 
 
 def family_row(image: bytes, selector: int) -> int:
@@ -148,26 +185,29 @@ def build_block(image: bytes, block: int, gate_radius: int, attack_radius: int,
     chance = bytearray(image[FAMILY_ATTACK_RAND:FAMILY_ATTACK_RAND + LEAF_SIZE])
     struct.pack_into("<I", chance, 0x0C, probability)
 
-    block_bytes = bytearray(set_node(row_gate) + bytes(gate) + set_node(row_hub) + bytes(hub)
-                            + bytes(attack) + bytes(chance))
     offsets = {"set_gate": at_set_gate, "gate": at_gate, "set_hub": at_set_hub,
                "hub": at_hub, "attack_dist": at_attack, "attack_rand": at_chance}
 
+    # The probability leaf's child pointer is patched BEFORE the block is serialised. Serialising
+    # first is the defect that shipped once: the appended copy was built from the pre-patch bytes,
+    # so the leaf still pointed at the retail shared spawn, the copied nodes were dead bytes, and
+    # the profile's action change was never reachable - while the verifier, asserting the retail
+    # pointer, confirmed it.
+    extra = b""
     if attack_action is None:
         # Retail swing chain: the arm spawns through the family's own leaf and its own row.
         struct.pack_into("<I", chance, 0x10, ROM_BASE + FAMILY_ATTACK_SPAWN)
     else:
-        # A copy of the swing's chain with a different action row, so the change stays per-enemy.
-        # The swing's own row decides which animation the attack plays, and the animation is what
-        # bounds the swing rate: neither the chance leaf nor the post-attack wait moved it.
         at_spawn = at_chance + LEAF_SIZE
         at_action = at_spawn + 16
         spawn = bytearray(image[FAMILY_ATTACK_SPAWN:FAMILY_ATTACK_SPAWN + 16])
         struct.pack_into("<I", spawn, 0x0C, ROM_BASE + at_action)
         struct.pack_into("<I", chance, 0x10, ROM_BASE + at_spawn)
-        block_bytes += bytes(spawn) + set_node(attack_action)
+        extra = bytes(spawn) + set_node(attack_action)
         offsets.update({"spawn": at_spawn, "set_action": at_action})
 
+    block_bytes = (set_node(row_gate) + bytes(gate) + set_node(row_hub) + bytes(hub)
+                   + bytes(attack) + bytes(chance) + extra)
     offsets["block_end"] = block + len(block_bytes)
     return bytes(block_bytes), offsets
 
@@ -227,11 +267,18 @@ def main() -> int:
     for row, name in ((args.row_gate, "gate"), (args.row_hub, "hub")):
         at = BEHAVIOUR_TABLE + row * BEHAVIOUR_ROW_STRIDE
         before = bytes(image[at:at + 8])
+        # A borrowed row must be provably unnamed: a record's `+0x08` or a SET/AUX parameter that
+        # names it means something else already resolves it, and repointing it would hand that
+        # something this enemy's combat tree.
+        free, why = row_is_free(image, row)
+        if not free:
+            raise ProfileError(f"REFUSED: behaviour row {row} is not free: {why}")
         node = ROM_BASE + offsets[name]
         out[at:at + 4] = node.to_bytes(4, "little")
         out[at + 4:at + 8] = FAMILY_ROW_SECONDARY.to_bytes(4, "little")
         rows.append({"row": row, "file_offset": at, "before": before.hex(),
-                     "after": bytes(out[at:at + 8]).hex(), "node": f"0x{node:08X}"})
+                     "after": bytes(out[at:at + 8]).hex(), "node": f"0x{node:08X}",
+                     "freeness_proof": "no record +0x08 and no SET/AUX parameter names this row"})
 
     records = []
     for selector in args.record:

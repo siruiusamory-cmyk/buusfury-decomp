@@ -86,13 +86,13 @@ def live_records(image: bytes, selector: int, stream: bytes) -> list[tuple[int, 
     for record in cd.dialogue_record_inventory(image, selector, len(stream)):
         start = record.handle.decoded_start
         length = record.handle.decoded_length
-        if (start + length) * UNIT <= len(stream):
+        if start + length <= len(stream):
             out.append((start, length))
     return out
 
 
 def text_of(stream: bytes, start: int, length: int) -> str:
-    return stream[start * UNIT:(start + length) * UNIT].decode("utf-16le", "replace")
+    return stream[start:start + length].decode("utf-16le", "replace")
 
 
 def interior_runs(text: str) -> list[tuple[int, int]]:
@@ -181,7 +181,7 @@ def main() -> int:
         stream, offset, kind = read_container(image, selector)
         document["stale_handles"] += sum(
             1 for record in cd.dialogue_record_inventory(image, selector, len(stream))
-            if (record.handle.decoded_start + record.handle.decoded_length) * UNIT > len(stream))
+            if record.handle.decoded_start + record.handle.decoded_length > len(stream))
         live = live_records(image, selector, stream)
 
         by_record: dict[int, list[tuple[int, int]]] = {}
@@ -229,7 +229,7 @@ def main() -> int:
                 raise SpacingError(f"REFUSED: {selector}:{record_start}:{length} would lose a "
                                    "visible character")
             encoded = rebuilt.encode("utf-16le")
-            edited[record_start * UNIT:(record_start + length) * UNIT] = encoded
+            edited[record_start:record_start + length] = encoded
             document["records_changed"] += 1
             document["runs_collapsed"] += len(runs)
 

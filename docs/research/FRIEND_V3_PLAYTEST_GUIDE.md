@@ -27,6 +27,15 @@ Load that file in any GBA emulator. mGBA is what the evidence was produced on:
 
 Nothing else is required. There is no patcher to run and no per-session setup.
 
+**If the game refuses to run, check the save type.** This title needs EEPROM (or Flash 128K).
+A misconfigured emulator shows `The game will not run on this hardware`, and it appears early,
+at the Grand Kai, so a save started before the fix has to be restarted. The smoke test on this
+image wrote an 8,192-byte save, which is consistent with EEPROM. Sources:
+[Almar's Guides][almar], [Gamer's Temple walkthrough][gamerstemple].
+
+[almar]: https://almarsguides.com/retro/walkthroughs/GBA/games/DragonBallZBuusFury/
+[gamerstemple]: https://gamerstemple.com/guides/game-boy-advance/1580/1/dragon-ball-z-buus-fury-walkthrough
+
 ## 3. Start from a fresh save
 
 **Start a New Game from an empty save.** The image ships to a save slot with no play data; do not
@@ -57,6 +66,18 @@ equipment hook. The Bandana is obtained by normal gameplay, the same as retail.
 The delivered image was verified to have no injection: the equipment count at `0x0300114C` reads
 0 on a fresh save, and the hook and trampoline regions are byte-identical to the foundation.
 
+What it is, from the game's own accessory list: the **Bandana** is an accessory granting
+**+3 STR, +3 POW, +3 END**, described in game as *"Only a really vicious criminal would wear
+something like this."* Do not confuse it with the **Geromantium Bandana**, a separate, much
+stronger accessory granting +40 END. Source:
+[Almar's Guides accessory list][almaracc].
+
+**Acquisition is not yet pinned to a specific scene.** No repository document records where it is
+found, and this ticket did not establish it from game data. Treat the accessory list as the
+reference and note where you find it; that locates it for the next revision of this guide.
+
+[almaracc]: https://almarsguides.com/retro/walkthroughs/GBA/games/DragonBallZBuusFury/Misc/Lists/Accessories/
+
 ## 6. Known limitations
 
 1. **No chapter was walked.** Progression past the smoke-test window is unverified.
@@ -73,18 +94,28 @@ The delivered image was verified to have no injection: the equipment count at `0
 
 ## 7. Chapter-by-chapter checklist
 
+These are the walkthrough's chapter names for this game, in order. It has twelve chapters and one
+short epilogue chapter, not eight sagas, and this guide previously listed invented ones. Source:
+[Gamer's Temple walkthrough][chapters].
+
 Tick what you actually played. Leave the rest blank; a blank is honest and useful.
 
-| # | chapter | booted | played through | notes |
+| # | chapter | started | finished | notes |
 | --- | --- | --- | --- | --- |
-| 1 | Saiyan saga opening | [ ] | [ ] | |
-| 2 | Saiyan saga | [ ] | [ ] | |
-| 3 | Namek arrival | [ ] | [ ] | |
-| 4 | Namek / Frieza | [ ] | [ ] | |
-| 5 | Android arrival | [ ] | [ ] | |
-| 6 | Android / Cell | [ ] | [ ] | |
-| 7 | Buu saga | [ ] | [ ] | |
-| 8 | Buu saga finale | [ ] | [ ] | |
+| 1 | The Other World | [ ] | [ ] | |
+| 2 | Great Saiyaman | [ ] | [ ] | |
+| 3 | World Tournament | [ ] | [ ] | |
+| 4 | Babidi | [ ] | [ ] | |
+| 5 | Majin Vegeta | [ ] | [ ] | |
+| 6 | Dragon Ball | [ ] | [ ] | |
+| 7 | Majin Buu | [ ] | [ ] | |
+| 8 | Janemba | [ ] | [ ] | |
+| 9 | Super Buu | [ ] | [ ] | |
+| 10 | Fusion | [ ] | [ ] | |
+| 11 | Kid Buu | [ ] | [ ] | |
+| 12 | A New Beginning | [ ] | [ ] | |
+
+[chapters]: https://gamerstemple.com/guides/game-boy-advance/1580/1/dragon-ball-z-buus-fury-walkthrough
 
 Also worth watching for, because they are what this build touches:
 
@@ -97,6 +128,7 @@ Also worth watching for, because they are what this build touches:
 | e | a Tulma appearance matches the intended art and dialogue | [ ] |
 | f | save, quit, reload preserves progress and inventory | [ ] |
 | g | no equipment is present that should not be | [ ] |
+| h | the Grand Kai does not show `The game will not run on this hardware` | [ ] |
 
 ## 8. Reporting a bug
 

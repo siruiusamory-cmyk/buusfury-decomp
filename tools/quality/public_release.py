@@ -1,14 +1,15 @@
-"""Executable/public-release guard for the randomizer products.
+"""Executable/public-release guard for the repository's frozen products.
 
 The Map Warp Randomizer and the Enemy Randomizer are two frozen executables that
-a stranger downloads and runs. What makes each of them a *public release* rather
-than a build is a small set of facts spread across a handful of files: the spec
-template that freezes the module graph, the version resource that names the
-product on screen, the project icon, the README that travels in the archive, and
-the packaging script that decides what the archive contains. Those facts were
-established one product at a time by WARPRAND-APP-001,
-ENEMY-RANDOMIZER-EXE-001 and EXE-PACKAGE-HYGIENE-001. This module is what keeps
-a third product from inheriting only some of them.
+a stranger downloads and runs. DragonByte Z is the third frozen product and the
+one that is an installed application rather than a two-file archive. What makes
+each of them a *public release* rather than a build is a small set of facts spread
+across a handful of files: the spec template that freezes the module graph, the
+version resource that names the product on screen, the project icon, the README
+that travels in the archive, and the packaging script that decides what the
+archive contains. Those facts were established one product at a time by
+WARPRAND-APP-001, ENEMY-RANDOMIZER-EXE-001 and EXE-PACKAGE-HYGIENE-001. This
+module is what keeps a fourth product from inheriting only some of them.
 
 What is deliberately NOT repeated here
 --------------------------------------
@@ -161,12 +162,24 @@ _PARAMETER = re.compile(r"\$(BuildName|ReadmePath)\s*=\s*(?:'([^']*)'|\"([^\"]*)
 
 @dataclass(frozen=True)
 class ReleaseProduct:
-    """One frozen randomizer product, and the files that define its release."""
+    """One frozen product, and the files that define its release.
+
+    A product that is not a randomizer declares no ``readme`` and no ``packager``:
+    it ships as an installed directory rather than as a two-file archive, and the
+    staged-package rules below belong to the archive shape that has one. What every
+    registered product keeps is the spec, the version resource and the icon, which
+    is the release DEFINITION, and the checks for those do not depend on the shape.
+    """
 
     package: str
     build_name: str
-    readme: str
-    packager: str
+    readme: str | None
+    packager: str | None
+    #: ``"archive"`` for a randomizer's two-file release, ``"installed"`` for an
+    #: application shipped as a directory beside its runtime. It is a declared
+    #: shape rather than something a reader infers from the two optional files, so
+    #: a reader that has to treat the two differently has one fact to read.
+    release_shape: str = "archive"
 
     @property
     def spec(self) -> str:
@@ -177,9 +190,8 @@ class ReleaseProduct:
         return f"{self.build_name}.version.txt"
 
 
-#: The one place a product is declared. Adding a randomizer product means adding
-#: an entry here and the four files it names; every rule below then applies to it
-#: without an edit.
+#: The one place a product is declared. Adding a product means adding an entry here
+#: and the files it names; every rule below then applies to it without an edit.
 PRODUCTS: tuple[ReleaseProduct, ...] = (
     ReleaseProduct(
         package="enemyrand",
@@ -192,6 +204,19 @@ PRODUCTS: tuple[ReleaseProduct, ...] = (
         build_name="Buu-Fury-Warp-Randomizer",
         readme="docs/warprand/README.txt",
         packager="scripts/package-warprand.ps1",
+    ),
+    # The frozen desktop application. It is registered here for the same reason
+    # the randomizers are: its spec, its version resource and its icon are a
+    # release definition, and a definition nobody declares is exactly what
+    # `_unregistered` exists to catch. Its release is `dist/<name>/<name>.exe`
+    # beside the Qt runtime, so no packager is declared yet and the two-file
+    # archive rules below do not apply to it.
+    ReleaseProduct(
+        package="dragonbyte",
+        build_name="DragonByte Z",
+        readme=None,
+        packager=None,
+        release_shape="installed",
     ),
 )
 
@@ -249,7 +274,12 @@ def icon_entries(data: bytes) -> list[tuple[int, int]] | None:
 
 
 def _definition_findings(base: Path, product: ReleaseProduct) -> list[Finding]:
-    """Every file the release definition names must exist."""
+    """Every file the release definition names must exist.
+
+    A product that declares no README and no packager names neither, so neither is
+    a finding: the shape of a product's release is declared by the entry, and this
+    check is about a declared file that is missing.
+    """
     findings = []
     for code, label, relative in (
         ("spec-missing", "packaging spec template", product.spec),
@@ -258,6 +288,8 @@ def _definition_findings(base: Path, product: ReleaseProduct) -> list[Finding]:
         ("version-resource-missing", "version resource", product.version_resource),
         ("icon-missing", "application icon", ICON),
     ):
+        if relative is None:
+            continue
         if not (base / relative).is_file():
             findings.append(
                 Finding(code, product.build_name, relative, f"no {label}")
@@ -308,7 +340,13 @@ def _packaging_findings(
     matched by this static screen; what still covers it is the packaging-time
     probe in ``scripts/randomizer-release.ps1``, which scans the files that
     actually got staged.
+
+    A product that declares no packaging script is not checked by any of this: the
+    rules here describe the two-file archive a randomizer ships, and a product that
+    ships an installed directory declares no packager and so makes no such claim.
     """
+    if product.packager is None:
+        return []
     findings = []
     targets = [first or second for first, second in _STAGE_LITERAL.findall(text)]
     destinations = [
@@ -545,8 +583,13 @@ def _product_findings(
     scanned: list[str] = []
 
     texts: dict[str, str] = {}
-    for relative in (product.spec, product.packager, product.readme, product.version_resource):
-        if not (base / relative).is_file():
+    for relative in (
+        product.spec,
+        product.packager,
+        product.readme,
+        product.version_resource,
+    ):
+        if relative is None or not (base / relative).is_file():
             continue
         text = _read_text(base, relative)
         if text is None:

@@ -1,6 +1,7 @@
 @echo off
 rem DragonByte Z launcher - double-click to run the visual editor.
 rem Uses the repo venv python and always runs the current source (no rebuild).
+rem The beta workbench is a different application: python -m tools.webfoot.workbench.
 setlocal
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
@@ -11,5 +12,5 @@ if not exist ".venv\Scripts\python.exe" (
     pause
     exit /b 1
 )
-start "" ".venv\Scripts\pythonw.exe" -m tools.webfoot.workbench
+start "" ".venv\Scripts\pythonw.exe" -m tools.dragonbyte
 endlocal

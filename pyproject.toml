@@ -41,7 +41,10 @@ packaging = [
 
 [project.scripts]
 webfoot = "tools.webfoot.cli:main"
-dragonbyte-z = "tools.webfoot.workbench.__main__:main"
+# The product's own entry point. It pointed at the beta workbench, which is the
+# engineering surface rather than what a user installs; `python -m
+# tools.webfoot.workbench` stays the beta's launch path.
+dragonbyte-z = "tools.dragonbyte.app:main"
 
 [tool.setuptools.packages.find]
 include = ["tools*"]

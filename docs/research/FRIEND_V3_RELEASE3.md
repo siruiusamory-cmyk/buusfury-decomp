@@ -18,7 +18,7 @@ The chain and every intermediate digest, as the builder records them:
 | stage | tool | result |
 | --- | --- | --- |
 | boss retune | `apply_friend_v3_boss_retune.py` | `1d59e0da6f4d7639a23f97c9e0892dc8f7a6cbc6453a9236b5250c37aa467650` |
-| behaviour profile | `apply_friend_v3_behaviour_profile.py` | `682eb7f48d0496b9d5658bb5a8c42c43140ec9282f569c6357d1588ed5a78a74` |
+| behaviour profile | `apply_friend_v3_behaviour_profile.py` | `639570e7dd05a963a85750e192ff261d6b498da9225c18d1670bc0c484c49ba9` |
 | wording | `apply_friend_v3_dialogue_text.py` | `521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd` |
 
 One command reproduces it, and it refuses unless the result equals the frozen digest:
@@ -127,9 +127,9 @@ absorbed inside a phrase moves a space within a record that covers the same byte
 | check | result |
 | --- | --- |
 | boss retune verifier | PASS: the other 149 enemy records byte-identical, 0 differing bytes outside the six declared fields |
-| profile verifier | PASS: the appended nodes are the family's own bytes with only the declared patches, the probability leaf reaches the copied spawn INSIDE the block, both borrowed rows are proven unnamed, 0 stray bytes |
+| profile verifier | PASS: the appended nodes are the family's own bytes with only the declared patches, the probability leaf points at the family's own spawn `0x0870227C` (the shipped profile copies no spawn: its manifest declares the retail swing chain, `attack_action_row: null`), both borrowed rows are proven unnamed, 0 stray bytes. The copy-and-repoint path is what the WITHDRAWN image did, and it was dead there because of the build order (2.2); the shipped image deliberately carries the retail swing chain, which is what the owner fought |
 | wording tool readback | PASS: 5 edits; every record outside an edited span is character-identical once spaces are ignored, and no character is lost, gained or reordered anywhere |
-| focused tests | 9 in `tests/unit/test_friend_v3_boss_profile.py`, including one test per blocking finding and the two drift guards |
+| focused tests | 10 in `tests/unit/test_friend_v3_boss_profile.py`, including one test per blocking finding and the two drift guards |
 | reproduction | twice, from two independent output directories, byte-identical |
 | runtime | measured on the withdrawn candidate: both bosses were fought in the emulator and the owner beat each. **Not yet re-checked on this candidate**: the image changed with the fixes (the swing chain is now the retail one and the wording spans moved), so a claim that this exact image was played would be unsupported |
 

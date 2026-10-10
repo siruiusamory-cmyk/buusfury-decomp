@@ -12,7 +12,9 @@ future edit that reaches the shared hub fails here instead of shipping.
 
 from __future__ import annotations
 
+import json
 import struct
+import sys
 from pathlib import Path
 
 import pytest
@@ -179,3 +181,41 @@ def test_the_verifier_reads_its_sites_from_the_manifest() -> None:
                                          attack_first=True, attack_action=204)
     assert set(offsets) >= {"gate", "hub", "attack_dist", "attack_rand", "spawn", "set_action"}
     assert len(block) == 16 + 20 + 16 + 44 + 20 + 20 + 16 + 16
+
+
+def test_the_action_branch_reads_a_rom_address_as_a_file_offset(
+        tmp_path: Path, monkeypatch, capsys) -> None:
+    """C1. `manifest["nodes"]["set_action"]` is a ROM ADDRESS, and a SET node pushes its row from
+    the parameter word at +0x0C. The branch indexed the image with that address, so the one build
+    path that carries an action change died with `struct.error` instead of returning a verdict;
+    reading the node's first word instead would compare the node's own entry, not the row."""
+    image = synthetic()
+    block_bytes, offsets = profile.build_block(image, IMAGE_SIZE, 22500, 22500, 32768, 799, 90,
+                                               attack_first=True, attack_action=204)
+    out = bytearray(image)
+    struct.pack_into("<I", out, RECORD_AT + profile.BEHAVIOUR_FIELD, 799)
+    row_at = profile.BEHAVIOUR_TABLE + 799 * profile.BEHAVIOUR_ROW_STRIDE
+    struct.pack_into("<I", out, row_at, ROM_BASE + offsets["gate"])
+    struct.pack_into("<I", out, row_at + 4, profile.FAMILY_ROW_SECONDARY)
+    (tmp_path / "base.gba").write_bytes(image)
+    (tmp_path / "profile.gba").write_bytes(bytes(out) + block_bytes)
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "block_file_offset": IMAGE_SIZE,
+        "output_bytes": IMAGE_SIZE + len(block_bytes),
+        "profile": {"entry_gate_radius_squared": 22500, "attack_radius_squared": 22500,
+                    "attack_probability_raw": 32768, "entry_gate_radius": 150.0,
+                    "retail_entry_gate_radius": 100, "attack_radius": 150.0,
+                    "attack_percent": 50.0, "retail_attack_radius": 50,
+                    "retail_attack_percent": 12.0, "attack_action_row": 204},
+        "nodes": {"spawn": f"0x{ROM_BASE + offsets['spawn']:08X}",
+                  "set_action": f"0x{ROM_BASE + offsets['set_action']:08X}"},
+        "records": [{"selector": SELECTOR, "behaviour_row_after": 799,
+                     "behaviour_field_file_offset": RECORD_AT + profile.BEHAVIOUR_FIELD}],
+        "rows": [{"row": 799, "file_offset": row_at,
+                  "node": f"0x{ROM_BASE + offsets['gate']:08X}"}],
+    }), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["verify", "--image", str(tmp_path / "profile.gba"),
+                                      "--against", str(tmp_path / "base.gba"),
+                                      "--manifest", str(tmp_path / "manifest.json")])
+    assert verifier.main() == 0
+    assert "PASS the copied SET node carries the requested action row" in capsys.readouterr().out

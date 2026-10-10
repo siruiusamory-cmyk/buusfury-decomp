@@ -27,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
 # The row-freeness proof lives in the builder, and the verifier re-derives it from the base image
 # rather than trusting the manifest's prose about it.
 from tools.research import apply_friend_v3_behaviour_profile as builder  # noqa: E402
+from tools.webfoot.analysis.thumb import addr_to_offset  # noqa: E402
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -100,7 +101,11 @@ def main() -> int:
               f"(it reads 0x{leaf_child:08X})")
         check(manifest["nodes"]["spawn"] != f"0x{ROM_BASE + FAMILY_ATTACK_SPAWN:08X}",
               "the copied spawn is not the retail node, so the copy is not dead weight")
-        check(u32(image, int(manifest["nodes"]["set_action"], 16)) == profile["attack_action_row"],
+        # The manifest names a ROM ADDRESS and a SET node pushes its row from the parameter word
+        # at +0x0C. Indexing the image with the address raised struct.error; reading the node's
+        # first word would compare the node's own entry instead of the row it pushes.
+        action_at = addr_to_offset(int(manifest["nodes"]["set_action"], 16), len(image))
+        check(u32(image, action_at + 0x0C) == profile["attack_action_row"],
               "the copied SET node carries the requested action row")
     else:
         check(leaf_child == ROM_BASE + FAMILY_ATTACK_SPAWN,

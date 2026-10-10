@@ -50,24 +50,46 @@ found, stated so the next step is not a re-derivation:
    `0x481A4` in the early bank, not the pool word at `0x6B7080`. A pointer-chained seeding
    routine would not be visible to a literal scan at all.
 
-## 3. The one next step, and it is cheap
+## 3. What the genuine New Game actually wrote, MEASURED
 
-A runtime watch on the first count transition of a genuine new game. Everything needed is
-built: `tools/runtime/boost001_inventory_watch.lua` already logs the count every 30 frames and
-dumps the whole inventory window whenever it changes, and the launcher
-`tools/runtime/start_friendv3_coldboot_session.ps1` starts an emulator and gets out of the way.
+The owner started a real New Game on an erased save with the observer armed, and played for
+about six minutes. Result, and it changes the picture:
 
-The minimal human action, once such a session is armed: **start a new game and play until the
-first menu appears.** Creating the save is the event; no playthrough is needed. The observer's
-first snapshot after that shows the seeded count and the seeded entries, and the seeding writes
-themselves are then found by watching what changed.
+| observation | value |
+| --- | --- |
+| the count at `0x0300114C` | **0** for the whole run: 1,163 samples from frame 30 to frame 34,890, never anything else |
+| the entry array from `0x03001150` | all zeros in every snapshot |
+| the only non-zero bytes in the first `0x120` of the save block | `0x03001069` (`+0x01`) = 2, and `0x03001113` (`+0xAB`) = 8 |
 
-A note for that run: the observer's per-row `first`/`second` summary in `snapshot_*.txt` pairs
-adjacent entries, because it was written under an earlier reading. **Read the raw line**, which
-is the 1024 bytes from `0x03001068`, and take the count from `+0xE4` and the entries from
-`+0xE8`, one 4-byte word each.
+So a New Game **does not seed the count-and-entry inventory at all.** The starting items appear
+somewhere else: as plain per-item **quantity bytes** at fixed offsets from the save block base,
+which is the mechanism the external RAM map already describes for consumables
+(`0x03001069` is Miso Soup Quantity). A new game therefore opens with 2 Miso Soup and nothing
+else, and the item count stays 0 until something calls the add routine.
 
-## 4. Unchanged and still true
+Two consequences, both useful:
+
+1. The grant does not belong in the count-and-entry array on a new game. It belongs wherever the
+   game writes that quantity byte, or in whatever hands out the first item.
+2. Neither `0x03001069` nor `0x0300106A` has a Thumb literal loader anywhere in the image: they
+   are reached as an offset from the save base `0x03001068`, whose only literal loader is
+   `0x0804819A` reading the copy at file `0x481A4`. The seeding write is therefore reached
+   through the base pointer, not through its own address, which is exactly why three address
+   searches found nothing.
+
+## 4. The one next step
+
+Find the instruction that writes `2` to save-block `+0x01`, by tracing the one loader of the
+save base. That instruction's routine is the seeding path, and the same path either already
+writes other starting bytes or can take one more with the Miso Soup write's own shape. Two ways:
+
+1. Static: follow `0x0804819A`'s function and its callers for a store at base `+0x01`.
+2. Runtime: buy or obtain any item that is stored as a quantity byte and watch which byte moves,
+   which shows the write shape directly.
+
+
+
+## 5. Unchanged and still true
 
 - The image `acd98c2a` and its build pipeline are untouched. `build/fv3boost001/build.ps1`
   reproduces it.

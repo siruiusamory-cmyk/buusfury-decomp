@@ -23,6 +23,24 @@ failed build cannot damage what the user already has.
 Before and after any authorized ROM-adjacent experiment, verify the image's
 identity and confirm the original file was not changed.
 
+## Repository storage is input-only
+
+Repository-managed ROM storage - `roms/` and any other directory this repository
+manages an image in - is **input**. A development-generated image is **output**,
+and output belongs in an isolated `build/` location that is ignored by git. Never
+write a generated image into the directory an input image lives in: a generated
+image placed beside the input is a second file with the input's shape, and the
+next reader that selects by name or by directory rather than by digest can pick
+it up. The write stack already refuses a protected destination by file identity
+(`tools/webfoot/destination.py`, `docs/project-format.md`), and this is the rule
+behind that refusal rather than the refusal itself.
+
+This governs the repository, not the user. A shipped user's own directory outside
+protected repository storage is unaffected, and so is the randomizer's documented
+ability to place a distinct derivative beside a user-selected input: a derivative
+is a legitimate output, and it does not become illegitimate because the directory
+it was written into also contains the input it was made from.
+
 ## Profile identity
 
 - Verify the exact configured profile before any profile-specific access.

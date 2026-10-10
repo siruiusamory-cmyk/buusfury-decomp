@@ -1,11 +1,17 @@
 # Workbench architecture
 
-DragonByte Z is the desktop editor shipped from `tools/webfoot/workbench/`. Run
-it with `python -m tools.webfoot.workbench` (`workbench/__main__.py`). It is a
-second client of the Webfoot SDK the CLI uses, not a separate implementation of
-anything the SDK already owns.
+The beta workbench - the desktop editor shipped from `tools/webfoot/workbench/`,
+run with `python -m tools.webfoot.workbench` (`workbench/__main__.py`) - is this
+repository's **engineering surface**. It is where a controller, an extraction, a
+build and a raw byte are driven, and it is not the product a user is handed.
 
-This is the architecture contract for that package: the thin-client boundary,
+DragonByte Z, the product, is the application package `tools/dragonbyte/`, run
+with `python -m tools.dragonbyte` or the `DragonByte Z.cmd` launcher and frozen
+by `DragonByte Z.spec.in`. It is a second client of the Webfoot SDK the CLI
+uses, not a separate implementation of anything the SDK already owns, and it
+imports nothing from `tools/webfoot/workbench/`.
+
+This is the architecture contract for the beta package: the thin-client boundary,
 the shared state model and its signals, the editor composition, the error
 handling rule with the catch lists that implement it, the authoring discipline,
 and how the package is accepted. For the Maps editor's Layout mode and for

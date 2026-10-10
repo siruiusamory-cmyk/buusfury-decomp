@@ -516,6 +516,37 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\boost001_addcall_watch.lua')
     )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: the dialogue container-selector census
+    # and split-route observer. It arms four breakpoints - the two table-load sites at
+    # 0x08012248 and 0x080122CE, the dialogue record copier at 0x0801227A and the
+    # ARM/Thumb dispatch thunk at 0x08046AA4 as the liveness channel - reads the packed
+    # handle the engine is about to resolve, reads the registers the load instruction
+    # itself indexes with (r1 is the table base, r0 is the index), and writes host files
+    # inside the run directory only. It writes no emulated memory and presses no key;
+    # driving code, when a run needs it, is a separate allow-listed file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_container_route_watch.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: the matching INPUT DRIVER, in its own
+    # file because the rule keeps driving code out of the observer. It presses A once per
+    # 120 frames between frames 300 and 1500 and then releases the keys, because the run
+    # with no input measured the dialogue record copier and both table-load sites at zero
+    # hits across 2000 frames: a savestate restores an already-copied dialogue. It writes
+    # no file and touches no emulated memory; it only presses keys.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_input_driver.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: a one-shot read-only probe that decides
+    # whether the emulated GBA can address a container APPENDED past the end of the image
+    # file. The split design writes such a pointer into container-table slot 7, and the
+    # image's header declares only 8 MiB of cart ROM while the file is 10,141,220 bytes, so
+    # the reachability of the appended region decides the whole design. It reads the table
+    # slots, the slot-7 pointer, the bytes at that pointer, the first word past the declared
+    # cart size, and one live container as a positive control on the read method. No
+    # breakpoint, no emulated write, no key; two host files in the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_cart_map_probe.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

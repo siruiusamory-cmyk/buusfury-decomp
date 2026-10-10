@@ -1,14 +1,15 @@
-"""Build the consolidated V3 friend derivative: baseline, approved text, padding repair.
+"""Build the consolidated V3 mainline friend derivative from the pre-BOOST foundation.
 
-ONE CUMULATIVE CHAIN. Each stage takes the previous stage's output, checks its digest, and
-refuses on a mismatch, so the derivative is the baseline plus exactly the stages recorded
-here and nothing else:
+ONE CUMULATIVE CHAIN, WITHOUT THE SPEEDRUN IMAGE. The base is the pre-BOOST
+Tulma-complete foundation `a4c12a95`, which carries every accepted modification except the
+artificial level and stats. The BOOST image `acd98c2a` is a separate testing derivative and
+is NOT an ancestor of anything this builds; the owner's lineage correction says so, and the
+check below is what holds it.
 
-  1. the regenerated baseline `acd98c2a`, reproduced by `build_friend_v3_playtest_boost`
-     from the foundation and the verified boost patch table;
-  2. the owner-approved text batch: seven biographies in place, the slot 1065 grammar
+  0. the foundation itself, carried as the base and checked by digest;
+  1. the owner-approved text batch: seven biographies in place, the slot 1065 grammar
      repair by append and repoint;
-  3. the trailing-pad repair: 32 records whose last units are padding spaces, repaired by
+  2. the trailing-pad repair: 32 records whose last units are padding spaces, repaired by
      reducing their handle's decoded length, which moves no container byte.
 
 WHAT IT DELIBERATELY DOES NOT DO. No interior-padding repair, no `Great Soyman`, no
@@ -114,28 +115,58 @@ def main() -> int:
                     "--manifest", str(out / f"{NAME}.manifest.json")])
     print("  " + captured.strip().replace("\n", "\n  "))
 
+    # THE POST-CHECK THE FIRST REVIEW ASKED FOR. Pinning the foundation digest keeps BOOST
+    # stats out on the way in, but nothing until now proved they were still out on the way
+    # out. These 25 bytes are the whole of the BOOST modification, so an equality test
+    # against the foundation on the finished image is the cheap closing check.
+    boost_offsets = sorted(BOOST_ONLY_OFFSETS)
+    foundation_bytes = foundation.read_bytes()
+    final_bytes = final.read_bytes()
+    differing = [offset for offset in boost_offsets
+                 if final_bytes[offset] != foundation_bytes[offset]]
+    if differing:
+        raise SystemExit("REFUSED: the derivative's base-stat bytes differ from the "
+                         f"pre-BOOST foundation at {[hex(o) for o in differing]}")
+    print(f"# post-check: all {len(boost_offsets)} base-stat bytes still equal the "
+          "pre-BOOST foundation, so no BOOST-only value reached this image")
+
     changelog = {
         "name": NAME,
-        "baseline": {"file": "v3-playtest-boost.gba", "sha256": BASELINE_SHA,
-                     "bytes": 10140972},
+        "foundation": {"file": foundation.name, "sha256": FOUNDATION_SHA,
+                       "bytes": len(foundation_bytes),
+                       "role": "base of this derivative: the pre-BOOST Tulma-complete image"},
+        "boost_artifact_preserved_not_an_ancestor": {
+            "file": "v3-playtest-boost.gba", "sha256": BOOST_SHA,
+            "why_excluded": "carries artificial level 200 and maximum STR/POW/END/SPD for "
+                            "the five party records, which must never reach a mainline "
+                            "release; the owner's lineage correction separates the two",
+            "measured_isolation": "the BOOST differs from the foundation in exactly 25 "
+                                  "bytes, all inside the base-stat table at 0x6FDA4C, and "
+                                  "the derivative's bytes there equal the foundation's",
+        },
         "output": {"file": final.name, "sha256": sha256(final),
                    "bytes": final.stat().st_size},
-        "growth_bytes": final.stat().st_size - 10140972,
+        "growth_bytes": final.stat().st_size - len(foundation_bytes),
         "stages": [
-            {"stage": 1, "what": "regenerate the baseline from its foundation",
-             "file": baseline.name, "sha256": sha256(baseline)},
-            {"stage": 2, "what": "approved text batch: seven biographies in place, slot 1065 "
+            {"stage": 0, "what": "pre-BOOST foundation, the base; no stage regenerates it",
+             "file": foundation.name, "sha256": FOUNDATION_SHA},
+            {"stage": 1, "what": "approved text batch: seven biographies in place, slot 1065 "
                                  "grammar repair by append and repoint",
              "file": batch.name, "sha256": sha256(batch)},
-            {"stage": 3, "what": "trailing-pad repair: 32 records, 70 pad units, handle "
+            {"stage": 2, "what": "trailing-pad repair: 32 records, 70 pad units, handle "
                                  "length only, no container byte moved",
              "file": final.name, "sha256": sha256(final)},
         ],
         "included": [
-            "FRIEND_V3_PLAYTEST_BOOST chain, baseline acd98c2a",
+            "every modification carried by the pre-BOOST foundation a4c12a95, which is the "
+            "Tulma-complete chain through MR !165",
             "seven owner-approved biographies (slots 1059, 1069, 1187, 1189, 1191, 1193, 1195)",
             "owner-approved slot 1065 grammar repair",
             "trailing-pad repair for 32 dialogue records",
+        ],
+        "boost_modifications_absent": [
+            "level 200 on the five party records",
+            "maximum STR/POW/END/SPD on the five party records",
         ],
         "not_included_deferred_to_engine_ticket": [
             "interior dialogue padding (321 runs, 653 units) in the dialogue containers",

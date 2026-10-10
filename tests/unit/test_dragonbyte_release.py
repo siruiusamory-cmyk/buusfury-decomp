@@ -127,8 +127,8 @@ def test_the_console_script_runs_the_product_and_not_the_beta():
     """The installed command must reach the product.
 
     ``dragonbyte-z`` is what a user types after an install, and it named the beta
-    workbench. The spec template and this entry point are two ways the same
-    mistake can be made, so both are checked.
+    workbench. The spec template, the launcher a user double-clicks and this entry
+    point are three ways the same mistake can be made, so all three are checked.
     """
     import tomllib
 
@@ -137,6 +137,27 @@ def test_the_console_script_runs_the_product_and_not_the_beta():
     )
 
     assert document["project"]["scripts"]["dragonbyte-z"] == "tools.dragonbyte.app:main"
+
+
+def test_the_launcher_a_user_double_clicks_runs_the_product():
+    """The front door, which the documentation in this change points at.
+
+    ``DragonByte Z.cmd`` started the beta workbench, and the amended
+    ``docs/workbench-architecture.md`` says the product is run with this launcher.
+    A comment naming the beta is fine and expected, so the check reads the command
+    line rather than the prose, and the two cannot drift apart again.
+    """
+    launcher = (REPOSITORY_ROOT / "DragonByte Z.cmd").read_text(encoding="utf-8")
+    started = [
+        line.strip()
+        for line in launcher.splitlines()
+        if line.strip().lower().startswith(("start ", "python", ".venv"))
+    ]
+
+    assert started, "the launcher starts nothing"
+    for line in started:
+        assert "-m tools.dragonbyte" in line, line
+        assert "workbench" not in line, line
 
 
 def test_the_spec_carries_the_identity_the_icon_and_the_profile_catalog():

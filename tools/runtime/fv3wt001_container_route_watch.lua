@@ -41,12 +41,26 @@
 -- thousands of times per run on this build, measured. The copier is still armed and
 -- logged, because its silence or its firing is itself a result.
 --
+-- THE RESOLVED CONTAINER, AND THE WORDS THE ENGINE IS ABOUT TO COPY (added by the release-2
+-- run). A selector is only half the route: the next thing to prove is that the address the
+-- table returns is the appended container and that the units the copier will take out of it
+-- are the approved wording. So each site hit also reads the table word the `ldr` is about to
+-- load, read32(r1 + r0*4) with r1 and r0 exactly as the instruction indexes them, and then
+-- reads the first 40 units at the record's own decoded start inside that container. MEASURED
+-- on this image: a kind-0 container carries an 8-byte header (four zero bytes then the
+-- declared size as u32), so a handle's start lands at container + 8 + start - container 3
+-- reads 00 00 00 00 36 FF 00 00 then "#That was weak." at +8, and the same image's handles
+-- decode to text only with that +8. The raw window at container + start is therefore not
+-- used as the text; the header offset is stated instead of assumed.
+--
 -- WHAT IT WRITES
 --   route.csv       one row per 60 frames: frame, dispatch hits, site A hits, site B hits,
 --                   copier hits.
 --   sites.csv       the first 200 hits at A and at B: site, hit, handle, both candidate
 --                   selectors, start, length, the engine's own index, and whether that
---                   index could be read.
+--                   index could be read, the RESOLVED container address, the first 40 units
+--                   the copier will take from container + 8 + start, and the record's whole
+--                   text when its length field is bounded.
 --   histogram.txt   heartbeats, the engine-index histogram, the selector histogram per
 --                   site per reading, and the count of hits whose selector is 7 or above.
 --   copies.csv      every copier call: source register, source pointer, unit count and the
@@ -108,6 +122,23 @@ local COPY_UNITS = 40
 local SITE_ROWS = 200
 local POINTER_ROWS = 400
 
+-- The idle stop is right for an unattended run and wrong for a human one: it ends the run
+-- 120 frames after the last dialogue record, so an operator who is still walking to the
+-- scene when it fires loses the session. FV3WT001_IDLE_STOP=0 turns it off and leaves the
+-- frame horizon as the only bound. Default stays exactly what the unattended runs measured.
+local IDLE_STOP = knob("FV3WT001_IDLE_STOP", 120)
+
+-- The container the table returns for selector 7 on the release-2 candidate: the appended
+-- kind-0 container at file 0x9ABE24. Reported by name so a hit on it cannot be mistaken for
+-- a hit on a retail container.
+local APPENDED = 0x089ABE24
+
+-- The live MapEntry pointer and its table, measured in this family of images. Logged with the
+-- raw pointer beside it, because a scene claim should be checkable and not just asserted.
+local MAP_POINTER = 0x03001980
+local MAP_FIRST = 0x0808E2E0
+local MAP_STRIDE = 0x38
+
 assert(emu ~= nil, "mGBA did not attach the emulation core")
 assert(emu.setBreakpoint and emu.clearBreakpoint, "requires the 0.11 breakpoint API")
 local code = emu:getGameCode()
@@ -126,11 +157,11 @@ end
 
 local function run()
     local route = assert(io.open(exp_dir .. "route.csv", "w"))
-    route:write("frame,dispatch_hits,site_a_hits,site_b_hits,copier_hits\n")
+    route:write("frame,dispatch_hits,site_a_hits,site_b_hits,copier_hits,map_pointer,map_index\n")
     route:flush()
 
     local sites = assert(io.open(exp_dir .. "sites.csv", "w"))
-    sites:write("site,hit,handle,selector_low6,selector_high6,start,length,engine_index,index_note\n")
+    sites:write("site,hit,handle,selector_low6,selector_high6,start,length,engine_index,index_note,container,text40,full_text\n")
     sites:flush()
 
     local copies = assert(io.open(exp_dir .. "copies.csv", "w"))
@@ -178,6 +209,9 @@ local function run()
     local index_low_agree_b, index_high_agree_b = 0, 0
     local index_missing_a, index_missing_b = 0, 0
     local copier_hits, dispatch_hits, pointer_rows = 0, 0, 0
+    local container_hist, container_order = {}, {}
+    local appended_hits = 0
+    local appended_texts = {}
     local first_copier, last_copier = nil, nil
     local early_ptr, early_order = {}, {}
     local early_cutoff = false
@@ -252,6 +286,41 @@ local function run()
 
         local low = handle and selector_low(handle) or -1
         local high = handle and selector_high(handle) or -1
+
+        -- THE RESOLVED CONTAINER AND THE WORDS THE COPIER WILL TAKE FROM IT. The table word
+        -- the `ldr` is about to load is read32(r1 + r0*4), with r1 and r0 exactly as the
+        -- instruction indexes them, so this is the address the record will be read from and
+        -- not a re-derivation from the handle. The text is then read at
+        -- container + 8 + start: a kind-0 container's payload begins 8 bytes in (four zero
+        -- bytes then the declared size as u32), measured on this image and on container 3
+        -- (00 00 00 00 36 FF 00 00, then "#That was weak."). Reading at container + start
+        -- instead lands on that header, so the header offset is applied rather than assumed.
+        local container = nil
+        if base and index then
+            local read_ok, value = pcall(function() return emu:read32(base + index * 4) end)
+            if read_ok and value ~= nil then container = value end
+        end
+        local text40, full_text = "", ""
+        if container and handle then
+            local record = container + 8 + start_of(handle)
+            text40 = text_of(record, COPY_UNITS)
+            local units = length_of(handle) // 2
+            if units > COPY_UNITS and units <= 400 then
+                full_text = text_of(record, units)
+            end
+            if not container_hist[container] then
+                container_hist[container] = 0
+                container_order[#container_order + 1] = container
+            end
+            container_hist[container] = container_hist[container] + 1
+            if container == APPENDED then
+                appended_hits = appended_hits + 1
+                appended_texts[#appended_texts + 1] = string.format(
+                    "handle=0x%08X selector=%d index=%d start=%d length=%d text=%s",
+                    handle, low, index or -1, start_of(handle), length_of(handle),
+                    full_text ~= "" and full_text or text40)
+            end
+        end
         if handle then
             seen_handle[address] = handle
             local counts = address == SITE_A and hist_a or hist_b
@@ -282,7 +351,7 @@ local function run()
         end
         if site_rows[address] < SITE_ROWS then
             site_rows[address] = site_rows[address] + 1
-            sites:write(string.format("%s,%d,%s,%d,%d,%d,%d,%d,%s\n",
+            sites:write(string.format("%s,%d,%s,%d,%d,%d,%d,%d,%s,%s,%s,%s\n",
                 sites_at[address], site_rows[address],
                 handle and string.format("0x%08X", handle) or guard,
                 low, high,
@@ -291,7 +360,9 @@ local function run()
                 (index == nil) and "index_unreadable"
                     or (index == low) and "engine_index_matches_low6"
                     or (index == high) and "engine_index_matches_high6"
-                    or "engine_index_matches_neither"))
+                    or "engine_index_matches_neither",
+                container and string.format("0x%08X", container) or "container_unreadable",
+                text40, full_text))
             sites:flush()
         end
     end
@@ -366,11 +437,21 @@ local function run()
 
         if frame % BEAT_EVERY == 0 then
             local pc = reg("pc")
-            route:write(string.format("%d,%d,%d,%d,%d\n", frame, dispatch_hits,
-                hits[SITE_A], hits[SITE_B], copier_hits))
+            local map_pointer, map_index = nil, -1
+            local ok_map, value = pcall(function() return emu:read32(MAP_POINTER) end)
+            if ok_map and value ~= nil then
+                map_pointer = value
+                if value >= MAP_FIRST and value < MAP_FIRST + MAP_STRIDE * 512
+                    and (value - MAP_FIRST) % MAP_STRIDE == 0 then
+                    map_index = (value - MAP_FIRST) // MAP_STRIDE
+                end
+            end
+            route:write(string.format("%d,%d,%d,%d,%d,0x%08X,%d\n", frame, dispatch_hits,
+                hits[SITE_A], hits[SITE_B], copier_hits, (map_pointer or 0), map_index))
             route:flush()
-            note("heartbeat frame=%d pc=0x%08X dispatch=%d site_a=%d site_b=%d copier=%d",
-                frame, (pc or 0), dispatch_hits, hits[SITE_A], hits[SITE_B], copier_hits)
+            note("heartbeat frame=%d pc=0x%08X dispatch=%d site_a=%d site_b=%d copier=%d map_pointer=0x%08X map_index=%d",
+                frame, (pc or 0), dispatch_hits, hits[SITE_A], hits[SITE_B], copier_hits,
+                (map_pointer or 0), map_index)
         end
 
         if not early_cutoff and frame > 60 then
@@ -387,7 +468,7 @@ local function run()
         end
 
         if frame >= HORIZON
-            or (frame >= 2000 and frame > last_hit_frame + 120) then
+            or (IDLE_STOP > 0 and frame >= 2000 and frame > last_hit_frame + IDLE_STOP) then
             callbacks:remove(callback_id)
             for _, id in ipairs(ids) do
                 pcall(function() emu:clearBreakpoint(id) end)
@@ -443,6 +524,19 @@ local function run()
                 hist:write(string.format("last_handle_b low6=%d high6=%d start=%d length=%d\n",
                     selector_low(last_b), selector_high(last_b), start_of(last_b), length_of(last_b)))
             end
+            -- WHAT THE TABLE ACTUALLY RETURNED, and, for the appended container, every word the
+            -- copier would have taken out of it. This is the route claim in one block: a
+            -- selector alone says nothing until the address it resolves to is named.
+            hist:write("resolved_container_histogram\n")
+            for _, address in ipairs(container_order) do
+                hist:write(string.format("container=0x%08X hits=%d\n", address, container_hist[address]))
+            end
+            hist:write(string.format("appended_container=0x%08X hits=%d\n", APPENDED, appended_hits))
+            for _, line in ipairs(appended_texts) do
+                hist:write("appended," .. line .. "\n")
+            end
+            hist:write(string.format("horizon=%d idle_stop=%d shot_every=%d\n",
+                HORIZON, IDLE_STOP, SHOT_EVERY))
             hist:close()
             finish("done:frames=" .. tostring(frame))
             return

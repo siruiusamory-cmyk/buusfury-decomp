@@ -650,7 +650,9 @@ def test_an_unread_text_destination_states_that_and_clears_when_the_read_lands(
 
     assert page._surface is None, "the worker answered before the assertion"
     assert page._problem == "the scripts and text records are still loading"
-    assert rom._surface.pending_problem == stated
+    # Membership: this destination's reason is one of the reasons the ROM surface
+    # carries, and each other destination's own reason travels beside it.
+    assert stated in rom._surface.pending_problem.split("; ")
     assert stated in rom._summary.text()
     assert rom._surface.pending == {}
     assert rom._surface.overlay == frozenset()
@@ -661,7 +663,9 @@ def test_an_unread_text_destination_states_that_and_clears_when_the_read_lands(
 
     assert page._surface is not None
     assert page.pending_bytes().problem == ""
-    assert rom._surface.pending_problem == ""
+    # This destination's reason is gone from the ROM surface. Another destination
+    # still reading its own records is that destination's reason, not this one's.
+    assert stated not in rom._surface.pending_problem.split("; ")
     assert stated not in rom._summary.text()
 
     _close(shell, session)

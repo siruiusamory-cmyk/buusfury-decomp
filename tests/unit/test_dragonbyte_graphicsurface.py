@@ -48,7 +48,7 @@ def surface(canonical_rom, catalog):
     identification = identify_rom(canonical_rom, catalog)
     profile = identification.profile_match.profile
     return gs.load_graphics_surface(
-        canonical_rom, identification, profile, canonical_rom.read_bytes()
+        identification, profile, canonical_rom.read_bytes()
     )
 
 

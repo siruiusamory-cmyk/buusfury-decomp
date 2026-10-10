@@ -47,7 +47,6 @@ No Qt is imported: a test drives every answer with no window open.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from tools.webfoot.appearances import AppearanceError, AppearanceRecord, read_records
 from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
@@ -107,6 +106,13 @@ VIEW_LINES = {
         "the portrait slot is the SDK's own field name for the record's +0x08. "
         "Read-only: the SDK grows this table by appending NEW definitions, and no "
         "path edits an existing canonical record."
+    ),
+    PALETTE: (
+        "The one global object palette: 256 entries shared by every graphic whose "
+        "pixels reference an index. A recolour is offered per entry and is disclosed "
+        "with the consumers this project can count. Which palette bank a given "
+        "sprite uses is not decoded anywhere in this project, so no per-sprite "
+        "palette is shown and no bank is named."
     ),
     OTHER: (
         "Graphics systems outside the actor-sprite pipeline, as the repository's "
@@ -593,7 +599,6 @@ def _appearance_offset(profile: RomProfile, image_size: int) -> int:
 
 
 def load_graphics_surface(
-    rom_path: str | Path,
     identification: RomIdentification,
     profile: RomProfile,
     image: bytes,

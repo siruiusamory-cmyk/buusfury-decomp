@@ -106,6 +106,8 @@ QT_FREE_MODULES = (
     "tools.dragonbyte.entitysurface",
     "tools.dragonbyte.textsurface",
     "tools.dragonbyte.textedits",
+    "tools.dragonbyte.graphicsurface",
+    "tools.dragonbyte.graphicsedits",
 )
 
 

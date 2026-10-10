@@ -90,6 +90,15 @@ try {
     Write-Host "  size            : $([math]::Round($item.Length / 1MB, 1)) MB (onedir; the runtime is beside it)"
     Write-Host "  visible version : $visible"
     Write-Host "  sha256          : $((Get-FileHash $exe -Algorithm SHA256).Hash)"
+
+    # Measured: PyInstaller writes INFO to stderr after stdout is closed, Python's
+    # final TextIOWrapper flush then raises `OSError: [Errno 22] Invalid argument`,
+    # and PowerShell surfaces that as `$LASTEXITCODE` 1 and an exit code of 1 even
+    # though every check above passed and the artefact is complete. A release script
+    # that reports failure for a build it just proved would fail every CI job and
+    # every wrapper that reads the code, so the proof above is the signal and the
+    # exit code says so.
+    exit 0
 }
 finally {
     Pop-Location

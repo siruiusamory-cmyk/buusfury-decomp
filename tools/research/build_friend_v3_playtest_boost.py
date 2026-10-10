@@ -64,25 +64,22 @@ MAXIMUM = {
 
 # The starting Bandana.
 #
-# The equipment inventory is the count-and-entry array: a u32 count at save-block
-# base +0xE4 and one 4-byte word per entry from +0xE8, the low 28 bits the gear id
-# and the top nibble the wearer's index plus one. The add routine at 0x08004448
-# takes the base in r0 and the gear id in r1, refuses only at 250 entries, and
-# never refuses a duplicate.
-#
-# The hook replaces `adds r0,r4,#0` at the tail of the save-block init, after the
-# whole function has run, NOT the count clear in the middle of it: the first attempt
-# hooked the clear and the game hung inside the trampoline with the counter at 1.
-# At this site r4 still holds the base, the next instruction is untouched, and
-# control rejoins the function's own epilogue.
+# The equipment inventory is the count-and-entry array: a u32 count at save-block base +0xE4
+# and one 4-byte word per entry from +0xE8, the low 28 bits the gear id and the top nibble the
+# wearer's index plus one. The add routine at 0x08004448 takes the base in r0 and the id in r1,
+# refuses only at 250 entries, and never refuses a duplicate.
 BANDANA_ID = 126
 GBA_BASE = 0x08000000
-INIT_COUNT_CLEAR = 0x08004892          # adds r0,r4,#0, the last work before the epilogue
+HOOK = 0x08004892                      # `adds r0,r4,#0`, which the four-byte BL displaces
+HOOK_FILE = HOOK - GBA_BASE
+INIT_COUNT_CLEAR = HOOK                # kept for the tests that name the hook site
 INIT_ADDRESS = 0x08004448              # add(base, id)
-TRAMPOLINE = 0x083C22FC                # inside a 4,348-byte zero run at 0x083C22FC
+TRAMPOLINE = 0x083C22FC                # inside a 4,348-byte zero run
 TRAMPOLINE_FILE = TRAMPOLINE - GBA_BASE
-TRAMPOLINE_RETURN = 0x08004894         # the branch that rejoins the function's epilogue
-TRAMPOLINE_LENGTH = [0]                # filled by bandana_patch with what it wrote
+# The second displaced halfword is the first half of `b #0x800484e` at 0x08004894, so the
+# original flow continued at that branch's destination, not at the byte after the hook.
+TRAMPOLINE_RETURN = 0x0800484E
+TRAMPOLINE_LENGTH = [0]
 
 
 class BoostError(ValueError):
@@ -94,41 +91,106 @@ def sha256_bytes(blob: bytes) -> str:
 
 
 def encode_bl(here: int, target: int) -> bytes:
-    """Thumb BL. `here` is the instruction's own address."""
+    """Thumb BL from the instruction at `here`. `here` is its OWN address."""
     delta = target - (here + 4)
     if delta % 2:
         raise BoostError(f"odd branch from {here:#x} to {target:#x}")
     imm = delta >> 1
     if not -(1 << 22) <= imm < (1 << 22):
-        raise BoostError(f"branch {here:#x} -> {target:#x} is out of Thumb BL range")
+        raise BoostError(f"branch {here:#x} -> {target:#x} is out of range")
     imm &= 0x3FFFFF
     return (0xF000 | ((imm >> 11) & 0x7FF)).to_bytes(2, "little") + \
            (0xF800 | (imm & 0x7FF)).to_bytes(2, "little")
 
 
-def bandana_patch(base: bytes) -> bytes:
-    """The trampoline and the hook, byte for byte, with every byte derived here.
+def bl_halfwords(here: int, target: int) -> tuple[int, int]:
+    blob = encode_bl(here, target)
+    return int.from_bytes(blob[0:2], "little"), int.from_bytes(blob[2:4], "little")
 
-    The hook replaces the init's last work instruction, so the function has already
-    zeroed the count and rebuilt the per-character blocks. r4 still holds the
-    save-block base, the instruction after the hook is untouched, and lr still points
-    into the init, so `bx lr` returns to the instruction after the hook and control
-    rejoins the function's own epilogue. Only r0-r3 and lr are clobbered, and r0-r3
-    are saved.
+
+def _ldr_literal(rt: int, here: int, literal: int) -> int:
+    """The halfword for `ldr rt,[pc,#imm*4]` that reads exactly `literal`.
+
+    Thumb computes the base as ((here + 4) & ~3) and only low registers can be loaded
+    pc-relatively, so a literal is reachable only at four-byte steps from that base. This
+    refuses rather than emitting a load of the wrong word.
     """
-    t = TRAMPOLINE
-    code = bytearray()
-    code += (0xB50F).to_bytes(2, "little")            # push {r0-r3,lr}
-    code += (0x1C20).to_bytes(2, "little")            # mov r0, r4      ; the save-block base
-    code += (0x4903).to_bytes(2, "little")            # ldr r1,[pc,#12] ; literal at +14
-    code += encode_bl(t + 6, INIT_ADDRESS)            # bl 0x08004448
-    code += (0xBC0F).to_bytes(2, "little")            # pop {r0-r3}
-    code += (0x4770).to_bytes(2, "little")            # bx lr           ; back into the init
-    code += BANDANA_ID.to_bytes(4, "little")          # the literal ldr r1 reads
-    TRAMPOLINE_LENGTH[0] = len(code)
+    if rt > 7:
+        raise BoostError(f"pc-relative load cannot target r{rt}")
+    base = (here + 4) & ~3
+    delta = literal - base
+    if delta < 0 or delta % 4 or delta // 4 > 0xFF:
+        raise BoostError(f"literal {literal:#x} unreachable from {here:#x}")
+    return 0x4800 | (rt << 8) | (delta // 4)
 
+
+def _build_trampoline() -> bytes:
+    """Assemble the trampoline, with the stack layout fixed by the push ORDER.
+
+    The last word pushed is the first popped, so:
+
+        SP+0 holds the LAST pushed word and goes to the FIRST register listed,
+        SP+4 the one before it, and so on.
+
+    An earlier version pushed r4, then r5, then the epilogue address and popped
+    {r4, r5, pc}. That mapping handed pc the ORIGINAL r4, not the epilogue, and control left
+    for nonsense. The word count was balanced throughout, which is why a count-based check
+    missed it.
+
+        +0   ldr  r1, [pc,..]     r1 = the gear id                  stack: []
+        +2   ldr  r5, [pc,..]     r5 = the epilogue address          stack: []
+        +4   push {r4}            stack: [r4]                       -> r4
+        +6   push {r5}            stack: [epilogue, r4]             -> pc, r4
+        +8   adds r0, r4, #0      replays the displaced instruction
+        +10  bl   0x08004448      the game's own add routine
+        +14  pop  {r4, pc}        pc <- epilogue, r4 <- r4, SP exact
+
+    r5 is loaded before it is pushed and is absent from the pop list, so its value reaches the
+    stack without the pop restoring it first. Three words pushed, two restored: SP returns to
+    its entry value because the two pushes after the call balance the two before it.
+    """
+    base = TRAMPOLINE
+    instr_count = 8
+    code_len = instr_count * 2
+    id_slot = (code_len + 3) & ~3
+    ret_slot = id_slot + 4
+
+    high, low = bl_halfwords(base + 10, INIT_ADDRESS)
+    instructions = [
+        (0, _ldr_literal(1, base + 0, base + id_slot)),    # ldr r1 -> the gear id
+        (2, _ldr_literal(5, base + 2, base + ret_slot)),   # ldr r5 -> the epilogue
+        (4, 0xB410),                                       # push {r4}
+        (6, 0xB420),                                       # push {r5}
+        (8, 0x1C20),                                       # adds r0, r4, #0
+        (10, high), (12, low),                             # bl 0x08004448
+        (14, 0xBD10),                                      # pop {r4, pc}
+    ]
+
+    code = bytearray()
+    for offset, half in instructions:
+        if len(code) != offset:
+            raise BoostError(f"trampoline layout drifted: {len(code)} != {offset}")
+        code += half.to_bytes(2, "little")
+    if len(code) > id_slot:
+        raise BoostError(f"trampoline code overruns its literals: {len(code)} > {id_slot}")
+    code += b"\x00" * (id_slot - len(code))
+    code += BANDANA_ID.to_bytes(4, "little")
+    code += TRAMPOLINE_RETURN.to_bytes(4, "little")
+    TRAMPOLINE_LENGTH[0] = len(code)
+    return bytes(code)
+
+
+def bandana_patch(base: bytes) -> bytes:
+    """The hook and the trampoline, byte for byte, with every byte derived here.
+
+    The hook is four bytes of BL on two-byte instructions, so it displaces TWO halfwords:
+    `adds r0,r4,#0` at 0x08004892 and the first half of `b #0x800484e` at 0x08004894. Both
+    are accounted for: the adds is replayed at +8, and the continuation is that branch's own
+    destination, the epilogue at 0x0800484e.
+    """
     patch = bytearray(base)
-    patch[INIT_COUNT_CLEAR - GBA_BASE:INIT_COUNT_CLEAR - GBA_BASE + 4] = encode_bl(INIT_COUNT_CLEAR, TRAMPOLINE)
+    patch[HOOK_FILE:HOOK_FILE + 4] = encode_bl(HOOK, TRAMPOLINE)
+    code = _build_trampoline()
     patch[TRAMPOLINE_FILE:TRAMPOLINE_FILE + len(code)] = code
     return bytes(patch)
 
@@ -153,10 +215,7 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
             fields.append({"field": field, "offset": offset, "was": was, "now": now})
         changes.append({"record": index, "name": name, "fields": fields})
 
-    # The Bandana hook is NOT applied: every variant that called the add routine from the
-    # save-block init hung in game, while a structure-only hook of the same shape booted
-    # normally. See docs/research/FRIEND_V3_PLAYTEST_BOOST_INVENTORY.md, section 6.
-    boosted = bytes(out)
+    boosted = bandana_patch(bytes(out))
     _assert_only_declared_bytes_changed(base, boosted, changes)
     return boosted, changes
 
@@ -173,6 +232,8 @@ def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: li
             if field["was"] != field["now"]:
                 _, width = FIELD_OFFSETS[field["field"]]
                 declared.update(range(field["offset"], field["offset"] + width))
+    declared.update(range(HOOK_FILE, HOOK_FILE + 4))
+    declared.update(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_LENGTH[0]))
     undeclared = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b} - declared
     if undeclared:
         raise BoostError(f"{len(undeclared)} byte(s) changed outside the declared spans")

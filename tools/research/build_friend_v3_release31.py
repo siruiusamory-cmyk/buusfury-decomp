@@ -42,6 +42,7 @@ from tools.webfoot import compressed_dialogue as cd  # noqa: E402
 from tools.webfoot.dialogue_repack import container_pointers, text_of  # noqa: E402
 from tools.webfoot.formats import webfoot_lz  # noqa: E402
 from tools.webfoot.handles import DialogueHandle  # noqa: E402
+from tools.webfoot.destination import refuse_rom_destination  # noqa: E402
 from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
 
 RENAME = next(r for r in APPROVED_CHARACTER_RENAMES if r.old == "Videl")
@@ -92,6 +93,57 @@ def streams(image: bytes) -> dict[int, bytes]:
     return out
 
 
+def rename_positions(current: str, counterpart: str) -> tuple[str, int, int, int]:
+    """Rename each occurrence of the old name only where the retail counterpart names the SAME actor.
+
+    WHY POSITION BY POSITION AND NOT `str.replace`. The retail test is a decision about an OCCURRENCE,
+    and a record can contain both actors: measured, `3:2184:2112` and `3:1192:2690` hold lines whose
+    retail text reads "I want to see Goten and Trunks compete" while the built text reads "I want to
+    see Videl and Uub    compete" - that Videl IS the Goten-turned-Videl actor - alongside
+    occurrences that are retail Videl. A per-record decision applied with a per-occurrence replace
+    renames the wrong one, which is what an earlier version of this builder did.
+
+    WHY NO ALIGNMENT IS NEEDED. The earlier rename pass preserved every record's LENGTH: where it
+    swapped a word for a shorter one it padded with spaces to keep the span identical, which is why
+    "Goten and Trunks" became "Videl and Uub    ". Measured over every candidate record - the ones
+    that contain the old name in both images - all 34 have exactly the same length as their retail
+    counterpart. Character offsets therefore correspond one to one, and the decision is a direct
+    comparison at the SAME offset: retail names the old actor there and the occurrence is renamed;
+    retail names "Goten" there and the occurrence is the other actor and stays.
+
+    A length mismatch would mean that correspondence is not established, so it refuses rather than
+    aligning by guess. Returns the rebuilt text and the counts of occurrences renamed, kept because
+    retail names the other actor there, and left because the retail word is neither.
+    """
+    if len(current) != len(counterpart):
+        raise RenameError(
+            f"REFUSED: the record is {len(current)} units and its retail counterpart is "
+            f"{len(counterpart)}, so character offsets do not correspond and an occurrence cannot "
+            "be attributed to an actor")
+
+    pieces = []
+    cursor = 0
+    renamed = kept = unclear = 0
+    while True:
+        position = current.find(OLD_NAME, cursor)
+        if position == -1:
+            break
+        retail_word = counterpart[position:position + len(OLD_NAME)]
+        pieces.append(current[cursor:position])
+        if retail_word == OLD_NAME:
+            pieces.append(NEW_NAME)
+            renamed += 1
+        else:
+            pieces.append(OLD_NAME)
+            if retail_word == "Goten":
+                kept += 1
+            else:
+                unclear += 1
+        cursor = position + len(OLD_NAME)
+    pieces.append(current[cursor:])
+    return "".join(pieces), renamed, kept, unclear
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True)
@@ -106,7 +158,15 @@ def main() -> int:
     got = sha256_bytes(image)
     if got != args.expect_sha256.lower():
         raise RenameError(f"REFUSED: {source} is {got}, expected {args.expect_sha256.lower()}")
-    retail = Path(args.retail).read_bytes()
+    retail_path = Path(args.retail)
+    retail = retail_path.read_bytes()
+    # A destination that is a protected ROM input is refused by file identity before anything is
+    # built, so a mistyped --out or --manifest cannot write over the image being read.
+    for destination in (args.out, args.manifest):
+        try:
+            refuse_rom_destination(retail_path, destination)
+        except WriteError as error:
+            raise RenameError(f"REFUSED: {error}") from error
 
     out = bytearray(image)
     document: dict = {"input": str(source), "input_sha256": got, "input_bytes": len(image),
@@ -133,7 +193,17 @@ def main() -> int:
                                          "friend": current[:70],
                                          "retail": (counterpart or "")[:70]})
                 continue
-            text = current.replace(OLD_NAME, NEW_NAME)
+            text, renamed_here, kept_here, unclear_here = rename_positions(current, counterpart)
+            if renamed_here == 0:
+                document["left"].append({"handle": f"{selector}:{start}:{length}",
+                                         "friend": current[:70],
+                                         "retail": counterpart[:70]})
+                continue
+            occurrences = document.setdefault("occurrences",
+                                              {"renamed": 0, "kept_other_actor": 0, "unclear": 0})
+            occurrences["renamed"] += renamed_here
+            occurrences["kept_other_actor"] += kept_here
+            occurrences["unclear"] += unclear_here
             encoded = text.encode("utf-16le")
             if len(encoded) > 4094:
                 raise RenameError(f"{selector}:{start}:{length}: {len(encoded)} bytes, above the "
@@ -241,17 +311,15 @@ def main() -> int:
         ensure_not_source_alias(source, target)
     except WriteError as error:
         raise RenameError(f"REFUSED: {error}") from error
-    staged = target.with_name(target.name + ".staged")
-    staged.write_bytes(out)
-    if staged.read_bytes() != bytes(out):
-        raise RenameError("REFUSED: the staged write does not match the plan")
-    staged.replace(target)
-    written = target.read_bytes()
+    # The readback and the identity assertion run on the IN-MEMORY image, so nothing is written to
+    # --out until the result is known to be the frozen release. Writing first and asserting after
+    # leaves a wrong image on disk when the assertion fails.
+    written = bytes(out)
 
-    # Readback: every renamed record reads the new name, every record the test left still reads the
-    # old one, every record that ALREADY lived in the carried container still reads exactly what it
-    # read before, and each relocated slot reads the new name through its own table word. The
-    # written containers are unpacked ONCE: unpacking them inside the loop made this quadratic.
+    # Readback: every renamed record reads exactly its planned wording, every record the test left
+    # still reads the old one, every record that ALREADY lived in the carried container still reads
+    # exactly what it read before, and each relocated slot reads the new name through its own table
+    # word. The written containers are unpacked ONCE: unpacking them inside the loop was quadratic.
     renamed = {row["record"] for row in placed}
     carried = {f"{s}:{start}:{length}"
                for s, stream in friend_streams.items() if s == NEW_SELECTOR
@@ -283,9 +351,14 @@ def main() -> int:
     for row in placed:
         new_stream = written_streams[NEW_SELECTOR]
         after = text_of(new_stream, row["new_start"], row["new_length"])
-        if NEW_NAME not in after or OLD_NAME in after:
+        # Compare against the PLANNED text, not against "contains the new name and not the old".
+        # A record can hold both actors, so a correctly rebuilt record still reads "Videl" where the
+        # retail counterpart names the Goten-turned-Videl character, and asserting the absence of the
+        # old name fails on a correct build.
+        if after != row["text"]:
             problems += 1
-            print(f"FAIL {row['record']}: does not read the new name")
+            print(f"FAIL {row['record']}: the record does not read its planned wording\n"
+                  f"     reads  {after[:70]!r}\n     expect {row['text'][:70]!r}")
     for entry in document["slots"]:
         text, _offset = slot_text(written, entry["slot"])
         if text != NEW_NAME:
@@ -297,17 +370,24 @@ def main() -> int:
     document["output"] = str(target)
     document["output_sha256"] = sha256_bytes(written)
     document["output_bytes"] = len(written)
-    Path(args.manifest).write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    print(f"# renamed {len(placed)} record(s) into container {NEW_SELECTOR} at "
-          f"0x{ROM_BASE + offset:08X} ({len(payload)} bytes), "
-          f"{len(handle_changes)} handle word(s) rewritten")
-    print(f"# relocated {len(document['slots'])} name slot(s): "
-          f"{[entry['slot'] for entry in document['slots']]}")
-    print(f"# left for the owner: {len(document['left'])} record(s) with no retail Videl to compare")
     if document["output_sha256"] != RELEASE.output_sha256:
         raise RenameError(
             f"REFUSED: the chain produced {document['output_sha256']} and release 3.1 is "
             f"{RELEASE.output_sha256}. A byte moved somewhere.")
+    # Only now is anything written, and the file is verified to equal the bytes that passed.
+    staged = target.with_name(target.name + ".staged")
+    staged.write_bytes(written)
+    if staged.read_bytes() != written:
+        raise RenameError("REFUSED: the staged write does not match the verified bytes")
+    staged.replace(target)
+    Path(args.manifest).write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    print(f"# renamed {len(placed)} record(s) into container {NEW_SELECTOR} at "
+          f"0x{ROM_BASE + offset:08X} ({len(payload)} bytes), "
+          f"{len(handle_changes)} handle word(s) rewritten")
+    print(f"# occurrences: {document.get('occurrences', {})}")
+    print(f"# relocated {len(document['slots'])} name slot(s): "
+          f"{[entry['slot'] for entry in document['slots']]}")
+    print(f"# left for the owner: {len(document['left'])} record(s) with no retail Videl to compare")
     print(f"# wrote {target} {len(written)} bytes sha256 {document['output_sha256']} matches the "
           "frozen release identity")
     return 0

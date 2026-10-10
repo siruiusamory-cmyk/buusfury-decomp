@@ -297,8 +297,8 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         name="release-3.1",
         base_sha256="521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd",
         base_bytes=10146136,
-        output_sha256="b8ee65657986d05d57911ade9ce4b2bf9f216811b874756aec5de8df06351dd5",
-        output_bytes=10169986,
+        output_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
+        output_bytes=10169982,
         stages=("character-rename",),
         notes="Retail Videl's actor is renamed to Lazuli by the retail-side occurrence test: 34 "
               "dialogue records copied into the selector-7 container with its payload carried "

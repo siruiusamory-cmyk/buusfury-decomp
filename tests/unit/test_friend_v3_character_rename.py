@@ -8,8 +8,39 @@ and is asserted here, as is the identity the builder refuses to disagree with.
 
 from __future__ import annotations
 
+import pytest
+
+from tools.research.build_friend_v3_release31 import RenameError, rename_positions
 from tools.research.friend_v3_text_approvals import (
     APPROVED_CHARACTER_RENAMES, APPROVED_RELEASES)
+
+
+def test_a_mixed_record_renames_only_the_retail_actor_occurrence() -> None:
+    """The measured defect. Records 3:2184:2112 and 3:1192:2690 hold BOTH actors, and the retail
+    counterpart says so position for position: "my daughter!Videl!" is retail Videl and becomes
+    Lazuli, while "I want to see Goten and Trunks compete" - which the built image pads to
+    "I want to see Videl and Uub    compete" - is the Goten-turned-Videl actor and must stay Videl.
+    An earlier version applied one decision per record with a per-occurrence replace, which renamed
+    the wrong one."""
+    # The real shapes: the built text is the same length as the retail text because the earlier pass
+    # padded the shorter words, so offsets correspond exactly.
+    counterpart = ("my daughter!Videl! No! Spit it out!" + "x" * 20
+                   + "I want to see Goten and Trunks compete.")
+    current = ("my daughter!Videl! No! Spit it out!" + "x" * 20
+               + "I want to see Videl and Uub    compete.")
+    assert len(current) == len(counterpart)
+    text, renamed, kept, unclear = rename_positions(current, counterpart)
+    assert (renamed, kept, unclear) == (1, 1, 0)
+    assert "my daughter!Lazuli! No!" in text
+    assert "I want to see Videl and Uub    compete." in text
+    assert text.count("Lazuli") == 1 and text.count("Videl") == 1
+
+
+def test_an_occurrence_whose_retail_actor_cannot_be_established_is_left() -> None:
+    """When the two texts are different lengths the offsets do not correspond, so the actor of an
+    occurrence is not established and the tool refuses rather than aligning by guess."""
+    with pytest.raises(RenameError):
+        rename_positions("call me Videl", "call me Videl and somebody else")
 
 
 def test_the_rename_carries_the_retail_side_occurrence_test() -> None:
@@ -35,4 +66,4 @@ def test_the_release_31_identity_matches_the_one_the_builder_asserts() -> None:
     assert release.stages == ("character-rename",)
     # The image grows by the container's carried payload plus the three relocated strings.
     assert release.output_bytes > release.base_bytes
-    assert release.output_bytes - release.base_bytes == 23850
+    assert release.output_bytes - release.base_bytes == 10169982 - 10146136

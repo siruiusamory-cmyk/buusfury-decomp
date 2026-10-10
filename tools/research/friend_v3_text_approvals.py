@@ -225,6 +225,42 @@ APPROVED_DIALOGUE_TEXT_EDITS: tuple[ApprovedDialogueTextEdit, ...] = (
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovedCharacterRename:
+    """One approved rename of a character, with the test that fixes which occurrences it covers."""
+
+    old: str
+    new: str
+    retail_test: str
+    relocated_slots: tuple[int, ...]
+    approval: str
+
+
+#: Release 3.1: retail Videl's actor becomes Lazuli. THE OCCURRENCE TEST IS THE APPROVAL. This image
+#: displays the name "Videl" on TWO different actors - measured, retail's appearance records 65 to
+#: 70 (Goten's art) were renamed to "Videl" by the earlier pass, and records 214 and 215 are retail
+#: Videl herself - so a rename that matched the spelling everywhere would merge two characters. The
+#: owner's rule fixes which is which without guessing: an occurrence is retail Videl only where the
+#: CANONICAL ROM says "Videl" at the same place. Where the canonical ROM says "Goten", the word
+#: belongs to the other actor and stays. Where there is no retail counterpart, nothing is written.
+#: Measured coverage: 3 text-table slots and 34 dialogue records; 12 slots and 57 records left; 3
+#: records listed for the owner because they live in the container an earlier release appended and
+#: retail has no counterpart to compare.
+APPROVED_CHARACTER_RENAMES: tuple[ApprovedCharacterRename, ...] = (
+    ApprovedCharacterRename(
+        old="Videl",
+        new="Lazuli",
+        retail_test="an occurrence is renamed only where the canonical ROM says 'Videl' at the same "
+                    "place; where it says 'Goten' the word stays, and an occurrence with no retail "
+                    "counterpart is left and listed",
+        relocated_slots=(138, 172, 1066),
+        approval="owner decision 2026-10-10: 'a rename of retail Videl to Lazuli, swapped in all "
+                 "dialogue and appropriate stuff like all the other names were', with the "
+                 "clarification 'Not every Videl, the retail Videl. Not the Goten > Videl Videl.'",
+    ),
+)
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovedRelease:
     """One shipped release: the image it was cut from, the chain, and the digest it must equal."""
 
@@ -256,6 +292,20 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
               "cannot be edited in place because a record boundary sits inside every span that "
               "carries it. Interior double spaces and that phrase are release 4, which needs a "
               "container rebuild with every handle rewritten.",
+    ),
+    ApprovedRelease(
+        name="release-3.1",
+        base_sha256="521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd",
+        base_bytes=10146136,
+        output_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
+        output_bytes=10169982,
+        stages=("character-rename",),
+        notes="Retail Videl's actor is renamed to Lazuli by the retail-side occurrence test: 34 "
+              "dialogue records copied into the selector-7 container with its payload carried "
+              "forward, and 3 text-table slots relocated. The Goten-turned-Videl actor and every "
+              "occurrence retail does not spell 'Videl' are untouched, and 3 records with no retail "
+              "counterpart are listed for the owner. The renamed container's declared size grows "
+              "from 2,266 to 23,794 bytes, which is why the image grows by 23,850 bytes.",
     ),
 )
 

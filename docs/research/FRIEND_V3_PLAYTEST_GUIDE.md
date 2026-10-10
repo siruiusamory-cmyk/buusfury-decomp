@@ -52,33 +52,14 @@ save-state artifact rather than a build defect. To start genuinely clean, delete
 | --- | --- |
 | Five playable characters at level 200 | Goku, Gohan, Goten, Trunks and Vegeta start at the level ceiling |
 | STR, POW, END and SPD at 255 | maximum for those four attributes |
-| HP and EP left at foundation values | deliberately not raised: `0xFFFF` reads as negative and broke energy attacks, so HP/EP were excluded |
+| HP and EP left at retail values | deliberately not raised: `0xFFFF` reads as negative and broke energy attacks, so HP/EP were excluded |
 | character names, menu text, credits | the completed text pass |
 | Tulma | replaced actor sprite, portrait slot 17, and two rewritten dialogue records |
 
-Controls are the retail controls, unchanged. Nothing was remapped.
+Everything else is retail: items, shops, enemies, progression and controls. Nothing was remapped
+or removed, and no item is added to your inventory at the start.
 
-## 5. The Bandana
-
-**No starting Bandana is injected.** That requirement was cancelled, and the image contains no
-equipment hook. The Bandana is obtained by normal gameplay, the same as retail.
-
-The delivered image was verified to have no injection: the equipment count at `0x0300114C` reads
-0 on a fresh save, and the hook and trampoline regions are byte-identical to the foundation.
-
-What it is, from the game's own accessory list: the **Bandana** is an accessory granting
-**+3 STR, +3 POW, +3 END**, described in game as *"Only a really vicious criminal would wear
-something like this."* Do not confuse it with the **Geromantium Bandana**, a separate, much
-stronger accessory granting +40 END. Source:
-[Almar's Guides accessory list][almaracc].
-
-**Acquisition is not yet pinned to a specific scene.** No repository document records where it is
-found, and this ticket did not establish it from game data. Treat the accessory list as the
-reference and note where you find it; that locates it for the next revision of this guide.
-
-[almaracc]: https://almarsguides.com/retro/walkthroughs/GBA/games/DragonBallZBuusFury/Misc/Lists/Accessories/
-
-## 6. Known limitations
+## 5. Known limitations
 
 1. **No chapter was walked.** Progression past the smoke-test window is unverified.
 2. **Tulma's encounter is unconfirmed.** The graphics and dialogue are in the image, but no
@@ -92,7 +73,7 @@ reference and note where you find it; that locates it for the next revision of t
 6. **A crash is possible in principle.** If the game stops advancing, note the screen, the
    chapter and what you were doing, and follow section 8.
 
-## 7. Chapter-by-chapter checklist
+## 6. Chapter-by-chapter checklist
 
 These are the walkthrough's chapter names for this game, in order. It has twelve chapters and one
 short epilogue chapter, not eight sagas, and this guide previously listed invented ones. Source:
@@ -127,10 +108,9 @@ Also worth watching for, because they are what this build touches:
 | d | movement and basic attacks work | [ ] |
 | e | a Tulma appearance matches the intended art and dialogue | [ ] |
 | f | save, quit, reload preserves progress and inventory | [ ] |
-| g | no equipment is present that should not be | [ ] |
-| h | the Grand Kai does not show `The game will not run on this hardware` | [ ] |
+| g | the Grand Kai does not show `The game will not run on this hardware` | [ ] |
 
-## 8. Reporting a bug
+## 7. Reporting a bug
 
 Include all of the following, or the report cannot be acted on:
 
@@ -146,7 +126,7 @@ Include all of the following, or the report cannot be acted on:
 A reproducible defect beats a description. If it happens twice from a fresh save, say so: that is
 the difference between a build defect and a one-off.
 
-## 9. What this build is for
+## 8. What this build is for
 
 Getting the campaign played. If normal progression works, the next step is a full human
 playthrough, and that playthrough is the evidence that closes the remaining progression claims.

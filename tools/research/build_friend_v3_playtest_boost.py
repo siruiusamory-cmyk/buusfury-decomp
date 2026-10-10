@@ -34,10 +34,15 @@ ROSTER_NAMES = ("Goku", "Gohan", "Goten", "Trunks", "Vegeta")
 
 # Field name -> (offset in the record, width in bytes). Widths and offsets match
 # tools/webfoot/formats/stat_tables.py:decode_base_stat_record.
+#
+# hp and ep are deliberately absent. Both are u16 and the engine reads them as
+# signed: writing 0xFFFF made a live character read HP -1 and EP -5 and disabled
+# energy attacks, observed on the status screen of a cold boot of the previous
+# candidate. The owner's ruling on that observation: the hp and ep fields do not
+# need changing. strength, power, endurance and speed are u8, where 0xFF is fine,
+# and level is u8 with its own ceiling below.
 FIELD_OFFSETS = {
     "level": (0x00, 1),
-    "hp": (0x02, 2),
-    "ep": (0x04, 2),
     "strength": (0x06, 1),
     "power": (0x07, 1),
     "endurance": (0x08, 1),
@@ -47,13 +52,10 @@ FIELD_OFFSETS = {
 # Every value is the widest its own mode uses. Level stops at 200 rather than the
 # u8 bound of 255 because 200 is the game's own XP ceiling: `cmp r6,#0xc8` before
 # the threshold lookup at 0x08013A00 (tools/webfoot/stats.py:71-75,
-# docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393). A starting level of 200 with
-# no experience has never been observed at runtime.
+# docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393).
 LEVEL_CEILING = 200
 MAXIMUM = {
     "level": LEVEL_CEILING,
-    "hp": 0xFFFF,
-    "ep": 0xFFFF,
     "strength": 0xFF,
     "power": 0xFF,
     "endurance": 0xFF,

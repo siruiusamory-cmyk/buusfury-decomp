@@ -16,13 +16,14 @@ recorded in section 2 or a hash recorded in section 1.
 | | |
 | --- | --- |
 | image | `build/fv3boost001/out/v3-playtest-boost.gba` (ignored, not tracked) |
-| SHA-256 | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e` |
+| SHA-256 | `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c` |
 | bytes | 10,140,972 |
 | manifest | `build/fv3boost001/out/v3-playtest-boost.manifest.json` |
-| changed bytes | 45, all inside the character base-stat table `0x006FDA4C..0x006FDA9D` |
+| changed bytes | 25, all inside the character base-stat table `0x006FDA4C..0x006FDA9D` |
+| superseded | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e`, the first consolidated baseline, retired because its hp and ep edit read as negative in game. See `docs/research/FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md` |
 | canonical ROM | `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`, unchanged |
 
-There is exactly one final image. No competing variant was built.
+There is one current final image. No competing variant was built.
 
 ## 2. Reproducible build, with the provenance chain
 
@@ -40,7 +41,8 @@ is not a write target and is not read through a junction; no input is hardlinked
 | 5 complete text pass | `d564ef8a...` | `20f2c14066648bb7ef2fad60ffc8d904121e8cd4f1c1fe171bfd80ca8551746c` |
 | 6 toolkit graphics swap | `20f2c140...` | `ef939dcd8c600fe52044df08d930d9dff1b1ceed52698aff8b21c8eef15b38b4` |
 | 7 toolkit dialogue swap | `ef939dcd...` | `a4c12a95818cab2781165658d25f2463bc6fe0f87040620a7c89f0034c5b49db` |
-| 8 playtest boost | `a4c12a95...` | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e` |
+| 8 playtest boost, first form | `a4c12a95...` | `6d7a56c6f96e83cf6e5b86a1ab188d40ab88247c6ffa274f09531e03f609414e`, superseded: its hp and ep edit read as negative in game |
+| 9 playtest boost, corrected | `a4c12a95...` | `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`, this build's current image |
 
 Steps 1 to 5 are the merged complete-text-pass chain. Step 6 and 7 are the merged
 character-swap toolkit, invoked as
@@ -58,7 +60,7 @@ under ignored `build/`. The four art inputs are `stand.png`
 
 **Steps 6, 7 and 8 were re-run here, not assumed.** Re-running the two swaps from the
 verified `20f2c140` foundation produced `ef939dcd` and then `a4c12a95` byte for byte, and
-re-running the boost on that fresh output produced `6d7a56c6` again. That is the integration
+re-running the boost on that fresh output reproduced the first form's digest, and after the hp and ep fields were dropped it reproduces `acd98c2a`. That is the integration
 provenance check the ticket asks for: the selected foundation demonstrably contains the text
 pass and the Tulma work, because the toolkit regenerates it.
 
@@ -79,25 +81,35 @@ re-hashes the canonical copy at both ends.
 
 Character base-stat records are 9 records of 0x12 bytes at `0x006FDA4C`; the layout is
 `tools/webfoot/formats/stat_tables.py:188-220` (level u8, pad, hp u16, ep u16, strength,
-power, endurance, speed, appearance id, technique count, 6 technique bytes). The five base
-party records are set to the widest value each field's own mode uses:
+power, endurance, speed, appearance id, technique count, 6 technique bytes). Records 0..4 are
+set to the widest value each field's own mode uses, **except hp and ep, which are left at
+the foundation's own values**:
 
 | field | offset | value | basis |
 | --- | --- | --- | --- |
 | level | +0x00 | 200 | the game's XP ceiling, not the u8 bound: `cmp r6,#0xc8` before the threshold lookup, reported at `tools/webfoot/stats.py:71-75` from `docs/research/P010_ENEMY_DEATH_AND_REWARDS.md:393`. The encoding is a u8 and would accept 255 |
-| hp | +0x02 | 65535 | u16 field |
-| ep | +0x04 | 65535 | u16 field |
-| strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields |
+| hp, ep | +0x02, +0x04 | unchanged | both are u16 and the engine reads them as signed. Writing 0xFFFF made a live character read HP -1 and EP -5 with energy attacks disabled, observed on a cold boot; see the completion record beside this one |
+| strength, power, endurance, speed | +0x06..+0x09 | 255 each | u8 fields; 255 reads correctly in game |
 
-Records 0..4 are set from `BASE_STAT_NAMES` order (Goku, Gohan, Goten, Trunks, Vegeta).
-Records 5..8 (Gotenks, Vegito, Gogeta, Hercule) are deliberately untouched. That roster split
-is an **inference, not a verified fact**: `tools/webfoot/formats/stat_tables.py:80-86` labels
-the names INFERRED, and `:77` calls all nine records "playable characters". No source in this
-repository establishes that fusions derive from the base records or that Hercule is
-unplayable. The five-record choice is therefore a bounded decision, recorded here so the
-playtest can falsify it; the fusion records are left at retail values, which is the
-conservative side of that uncertainty.
+Records 0..4 are set, and records 5..8 are deliberately untouched. Two separate things are
+known about identity, and they must not be confused:
 
+- **The record order** `0=Goku, 1=Gohan, 2=Goten, 3=Trunks, 4=Vegeta, 5=Gotenks, 6=Vegito,
+  7=Gogeta, 8=Videl`, with a per-character block stride of `0x68`, comes from the external Data
+  Crystal RAM map. It is an external source, not a measurement of this image. It agrees with
+  `tools/webfoot/formats/stat_tables.py:77` calling all nine records playable, and it puts
+  Videl in the ninth record where `BASE_STAT_NAMES` says Hercule.
+- **The status screen agrees with the order rather than contradicting it.** On a cold boot of
+  the first consolidated image, the boosted character was displayed as YAMCHA, and the friend
+  build renames the name table itself: index 116 "Goku" became "Yamcha", 117 "SS Yamcha", 118
+  "SS3 Yamcha", and 123 "Gohan" became "Krillin". So a YAMCHA screen is what this build calls
+  the record labelled Goku, and it is why the boost is described by record index rather than by
+  character name.
+
+The consequence for the playtest remains: the record order is externally sourced, and the
+correspondence between a record index and the on-screen name is this build's own renaming, so
+a named character in a report must be tracked by index. See the completion record beside this
+one for the screen and for how to settle the index directly.
 The builder refuses a byte that its own field table does not account for. That catches a write
 outside the table. It cannot catch a wrong offset or width inside the table, because the table
 also drives the writes; those were checked by hand against `decode_base_stat_record` and by
@@ -109,9 +121,9 @@ the reviewer, not by the assertion.
 | --- | --- |
 | `tests/unit/test_friend_v3_playtest_boost.py` | **8 passed** |
 | related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **175 passed**; captured to ignored `build/review/related-suites.log` |
-| changed-byte census on the delivered image | 45 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
+| changed-byte census on the delivered image | 25 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
 | foundation re-run through the toolkit | reproduces `ef939dcd` then `a4c12a95` byte for byte |
-| boost re-run on the reproduced foundation | reproduces `6d7a56c6` byte for byte |
+| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, and reproduced `6d7a56c6` before the hp and ep fields were dropped |
 | canonical ROM digest after every run | `940ad5f0...` unchanged |
 
 Not yet performed, and not claimed: independent review of the frozen candidate, GitLab CI,
@@ -135,12 +147,12 @@ and any runtime observation of this image. See section 5.
 
 | item | what is missing |
 | --- | --- |
-| the playtest boost (`6d7a56c6`) | independent review, CI, and one runtime observation that level 200 is what the game displays |
+| the playtest boost (`acd98c2a`) | independent review and CI |
 | Tulma graphics runtime confirmation | the human-played encounter session the graphics ticket names |
 
 ### 4.3 In progress
 
-Nothing. The boost lane is frozen at `6d7a56c6` pending review.
+Nothing. The boost lane is frozen at `acd98c2a` pending review.
 
 ### 4.4 Approved future changes
 
@@ -168,14 +180,14 @@ Nothing. The boost lane is frozen at `6d7a56c6` pending review.
 
 | item | state |
 | --- | --- |
-| the Bandana starting item | **NOT IMPLEMENTED, and no ROM-data route was located.** The gear names sit in the proven text pointer table `0x06BCE8` (1,534 entries, 4 bytes each, identity by index), where "Geromantium Bandana" is index 428 and the plain "Bandana" is index 518; consecutive name/description pairs there are what read as an 8-byte record. The 83-record item table at `0x3BD2F8` names no bandana, and the project's own census records the inventory as runtime state with no located ROM structure (`docs/research/ROM_EDITOR_SYSTEM_CENSUS.md:152`, `ROM_EDITOR_COVERAGE_LEDGER.md:384`). A separate read-only pass over the public reconstruction repository (the `buusfury-decomp-rb` sibling checkout) returned **UNSUPPORTED** on every one of these questions: that repository is a repackaging harness whose ten verbatim ROM ranges plus header regions are 98.568 percent of the image and are never disassembled (`docs/REFERENCE_AUDIT.md:49-68` there), and it contains no code for the stat consumer, no level comparison, and no starting-inventory initializer. Granting the Bandana therefore needs a located initializer or a script route, and inventing one would be a fallback, which this project refuses. The open route is the Ghidra program `/baserom.gba`, which holds the analyzed image |
+| the Bandana starting item | **ID AND STORAGE MEASURED, GRANT NOT WRITTEN.** Id 126, through the gear table at file `0x6F82EC` that the renderer `0x0801D988` names in its literal pool at `0x0801DC74`; 162 records of `0x2C` bytes, name index at `+0x00`. Storage was read from the game's own add routine in this image, and the equip transition was read on the canonical retail image driven by the operator's completed save: a u32 count at `0x0300114C` and one 4-byte word per item whose top nibble is the wearer index plus one and whose low 28 bits are the gear id, measured by decompiling the game's own add routine. Equipping the bandana on a completed save moved `0x0000007E` to `0x1000007E` and cleared the amulet it replaced. What is missing is the new-game call site, so no call site can yet be chosen from evidence. See the completion record beside this one, section 2 |
 | zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
 | latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
 | the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |
 
 ## 5. Limits of this record, stated plainly
 
-1. **No runtime observation of `6d7a56c6` exists yet.** The claim that the party starts at
+1. **The runtime evidence belongs to the superseded image.** The claim that the party starts at
    level 200 with maximum stats is a static decode of a verified table plus the game's XP
    ceiling, which is itself a static read of one comparison. Nothing here shows that a
    starting level of 200 with no experience is a state the game handles. That is why the
@@ -201,13 +213,13 @@ note the frame, the last text box, and whether the music continued.
 
 | step | what to check | pass condition |
 | --- | --- | --- |
-| 0 | pre-flight | the loaded image is `6d7a56c6...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
-| 1 | new game, first stat screen | every party member reads **level 200**; hp and ep at the boosted maximum; four combat stats at 255 |
-| 2 | first combat encounter | damage taken is small relative to the boosted hp; no freeze, no graphical glitch in the HUD |
+| 0 | pre-flight | the loaded image is `acd98c2a...`; emulator reports `0.11` dev build; no other mGBA process holds TCP 2345 |
+| 1 | new game, first stat screen | the boosted party reads **level 200**, with STR, POW, END and SPD at 255, and hp and ep at their ordinary starting values, never negative |
+| 2 | first combat encounter | damage lands normally and hp never displays as a negative; no freeze, no graphical glitch in the HUD |
 | 3 | first shop and item use | items still buyable and usable; the inventory screen renders the party's techniques unchanged |
 | 4 | first quest-gated door or NPC | the gate opens on the same trigger as retail. A gate that requires a level or a specific item is the case this boost does not address: record it, do not route around it silently |
 | 5 | each chapter in order | chapter completes; no freeze; the party remains at boosted stats; check the quest log after each chapter |
-| 6 | every fusion moment | Gotenks, Vegito and Gogeta still transform and still fight; their records were deliberately left at retail values, so a fusion that is *weaker* than its parts is expected and is not a defect |
+| 6 | every fusion moment | Gotenks, Vegito and Gogeta still transform and still fight; their records were deliberately left untouched, so a fusion that is *weaker* than its parts is expected and is not a defect |
 | 7 | dialogue-heavy scenes | text matches the friend build (Tulma, Great Soyman), no truncated or missing line |
 | 8 | scans and biographies | the screens open and read consistently |
 | 9 | Dragon Ball and story progression | every collectible and story trigger reached in order; no sequence break |

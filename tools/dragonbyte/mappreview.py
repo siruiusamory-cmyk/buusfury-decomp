@@ -149,9 +149,6 @@ class _Canvas(QLabel):
             size.height(),
         )
 
-    def source_size(self) -> QSize:
-        return QSize(self._source)
-
     def mousePressEvent(self, event) -> None:
         if self._pixmap is None or self._pixmap.isNull() or self._source.isEmpty():
             return

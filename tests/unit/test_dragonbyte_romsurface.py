@@ -907,7 +907,20 @@ def test_the_write_gate_is_open_once_the_index_has_answered(index, profile):
 
     assert gate.available
     assert "saved with the project" in gate.reason
-    assert "no build path applies it" in gate.reason
+    # The build path applies a raw write now, so the gate must not claim otherwise.
+    assert "applied to the image by the build path" in gate.reason
+
+
+def test_the_raw_write_sentence_names_the_build_path_that_applies_it(rom_page):
+    """The sentence where the user writes says what the build actually does."""
+    from tools.dragonbyte.rompage import JOURNAL_LOCAL
+
+    page, _shell, _session_ = rom_page
+
+    assert page._write_note.text() == JOURNAL_LOCAL
+    assert "build path" in JOURNAL_LOCAL
+    assert "no build path" not in JOURNAL_LOCAL
+    assert page._write_button.toolTip() == write_gate(page._surface).reason
 
 
 def test_the_strip_and_the_write_path_use_one_ownership_floor(
@@ -1058,8 +1071,12 @@ def test_the_write_controls_are_disabled_with_their_reason_without_an_index(
     _close(shell, session)
 
 
-def test_the_page_says_no_build_applies_a_raw_write_yet(rom_page):
-    """No string implies a build applies a raw write, because none does."""
+def test_the_page_says_the_build_applies_a_raw_write(rom_page):
+    """The sentence where the user writes names the build path that applies it.
+
+    It asserted the opposite until the build integration landed and made the old
+    claim false: an authored raw write is now minted into the plan.
+    """
     page, _shell, _session_ = rom_page
 
     note = page._write_note.text()
@@ -1067,9 +1084,10 @@ def test_the_page_says_no_build_applies_a_raw_write_yet(rom_page):
     assert "saved with the project" in note
     assert "shown in this surface" in note
     assert "build path applies it" in note.lower()
+    assert "no build path" not in note.lower()
     assert "takes effect" not in note
     assert page._write_note.isVisibleTo(page)
-    assert "build path applies it" in page._write_button.toolTip().lower()
+    assert "applied to the image by the build path" in page._write_button.toolTip().lower()
 
 
 def test_the_range_view_headers_name_both_spellings(rom_page):

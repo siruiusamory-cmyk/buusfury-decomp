@@ -26,8 +26,9 @@ owner known` rather than leaving a blank.
 *What changed?* The overlay is a set of file offsets: the project's own pending
 edits before a build, and exactly the manifest's change set after one. A set and
 not a count, because "how many bytes changed" cannot answer "which". Those
-pending edits are saved with the project and shown here; no build path applies
-them to an image yet, and nothing here claims otherwise.
+pending edits are saved with the project and shown here, and the build path
+applies them to the image: `build_project` mints each raw write as a change owned
+by the image address.
 
 *May these bytes be opened or written?* An extent is proven or it is not, and a
 write is offered only while the range index is loaded, because without it the
@@ -296,8 +297,8 @@ class RomSurface:
     def current_bytes(self, offset: int, size: int) -> bytes:
         """The base bytes with the project's pending writes applied.
 
-        These bytes are saved with the project and shown here; no build path
-        applies them to an image yet. A pending semantic edit appears here only
+        These bytes are saved with the project and shown here, and the build path
+        applies them to the image. A pending semantic edit appears here only
         when the domain that owns it encoded one, which is what
         `surface_for(extra_pending=...)` supplies; an edit with no byte value
         before a build is not materialized at all, and the ownership strip says
@@ -984,6 +985,6 @@ def write_gate(surface: RomSurface) -> WriteGate:
     return WriteGate(
         True,
         "Write the new bytes at the selection. The change is confirmed first and "
-        "is owned by raw:<image address>. It is saved with the project and shown "
-        "in this surface; no build path applies it to an image yet.",
+        "is owned by raw:<image address>. It is saved with the project, shown in "
+        "this surface, and applied to the image by the build path.",
     )

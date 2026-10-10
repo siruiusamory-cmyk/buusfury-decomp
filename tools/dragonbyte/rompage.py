@@ -12,8 +12,8 @@ bytes beside the current ones, the address and the file offset in the gutter and
 the changed positions named. `Open bytes` is enabled only from an answer that
 carries a proven extent, and a disabled one states the reason it was given. A raw
 write is offered only while the range index is loaded, and the page says in the
-one visible place that the write it makes is saved with the project and shown in
-this surface, and is applied by no build path yet.
+one visible place that the write it makes is saved with the project, shown in this
+surface, and applied to the image by the one build path.
 
 The range index is a large artifact, so it is parsed on a worker thread: this page
 never blocks its own event loop for it, and it says what it is doing while the
@@ -97,22 +97,25 @@ _BYTE_HEADERS = (
 _SEARCH_HEADERS = ("Address", "File offset", "Classification", "Confidence", "Owner")
 
 #: Column widths per view, so a technical identity is not squeezed by the columns
-#: that carry a fixed number of digits. `Classification` and `Owner` carry the
-#: atlas's own words, which are the longest in the row and the ones a reader
-#: compares; the last column takes whatever is left, and a window too narrow to
-#: hold them scrolls rather than eliding the identity away.
+#: that carry a fixed number of digits. `Address` gets the width an image address
+#: needs in the fixed-width face, because a middle-elided address loses its most
+#: significant digits; `Classification` and `Owner` carry the atlas's own words,
+#: which are the longest in the row and the ones a reader compares. The last column
+#: takes whatever is left, so a wider Address is paid for by the stretched column
+#: and never by an elided one, and a window too narrow to hold them all scrolls
+#: rather than eliding an identity away.
 _COLUMN_WIDTHS = {
-    RANGES_VIEW: (88, 88, 76, 190, 96, 170),
-    BYTES_VIEW: (88, 88, 264, 264, 88),
-    SEARCH_VIEW: (88, 88, 170, 90),
+    RANGES_VIEW: (112, 88, 76, 190, 96, 170),
+    BYTES_VIEW: (112, 88, 264, 264, 88),
+    SEARCH_VIEW: (112, 88, 170, 90),
 }
 
-#: Said where the user writes, because it is the one thing a write here does not
-#: do: no build path reads the project's raw byte document, so the write is not
-#: in any image yet and must not be described as if it were.
+#: Said where the user writes. A raw write is a project document AND an input to
+#: the build: `build_project` mints each one as a change owned by the image
+#: address, so the sentence must not claim the write stays out of the image.
 JOURNAL_LOCAL = (
-    "A raw write is saved with the project and shown in this surface. No build "
-    "path applies it to an image yet."
+    "A raw write is saved with the project and shown in this surface, and the "
+    "build path applies it to the image as a change owned by the image address."
 )
 
 #: The destination's own exception, in the product's words: a raw address is the

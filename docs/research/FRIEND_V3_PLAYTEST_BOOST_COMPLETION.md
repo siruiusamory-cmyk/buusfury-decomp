@@ -81,7 +81,8 @@ four in the renderer. The renderer `0x0801D988`'s literal pool holds the name ta
 names index 518, "Bandana". The renderer reads an inventory id, keeps its low 28 bits,
 multiplies by `0x2C` and adds that base, so ids index this gear table directly.
 
-**The storage.** Measured from the game's own add routine and from live emulated RAM. The two
+**The storage.** Measured from the game's own add routine in this image and from the equip
+transition on the canonical retail image with the operator's completed save. The two
 agree, and the routine is what settles the shape.
 
 | element | finding |
@@ -90,7 +91,7 @@ agree, and the routine is what settles the shape.
 | entry | **one 4-byte word per item**, not eight. The same routine shifts the index left twice (`lsls r2,r3,#2`), which is a stride of four, then stores at `inventory + 0xE4 + 4 + index*4` |
 | entry contents | the **top nibble is the wearer's index plus one**, or zero when nobody wears it; the **low 28 bits are the gear id**. The companion search at `0x08004468` also steps by four and tests that same nibble |
 | where the entries end | 28 entries from `0x03001150` end exactly at `0x030011BC`, which is 28 four-byte words |
-| the observed transition | the operator equipped the bandana while an observer sampled every 30 frames. Read this one from the raw line of each snapshot: the observer's own per-row summary pairs adjacent entries, because it was written under the earlier 8-byte reading. | Between frame 1110 and frame 3210 exactly two bytes moved: the bandana's own word at `0x030011A4` went from `0x0000007E` to `0x1000007E`, and the word at `0x0300119C` went from `0x1000009E` to `0x0000009E`. The second is gear 158, "Diamond Amulet", which the equip removed. So an equip writes the new item's word and clears the previous wearer's word, and the count did not change |
+| the observed transition | the operator equipped the bandana while an observer sampled every 30 frames. Read this one from the raw line of each snapshot: the observer's own per-row summary pairs adjacent entries, because it was written under the earlier 8-byte reading | Between frame 1110 and frame 3210 exactly two bytes moved: the bandana's own word at `0x030011A4` went from `0x0000007E` to `0x1000007E`, and the word at `0x0300118C` went from `0x1000009E` to `0x0000009E`. The second is gear 158, "Diamond Amulet", which the equip removed. So an equip writes the new item's word and clears the previous wearer's word, and the count did not change |
 
 The renderer `0x0801D988` reads the same table with a `lsls #3` before its `ldr [r0,#4]`, which
 looks like two-column row indexing for display rather than a stride, so it is not evidence for
@@ -121,23 +122,15 @@ than a raw byte patch of the live save block.
 
 
 
-## 3. The specific next action that resolves it
+## 3. What would settle the last gap
 
-One of these two, both bounded:
-
-1. **Ghidra, one routine.** Follow `0x0801D988`'s two name lookups (`DAT_0801dc68` indexed by
-   a halfword at item record `+0x00`, and by `+0x02`) back to the routine that maps an id to a
-   name, and quote its addressing arithmetic. That yields the bandana id directly, because the
-   name index is already known to be 518.
-2. **Runtime, one observation.** In a human-driven session on the merged image, obtain or hold
-   any bandana and read the inventory block: the RAM count at `0x0300114C` then the entry
-   slots from `0x03001150`, each 8 bytes, id in the low 28 bits of the second word. The id
-   seen there is the id the game uses.
-
-With either answer, the insertion itself is small and already scoped: add the id once at
-new-game initialization, or extend the existing grant site, with the `0xFA` cap and the flag
-nibble preserved. The add routine's contract is measured, so the patch writes one known value
-through a known function rather than raw bytes.
+Section 2 names the two bounded routes. One narrowing fact, stated exactly as it was measured:
+`0x03001068`, the save-block base, appears as a word at 41 aligned offsets in this image, and
+the only Thumb PC-relative literal load of that value is at `0x0804819A`. That loader reads the
+copy at file `0x481A4`, which is a long way from the pool word at `0x6B7080`, so the two are
+not the same site and nothing here claims the loader is in the seeding path. The trace starts
+from the store that writes the count at inventory `+0xE4`, or from the operator starting a new
+game with the inventory watch armed.
 
 ## 4. What is unchanged
 

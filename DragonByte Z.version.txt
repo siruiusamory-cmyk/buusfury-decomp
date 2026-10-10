@@ -1,0 +1,47 @@
+# Windows version resource for DragonByte Z.
+#
+# Read by PyInstaller through the `version=` argument of EXE() in
+# `DragonByte Z.spec.in`. `tools/webfoot/release_identity.py` is the ONE authority
+# for the product name and version; the strings below are that identity spelled
+# where a Windows resource loader can read them, and
+# `tests/unit/test_dragonbyte_release.py` parses this file and fails when either
+# disagrees with the module. A release candidate is cut by a decision, so this
+# file moves when release_identity.py does and not before.
+#
+# No ticket, branch, worktree, user or local path belongs in this file.
+#
+# LegalCopyright names the licence rather than a copyright holder, for the reason
+# the sibling resource records: this project states no copyright holder anywhere
+# (README.md's Licence section, pyproject.toml and LICENSE all name MPL-2.0 and
+# nobody), and a field is better left telling the truth than supplied with an
+# invented name.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 9, 0, 0),
+    prodvers=(0, 9, 0, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        "040904B0",
+        [
+          StringStruct("CompanyName", "Webfoot SDK"),
+          StringStruct("FileDescription", "DragonByte Z, editor for Dragon Ball Z: Buu's Fury"),
+          StringStruct("FileVersion", "0.9.0.0"),
+          StringStruct("InternalName", "DragonByte Z"),
+          StringStruct("LegalCopyright", "Mozilla Public License 2.0"),
+          StringStruct("OriginalFilename", "DragonByte Z.exe"),
+          StringStruct("ProductName", "DragonByte Z"),
+          StringStruct("ProductVersion", "0.9.0.0"),
+        ],
+      )
+    ]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+  ],
+)

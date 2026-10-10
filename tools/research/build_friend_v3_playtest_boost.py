@@ -3,7 +3,7 @@
 One image in, one image out. `main` refuses unless the input digest equals the
 caller's expected digest, so the builder can never patch an image it was not
 verified against. It then refuses unless every changed byte is contained in the
-span its own field table declared: a write that escapes that table is caught,
+span its own patch table declared: a write that escapes that table is caught,
 while a wrong offset or width inside it is not, because the table is also what
 drives the writes.
 
@@ -62,6 +62,26 @@ MAXIMUM = {
     "speed": 0xFF,
 }
 
+# The starting Bandana.
+#
+# The equipment inventory is the count-and-entry array: a u32 count at save-block
+# base +0xE4 and one 4-byte word per entry from +0xE8, the low 28 bits the gear id
+# and the top nibble the wearer's index plus one. The add routine at 0x08004448
+# takes the base in r0 and the gear id in r1, refuses only at 250 entries, and
+# never refuses a duplicate.
+#
+# The save-block init at 0x08004838 is the only place the count is zeroed, so one
+# append immediately after that store yields exactly one Bandana per fresh block
+# and none on a save load, which never runs this init as the player's block.
+BANDANA_ID = 126
+GBA_BASE = 0x08000000
+INIT_COUNT_CLEAR = 0x08004854          # str r0,[r1,r4], count := 0
+INIT_ADDRESS = 0x08004448              # add(base, id)
+TRAMPOLINE = 0x083C22FC                # inside a 4,348-byte zero run at 0x083C22FC
+TRAMPOLINE_SIZE = 18                    # six instructions, one pad halfword, the id literal
+TRAMPOLINE_FILE = TRAMPOLINE - GBA_BASE
+TRAMPOLINE_RETURN = 0x08004856         # the instruction after the count clear
+
 
 class BoostError(ValueError):
     """A refusal. Nothing is written when this is raised."""
@@ -69,6 +89,43 @@ class BoostError(ValueError):
 
 def sha256_bytes(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
+
+
+def encode_bl(here: int, target: int) -> bytes:
+    """Thumb BL. `here` is the instruction's own address."""
+    delta = target - (here + 4)
+    if delta % 2:
+        raise BoostError(f"odd branch from {here:#x} to {target:#x}")
+    imm = delta >> 1
+    if not -(1 << 22) <= imm < (1 << 22):
+        raise BoostError(f"branch {here:#x} -> {target:#x} is out of Thumb BL range")
+    imm &= 0x3FFFFF
+    return (0xF000 | ((imm >> 11) & 0x7FF)).to_bytes(2, "little") + \
+           (0xF800 | (imm & 0x7FF)).to_bytes(2, "little")
+
+
+def bandana_patch(base: bytes) -> bytes:
+    """The trampoline and the hook, byte for byte, with every byte derived here.
+
+    The trampoline runs immediately after the count is zeroed. r4 holds the
+    save-block base at that point, already proven non-null by the check above the
+    hook, and lr still points into the init function, so a plain `bx lr` returns
+    there. Only r0-r3 and lr are clobbered by the call, and r0-r3 are saved.
+    """
+    t = TRAMPOLINE
+    code = bytearray()
+    code += (0xB50F).to_bytes(2, "little")            # push {r0-r3,lr}
+    code += (0x1C20).to_bytes(2, "little")            # mov r0, r4      ; the save-block base
+    code += (0x4903).to_bytes(2, "little")            # ldr r1,[pc,#12] ; literal at +14
+    code += encode_bl(t + 6, INIT_ADDRESS)            # bl 0x08004448
+    code += (0xBC0F).to_bytes(2, "little")            # pop {r0-r3}
+    code += (0x4770).to_bytes(2, "little")            # bx lr           ; back into the init
+    code += BANDANA_ID.to_bytes(4, "little")          # the literal ldr r1 reads
+
+    patch = bytearray(base)
+    patch[INIT_COUNT_CLEAR - GBA_BASE:INIT_COUNT_CLEAR - GBA_BASE + 4] = encode_bl(INIT_COUNT_CLEAR, TRAMPOLINE)
+    patch[TRAMPOLINE_FILE:TRAMPOLINE_FILE + len(code)] = code
+    return bytes(patch)
 
 
 def plan(base: bytes) -> tuple[bytes, list[dict]]:
@@ -91,16 +148,16 @@ def plan(base: bytes) -> tuple[bytes, list[dict]]:
             fields.append({"field": field, "offset": offset, "was": was, "now": now})
         changes.append({"record": index, "name": name, "fields": fields})
 
-    boosted = bytes(out)
+    boosted = bandana_patch(bytes(out))
     _assert_only_declared_bytes_changed(base, boosted, changes)
     return boosted, changes
 
 
 def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: list[dict]) -> None:
-    """Refuse a byte the field table did not account for.
+    """Refuse a byte neither the field table nor the hook declared.
 
-    This catches a write outside the table above. It cannot catch a wrong offset
-    or width inside it, because the table is also what the writes are driven from.
+    This catches a write outside the two declared regions. It cannot catch a wrong
+    offset or width inside them, because both regions are also what drives the writes.
     """
     declared: set[int] = set()
     for entry in changes:
@@ -108,6 +165,8 @@ def _assert_only_declared_bytes_changed(base: bytes, boosted: bytes, changes: li
             if field["was"] != field["now"]:
                 _, width = FIELD_OFFSETS[field["field"]]
                 declared.update(range(field["offset"], field["offset"] + width))
+    declared.update(range(INIT_COUNT_CLEAR - GBA_BASE, INIT_COUNT_CLEAR - GBA_BASE + 4))
+    declared.update(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
     undeclared = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b} - declared
     if undeclared:
         raise BoostError(f"{len(undeclared)} byte(s) changed outside the declared spans")

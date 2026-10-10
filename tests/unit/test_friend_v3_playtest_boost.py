@@ -22,10 +22,15 @@ from tools.research.build_friend_v3_playtest_boost import (  # noqa: E402
     BASE_STAT_COUNT,
     BASE_STAT_RECORD_SIZE,
     BASE_STAT_TABLE,
+    BANDANA_ID,
     BoostError,
     FIELD_OFFSETS,
+    INIT_COUNT_CLEAR,
     MAXIMUM,
     PARTY_RECORDS,
+    TRAMPOLINE,
+    TRAMPOLINE_FILE,
+    TRAMPOLINE_SIZE,
     _assert_only_declared_bytes_changed,
     plan,
 )
@@ -33,7 +38,8 @@ from tools.research.build_friend_v3_playtest_boost import (  # noqa: E402
 
 def synthetic_base() -> bytearray:
     """An image whose base-stat table is entirely at a non-maximum value."""
-    base = bytearray(BASE_STAT_TABLE + BASE_STAT_COUNT * BASE_STAT_RECORD_SIZE)
+    size = max(BASE_STAT_TABLE + BASE_STAT_COUNT * BASE_STAT_RECORD_SIZE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE)
+    base = bytearray(size)
     for index in range(BASE_STAT_COUNT):
         record = BASE_STAT_TABLE + index * BASE_STAT_RECORD_SIZE
         for name, (rel, width) in FIELD_OFFSETS.items():
@@ -61,9 +67,14 @@ def test_changed_bytes_are_exactly_the_declared_fields() -> None:
         for rel, width in FIELD_OFFSETS.values():
             expected.update(range(record + rel, record + rel + width))
 
+    # The Bandana hook is the only other region the builder is allowed to touch.
+    hook = set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4))
+    hook |= set(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
+
     actual = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
-    assert actual == expected
-    assert len(actual) == 25  # five records, five single-byte fields
+    assert actual - hook == expected
+    assert actual <= expected | hook
+    assert len(actual & expected) == 25  # five records, five single-byte fields
     assert [entry["name"] for entry in changes] == ["Goku", "Gohan", "Goten", "Trunks", "Vegeta"]
 
 
@@ -116,10 +127,18 @@ def test_an_image_too_small_for_the_table_is_refused() -> None:
         plan(bytes(BASE_STAT_TABLE + 1))
 
 
-def test_an_already_maxed_image_produces_no_change() -> None:
+def test_an_already_maxed_image_changes_only_the_bandana_hook() -> None:
+    """With every stat already at its maximum, the hook is the only remaining change."""
     base = bytearray(synthetic_base())
     for index in PARTY_RECORDS:
         for name, (_, width) in FIELD_OFFSETS.items():
             _write(base, index, name, MAXIMUM[name])
     boosted, _ = plan(bytes(base))
-    assert boosted == bytes(base)
+    changed = {i for i, (a, b) in enumerate(zip(base, boosted)) if a != b}
+    allowed = set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4)) | set(range(TRAMPOLINE_FILE, TRAMPOLINE_FILE + TRAMPOLINE_SIZE))
+    assert changed <= allowed
+    assert changed & set(range(INIT_COUNT_CLEAR - 0x08000000, INIT_COUNT_CLEAR - 0x08000000 + 4))
+    assert int.from_bytes(boosted[TRAMPOLINE_FILE + 14:TRAMPOLINE_FILE + 16], "little") == BANDANA_ID
+    assert boosted[BASE_STAT_TABLE:BASE_STAT_TABLE + 5 * BASE_STAT_RECORD_SIZE] == bytes(
+        base[BASE_STAT_TABLE:BASE_STAT_TABLE + 5 * BASE_STAT_RECORD_SIZE]
+    )

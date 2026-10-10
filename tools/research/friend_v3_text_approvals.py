@@ -43,3 +43,41 @@ APPROVED_TEXT_SLOTS: tuple[ApprovedTextSlot, ...] = (
 
 #: The replacements by slot, for a caller that wants the approved wording alone.
 APPROVED_REPLACEMENTS = {edit.slot: edit.new for edit in APPROVED_TEXT_SLOTS}
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedDialogueRow:
+    """One approved dialogue record: its identity, its old text and its approved wording."""
+
+    selector: int
+    start: int
+    length: int
+    old: str
+    new: str
+    label: str
+    approval: str
+
+    @property
+    def key(self) -> str:
+        return f"{self.selector}:{self.start}:{self.length}"
+
+
+#: The two registry-scene rows the owner authored on 2026-10-10, quoted verbatim. The slot is
+#: the identity: the speaker was identified from play and the record's own portrait operand
+#: places it in the same conversation as the Bulma/Tulma rewrite at `2:60182` and `2:60310`.
+APPROVED_DIALOGUE_ROWS: tuple[ApprovedDialogueRow, ...] = (
+    ApprovedDialogueRow(
+        selector=2, start=60922, length=140,
+        old="I have a feeling that this is not going to be your typical tournament.",
+        new="Oolong and I are debating, I say Bulma is the hotter twin!",
+        label="registration scene, Master Roshi",
+        approval="FRIEND-V3-WT-SPLIT-CONTAINER-001 release 2.1 owner lines, 2026-10-10",
+    ),
+    ApprovedDialogueRow(
+        selector=2, start=60432, length=98,
+        old="Good luck, you guys! This is just like old times!",
+        new="It's definitely Tulma. Just look at her in that dress! Yowza.",
+        label="registration scene, Oolong",
+        approval="FRIEND-V3-WT-SPLIT-CONTAINER-001 release 2.1 owner lines, 2026-10-10",
+    ),
+)

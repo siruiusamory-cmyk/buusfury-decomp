@@ -10,9 +10,13 @@
 -- so the operator's own play is what produces the state being read.
 --
 -- WHAT IT WRITES, inside the run directory named by rom011_marker_path:
---   inventory.csv    a row every BEAT frames: frame and the 24-bit count at 0x0300114C.
---   snapshot_<n>.txt a full dump of the inventory window, written only when it CHANGES:
---                    count word, then each 8-byte slot as two words, then the raw hex.
+--   inventory.csv    a row every BEAT frames: frame and the u32 count at 0x0300114C.
+--   snapshot_<n>.txt a full dump of the window, written only when it CHANGES: the count, a
+--                    per-row `first`/`second` summary, and the raw 1024 bytes. THE RAW LINE
+--                    IS THE AUTHORITATIVE RECORD. The summary was written under an earlier
+--                    8-byte-slot reading of the inventory; the entry is in fact one 4-byte
+--                    word, the top nibble a wearer index and the low 28 bits an item id, so
+--                    the summary pairs adjacent entries and must be re-read from the raw line.
 --   heartbeat.csv    frame and pc every BEAT frames, so a stalled frame count is visible.
 --   marker.txt       "armed", then the end status.
 
@@ -103,6 +107,7 @@ callback = callbacks:add("frame", function()
                             slot, base, lo + hi * 256, lo2 + hi2 * 256))
                     end
                 end
+                handle:write("entries: one 4-byte word each, from the raw line below\n")
                 handle:write("raw " .. blob .. "\n")
                 handle:close()
             end

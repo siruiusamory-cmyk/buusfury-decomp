@@ -457,16 +457,18 @@ $allowedLua = @(
     )
 
     # Added by FRIEND-V3-PLAYTEST-BOOST-001. Three read-only observers and one bounded
-    # input driver for that ticket, in the same commit family:
+    # input driver for that ticket:
     #   friendv3_boost001_probe.lua     reads the cartridge header as a liveness channel,
     #                                   then the 90 base-stat bytes at 0x086FDA4C once.
     #   boost001_inventory_watch.lua    samples the inventory block so a held or equipped
-    #                                   item's storage is measured, not inferred.
+    #                                   item's storage is measured, not inferred. It reads the
+    #                                   u32 count at 0x0300114C and the 4-byte item words
+    #                                   that follow it.
     #   boost001_input_driver.lua       DRIVING CODE in its own file, as the runtime skill
     #                                   requires: it presses A on a bounded schedule so a
     #                                   cold boot can reach the new game unattended.
     # Every observer reads memory and registers only and presses no key; only the driver
-    # presses keys, and it holds them for at most 900 frames.
+    # presses keys, and it does so between frames 1000 and 1900 and then releases them.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv3_boost001_probe.lua')
     )

@@ -1,12 +1,13 @@
-# FRIEND-V3-PLAYTEST-BOOST-001: consolidated build record, modification tracker and playtest plan
+# FRIEND-V3-PLAYTEST-BOOST-001: consolidated build record and playtest plan
 
 **Ticket:** FRIEND-V3-PLAYTEST-BOOST-001, under mission `FRIEND-V3-PLAYTEST-001`.
 **Baseline:** live `origin/master` `1b02221732d7b76d38fd9e35d731e9f3317da9a4`, re-measured
 before the worktree was created. Worktree: a dedicated ticket worktree beside the primary
 checkout, on branch `ticket/friend-v3-playtest-boost-001`.
-**Status:** the boosted image is built, reproduced and unit-tested. Independent review, CI
-and the human campaign playthrough are outstanding, and this record says so rather than
-claiming them.
+**Status:** CLOSED. Built, reproduced, independently reviewed and merged as true merges
+(MR !170, `a6e4aba2`; MR !176, `372bb3aa`), with master CI green. The human campaign
+playthrough is outstanding and is tracked in `FRIEND_V3_TRACKER.md`, the single tracker
+for the whole friend image.
 
 Nothing here is a claim about retail behaviour. Every figure below was produced by a command
 recorded in section 2 or a hash recorded in section 1.
@@ -119,80 +120,48 @@ the reviewer, not by the assertion.
 
 | gate | result |
 | --- | --- |
-| `tests/unit/test_friend_v3_playtest_boost.py` | **8 passed** |
+| `tests/unit/test_friend_v3_playtest_boost.py` | **10 passed**, including a test that fails if the cancelled Bandana hook regains a caller |
 | related unit suites (`test_character_swap`, `test_mgba_capture`, `test_project_safety`, `test_mgba_identity_gate`, `test_mgba_launch_coverage`) | **175 passed**; captured to ignored `build/review/related-suites.log` |
 | changed-byte census on the delivered image | 25 bytes, all in `0x006FDA4C..0x006FDA9D`, length unchanged |
 | foundation re-run through the toolkit | reproduces `ef939dcd` then `a4c12a95` byte for byte |
-| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, and reproduced `6d7a56c6` before the hp and ep fields were dropped |
+| boost re-run on the reproduced foundation | reproduces `acd98c2a` byte for byte, twice, identical hashes |
+| cancelled-hook exclusion | bytes at `0x08004892` (`20 1c db e7`) and the whole trampoline run at `0x083C22FC` are byte-identical to the foundation; no injection is present |
 | canonical ROM digest after every run | `940ad5f0...` unchanged |
 
-Not yet performed, and not claimed: independent review of the frozen candidate, GitLab CI,
-and any runtime observation of this image. See section 5.
+Runtime smoke test on the delivered image, isolated mGBA, fresh 8192-byte save, operator-confirmed.
+The run directory was created by hand, so this is a recorded observation without a manifest or ROM
+copy beside it; the reproducible form is the build plus the launcher in section 2.
 
-## 4. The authoritative modification tracker
-
-### 4.1 Completed and ROM-verified
-
-| item | evidence |
+| check | result |
 | --- | --- |
-| Character-name text pass, 868 occurrences, 0 unresolved | MR !155 / !156, merged `1a45f494`, `d003ce93`; `docs/research/FRIEND_V3_COMPLETE_TEXT_PASS.md` |
-| Content pass: 7 menu edits, credits line, slot-292 crash fix | merged; `20f2c140` entered this build as a digest-verified input, not rebuilt here |
-| Token engine for the two-glyph name tokens | merged; `cec009d9` is its stage-3 published digest, carried through the chain, not re-run here |
-| Tulma actor sprite, 22 containers | MR !165, merge `0b3676a7`; re-run here and reproduced as `ef939dcd` |
-| Tulma portrait slot 17, and the two rewritten dialogue records | MR !166, merge `1b02221732d7b76d38fd9e35d731e9f3317da9a4`; re-run here and reproduced as `a4c12a95` |
-| Cold-boot acceptance of the content-pass foundation | `docs/research/FRIEND_V3_COLD_BOOT_ACCEPTANCE.md`, 13,440 frames on the delivered image |
-| Tail-allocation hazard assessment | `docs/research/FRIEND_V3_STABILITY_PASS.md`, LATENT |
+| cold boot | reaches the title screen |
+| title screen artwork | correct |
+| menu selection and frame rate | **72.7 fps**, normal; the arrow glitch belongs to the cancelled hook, and the control foundation image is clean |
+| New Game | begins, gameplay reachable |
+| progression | no crash and no softlock observed in the smoke window; 679 observer frames, 15 distinct PCs, PC inside GBA ROM |
+| equipment at `0x0300114C` | **0** on a fresh save, as expected with the injection cancelled |
+| save file | 8192 bytes, valid |
+| injected equipment | none |
 
-### 4.2 Implemented, verification outstanding
+Still not performed, and not claimed: chapter-by-chapter progression and every in-game check
+listed in `FRIEND_V3_TRACKER.md` section 6. Independent review and CI were performed at integration (status line).
 
-| item | what is missing |
-| --- | --- |
-| the playtest boost (`acd98c2a`) | independent review and CI |
-| Tulma graphics runtime confirmation | the human-played encounter session the graphics ticket names |
+## 4. Modification tracker
 
-### 4.3 In progress
-
-Nothing. The boost lane is frozen at `acd98c2a` pending review.
-
-### 4.4 Approved future changes
-
-| item | authority |
-| --- | --- |
-| R3 bounded ROM destination safety | owner authorization 2026-10-09, assigned to the raw-write lane |
-| R1 filesystem migration | owner authorized as a *conditional, prepared, unexecuted* plan. **Not authorized to execute**, and not executed here |
-
-### 4.5 Owner-reserved creative decisions, recorded and awaiting the owner
-
-| item | state |
-| --- | --- |
-| Idasa/Uub dialogue wording | text is recorded nowhere: 0 hits in the repository and 0 in the store. Awaiting the owner. Not invented here, and not a blocker for this build |
-| Spopo's target (Android #13 or Perfect Cell) | both names exist in game text; no choice recorded |
-| Boss replacements | owner-reserved |
-| Difficulty balancing beyond these boosts | owner-reserved |
-| New biography content, six scan-bio rewrites | not applied, not needed; retail grammar defect at slot 1065 kept as found |
-| Cutscene sprite inconsistency at the hospital | **tracked only.** No character-animation modification was introduced |
-| Chapter/saga titles | already carry Great Soyman and Majin Tien; no new title text is recorded |
-| `Great Soy Man` spacing | retail text, preserved |
-| Four records that now read Tulma where the merged plan said Chi-Chi | provenance says retail "Bulma"; confirmation is the owner's |
-| Slot 1193 "Uub is the son of Tien and Tulma" | implies a marriage Tulma's own bio omits |
-
-### 4.6 Known bugs, blockers and regressions
-
-| item | state |
-| --- | --- |
-| the Bandana starting item | **ID AND STORAGE MEASURED, GRANT NOT WRITTEN.** Id 126, through the gear table at file `0x6F82EC` that the renderer `0x0801D988` names in its literal pool at `0x0801DC74`; 162 records of `0x2C` bytes, name index at `+0x00`. Storage was read from the game's own add routine in this image, and the equip transition was read on the canonical retail image driven by the operator's completed save: a u32 count at `0x0300114C` and one 4-byte word per item whose top nibble is the wearer index plus one and whose low 28 bits are the gear id, measured by decompiling the game's own add routine. Equipping the bandana on a completed save moved `0x0000007E` to `0x1000007E` and cleared the amulet it replaced. What is missing is the new-game call site, so no call site can yet be chosen from evidence. See the completion record beside this one, section 2 |
-| zero slack on every composition buffer | `docs/research/FRIEND_V3_STABILITY_PASS.md` section 7.1: 297 of 297 slots have declared size equal to the largest frame demand |
-| latent tail-write hazard | same record, section 7.2: 275,033 bytes of third-party payload over 99 canonical references, none reachable by the instruments applied |
-| the level cap of 200 is a code constant, not a table | raising it is a code patch with no verified consumer list, and was not attempted |
+Moved to `FRIEND_V3_TRACKER.md`, the single tracker for the whole friend image.
 
 ## 5. Limits of this record, stated plainly
 
-1. **The runtime evidence belongs to the superseded image.** The claim that the party starts at
-   level 200 with maximum stats is a static decode of a verified table plus the game's XP
-   ceiling, which is itself a static read of one comparison. Nothing here shows that a
-   starting level of 200 with no experience is a state the game handles. That is why the
-   first checklist step below is a started-game stat-screen check.
-2. **The Bandana is not in this image.** It is a tracker item, not a silent omission.
+1. **The runtime smoke test is a 60-second observation, not a campaign.** It was run on the
+   delivered image at the time of writing, from a fresh save, and it reached the title screen and
+   a started New Game at 72.7 fps with equipment count 0. It left no ROM copy or manifest under
+   `build/fv3boost001/runtime/`, because the run directory was created by hand rather than by the
+   launcher's manifest path, so it is a recorded observation rather than a replayable artifact.
+   The claim that the party starts at level 200 with maximum stats is a static decode of a
+   verified table plus the game's XP ceiling; nothing here shows that a starting level of 200 with
+   no experience is a state the game handles. That is why the first checklist step is a
+   started-game stat-screen check.
+2. **The Bandana is not in this image.** Cancelled by owner; see `FRIEND_V3_TRACKER.md` H1.
 3. **Full-game stability is not claimed.** One human playthrough is required before anything
    stronger than "targeted checks pass" is written here.
 4. **The pipeline record above was exercised from `20f2c140` forward.** Steps 1 to 5 carry
@@ -224,13 +193,17 @@ note the frame, the last text box, and whether the music continued.
 | 8 | scans and biographies | the screens open and read consistently |
 | 9 | Dragon Ball and story progression | every collectible and story trigger reached in order; no sequence break |
 | 10 | end credits | the credits line `Cale Aaron Cymek` is present and readable |
+| 11 | character switching | switch to each of the five boosted characters and back; level and stats persist |
+| 12 | save, quit, reload | progress, stats and inventory survive a reload from the save this image wrote |
 
 Regression watch-list for the playthrough, carried from the open risks:
 the composition-buffer slack (a crash at a frame boundary in a crowded scene), the tail
 window (a crash that reproduces on a retail reference but not here, or the reverse), and any
 dialogue that renders as token glyphs rather than letters.
 
-## 7. What closes this ticket
+## 7. Closure
 
-Independent review of the frozen candidate, CI green, and the owner's playthrough result
-recorded here. Until then the status line at the top of this document stays as written.
+Closed by the owner on 2026-10-09 after MR !176. The playthrough result is recorded in
+`FRIEND_V3_TRACKER.md` when it arrives; the ticket does not reopen for it. Future fixes run under
+`FRIEND-V3-PLAYTEST-001`, which stays armed for that purpose, each as a new image built
+from `acd98c2a`, which remains the frozen baseline.

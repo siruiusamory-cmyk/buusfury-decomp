@@ -9,6 +9,7 @@ chapter list is `FRIEND_V3_PLAYTEST_CHAPTERS.md`; status and evidence for every 
 - [ ] ROM hash is `acd98c2ac90907ae0d83e78019c19b9b26001a49bc28e8bd436da7be9b4bb48c`
       (`(Get-FileHash <rom> -Algorithm SHA256).Hash.ToLower()`); 10,140,972 bytes
 - [ ] save type EEPROM or Flash 128K; the Grand Kai must not show `The game will not run on this hardware`
+      ([Almar's Guides](https://almarsguides.com/retro/walkthroughs/GBA/games/DragonBallZBuusFury/))
 - [ ] New Game from an empty save (delete the `.sav`); never load a save from another build
 
 ## Names to expect
@@ -28,7 +29,7 @@ chapter list is `FRIEND_V3_PLAYTEST_CHAPTERS.md`; status and evidence for every 
 | Vegito | Tiencha |
 | Great Saiyaman | Great Soyman |
 
-Piccolo and Hercule are unchanged. Report a defect by retail name.
+Piccolo unchanged; no rename recorded for Hercule or Gotenks. Report a defect by retail name.
 
 ## Boosted characters: Yamcha, Krillin, Videl, Uub, Tien (retail Goku, Gohan, Goten, Trunks, Vegeta)
 

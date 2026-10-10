@@ -1,4 +1,4 @@
-# FRIEND-V3-PLAYTEST-BOOST-001: consolidated build record, modification tracker and playtest plan
+# FRIEND-V3-PLAYTEST-BOOST-001: consolidated build record and playtest plan
 
 **Ticket:** FRIEND-V3-PLAYTEST-BOOST-001, under mission `FRIEND-V3-PLAYTEST-001`.
 **Baseline:** live `origin/master` `1b02221732d7b76d38fd9e35d731e9f3317da9a4`, re-measured
@@ -161,7 +161,7 @@ Moved to `FRIEND_V3_TRACKER.md`, the single tracker for the whole friend image.
    verified table plus the game's XP ceiling; nothing here shows that a starting level of 200 with
    no experience is a state the game handles. That is why the first checklist step is a
    started-game stat-screen check.
-2. **The Bandana is not in this image.** Cancelled by owner; see the tracker row above.
+2. **The Bandana is not in this image.** Cancelled by owner; see `FRIEND_V3_TRACKER.md` H1.
 3. **Full-game stability is not claimed.** One human playthrough is required before anything
    stronger than "targeted checks pass" is written here.
 4. **The pipeline record above was exercised from `20f2c140` forward.** Steps 1 to 5 carry

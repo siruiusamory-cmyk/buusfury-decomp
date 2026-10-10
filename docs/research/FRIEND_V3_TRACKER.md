@@ -9,7 +9,15 @@ cites; none of them carries a competing TODO list. The playtest checklists are
 
 Reconciled 2026-10-10 against master `372bb3aafbc4305c460e11fc4a8b9436cd7565dd` (MR !176),
 every friend record under `docs/research/`, the merged tests, the mission charter
-`FRIEND-V3-PLAYTEST-001`, and the owner's recorded decisions.
+`FRIEND-V3-PLAYTEST-001`, and the owner's recorded decisions. "Walkthrough" means the Tom
+Hayes walkthrough, version 2.0, hosted at Gamer's Temple and cited in
+`FRIEND_V3_PLAYTEST_CHAPTERS.md`.
+
+Short names used in the evidence columns: text-pass = `FRIEND_V3_COMPLETE_TEXT_PASS.md`;
+content pass = `FRIEND_V3_CONTENT_PASS.md`; content-pass plan = `FRIEND_V3_CONTENT_PASS_PLAN.md`;
+cold-boot = `FRIEND_V3_COLD_BOOT_ACCEPTANCE.md`; Tulma record = `FRIEND_V3_TULMA_GRAPHICS.md`;
+stability record = `FRIEND_V3_STABILITY_PASS.md`; inventory = `FRIEND_V3_PLAYTEST_BOOST_INVENTORY.md`;
+completion record = `FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md`.
 
 ## 1. Current image
 
@@ -102,6 +110,7 @@ the name table itself (`FRIEND_V3_PLAYTEST_BOOST_COMPLETION.md` section 0e).
 | Saiyaman | Soyman | 20 spoken occurrences; slots 122, 1453, 603, 1346, 1347 |
 | Piccolo | unchanged | owner decision, content-pass plan section 4 |
 | Hercule | unchanged | no rename recorded |
+| Gotenks | not established | no rename recorded; the checklists use the retail name |
 
 UNVERIFIED, source not in the repository: `Yamcha` displays as `Gohan`, and `Kakarot` as
 `Yamcha` (owner handoff record only). Not established: what the retail Videl, Uub and Tien
@@ -163,8 +172,8 @@ records display as, and whether base-stat record 8 is Videl (external RAM map) o
 
 | id | item | implementation | verification | evidence | pri | next action | needs |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| E1 | hospital Senzu cutscene shows Videl in bed where retail shows Android 18 standing | tracked only; no animation change made | not reproduced in this repository | owner handoff record; earlier tracker row | P2 | reproduce and capture on `acd98c2a` and retail; then the owner decides | H, then E, then C |
-| E2 | cutscene sprite persistence workstream | PLANNED / NOT IMPLEMENTED; scope not written | none | named as a separate workstream when the text pass was scoped | P3 | owner states what should change; E1 is the only concrete case | C |
+| E1 | hospital Senzu cutscene shows Videl in bed where retail shows Android 18 standing | tracked only; no animation change made | not reproduced in this repository | owner handoff record; `372bb3aa:docs/research/FRIEND_V3_PLAYTEST_BOOST.md` section 4.5 | P2 | reproduce and capture on `acd98c2a` and retail; then the owner decides | H, then E, then C |
+| E2 | cutscene sprite persistence workstream | PLANNED / NOT IMPLEMENTED; scope not written | none | owner handoff record only; UNVERIFIED, no repository record | P3 | owner states what should change; E1 is the only concrete case | C |
 | E3 | fusion characters keep retail art under renamed text | as retail | none | A4 | P3 | none | none |
 
 **F. Levels and progression**
@@ -185,7 +194,7 @@ records display as, and whether base-stat record 8 is Videl (external RAM map) o
 | G4 | character switching keeps each character's stats | as retail | DEFERRED TO PLAYTEST | none | P1 | switch to each boosted character and back | H |
 | G5 | records 5 to 8 (fusions and record 8) untouched by the boost | by design | ROM-VERIFIED | `FRIEND_V3_PLAYTEST_BOOST.md` section 2 | P3 | a weaker fusion is expected | none |
 | G6 | techniques unchanged | as retail | ROM-VERIFIED | same | P3 | none | none |
-| G7 | the friend's own stat and level values, kept | IMPLEMENTED before this repository; record 1 hp and ep `0x0064` against retail `0x0055`; foundation levels `[65,65,75,60,75,75,75,75,50]`, whose difference from retail is not recorded | ROM-VERIFIED | completion record 0b; text-pass section 7 | P3 | none | none |
+| G7 | the friend's own stat and level values, kept | IMPLEMENTED by the friend build, stage not recorded; record 1 hp and ep `0x0064` against retail `0x0055`; foundation levels `[65,65,75,60,75,75,75,75,50]`, whose difference from retail is not recorded | ROM-VERIFIED | completion record 0b; text-pass section 7 | P3 | none | none |
 
 **H. Inventory and equipment**
 
@@ -199,15 +208,15 @@ records display as, and whether base-stat record 8 is Videl (external RAM map) o
 
 | id | item | implementation | verification | evidence | pri | next action | needs |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| I1 | EEPROM save, 8,192 bytes | as retail | the smoke run on `acd98c2a` wrote a valid 8,192-byte save; reload not tested | `FRIEND_V3_PLAYTEST_BOOST.md` section 3 | P1 | save, quit, reload | H |
+| I1 | EEPROM save, 8,192 bytes; the emulator save type must be EEPROM or Flash 128K (Almar's Guides; Gamer's Temple walkthrough, as cited by the earlier guide) | as retail | the smoke run on `acd98c2a` wrote a valid 8,192-byte save; reload not tested | `FRIEND_V3_PLAYTEST_BOOST.md` section 3 | P1 | save, quit, reload | H |
 | I2 | a save written by another image restores old stats | known limit | documented | same, section 5 item 5 | P1 | start from an empty save | H |
 
 **J. Stability and engine limits**
 
 | id | item | implementation | verification | evidence | pri | next action | needs |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| J1 | `F0674DD8` crash on map 134 (slot 292 buffer) | fixed in ancestor `v3-safe`; byte `0x6B692B` = `0x04` preserved through the chain | PARTIALLY VERIFIED: ROM-VERIFIED in the chain; two hand-driven runs on sibling `d401d71c`; not run on `acd98c2a` | stability record sections 3, 4, 6; text-pass section 7 | P2 | the map-134 tournament grounds are on the chapter 3 route | H |
-| J2 | Kibito-scene freeze from a grown rename | fixed by the token engine | PARTIALLY VERIFIED: cold boots survived on siblings `d401d71c` and `b3344a3f`; a savestate run survived on ancestor `20f2c140`; no cold boot of `acd98c2a` to the scene | cold-boot and content-pass records; text-pass section 6 | P1 | reach the Kibito scene in chapter 3 | H |
+| J1 | `F0674DD8` crash on map 134 (slot 292 buffer) | fixed in ancestor `v3-safe`; byte `0x6B692B` = `0x04` preserved through the chain | PARTIALLY VERIFIED: ROM-VERIFIED in the chain; two hand-driven runs on sibling `d401d71c`; not run on `acd98c2a` | stability record sections 3, 4, 6; text-pass section 7 | P2 | the map-134 tournament grounds are on the chapter 3 route (walkthrough) | H |
+| J2 | Kibito-scene freeze from a grown rename | fixed by the token engine | PARTIALLY VERIFIED: cold boots survived on siblings `d401d71c` and `b3344a3f`; a savestate run survived on ancestor `20f2c140`; no cold boot of `acd98c2a` to the scene | cold-boot and content-pass records; text-pass section 6 | P1 | reach the Kibito scene in chapter 3 (walkthrough) | H |
 | J3 | zero slack on all 297 composition buffers | LATENT | ROM-VERIFIED | stability record section 7.1 | P3 | any future frame resize must enlarge its slot's buffer | E |
 | J4 | 275,033 bytes over the targets of 99 canonical references | LATENT; no consumer found | ROM-VERIFIED | stability record section 7.2 | P2 | report any crash with its scene | H |
 | J5 | late-game stability | not claimed | DEFERRED TO PLAYTEST | `FRIEND_V3_PLAYTEST_BOOST.md` section 5 item 3 | P1 | full campaign | H |

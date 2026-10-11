@@ -513,12 +513,49 @@ class Session:
             return None
         return row.text.rstrip(" ") != row.retail.rstrip(" ")
 
+    def headroom(self, key: str) -> Meter | None:
+        """A row's own capacity with nothing used, or None when no limit is stated.
+
+        The meter exists to tell a writer how much room a line has BEFORE they type, so
+        an untouched row still has a number worth showing: zeros against the same limit
+        the edit would be measured against. Measured, the empty state printed one
+        placeholder twice with no number at all, so the headroom was invisible until
+        after the fact. This is the row's own span rather than an invented budget: a row
+        whose limit the engine does not state returns None and the surface says so.
+        """
+        row = self.line(key)
+        if row is None:
+            return None
+        limit = self.limit_of(key)
+        if limit is None:
+            return None
+        return Meter(chars=0, chars_limit=limit // 2, bytes=0, bytes_limit=limit)
+
+    def limit_of(self, key: str) -> int | None:
+        """The byte span a row's edit is measured against, or None when unstated.
+
+        The engine's own statement wins when there is one, which is what a pending
+        decision carries; otherwise the row's own span is the limit, because that is the
+        room the text already occupies in place. Measured: without the fallback an
+        untouched record-shaped row had no limit at all, so its budget could not be
+        shown before the first keystroke.
+        """
+        row = self.line(key)
+        if row is None:
+            return None
+        if row.view == RECORDS or row.kind == SLOT:
+            decision = self.decision(key)
+            if decision is not None and decision.bytes_before:
+                return decision.bytes_before
+        return len(row.text.encode("utf-16le")) or None
+
     def meter(self, key: str) -> Meter | None:
         """The NEW text against the span that decides its fate, in both units.
 
         A row with no pending change has no numbers to show, and a limit is absent
         when the engine did not state one: inventing either would be a ROM value
-        this module is not allowed to compute.
+        this module is not allowed to compute. `headroom` is the same measurement with
+        nothing used, which is what an untouched row shows.
         """
         row = self.line(key)
         if row is None or not self._changed(key):

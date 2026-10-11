@@ -18,7 +18,14 @@ pytest.importorskip("PySide6.QtWidgets")
 from PySide6.QtCore import QMimeData, Qt  # noqa: E402
 from PySide6.QtGui import QFontMetrics  # noqa: E402
 from PySide6.QtTest import QSignalSpy, QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QLabel, QTableWidgetItem  # noqa: E402
+from PySide6.QtWidgets import (  # noqa: E402
+    QApplication,
+    QLabel,
+    QLineEdit,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from tests.text_fixture import (  # noqa: E402
     SPACES,
@@ -114,6 +121,16 @@ def differing(tmp_path):
                                       cutters_from_pool=False)
 
 
+def empty_unit_text(unit: str) -> str:
+    """One bar of the meter with nothing pending: a number, and no invented limit."""
+    return f"0 {unit}, {chipedit.UNSTATED} {unit} limit"
+
+
+def empty_meter_text() -> str:
+    """The meter with nothing pending: a number per unit, and no invented limit."""
+    return f"{empty_unit_text(chipedit.CHARS)}     {empty_unit_text(chipedit.BYTES)}"
+
+
 def show(editor, session, key: str = "") -> str:
     """Show one row the way the shell does: the row and the session's own answers."""
     key = key or inner_key(session)
@@ -137,12 +154,17 @@ def test_three_stacked_sections_build_with_one_emphasis(window) -> None:
     assert editor.retail.explanation.text() == chipedit.RETAIL_EXPLANATION
     assert editor.current.explanation.text() == chipedit.CURRENT_EXPLANATION
     assert editor.new.explanation.text() == chipedit.NEW_EXPLANATION
-    # The two read-only sections refuse the keyboard and carry no caret.
+    # The two read-only sections refuse every edit and carry no caret, and they are
+    # still reachable: Tab lands on them, and their own text can be selected by
+    # keyboard, which is the only way past the cap at a short pane.
     assert editor.retail.editor.isReadOnly() is True
     assert editor.current.editor.isReadOnly() is True
     assert editor.new.editor.isReadOnly() is False
-    assert editor.retail.editor.focusPolicy() == Qt.FocusPolicy.NoFocus
-    assert editor.current.editor.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert editor.retail.editor.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    assert editor.current.editor.focusPolicy() == Qt.FocusPolicy.StrongFocus
+    selectable = Qt.TextInteractionFlag.TextSelectableByKeyboard
+    assert editor.retail.editor.textInteractionFlags() & selectable
+    assert editor.current.editor.textInteractionFlags() & selectable
     assert editor.retail.editor.cursorWidth() == 0
     assert editor.current.editor.cursorWidth() == 0
     assert editor.new.editor.cursorWidth() > 0
@@ -247,7 +269,7 @@ def test_a_sibling_line_in_the_same_record_reads_unchanged(window, session, tmp_
     assert split.state(sibling.key) is State.UNCHANGED
     show(editor, split, sibling.key)
     assert editor.new_text() == sibling.text
-    assert editor.meter.chars.text() == chipedit.NO_EDIT
+    assert editor.meter.chars.text() == empty_unit_text(chipedit.CHARS)
 
 
 # --- the meter ---------------------------------------------------------------
@@ -256,7 +278,7 @@ def test_a_sibling_line_in_the_same_record_reads_unchanged(window, session, tmp_
 def test_the_meter_reports_both_units_and_reserves_its_slot(window, session) -> None:
     editor, _pane = window
     key = show(editor, session)
-    assert editor.meter.text() == f"{chipedit.NO_EDIT}     {chipedit.NO_EDIT}"
+    assert editor.meter.text() == empty_meter_text()
     assert editor.meter.chars.track.tick_x(100) is None
     session.set_edit(key, GROWN)
     editor.set_state(session.state(key), session.meter(key))
@@ -280,11 +302,29 @@ def test_the_meter_marks_an_unstated_limit_as_unstated(window, session) -> None:
     assert editor.meter.chars.track.tick_x(100) is None
 
 
+def test_the_empty_meter_states_the_budget_before_anything_is_typed(window, session) -> None:
+    """With nothing pending the meter still reads a number, and says the absence once.
+
+    Measured before: `no pending edit` twice in mono, no number anywhere, so a writer
+    could not read the budget of the row they had selected.
+    """
+    editor, _pane = window
+    key = show(editor, session)
+    assert session.meter(key) is None
+    assert editor.meter.text() == empty_meter_text()
+    assert editor.meter.word.text() == chipedit.NO_EDIT
+    assert editor.meter.word_shown() is True
+    # Where the engine states the row's budget, the empty state shows the headroom.
+    editor.set_state(State.UNCHANGED, app_session.Meter(0, 10, 0, 20))
+    assert editor.meter.text() == "0 / 10 chars     0 / 20 bytes"
+    assert editor.meter.stated() is True
+
+
 def test_the_meter_names_the_unit_of_each_bar_even_with_no_edit(window, session) -> None:
     """Two identical empty readouts are told apart by their own unit labels."""
     editor, _pane = window
     show(editor, session)
-    assert editor.meter.text() == f"{chipedit.NO_EDIT}     {chipedit.NO_EDIT}"
+    assert editor.meter.text() == empty_meter_text()
     assert editor.meter.chars.unit_label.text() == chipedit.CHARS
     assert editor.meter.bytes.unit_label.text() == chipedit.BYTES
     caption = theme.type_scale().caption.pixelSize()
@@ -431,7 +471,7 @@ def test_every_refusal_answers_with_its_own_reason() -> None:
 
 
 def test_the_read_only_sections_are_capped_so_new_takes_the_stretch(window) -> None:
-    """At the pane minimum the references take four lines and NEW takes the rest."""
+    """At a tall pane the references take four lines and NEW takes the rest."""
     editor, _pane = window
     prose = "words " * 60
     for section in (editor.retail, editor.current, editor.new):
@@ -450,6 +490,73 @@ def test_the_read_only_sections_are_capped_so_new_takes_the_stretch(window) -> N
         assert section.editor.verticalScrollBar().maximum() > 0
         # The cap is a height policy only: the caption still explains the section.
         assert section.explanation.isVisibleTo(editor) is True
+
+
+def test_the_read_only_cap_follows_the_editors_own_height(window) -> None:
+    """A short pane caps the references at two lines, and NEW keeps the room.
+
+    Measured before, at the window's own minimum of 1018x444: retail 79, current 78
+    and NEW 79, with NEW left a 53 px viewport, because the fixed four-line cap never
+    bound there. After: retail 66, current 66, NEW 104, NEW at a 78 px viewport.
+    """
+    editor, _pane = window
+    prose = "words " * 60
+    for section in (editor.retail, editor.current, editor.new):
+        section.set_text(prose)
+    editor.resize(360, 444)
+    editor.show()
+    QApplication.processEvents()
+    short_cap = chipedit.read_only_cap(editor.retail.editor, editor.height())
+    assert chipedit.read_only_lines(editor.retail.editor,
+                                    editor.height()) == chipedit.MIN_READ_ONLY_LINES
+    assert short_cap < chipedit.read_only_cap(editor.retail.editor)
+    assert editor.retail.editor.height() <= short_cap
+    assert editor.current.editor.height() <= short_cap
+    assert editor.new.editor.height() > editor.retail.editor.height()
+    editor.resize(360, 1200)
+    QApplication.processEvents()
+    assert chipedit.read_only_lines(editor.retail.editor,
+                                    editor.height()) == chipedit.READ_ONLY_LINES
+    assert editor.retail.editor.height() <= chipedit.read_only_cap(editor.retail.editor,
+                                                                  editor.height())
+    assert editor.new.editor.height() > editor.retail.editor.height()
+
+
+def test_the_capped_reference_stays_reachable_from_the_keyboard(window, qapp) -> None:
+    """The cap hides text, so Tab has to reach the reference and the caret stay gone.
+
+    Measured after, on the real platform: walking Tab through the shell hits
+    `retail.editor` and `current.editor`; with the old NoFocus policy applied by hand
+    to the same window, only `new.editor` is ever reached.
+    """
+    editor, _pane = window
+    prose = "words " * 60
+    for section in (editor.retail, editor.current, editor.new):
+        section.set_text(prose)
+    host = QWidget()
+    column = QVBoxLayout(host)
+    field = QLineEdit(host)
+    column.addWidget(field)
+    column.addWidget(editor)
+    host.resize(420, 700)
+    host.show()
+    qapp.processEvents()
+    field.setFocus(Qt.FocusReason.OtherFocusReason)
+    qapp.processEvents()
+    reached = []
+    for _ in range(2):
+        QTest.keyClick(qapp.focusWidget(), Qt.Key.Key_Tab)
+        qapp.processEvents()
+        reached.append(qapp.focusWidget())
+    assert reached[0] is editor.retail.editor
+    assert reached[1] is editor.current.editor
+    # The keyboard selects the whole capped line, and no caret appears doing it.
+    QTest.keyClick(editor.retail.editor, Qt.Key.Key_A, Qt.ControlModifier)
+    qapp.processEvents()
+    assert editor.retail.editor.textCursor().selectedText() == prose
+    assert editor.retail.editor.cursorWidth() == 0
+    assert editor.retail.editor.verticalScrollBar().maximum() > 0
+    host.close()
 
 
 # --- the context pane --------------------------------------------------------

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStyle,
     QStyledItemDelegate,
     QTableView,
@@ -137,6 +138,32 @@ def _one_of(value: object, allowed: tuple[str, ...], fallback: str) -> str:
     return value if value in allowed else fallback
 
 
+class ElidedLabel(QLabel):
+    """A caption that says it was cut rather than losing its words in silence.
+
+    Measured: a plain QLabel asks the layout for its whole text and draws from x=0
+    when it gets less, so at 60 px `0 edited   0 will move   0 refused` painted the
+    first word and a half with nothing to say the rest was there. Its minimum size
+    hint is the full text, which is also what stopped a row from giving it any less.
+    A zero minimum and an ignored width let it take the room that is left, and the
+    ellipsis is what makes the loss visible.
+    """
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(0, super().minimumSizeHint().height())
+
+    def sizeHint(self) -> QSize:
+        return QSize(0, super().sizeHint().height())
+
+    def paintEvent(self, _event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight,
+                                             self.width())
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         text)
+
+
 def line_count(count: int) -> str:
     return f"{count} line" if count == 1 else f"{count} lines"
 
@@ -162,13 +189,22 @@ def place_tooltip(session: Session | None) -> str:
             f"{PLACE_EVIDENCE}.")
 
 
+def _badge_frame(shape, advance: int) -> int:
+    """The room a badge needs: the marker, the auxiliary glyph, its icon and its word.
+
+    One formula for the column, which is as wide as the longest state word, and for the
+    badge, which is as wide as its own. `theme.paint_badge` spends the same frame:
+    `pad_sm` at each end, 16 px for the icon when it draws one, and `pad_sm` between
+    the icon and the word.
+    """
+    return MARKER_COLUMN + AUX_GLYPH_WIDTH + shape.pad_xs + 4 * shape.pad_sm + advance
+
+
 def status_width() -> int:
     """Wide enough for the longest state word, its icon and both markers."""
     shape = theme.active_metrics()
     widest = max((status_words.presentation(state).word for state in State), key=len)
-    advance = QFontMetrics(theme.fonts().strong).horizontalAdvance(widest)
-    frame = MARKER_COLUMN + AUX_GLYPH_WIDTH + shape.pad_xs + 4 * shape.pad_sm
-    return frame + advance
+    return _badge_frame(shape, QFontMetrics(theme.fonts().strong).horizontalAdvance(widest))
 
 
 class LineModel(QAbstractTableModel):
@@ -378,9 +414,23 @@ class LineDelegate(QStyledItemDelegate):
             left = glyph.right() + self._metrics.pad_xs
         fill, ink = theme.state_colors(self._theme, state)
         badge = QRect(left, rect.top() + self._metrics.pad_xs,
-                      max(0, rect.right() - left - self._metrics.pad_sm),
+                      self._badge_width(entry, rect.right() - left - self._metrics.pad_sm),
                       max(0, rect.height() - self._metrics.pad_xs * 2))
         theme.paint_badge(painter, badge, fill, ink, entry.icon, entry.word)
+
+    def _badge_width(self, entry, room: int) -> int:
+        """The badge's own width, so its fill stops being a panel across the cell.
+
+        Measured at a 660 px pane: the badge's fill span was 173 of the status cell's
+        190 px, so on the surface the whole column measured the badge's raised-surface
+        bar with one 4 px gutter beside it, and the row read as two objects. The badge
+        keeps its own fill and stops where its word does; it no longer runs to the cell's
+        edge.
+        """
+        shape = self._metrics
+        advance = QFontMetrics(theme.fonts().strong).horizontalAdvance(entry.word)
+        wanted = _badge_frame(shape, advance) + shape.pad_sm
+        return max(shape.pad_sm * 2, min(room, wanted))
 
     def _paint_heading(self, painter: QPainter, option, heading) -> None:
         label, note = heading
@@ -473,6 +523,9 @@ class LinePane(QWidget):
         self._model = LineModel(session, self)
         self._delegate = LineDelegate(applied_theme, metrics, self)
         self.status_width = status_width()
+        #: The width the last fit gave the columns, so a scrollbar that arrives later
+        #: can ask for another one without a fit running for nothing.
+        self._fitted_width = -1
         self.tabs = QTabBar()
         self.tabs.setExpanding(False)
         # Both lists must stay reachable at any pane width. Qt's default is to add
@@ -482,8 +535,13 @@ class LinePane(QWidget):
         self.tabs.setAccessibleName("List")
         for title, _kind in TABS:
             self.tabs.addTab(title)
-        self.counters = QLabel()
+        self.counters = ElidedLabel()
         self.counters.setProperty("role", "caption")
+        # The counts are the last thing with anywhere else to be: each list's total is
+        # on its tab tooltip, and a state that reaches zero reads from the chip. So the
+        # line gives ground to the tabs, and says so with an ellipsis instead of
+        # dropping the trailing counts in silence.
+        self.counters.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.shape_box = self._combo(((LINES, "Lines"), (RECORDS, "Records")), VIEW_TOOLTIP)
         self.order_box = self._combo(((APPEARANCE, "Appearance"), (STORAGE, "Storage")),
                                      ORDER_TOOLTIPS[APPEARANCE], ORDER_TOOLTIPS)
@@ -581,12 +639,16 @@ class LinePane(QWidget):
         self.table.setColumnWidth(COLUMN_STATUS, self.status_width)
         self.table.selectionModel().currentRowChanged.connect(self._row_changed)
         self.table.entered.connect(self._row_entered)
+        self.table.verticalScrollBar().rangeChanged.connect(self._refit_columns)
         self.tabs.setFixedHeight(metrics.tab_height)
         self.shape_box.setCurrentIndex(self.shape_box.findData(self._view))
         self.order_box.setCurrentIndex(self.order_box.findData(self._order))
         self.group_box.setCurrentIndex(self.group_box.findData(self._by))
         tab_row = QHBoxLayout()
-        tab_row.setSpacing(metrics.gap)
+        # Measured at the window minimum: the second tab ended at x=305 and `0 edited`
+        # began at 310, so the counts read as a tab label. The gutter is a layout gap,
+        # which is also what the counters label keeps when it is squeezed.
+        tab_row.setSpacing(metrics.pad_lg)
         tab_row.addWidget(self.tabs)
         tab_row.addWidget(self.counters)
         tab_row.addStretch(1)
@@ -628,6 +690,10 @@ class LinePane(QWidget):
         return min(SPEAKER_CEILING,
                    max(SPEAKER_FLOOR, metrics.horizontalAdvance(widest) + self._metrics.pad_xl))
 
+    def _fit_width(self) -> int:
+        """The width the columns may use: the viewport, less the scrollbar's breadth."""
+        return self.table.viewport().width() - self._scrollbar_breadth()
+
     def _fit_columns(self) -> None:
         """Keep the text column readable, and drop the diagnostic column before it.
 
@@ -638,10 +704,16 @@ class LinePane(QWidget):
         keeps its whole word, the text keeps a readable floor, the speaker elides
         because its cell carries the full label as a tooltip, and the identity column
         goes entirely, because the key is on the status bar and in the context pane.
+
+        The vertical scrollbar's breadth leaves the viewport before the columns are
+        measured, because it is the list's own height that decides whether it is there:
+        measured at 368 px the same fit read text 107 against a floor of 130 once the
+        rows made the scrollbar take its share, against 130 with the height to spare.
         """
-        width = self.table.viewport().width()
-        if width <= 0:
+        if self.table.viewport().width() <= 0:
             return
+        width = self._fit_width()
+        self._fitted_width = width
         wants_identity = self._id_by_view()
         fits = width >= SPEAKER_FLOOR + self.status_width + TEXT_FLOOR + IDENTITY_FLOOR
         self.table.setColumnHidden(COLUMN_ID, not wants_identity or not fits)
@@ -660,6 +732,25 @@ class LinePane(QWidget):
         if speaker:
             self.table.setColumnWidth(COLUMN_SPEAKER, speaker)
 
+    def _scrollbar_breadth(self) -> int:
+        """The vertical scrollbar's width when the rows are taller than the viewport.
+
+        Read from the layout rather than from the scrollbar's own `isVisible`, because
+        the fit runs while the table is still settling: measured at 368 px the first
+        fit read text 123 against the floor of 130 and the scrollbar's arrival took it
+        to 107. A heading band is taller than a row, so it is asked for its own room.
+        """
+        model = self.table.model()
+        if model is None:
+            return 0
+        entries = getattr(model, "entries", None)
+        entries = entries() if callable(entries) else ()
+        content = sum(self.table.rowHeight(row) if isinstance(entry, Group)
+                      else self._metrics.row_height for row, entry in enumerate(entries))
+        if content <= self.table.viewport().height():
+            return 0
+        return self.table.verticalScrollBar().sizeHint().width()
+
     def _id_by_view(self) -> bool:
         """Whether the current list wants an identity column at all."""
         return self._kind == SLOT or self._view == RECORDS
@@ -667,6 +758,17 @@ class LinePane(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
         self._fit_columns()
+
+    def _refit_columns(self) -> None:
+        """Fit again when the scrollbar arrives or goes, in either order.
+
+        Measured: the fit runs while the table is still settling, so the first pass at
+        368 px read text 123 against the floor of 130 and the scrollbar's arrival took
+        it to 107. The scrollbar's range is what changes when its breadth does, which
+        is also why this cannot loop: a column width does not move the range.
+        """
+        if self._fitted_width != self._fit_width():
+            self._fit_columns()
 
     # --- what the list shows -------------------------------------------------
 
@@ -930,11 +1032,19 @@ class LinePane(QWidget):
             self.tabs.setTabToolTip(index, row_count(total, kind))
 
     def _update_chips(self) -> None:
-        """A checked chip carries the check glyph, so the state reads without the fill."""
+        """A checked chip carries the check glyph, so the state reads without the fill.
+
+        Each chip's own floor is set here, after its word, because a tool button with no
+        icon paints nothing at all rather than an elided label: measured, `Will move`
+        forced to 18 px differs from an empty twin by zero pixels, and at 30 px by 28.
+        Its own hint is the width it needs, so it is never squeezed below that.
+        """
         for chip, (name, _states) in zip(self.chips, FILTERS):
             chip.setText(f"\u2713 {name}" if chip.isChecked() else name)
+            chip.setMinimumWidth(chip.sizeHint().width())
         self.control_chip.setText(
             f"\u2713 {CONTROL_FILTER}" if self.control_chip.isChecked() else CONTROL_FILTER)
+        self.control_chip.setMinimumWidth(self.control_chip.sizeHint().width())
 
     def _update_counters(self) -> None:
         """The three state counts, which are the actionable numbers.

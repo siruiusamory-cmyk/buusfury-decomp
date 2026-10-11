@@ -2,9 +2,9 @@
 
 The three sections are the same widget with the same frame, padding and label
 style, because a read-only section must not read as a lesser one. RETAIL and
-CURRENT differ from NEW in exactly two ways: they refuse the keyboard, and NEW
-carries one weight step on its label plus the accent hairline above its frame.
-Nothing else in the editor competes for attention.
+CURRENT differ from NEW in exactly two ways: they refuse every edit and take no
+caret, and NEW carries one weight step on its label plus the accent hairline
+above its frame. Nothing else in the editor competes for attention.
 
 Every number here comes from `session.py`: the meter, the covering records, the
 site count and the refusal reason. This module computes no ROM value.
@@ -57,11 +57,16 @@ UNPROVEN_TARGET = "Its edit target is unproven: no proven handle site reaches th
 #: One accent hairline above NEW, and one 1 px control border around every section.
 HAIRLINE = "border-top: 1px solid %s;"
 INK = "color: %s;"
-#: Four lines of the prose role is the cap for a read-only reference: at the window
-#: minimum, measured, RETAIL and CURRENT took 170 px each for one line of text
-#: while NEW, the section the reader types into, was left 62 px. The labels, the
-#: frames and the explanations stay identical; only the height policy differs.
+#: The most lines of the prose role a read-only reference may take, and the least.
+#: The cap follows the editor's own height: at the window minimum a fixed four lines
+#: never bound, because the three sections split the height evenly, and NEW, the
+#: surface the reader types into, was left a 53 px viewport (measured, retail 79 /
+#: current 78 / new 79 at 1018x444). A reference may take a sixth of the editor's
+#: height instead, which is two lines there and four once the window is tall. The
+#: labels, the frames and the explanations stay identical; only the height differs.
 READ_ONLY_LINES = 4
+MIN_READ_ONLY_LINES = 2
+READ_ONLY_SHARE = 6
 
 
 def _token(theme, role: str) -> str:
@@ -78,11 +83,29 @@ def _frame_rule(widget: QWidget, theme) -> str:
     return f"#{widget.objectName()} {{ border: 1px solid {_token(theme, 'border')}; }}"
 
 
-def read_only_cap(editor) -> int:
-    """Four lines of the editor's own font, plus its document margin and frame."""
+def _chrome(editor) -> int:
+    """The box's own document margin and frame, which any cap has to carry too."""
+    return 2 * int(editor.document().documentMargin()) + 2 * editor.frameWidth()
+
+
+def read_only_lines(editor, pane_height: int | None = None) -> int:
+    """How many lines of this editor's font a read-only reference may take.
+
+    Without a height the whole cap is allowed, which is what a caller measuring one
+    box on its own wants. With the editor's own height the reference gives way to
+    NEW: a sixth of the pane, floored at two lines and capped at four.
+    """
+    if pane_height is None:
+        return READ_ONLY_LINES
+    per_line = QFontMetrics(editor.font()).lineSpacing() + _chrome(editor)
+    return max(MIN_READ_ONLY_LINES, min(READ_ONLY_LINES,
+                                        pane_height // (READ_ONLY_SHARE * per_line)))
+
+
+def read_only_cap(editor, pane_height: int | None = None) -> int:
+    """The capped text box, in the editor's own font, for an editor `pane_height` tall."""
     line = QFontMetrics(editor.font()).lineSpacing()
-    chrome = 2 * int(editor.document().documentMargin()) + 2 * editor.frameWidth()
-    return READ_ONLY_LINES * line + chrome
+    return read_only_lines(editor, pane_height) * line + _chrome(editor)
 
 
 class Section:
@@ -109,11 +132,16 @@ class Section:
         self.word.setVisible(False)
         self.editor = chips.ChipTextEdit(self.frame, editable=editable)
         self.editor.setFont(theme_module.type_scale().prose)
+        self._cap: int | None = None
         if not editable:
-            # Text selectable, never focusable: the caret belongs to NEW.
+            # Selectable by mouse and by keyboard, never editable. A keyboard-only
+            # reader has to be able to reach, read and copy the part of a long line
+            # the cap hides, and the caret still belongs to NEW: cursorWidth stays 0,
+            # so a focused reference shows no blinking cursor on static text.
             self.editor.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse)
-            self.editor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                Qt.TextInteractionFlag.TextSelectableByMouse
+                | Qt.TextInteractionFlag.TextSelectableByKeyboard)
+            self.editor.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             self.editor.setCursorWidth(0)
         head = QHBoxLayout()
         head.setContentsMargins(metrics.pad_md, metrics.pad_sm, metrics.pad_md, 0)
@@ -137,11 +165,16 @@ class Section:
         """At most `height` px of text here, whatever the column offers.
 
         The frame is capped as well as the text box: capping the box alone left the
-        frame stretched to its old share with the freed space dead inside it.
+        frame stretched to its old share with the freed space dead inside it. The
+        cap follows the editor's own height and is re-applied on every resize, so
+        the same height arrives more than once and setting it again is a no-op.
         """
+        if height == self._cap:
+            return
+        self._cap = height
         self.editor.setMaximumHeight(height)
         self.frame.setMaximumHeight(height + self.head.sizeHint().height()
-                                   + self.body.spacing())
+                                    + self.body.spacing())
 
 
 class BarTrack(QWidget):
@@ -193,12 +226,12 @@ class SegmentBar(QWidget):
         super().__init__(parent)
         self.unit = unit
         self._theme = theme
-        # The static unit label is what keeps the two readouts apart when both are
-        # in their empty state, where neither number carries a unit of its own.
+        # The static unit label keeps the two readouts apart: each readout states its
+        # own unit in every state, the empty one included, where the number is 0.
         self.unit_label = QLabel(unit, self)
         self.unit_label.setProperty("role", "caption")
         self.unit_label.setFont(theme_module.type_scale().caption)
-        self.readout = QLabel(NO_EDIT, self)
+        self.readout = QLabel("", self)
         self.readout.setFont(theme_module.type_scale().data)
         self.readout.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.track = BarTrack(theme, metrics, self)
@@ -208,6 +241,7 @@ class SegmentBar(QWidget):
         column.addWidget(self.unit_label)
         column.addWidget(self.readout)
         column.addWidget(self.track)
+        self.show_measure(0, None)
         self.setFixedHeight(self.unit_label.sizeHint().height()
                             + self.readout.sizeHint().height() + 2 * metrics.pad_xs
                             + self.track.height())
@@ -221,11 +255,6 @@ class SegmentBar(QWidget):
             INK % _token(self._theme, "accent")
             if limit is not None and value >= limit else "")
         self.track.show_measure(value, limit, over)
-
-    def clear(self) -> None:
-        self.readout.setText(NO_EDIT)
-        self.readout.setStyleSheet("")
-        self.track.show_measure(0, None, False)
 
     def text(self) -> str:
         return self.readout.text()
@@ -259,17 +288,27 @@ class LengthMeter(QWidget):
         column.addWidget(self.word)
         column.addLayout(bars)
         column.addWidget(self.reason)
+        # The meter opens in its empty state, stated the one way, so a window with no
+        # row shown reads the same as a row with nothing pending.
+        self.show_meter(None)
 
     def show_meter(self, meter, word: str = "") -> None:
-        """`meter` is the session's own answer; None means there is no pending edit."""
-        if meter is None:
-            self.chars.clear()
-            self.bytes.clear()
-        else:
-            self.chars.show_measure(meter.chars, meter.chars_limit)
-            self.bytes.show_measure(meter.bytes, meter.bytes_limit)
-        self.word.setText(word)
-        self.word.setVisible(bool(word))
+        """`meter` is the session's own answer; None means there is no pending edit.
+
+        The empty state still carries a number for both units, because the design
+        note pairs the segmented bar with a numeric readout and the reader needs the
+        budget before typing. Zero is the pending edit's own size; a limit the
+        engine did not state stays said in words rather than invented. The words
+        `no pending edit` are then stated once, as the meter's own state word,
+        instead of twice with no number at all.
+        """
+        empty = meter is None
+        self.chars.show_measure(0 if empty else meter.chars,
+                                None if empty else meter.chars_limit)
+        self.bytes.show_measure(0 if empty else meter.bytes,
+                                None if empty else meter.bytes_limit)
+        self.word.setText(word or (NO_EDIT if empty else ""))
+        self.word.setVisible(bool(self.word.text()))
 
     def show_reason(self, reason: str) -> None:
         self.reason.setText(reason)
@@ -397,6 +436,16 @@ class EditorSections(QWidget):
         column.addWidget(self.new.frame, 1)
         column.addWidget(self.meter)
         column.addWidget(self.notice)
+        self._cap_references()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """Re-apply the references' cap, so it holds at every height the pane takes."""
+        super().resizeEvent(event)
+        self._cap_references()
+
+    def _cap_references(self) -> None:
+        for section in (self.retail, self.current):
+            section.cap_text_height(read_only_cap(section.editor, self.height()))
 
     # --- the shell's API -----------------------------------------------------
 

@@ -455,7 +455,10 @@ class Shell(QMainWindow):
         self._key = key
         text = self.session.pending_text(key)
         state = self.session.state(key)
-        meter = self.session.meter(key)
+        # A row with no pending edit still shows its budget: the meter's own purpose is
+        # to say how much room is left BEFORE the writer types, so the untouched state
+        # is zeros against the same limit the edit will be measured against.
+        meter = self.session.meter(key) or self.session.headroom(key)
         differs = self.session.differs_from_retail(key)
         reason = self.session.refusal_reason(key)
         name = span_detail(self.session, key)

@@ -376,6 +376,133 @@ def test_the_row_is_drawn_with_one_divider_the_selection_and_the_state_badge(
     assert image.pixelColor(240, bottom).name() == theme.color(applied, "divider").name()
 
 
+def test_the_status_cell_paints_no_fill_of_its_own_and_the_divider_runs_its_width(
+        shape_session, qapp, applied) -> None:
+    """FINDING 1, measured in both themes, because offscreen and real fonts differ.
+
+    A row is one object: the status cell may hold a badge, a marker and a word, but
+    its own background is the row's. Measured offscreen before the fix at a 660 px
+    pane: the status column measured 189 of its 190 px as the badge's `#F8F9FB`
+    against the row's `#FFFFFF`, so the divider and the fill both stopped there.
+    Over the capture the same band was `x=228..343` of the row, and dark measured
+    the same pair `#1E2126` / `#252931`.
+    """
+    for mode in (theme.MODE_LIGHT, theme.MODE_DARK):
+        active = theme.apply_theme(qapp, mode)
+        pane = lineview.LinePane(shape_session, theme.active_metrics(), active)
+        pane.setMinimumWidth(0)
+        pane.resize(660, 260)
+        pane.show()
+        try:
+            qapp.processEvents()
+            table = pane.table
+            pane.refresh()
+            qapp.processEvents()
+            image = table.viewport().grab().toImage()
+            for row in range(table.model().rowCount() - 1):
+                top = table.rowViewportPosition(row)
+                height = table.rowHeight(row)
+                y = top + height // 2
+                start = table.columnViewportPosition(lineview.COLUMN_STATUS)
+                cell = table.columnWidth(lineview.COLUMN_STATUS)
+                state = table.model().data(table.model().index(row, lineview.COLUMN_STATUS),
+                                           lineview.ROLE_STATE)
+                badge = theme.state_colors(active, state)[0].name()
+                painted = [1 if image.pixelColor(start + x, y).name() == badge else 0
+                           for x in range(cell)]
+                run = max((len(part) for part in "".join(map(str, painted)).split("0")),
+                          default=0)
+                # The badge stops at its own content, so its fill never reaches the
+                # cell's right edge and the row's own fill survives there.
+                assert run < cell
+                assert image.pixelColor(start + 40, y).name() == badge
+                assert image.pixelColor(start + 40, top + height - 1).name() == \
+                    theme.color(active, "divider").name()
+        finally:
+            pane.close()
+    theme.apply_theme(qapp, theme.MODE_DARK)
+
+
+def test_a_badge_is_as_wide_as_its_own_word_and_not_the_whole_cell(shape_pane) -> None:
+    """FINDING 1, the width that caused it: the badge ran the cell edge to edge.
+
+    Measured offscreen before the fix at a 660 px pane: the status column was 190 px
+    and the badge rect was 173 px of it, so the row's own fill was hidden behind the
+    badge's. Measured on the capture the badge reached within one pixel of the cell's
+    right edge.
+    """
+    delegate = shape_pane.table.itemDelegate()
+    cell = shape_pane.status_width
+    attrs = theme.active_metrics()
+    for state in app_session.State:
+        presentation = status.presentation(state)
+        assert delegate._badge_width(presentation, cell) <= cell
+    unchanged = status.presentation(app_session.State.UNCHANGED)
+    assert delegate._badge_width(unchanged, cell + 100) < cell
+    assert delegate._badge_width(unchanged, 8) == 8
+
+
+def test_the_fit_leaves_the_text_its_floor_when_the_scrollbar_takes_its_breadth(
+        shape_pane) -> None:
+    """FINDING 2, on the order the layout actually runs: the scrollbar arrives late.
+
+    Measured offscreen: the first fit read text 123 against the floor of 130, and the
+    scrollbar's arrival took it to 107. Every state is fitted now, however late the
+    layout gets there.
+    """
+    table = shape_pane.table
+    shape_pane.resize(420, 220)
+    table.setFixedHeight(60)
+    shape_pane.refresh()
+    scrollbar = table.verticalScrollBar()
+    breadth = scrollbar.sizeHint().width()
+    assert scrollbar.isVisible()
+    # The scrollbar's breadth leaves the fit before the columns are measured, so the
+    # width the columns may use is the viewport's less that breadth, and the text
+    # column's floor is still met from what is left.
+    assert shape_pane._fit_width() == table.viewport().width() - breadth
+    assert shape_pane._fit_width() - table.columnWidth(lineview.COLUMN_STATUS) \
+        - table.columnWidth(lineview.COLUMN_SPEAKER) >= lineview.TEXT_FLOOR
+    assert table.columnWidth(lineview.COLUMN_TEXT) >= lineview.TEXT_FLOOR
+
+
+def test_the_counters_line_keeps_a_gutter_and_elides_instead_of_clipping(
+        shape_pane, qapp) -> None:
+    """FINDING 3: one 12 px gutter from the tabs, and a visible ellipsis when squeezed.
+
+    Measured offscreen before the fix: a plain QLabel resized to 60 px painted from
+    x=157 to 212 with no ellipsis, the words simply gone. Measured on the capture the
+    second tab ended at x=305 and `0 edited` began at 310.
+    """
+    assert shape_pane.counters.minimumSizeHint().width() == 0
+    assert shape_pane.tabs.geometry().right() + 12 <= shape_pane.counters.geometry().left()
+    text = shape_pane.counters.text()
+    assert text and shape_pane.counters.fontMetrics().horizontalAdvance(text) \
+        > shape_pane.counters.width()
+    shape_pane.counters.setFixedWidth(90)
+    qapp.processEvents()
+    image = shape_pane.counters.grab().toImage()
+    y = shape_pane.counters.height() // 2
+    ink = [x for x in range(90)
+           if image.pixelColor(x, y).name() != theme.color(theme.active_theme(), "window").name()]
+    assert ink and ink[-1] <= 89
+
+
+def test_a_chip_can_never_be_squeezed_below_the_width_that_paints_its_word(
+        shape_pane) -> None:
+    """FINDING 4: at 18 px the chip painted zero differing pixels; its hint is a floor."""
+    chip = shape_pane.chips[1]
+    chip.resize(18, chip.height())
+    assert chip.width() >= chip.sizeHint().width()
+    chip.setChecked(True)
+    shape_pane.refresh()
+    assert chip.minimumWidth() >= chip.sizeHint().width()
+    chip.setChecked(False)
+    shape_pane.refresh()
+    assert chip.minimumWidth() >= chip.sizeHint().width()
+    assert shape_pane.control_chip.minimumWidth() >= shape_pane.control_chip.sizeHint().width()
+
+
 def test_home_and_end_move_to_the_row_ends_and_never_stop_on_a_heading(named_pane) -> None:
     named_pane.set_group(app_session.BY_SPEAKER)
     table = named_pane.table

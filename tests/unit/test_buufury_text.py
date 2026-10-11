@@ -159,6 +159,27 @@ def test_the_meter_reports_both_units_and_the_engines_own_limit(tmp_path: Path) 
     assert (meter.chars_limit, meter.bytes_limit) == (SPAN // 2, SPAN)
 
 
+def test_headroom_states_a_rows_budget_with_nothing_used(tmp_path: Path) -> None:
+    """An untouched row still has a number worth showing: zeros against its own span.
+
+    Measured: the editor's empty state printed one placeholder twice with no number, so
+    a writer could not see how much room a line had until after they had spent it. The
+    limit is the row's own span, so it is read rather than invented, and the same limit
+    is what an edit is then measured against.
+    """
+    session = opened(tmp_path)
+    key = record_key(session)
+    assert session.meter(key) is None, "nothing is pending on a fresh row"
+    headroom = session.headroom(key)
+    assert (headroom.chars, headroom.bytes) == (0, 0)
+    assert headroom.bytes_limit == SPAN
+    assert headroom.chars_limit == SPAN // 2
+    session.set_edit(key, "Say bye!")
+    pending = session.meter(key)
+    assert pending.bytes_limit == headroom.bytes_limit
+    assert pending.bytes > headroom.bytes
+
+
 # --- states ------------------------------------------------------------------
 
 

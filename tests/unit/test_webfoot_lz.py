@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import random
 import struct
+import time
 
 import pytest
 
@@ -258,13 +259,107 @@ def test_gamma_encoder_and_decoder_agree_over_a_wide_range() -> None:
         writer = wl._WordBitWriter()
         writer.gamma(value)
         reader = wl._WordBitReader(writer.finish(), 0)
-        assert wl._gamma(reader) == value
+        assert wl._gamma(reader, wl._GAMMA_LIMIT) == value
 
 
 def test_gamma_cannot_encode_below_two() -> None:
     writer = wl._WordBitWriter()
     with pytest.raises(wl.ContainerError):
         writer.gamma(1)
+
+
+# --- bounded consumption (CQA-19-BOUNDED-GAMMA-001) ---------------------------
+#
+# `_gamma` is a `while True` loop that shifts its accumulator left once per
+# iteration, so a malformed stream's cost is quadratic in the bits it consumes,
+# and those bits come from the whole image rather than from the container. Two
+# bounds close it: `_gamma` itself refuses an accumulator past `_GAMMA_LIMIT`,
+# and the decode loop now applies its input-consumption limit in both modes
+# instead of only under `require_end_marker`.
+
+#: Packed input the unbounded-gamma reproduction carries. Before the fix, a
+#: quarter of this (256 KiB) was directly measured on this machine at 19.9 s and
+#: it is refused after the fix in tens of microseconds. The budget sits between
+#: the two by five orders of magnitude, so it cannot be flaky on load.
+_UNBOUNDED_GAMMA_FILL = 1024 * 1024
+_UNBOUNDED_GAMMA_BUDGET = 1.0
+
+
+def _unbounded_gamma_stream(fill_bytes: int) -> bytes:
+    """A stream whose opening match token cannot be read.
+
+    The opening word is the long-match prefix ``0 1`` followed by all set bits, and
+    every following word is ``0xFF``, so every bit the gamma loops read is a one:
+    both the payload bit and the continuation bit stay set, so a gamma field cannot
+    return and cannot stop shifting its accumulator. That is the malformed shape the
+    recon measured, and it is what drives the quadratic cost.
+    """
+    first = "0" "1" "1" "1" "0" + "1" * 27
+    assert len(first) == 32
+    return (
+        struct.pack("<II", 1, wl.DEFAULT_MAX_OUTPUT)
+        + struct.pack("<I", int(first, 2))
+        + b"\xff" * fill_bytes
+    )
+
+
+def test_a_malformed_gamma_cannot_walk_the_whole_image() -> None:
+    """Before the fix this ran for seconds and never refused on its own bound.
+
+    The honest pre-fix behaviour was not a token-level assertion failure: the decode
+    ran for 19.9 s over 256 KiB of this shape, consuming the image whole, and only
+    stopped when the bit reader ran out of words - ``packed stream ended inside a bit
+    word``. Both decoders refuse the stream, on different grounds, so what
+    distinguishes the fix is not the refusal but refusing immediately instead of
+    after walking the image. This asserts elapsed time against a budget five orders
+    of magnitude above the fixed cost, which is what makes the before-fix run a
+    failure rather than a hang. Reverted to the pre-fix ``_gamma``, the measured
+    cost of the shape used here scales faster than the input, and this test fails on
+    the budget.
+
+    The premise is synthetic and read-only: the buffer is not a ROM and nothing here
+    is ROM-derived.
+    """
+    blob = _unbounded_gamma_stream(_UNBOUNDED_GAMMA_FILL)
+    started = time.perf_counter()
+    with pytest.raises(wl.ContainerError, match="gamma value reached"):
+        wl.unpack(blob, 0)
+    elapsed = time.perf_counter() - started
+    assert elapsed < _UNBOUNDED_GAMMA_BUDGET, (
+        f"the malformed stream took {elapsed:.3f}s for {len(blob)} input bytes, "
+        f"over the {_UNBOUNDED_GAMMA_BUDGET}s budget"
+    )
+
+
+def test_the_gamma_bound_cannot_fire_on_a_valid_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bound is above every value a legitimate stream carries, measured.
+
+    The corpus is the one this file already round-trips
+    (:func:`_termination_corpus`), replayed here with every gamma value the decode
+    actually produces recorded, so the ceiling is checked against measurement
+    rather than against the derivation alone. If the derivation were wrong - if a
+    valid stream could carry a larger value than `_GAMMA_LIMIT` - this fails
+    before the decoder ever refuses one.
+    """
+    largest = 0
+    real_gamma = wl._gamma
+
+    def recording_gamma(reader, minimum):
+        nonlocal largest
+        value = real_gamma(reader, minimum)
+        largest = max(largest, value)
+        return value
+
+    monkeypatch.setattr(wl, "_gamma", recording_gamma)
+    cases = _termination_corpus()
+    assert len(cases) >= 35
+    for name, payload in cases:
+        encoded = wl.pack(payload)
+        assert wl.unpack(encoded, 0).data == payload, f"A: {name}"
+        assert wl.validate_retail_termination(encoded).data == payload, f"B: {name}"
+    assert 0 < largest < wl._GAMMA_LIMIT, f"largest corpus gamma value: {largest}"
 
 
 # --- strict success: exact declared size, no clipping -------------------------

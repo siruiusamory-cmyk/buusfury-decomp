@@ -61,7 +61,11 @@ from .session import (
 )
 
 #: The panes start here, and no side pane may collapse into an unreadable column.
-DEFAULT_SPLIT = (420, 560, 340)
+#: The first-open pane sizes, and they must add up to the window's content width.
+#: Measured: the three values summed to 1320 against 1230 px of content, so the
+#: splitter clamped and the list landed on its own floor at 368 rather than at 420,
+#: which cost the text column 52 px and the slot list its identity column.
+DEFAULT_SPLIT = (420, 470, 340)
 #: Pane floors. The list's is the sum of its three column floors plus the frame, so
 #: the text column can never be starved: the status needs about 130 px for its whole
 #: word, the speaker column will not go below 108, and the text keeps 130. The
@@ -358,7 +362,12 @@ class Shell(QMainWindow):
             self.empty.setProperty("role", "hint")
             return self.empty
         self.pane = lineview.LinePane(self.session, self.metrics, self.theme, self)
-        self.pane.setMinimumWidth(LEFT_MIN)
+        # The floor is the constant OR whatever the pane's own controls need, whichever
+        # is larger. Measured at 150 and 200 percent Windows text, the list pane's own
+        # minimum grows to 475 and 603 while a fixed floor holds it at 368, so the chips
+        # and the counters line elide. Letting the window grow instead is the honest
+        # answer, and Qt already derives the window's minimum from its layout.
+        self.pane.setMinimumWidth(max(LEFT_MIN, self.pane.minimumSizeHint().width()))
         self.editor = EditorSections(self.theme, self.metrics, self)
         self.editor.setMinimumWidth(CENTRE_MIN)
         self.context = contextpane.ContextPane(self.theme, self.metrics, self)

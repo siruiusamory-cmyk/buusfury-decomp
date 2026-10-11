@@ -17,8 +17,8 @@ moves a background, an outline or a text colour and never a border width.
 
 from __future__ import annotations
 
-import base64
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping
@@ -106,6 +106,8 @@ TYPE_WEIGHTS: dict[str, int] = {
 _MONO_PREFERENCE = ("Cascadia Mono", "Consolas")
 _FAMILIES: frozenset[str] = frozenset()
 _ICON_CACHE: dict[str, QIcon] = {}
+#: The directory holding the recoloured stylesheet copies, created on first use.
+_ICON_FILES: Path | None = None
 _TEXT_HEIGHT_FALLBACK = 12
 #: The two pixel sizes one icon is rendered at, so a 2x display gets a real 2x
 #: pixmap rather than a scaled 1x one.
@@ -642,6 +644,7 @@ def _control_rules(theme: Theme, shape) -> list[str]:
     dependency on that fallback entirely, which is what the design note already
     requires of every surface: the theme decides, not Qt's default.
     """
+    arrow = _icon_uri("chevron-down", theme.text_primary)
     field = (f"background: {theme.surface}; color: {theme.text_primary}; "
              f"border: 1px solid {theme.border}; border-radius: {shape.radius}px; "
              f"padding: 0 {shape.pad_md}px; min-height: {shape.field_height - 2}px;")
@@ -659,7 +662,11 @@ def _control_rules(theme: Theme, shape) -> list[str]:
         f"QComboBox {{ {field} }}",
         f"QComboBox:focus {{ border-color: {theme.focus}; }}",
         f"QComboBox:disabled {{ color: {theme.text_disabled}; }}",
-        f"QComboBox::drop-down {{ border: none; width: {shape.pad_xl + shape.pad_md}px; }}",
+        f"QComboBox::drop-down {{ border: none; "
+        f"width: {shape.pad_xl + shape.pad_md}px; subcontrol-origin: padding; "
+        f"subcontrol-position: center right; }}",
+    ] + ([f"QComboBox::down-arrow {{ image: url({arrow}); width: 12px; height: 12px; }}"]
+         if arrow else []) + [
         f"QComboBox QAbstractItemView {{ background: {theme.surface_raised}; "
         f"color: {theme.text_primary}; border: 1px solid {theme.border}; "
         f"selection-background-color: {theme.selection}; "
@@ -732,11 +739,32 @@ def _icon_directory() -> Path:
 
 
 def _icon_uri(name: str, ink: str) -> str:
+    """A stylesheet `url()` for one icon, recoloured into `ink`.
+
+    Measured, and this is why the icon is written to a file rather than inlined: a
+    base64 data URI is accepted by Qt's stylesheet parser and then paints NOTHING,
+    silently and with no warning. The check glyph on a checked filter chip is the
+    channel the owner reads a state by, and it had never appeared. A file path paints:
+    the same rule returned 40 ink pixels for a data URI, which is only the button's own
+    text, and 100 for a path. The recoloured copies live in one temporary directory for
+    the life of the run and are never committed.
+    """
     path = _icon_directory() / f"{name}.svg"
     if not path.is_file():
         return ""
     svg = path.read_text(encoding="utf-8").replace("currentColor", ink)
-    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
+    target = _icon_cache() / f"{name}-{ink.lstrip('#')}.svg"
+    if not target.is_file():
+        target.write_text(svg, encoding="utf-8")
+    return target.as_posix()
+
+
+def _icon_cache() -> Path:
+    """One directory for the recoloured copies, created on first use."""
+    global _ICON_FILES
+    if _ICON_FILES is None or not _ICON_FILES.is_dir():
+        _ICON_FILES = Path(tempfile.mkdtemp(prefix="buufury-icons-"))
+    return _ICON_FILES
 
 
 def theme_tokens(theme: Theme) -> Mapping[str, str]:

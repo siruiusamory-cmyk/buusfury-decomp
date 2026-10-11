@@ -296,11 +296,13 @@ class ChipTextEdit(QTextEdit):
         inserted = _paragraphs(self._inserted(added))
         result = protected_edit(self._serialized, position, removed, inserted)
         if result == self._serialized:
+            # The reason is emitted whenever there is one, not only when Qt reports a
+            # change: measured, a refusal Qt reports with `added == 0` said nothing.
+            reason = refusal_reason(self._serialized, position, removed, inserted)
             if added or removed:
                 self._reload(self._serialized, position + len(inserted))
-                reason = refusal_reason(self._serialized, position, removed, inserted)
-                if reason:
-                    self.refused.emit(reason)
+            if reason:
+                self.refused.emit(reason)
             return
         self._serialized = result
         if self.document().toPlainText() != _presentation(result):

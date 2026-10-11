@@ -210,8 +210,10 @@ webfoot atlas regenerate ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --out .\bui
 
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
-[verified project state](docs/PROJECT_STATE.md). The portable suite runs with
-`.\scripts\test.ps1`.
+[verified project state](docs/PROJECT_STATE.md). `.\scripts\test.ps1` runs the
+portable `fast` gate by default, and passes any extra arguments through to
+pytest, so `.\scripts\test.ps1 tests\unit\test_write_invariants_property.py`
+narrows the same run.
 
 ## Contributing and documentation
 

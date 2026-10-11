@@ -1347,6 +1347,18 @@ and none is currently worth dedicated work.
 | CQA-51 | `workbench/map_tab.py:617,854`, `graphics_tab.py:722,748,777,850`, `launcher.py:201` | `QTimer.singleShot` callbacks holding widgets with no receiver context, so a timer can fire into a destroyed object. |
 | CQA-52 | `workbench/map_browser_tab.py` `_on_save_as`, `graphics_tab.py` `_on_export` | The status line is set locally without publishing to the shell, so the authoritative status bar can go stale after a successful save/export. |
 
+> **ANNOTATED at the TEST-SPEED-001 closeout (2026-10-10).** CQA-42 is **CLOSED**;
+> the row above is the finding as recorded and is not restated. `scripts/test.ps1:9`
+> now runs `& $Python -m pytest -m fast @args`, so the single entry point defaults
+> to the portable gate and passes every extra argument through to pytest: the bare
+> full-suite invocation the finding names no longer exists. `README.md:213-216` and
+> `docs/testing.md:57-63` state the new behaviour, and the remediation-status row
+> for CQA-42 records its severity, at `:1549`. One earlier reference is left as written and is
+> superseded: section E observation 6, at `:1456`, still says this script "runs the
+> forbidden bare full suite". This note sits BELOW the C.4 table rather than beside the
+> CQA-42 row, because a blockquote directly under a table row ends the table there and the
+> ten findings after it lose their header and render as plain text.
+
 ### C.5 INFO
 
 | ID | Note |
@@ -1443,6 +1455,17 @@ local-only.
    tests (CQA-41); the property sweep is frozen at 50 derandomized examples
    (CQA-44); `scripts/test.ps1` still runs the forbidden bare full suite
    (CQA-42).
+
+> **ANNOTATED at the TEST-SPEED-001 closeout (2026-10-10).** The observation
+> above is the state as at this audit and is not restated. Its CQA-42 half is
+> now **CLOSED**: the single test entry point no longer runs the bare full
+> suite by reflex, because `scripts/test.ps1:9` runs
+> `& $Python -m pytest -m fast @args`, so it defaults to the portable gate and
+> passes every extra argument through to pytest, as `README.md:213-216` and
+> `docs/testing.md:57-63` now state. The finding's own row is annotated in
+> place at `:1338` and its severity in the remediation-status row at `:1549`.
+> The other two observations in this paragraph (CQA-41, CQA-44) are unchanged.
+
 7. **High-value guards that work well, and should be preserved as the pattern:**
    the base-byte agreement and forged-manifest cases in
    `test_write_invariants_property.py`; the allocation
@@ -1523,6 +1546,7 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-09 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was "the canonical-EOF straddle guard is load-bearing and has zero test coverage", whose remediation was one synthetic case: 10-byte base, 16-byte generated output, a 1-byte allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`. That case is in `tests/unit/test_rom_expansion.py` verbatim, with its positive control (the same authorized span accepts a non-straddling change) and mutation M4 (deleting the guard fails that case and leaves the other eleven tests passing, reproducing the invisibility the finding measured). The finding contains no other requirement, so it is **CLOSED**, not partial. |
 | CQA-12 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was that the Build path emits no provenance document; its remediation was two parts: "have `_run_build` write the manifest beside the image by default (or have `build_project` do so unless told otherwise), **and add a reopen/`identify` assertion for the produced file**". Part one is Checkpoint B (default sibling publication through `authored_image.manifest_path_for`, CLI default with explicit `--manifest`/`--no-manifest`, Workbench inheritance, `*.dragonbyte.json` gitignore coverage, mutation M6). Part two is satisfied by the assertions that read the produced document back and check `base.sha256`, `base.profile_id` and `output.sha256`, and by Checkpoint D's reopen proof. The finding's own owner correction excluded "the Workbench cannot reopen its own output" as documented accepted behaviour, and that is not reopened. **CLOSED**. |
 | CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
+| CQA-42 | LOW | **CLOSED** - TEST-SPEED-001. `scripts/test.ps1:9` now reads `& $Python -m pytest -m fast @args`, so the repository's single test entry point runs the portable gate by default and passes every extra argument through to pytest; the missing-venv guard, the `$ErrorActionPreference` setting and the trailing `& $Python -m tools.webfoot --help` smoke are unchanged. `README.md:213-216` and `docs/testing.md:57-63` state the new default and the pass-through, and the finding is annotated in place at `:1339`. Added to this table beyond the original must-fix set, with its recorded LOW severity; it closes a developer wall-clock defect, not a shipped property. |
 
 Remaining pre-capacity blockers, in the dependency-aware groups above:
 **CQA-05 + CQA-06**, **CQA-07**, **CQA-08**, **CQA-09**, **CQA-12**, and

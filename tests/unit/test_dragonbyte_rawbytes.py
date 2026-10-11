@@ -316,6 +316,25 @@ def test_a_write_past_the_image_is_refused(tmp_path, base):
     assert session.journal.edits() == ()
 
 
+def test_an_unbuildable_raw_write_is_reported_rather_than_raised(tmp_path, base):
+    """N1: the ROM page asks this before a dialog, so it must answer, not raise.
+
+    Both unbuildable requests are refusals of the same kind as an owned range: a
+    range past the image, and a session with no image open. They used to escape as
+    `SessionError` into the Qt slot, because only `_EDIT_ERRORS` was caught.
+    """
+    session = _session(tmp_path, base)
+    past = session.raw_write_problem(len(base) - 1, b"\x01\x02")
+    assert "is not a 2-byte range inside the" in past
+
+    session.base_image = None
+    closed = session.raw_write_problem(FREE_OFFSET, b"\x11")
+    assert "No ROM is open" in closed
+
+    free = _session(tmp_path, base)
+    assert free.raw_write_problem(FREE_OFFSET, b"\x11") == ""
+
+
 def test_the_raw_document_round_trips_through_a_save_and_an_undo(tmp_path, base):
     session = _session(tmp_path, base)
     new = b"\x11\x22"

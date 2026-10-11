@@ -1,7 +1,9 @@
-# 0007 One ROM-destination guard
+# ADR 0007 - One ROM-destination guard
 
-- Status: `accepted`
-- Date: 2026-10-10
+- **Status:** accepted (2026-10-10)
+- **Evidence:** `docs/ROM_SAFETY.md` (the write paths that must refuse a protected
+  destination); `docs/DEVELOPMENT.md` (one owner per rule); the merged guard itself in
+  `tools/webfoot/destination.py`.
 
 ## Decision
 

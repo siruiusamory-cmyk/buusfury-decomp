@@ -1461,7 +1461,7 @@ local-only.
 > `& $Python -m pytest -m fast @args`, so it defaults to the portable gate and
 > passes every extra argument through to pytest, as `README.md:213-216` and
 > `docs/testing.md:57-63` now state. The finding's own row is annotated in
-> place at `:1339` and its severity in the remediation-status row at `:1536`.
+> place at `:1339` and its severity in the remediation-status row at `:1547`.
 > The other two observations in this paragraph (CQA-41, CQA-44) are unchanged.
 
 7. **High-value guards that work well, and should be preserved as the pattern:**

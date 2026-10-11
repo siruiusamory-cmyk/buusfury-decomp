@@ -472,3 +472,86 @@ def test_the_control_border_is_a_recorded_deviation() -> None:
         ratio = contrast(QColor(theme_.border), QColor(theme_.surface))
         assert ratio < FOCUS_FLOOR, (mode, round(ratio, 2))
         assert ratio > 1.2, (mode, round(ratio, 2))
+
+
+#: The control classes Qt will draw itself if no rule names them, and the region of
+#: each that carries its ink.
+CONTROL_CLASSES = ("QMenuBar", "QComboBox", "QLineEdit", "QToolButton", "QPushButton")
+
+
+def _flatten(image: QImage, backdrop: QColor) -> QImage:
+    """A widget grab composited on the surface behind it.
+
+    A transparent control, which is what an inline tool button is, grabs as a
+    transparent image and would otherwise measure against black.
+    """
+    out = QImage(image.size(), QImage.Format.Format_ARGB32)
+    out.fill(backdrop)
+    painter = QPainter(out)
+    painter.drawImage(0, 0, image)
+    painter.end()
+    return out
+
+
+def _rendered_ink_and_background(image: QImage) -> tuple[QColor, QColor]:
+    """The widget's own fill, and the pixel that contrasts with it the most."""
+    counts: dict[int, int] = {}
+    pixels = []
+    for y in range(image.height()):
+        for x in range(image.width()):
+            value = image.pixel(x, y)
+            counts[value] = counts.get(value, 0) + 1
+            pixels.append(value)
+    background = QColor(max(counts, key=lambda value: counts[value]))
+    ink = max((QColor(value) for value in pixels),
+              key=lambda colour: contrast(colour, background))
+    return ink, background
+
+
+def test_every_control_class_is_painted_in_the_theme_ink(qapp) -> None:
+    """A control with no stylesheet rule is painted Qt's way, not the theme's.
+
+    Measured, and this is the case that would have caught it: the light theme once
+    rendered the menu bar, the four combo boxes and the address disclosure as white on
+    a `#F3F4F6` window, about 1.1 to 1, while the dark theme painted all of them
+    correctly, so no dark pass could see the defect and the source-level check found no
+    literal to complain about. This renders each class instead of reading the source.
+    """
+    from PySide6.QtWidgets import (QComboBox, QLineEdit, QMenuBar, QPushButton,
+                                   QToolButton, QVBoxLayout, QWidget)
+
+    for mode in (theme.MODE_LIGHT, theme.MODE_DARK):
+        applied = theme.apply_theme(qapp, mode)
+        host = QWidget()
+        host.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        column = QVBoxLayout(host)
+        menu = QMenuBar()
+        menu.addMenu("File")
+        menu.addMenu("Edit")
+        combo = QComboBox()
+        combo.addItems(["Lines", "Records"])
+        field = QLineEdit()
+        field.setText("search")
+        tool = QToolButton()
+        tool.setText("Address, offset and size")
+        button = QPushButton("Export")
+        for widget in (menu, combo, field, tool, button):
+            column.addWidget(widget)
+        host.resize(320, 240)
+        host.show()
+        QApplication.processEvents()
+        for name, widget in (("QMenuBar", menu), ("QComboBox", combo), ("QLineEdit", field),
+                             ("QToolButton", tool), ("QPushButton", button)):
+            assert name in CONTROL_CLASSES
+            grabbed = _flatten(widget.grab().toImage(), QColor(applied.window))
+            ink, background = _rendered_ink_and_background(grabbed)
+            ratio = contrast(ink, background)
+            assert ratio >= TEXT_FLOOR, (
+                f"{mode} {name} draws ink {ink.name()} on {background.name()}, "
+                f"{ratio:.2f}:1 against the {TEXT_FLOOR} floor: the stylesheet names no "
+                f"rule for it, so Qt is choosing the ink"
+            )
+            assert background.name().lower() in (
+                applied.surface.lower(), applied.surface_raised.lower(),
+                applied.window.lower()), (mode, name, background.name())
+        host.close()

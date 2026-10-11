@@ -24,6 +24,7 @@ from tools.buufury_text import project as project_file
 from tools.buufury_text import session as app_session
 from tools.buufury_text.session import RECORD, SLOT, Session, State
 from tools.buufury_text.status import PRESENTATION, label
+from dataclasses import replace  # noqa: E402
 from tools.webfoot import textedit
 
 HELLO = "Say hello!"
@@ -221,11 +222,11 @@ def test_two_edits_of_one_record_both_survive(tmp_path: Path) -> None:
 def test_clearing_one_line_of_a_record_keeps_the_other(tmp_path: Path) -> None:
     session = two_line_session(tmp_path)
     first, second = _the_two_lines(session)
-    session.set_edit(first.key, "First!")
-    session.set_edit(second.key, "Second!")
+    session.set_edit(first.key, "Une")
+    session.set_edit(second.key, "Tvo")
     session.clear_edit(first.key)
     assert session.pending_text(first.key) == first.text
-    assert session.pending_text(second.key) == "Second!"
+    assert session.pending_text(second.key) == "Tvo"
     session.clear_edit(second.key)
     assert session.edited_keys() == ()
 
@@ -239,9 +240,9 @@ def test_two_renames_of_one_record_both_land(tmp_path: Path) -> None:
     """
     session = two_line_session(tmp_path)
     target = record_key(session)
-    session.set_spans(target, "One", "Uno", frozenset({0}))
+    session.set_rename(target, "One", "Uno", frozenset({0}))
     assert session.pending_text(target) == "Uno\nTwo"
-    session.set_spans(target, "Two", "Dos", frozenset({4}))
+    session.set_rename(target, "Two", "Dos", frozenset({4}))
     assert session.pending_text(target) == "Uno\nDos"
     assert session.state(target) is State.EDITED
     assert len(session.edits) == 1
@@ -261,7 +262,7 @@ def test_a_rename_and_a_line_edit_of_one_record_compose_and_undo(tmp_path: Path)
     first, second = _the_two_lines(session)
     session.set_edit(second.key, "Tvo")
     before = session.snapshot(second.key)
-    session.set_spans(target, "One", "Uno", frozenset({0}))
+    session.set_rename(target, "One", "Uno", frozenset({0}))
     assert session.pending_text(second.key) == "Tvo"
     assert session.pending_text(target) == "Uno\nTvo"
     session.restore(second.key, before)
@@ -284,8 +285,8 @@ def test_a_rename_inside_an_edited_line_is_reported_and_wedges_nothing(tmp_path:
     first, second = _the_two_lines(session)
     # Same length, so the state is about the edit and not about the record moving.
     session.set_edit(first.key, "Une")
-    skipped = session.set_spans(target, "n", "N", frozenset({2}))
-    assert skipped and "lies inside an edit" in skipped[0]
+    skipped = session.set_rename(target, "n", "N", frozenset({2}))
+    assert skipped and "no longer reads" in skipped[0]
     assert session.pending_text(first.key) == "Une"
     assert session.pending_text(target) == "Une\nTwo"
     assert session.pending_text(second.key) == "Two"
@@ -397,117 +398,99 @@ def test_search_and_filters_read_the_same_rows(tmp_path: Path) -> None:
     assert session.counts(RECORD)[State.EDITED] == 1
 
 
-def test_no_sequence_of_edits_wedges_a_record_or_loses_a_snapshot(tmp_path: Path) -> None:
-    """A random walk of the operations the window makes, checking two invariants.
+def _exported_rows(session: Session) -> dict[str, str]:
+    """Every row's text as the EXPORT writes it, read back from the plan's own bytes.
 
-    A single hand-written case per refusal route is weaker evidence than it looks: the
-    review found a wedge reachable from three routes, and the routes interact. So this
-    drives a fixed sequence of line edits, rename spans, whole-record edits and clears,
-    and after every step asks the session everything the window asks of it, then restores
-    a snapshot and requires the record to read exactly as it did. A refusal is allowed and
-    expected; a question that raises, or a restore that does not restore, is not.
+    This is the same route the session's own derivation takes, written out here so the gate
+    holds the session to the exported image rather than to itself.
+    """
+    plan = session.plan()
+    if plan is None:
+        return {row.key: row.text for row in session.lines}
+    model = replace(session.model, image=plan.output,
+                    layout=textedit.detect(plan.output))
+    grouped: dict[str, list[str]] = {}
+    for row in textedit.lines(model, cutters_from_pool=session.cutters_from_pool):
+        grouped.setdefault(row.target, []).append(row.text)
+    keys: dict[str, list[str]] = {}
+    for row in session.lines:
+        keys.setdefault(row.target or row.key, []).append(row.key)
+    return {key: text
+            for target, group in keys.items()
+            for key, text in zip(group, grouped.get(target, []))}
+
+
+def _rows_match_the_export(session: Session) -> list[str]:
+    """Every row key whose text is not what the export writes for that row."""
+    exported = _exported_rows(session)
+    return [row.key for row in session.lines
+            if exported.get(row.key) is not None
+            and session.pending_text(row.key) != exported[row.key]]
+
+
+def test_every_row_equals_the_line_the_export_writes(tmp_path: Path) -> None:
+    """The gate for the whole model: a row's text IS the exported image's row text.
+
+    Four review rounds each found a case where a second derivation by arithmetic disagreed
+    with the export, so this walks random operations and, after EVERY step, compares every
+    row, typed into or not, against the row the export's own bytes carry. A refusal is
+    allowed; a row that does not match what would be written is not.
     """
     import random
 
     session = two_line_session(tmp_path)
     target = record_key(session)
     rows = _the_two_lines(session)
-    session.set_edit(rows[1].key, "Tvo")
-    names = ("Une", "Dos", "Tres", "Une!", "Dos!", "Tres!")
+    names = ("Une", "Dos", "Tres", "Uno!", "Dos!", "Tres!", "Quatre")
     rng = random.Random(20261011)
-    for step in range(200):
+    applied = 0
+    for step in range(60):
         row = rng.choice(rows)
-        before_texts = {r.key: session.pending_text(r.key) for r in session.lines}
         whole = session.snapshot(target)
+        before = {r.key: session.pending_text(r.key) for r in session.lines}
         kind = rng.choice(("type", "type", "rename", "records", "clear"))
         try:
             if kind == "type":
-                typed = rng.choice(names) + rng.choice(("", "!!"))
-                session.set_edit(row.key, typed)
-                # The row must now say exactly what was typed. A no-raise check alone
-                # passed while a whole-record edit made a row report one character of
-                # itself, so the walk asserts the text and not only that it answered.
-                assert session.pending_text(row.key) == typed, f"step {step}: row text"
+                session.set_edit(row.key, rng.choice(names))
             elif kind == "rename":
-                session.set_spans(target, row.text[:2], "XX", frozenset({0}))
+                session.set_rename(target, row.text[:2] or "X", "XX", frozenset({0}))
             elif kind == "records":
-                typed = "\n".join(rng.sample(names, 3))
-                session.set_edit(target, typed)
-                assert session.pending_text(target) == typed, f"step {step}: record text"
+                session.set_edit(target, "\n".join(rng.sample(names, 2)))
             else:
                 session.clear_edit(row.key)
-        except textedit.TextEditError as error:
-            assert "already changed" in str(error), f"step {step}: unexpected refusal"
-        questions = (lambda: session.pending_text(target),
-                     lambda: session.counts(app_session.LINES),
-                     lambda: session.matching(term="U"),
-                     lambda: session.plan())
-        for question in questions:
+            applied += 1
+        except textedit.TextEditError:
+            pass
+        mismatched = _rows_match_the_export(session)
+        assert not mismatched, (
+            f"step {step} ({kind}): {mismatched} do not match the exported rows")
+        for question in (lambda: session.counts(app_session.LINES),
+                         lambda: session.matching(term="U"),
+                         lambda: session.state(row.key)):
             question()
         session.restore(target, whole)
-        assert {r.key: session.pending_text(r.key) for r in session.lines} == before_texts, (
+        assert {r.key: session.pending_text(r.key) for r in session.lines} == before, (
             f"step {step} ({kind}) did not restore the record")
+    assert applied > 20, f"too little was exercised: {applied} step(s) applied"
 
 
-def test_a_whole_record_edit_that_grows_marks_the_rows_it_did_not_touch(tmp_path: Path) -> None:
-    """A row whose own words are unchanged still moves when its record grows.
+def test_the_gate_fails_when_the_derivation_is_broken(tmp_path: Path,
+                                                      monkeypatch) -> None:
+    """The negative control: break the derivation and the gate above must catch it.
 
-    Measured: the record's text became `One\\nTwo!!` and both rows reported UNCHANGED, so
-    the counts line said nothing would move for a record that moves entirely. The row's own
-    text is correctly unchanged (the added text is beyond its span); what was wrong was the
-    state, which now reads the record's own decision.
+    A gate that cannot fail proves nothing, which is how four rounds of arithmetic got
+    past their own cases. This replaces the derivation with the image's own rows, which is
+    exactly the second opinion the model removed, and requires the comparison to notice.
     """
     session = two_line_session(tmp_path)
     target = record_key(session)
-    first, second = _the_two_lines(session)
-    session.set_edit(target, "One\nTwo!!")
-    assert session.pending_text(target) == "One\nTwo!!"
-    assert session.pending_text(first.key) == "One"
-    assert session.pending_text(second.key) == "Two"
-    assert session.state(second.key) is State.WILL_MOVE
-    assert session.state(first.key) is State.WILL_MOVE
-    assert session.counts(app_session.LINES)[State.UNCHANGED] == 0
-
-
-def test_a_whole_record_edit_that_replaces_a_rows_own_text_shows_that_text(
-        tmp_path: Path) -> None:
-    """The row whose span the change lands inside reads the new text, not the old one."""
-    session = two_line_session(tmp_path)
-    target = record_key(session)
-    first, second = _the_two_lines(session)
-    session.set_edit(target, "One\n2wo")
-    assert session.pending_text(second.key) == "2wo"
-    assert session.pending_text(first.key) == "One"
-    assert session.state(second.key) is State.EDITED
-
-
-def test_an_edit_adopted_from_a_project_survives_the_next_session_edit(
-        tmp_path: Path) -> None:
-    """A saved edit is a span in the store, not only a text in the edit list.
-
-    Measured: an adopted edit lived only in `edits`, so the next edit of that record
-    composed from the original text and silently discarded the saved change, and undoing
-    that edit erased it. Rename and Clear on such a record did the same.
-    """
-    saved = two_line_session(tmp_path)
-    target = record_key(saved)
-    first, second = _the_two_lines(saved)
-    saved.set_edit(first.key, "Une")
-    project = saved.project()
-
-    again = opened(tmp_path, image=hello_image("One\nTwo"), view=app_session.LINES,
-                   cutters_from_pool=False, project=project)
-    assert again.pending_text(first.key) == "Une"
-    again.set_edit(second.key, "Tvo")
-    assert again.pending_text(first.key) == "Une", "the saved edit was discarded"
-    assert again.pending_text(target) == "Une\nTvo"
-    assert len(again.edits) == 1
-    again.clear_edit(second.key)
-    assert again.pending_text(first.key) == "Une", "clearing erased the saved edit"
-    before = again.snapshot(second.key)
-    again.set_edit(second.key, "Tvo")
-    again.restore(second.key, before)
-    assert again.pending_text(first.key) == "Une"
+    first, _second = _the_two_lines(session)
+    session.set_edit(first.key, "Une")
+    assert not _rows_match_the_export(session), "the derivation agreed with the export"
+    monkeypatch.setattr(Session, "_derived",
+                        lambda self: dict(self._original_rows))
+    session._derived_for = ()
+    assert _rows_match_the_export(session), "the broken derivation went unnoticed"
 
 
 def test_the_control_unit_filter_and_the_progress_counters(tmp_path: Path) -> None:

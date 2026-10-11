@@ -25,7 +25,7 @@ their guard, so an edit made against one image refuses against another.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 
@@ -87,31 +87,9 @@ class State(Enum):
     WILL_MOVE = "will move"
     REFUSED = "refused"
     BASE_CHANGED = "base changed"
-
-
-@dataclass(frozen=True, slots=True)
-class Pending:
-    """One replacement this session holds for part of a target's text.
-
-    `offset` and `length` are positions in the ORIGINAL canonical text, never in the
-    composed one, which is what lets two entries compose: the composed text is rebuilt
-    from the original every time. `key` is the row an entry came from, and empty for the
-    spans a rename batch contributes, which no row owns.
-    """
-
-    key: str
-    offset: int
-    length: int
-    text: str
-
-    @property
-    def end(self) -> int:
-        return self.offset + self.length
-
-    @property
-    def delta(self) -> int:
-        """How much this entry changes the text's length."""
-        return len(self.text) - self.length
+    #: An edit changed how many lines this record has, so its rows no longer line up with
+    #: it. They are read-only until that edit is reverted, and they say so.
+    RESTRUCTURED = "record restructured"
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,15 +187,25 @@ class Session:
         self.map_labels = {row.index: row.label for row in textedit.maps(model)}
         self.record_places = textedit.record_maps(model)
         self.places = textedit.line_maps(model, cutters_from_pool=cutters_from_pool)
-        self._edited_row: dict[str, str] = {}
         self._rows: dict[str, dict[str, Line]] = self._read_rows()
-        #: target -> the spans this session holds for it, each a replacement of part of
-        #: the ORIGINAL text. One entry per edited row, plus one per span a rename batch
-        #: contributes. That is what lets two edits of one target compose instead of the
-        #: second replacing the first, and what removes the need to locate any entry by
-        #: searching for its text.
-        self._pending: dict[str, tuple[Pending, ...]] = {}
-        self._lines_by_target: dict[str, tuple[Line, ...]] = self._index_lines()
+        #: target -> that target's pending WHOLE text. This is the only state an edit
+        #: keeps per record, so every reader derives from one text and no two derivations
+        #: can disagree. Measured, four review rounds each found a case where a second
+        #: derivation by arithmetic disagreed with the export; there is only one now.
+        self._text: dict[str, str] = {}
+        #: row key -> the row's text as the image has it, for comparing against the derived
+        #: text and for restoring one row.
+        self._original_rows: dict[str, str] = {
+            key: row.text for key, row in self._rows[LINES].items()}
+        #: target -> its own row keys, in the partition's order.
+        self._line_keys: dict[str, tuple[str, ...]] = self._index_lines()
+        #: Targets whose row count the current edits changed, so their rows are marked.
+        self._restructured: set[str] = set()
+        #: The edit list the derived rows were computed for, so one edit derives once.
+        self._derived_for: tuple = ()
+        #: The row lookup, filled by `_resort`. Declared here because adopting a project
+        #: refreshes the rows before the first sort has run.
+        self._index: dict[str, Line] = {}
         if project is not None:
             self.adopt(project)
         self._resort()
@@ -348,56 +336,42 @@ class Session:
     def adopt(self, project: Project) -> None:
         """Take a saved edit list. An edit whose guard misses is kept, not rebased.
 
-        Each edit is ALSO seeded into the span store, from the common prefix and suffix of
-        the two texts it names, because the store is what the next edit composes onto and
-        what an undo restores. Measured without it: a saved edit lived only in `edits`, so
-        the next edit of that record in this session composed from the original text and
-        silently discarded the saved change, and undoing that edit erased it outright.
-        Rename and Clear on such a record did the same.
+        A saved edit IS the record's whole text, which is the only thing this session
+        stores per record, so adopting one is storing that text and nothing else. Measured
+        before this model: a saved edit lived only in the edit list, so the next edit of
+        that record composed from the original image text and silently discarded the saved
+        change, and the undo after it erased the change outright.
         """
         edits: dict[str, object] = {}
-        seeded: dict[str, tuple[Pending, ...]] = {}
+        text: dict[str, str] = {}
         unmatched: list[str] = []
         for edit in project.edits:
             key = _key_of(edit)
             if self._rows[RECORDS].get(key) is None and self._rows[SLOT].get(key) is None:
                 unmatched.append(key)
             edits[key] = edit
-            span = _span_between(_old_of(edit), _new_of(edit))
-            if span is not None:
-                seeded[key] = (Pending(key, *span),)
+            text[key] = _new_of(edit)
         self.edits = edits
-        self._pending = seeded
+        self._text = text
         self.unmatched = tuple(unmatched)
         self._stale = True
+        self._refresh()
 
     def _record_of(self, row: Line) -> textedit.Record | None:
         return self.model.record(*_parts(row.target)) if row.target else None
 
-    def _index_lines(self) -> dict[str, tuple[Line, ...]]:
-        """Every spoken line, grouped by the record an edit of it would address."""
-        grouped: dict[str, list[Line]] = {}
+    def _index_lines(self) -> dict[str, tuple[str, ...]]:
+        """Every row key, grouped by the record an edit of it would address, in order."""
+        grouped: dict[str, list[str]] = {}
         for row in self._rows[LINES].values():
-            grouped.setdefault(row.target or row.key, []).append(row)
-        return {target: tuple(rows) for target, rows in grouped.items()}
+            grouped.setdefault(row.target or row.key, []).append(row.key)
+        return {target: tuple(keys) for target, keys in grouped.items()}
 
-    def _rows_for(self, target: str) -> tuple[Line, ...]:
-        """Every row of one record, in the record's own order."""
-        return self._lines_by_target.get(target, ())
+    # --- what a record will say, and what its rows say ------------------------
 
-    def _span(self, row: Line) -> tuple[int, int]:
-        """The row's character offset and length inside its target record."""
-        holder = self._record_of(row)
-        if holder is None or row.view != LINES:
-            return 0, len(row.text)
-        return (row.position[1] - holder.start) // 2, len(row.text)
-
-    def _shift(self, target: str, offset: int) -> int:
-        """How far an ORIGINAL offset moves once every entry before it applies."""
-        return sum(entry.delta for entry in self._entries(target) if entry.end <= offset)
-
-    def _entries(self, target: str) -> tuple[Pending, ...]:
-        return self._pending.get(target, ())
+    def _entries(self, target: str) -> tuple[str, ...]:
+        """The row keys one target's own partition holds, in order."""
+        return self._line_keys.get(target, ())
 
     def _text_of(self, target: str) -> str | None:
         """The target's own text before any edit, or None when nothing carries it."""
@@ -407,264 +381,258 @@ class Session:
         slot = self._rows[SLOT].get(target)
         return None if slot is None else slot.text
 
-    def _compose_with(self, target: str, entries: tuple[Pending, ...]) -> str | None:
-        """The target's text with `entries` applied, rebuilt from the original."""
-        base = self._text_of(target)
-        if base is None:
-            return None
-        if not entries:
-            return base
-        pieces: list[str] = []
-        cursor = 0
-        for entry in entries:
-            pieces.append(base[cursor:entry.offset])
-            pieces.append(entry.text)
-            cursor = entry.end
-        pieces.append(base[cursor:])
-        return "".join(pieces)
+    def _pending(self, target: str) -> str | None:
+        """The record's pending whole text: the stored one, or its own."""
+        if target in self._text:
+            return self._text[target]
+        return self._text_of(target)
 
-    def _compose(self, target: str) -> str | None:
-        """The target's pending text, from the entries this session holds for it.
+    def _derived(self) -> dict[str, str]:
+        """Every row's text as the EXPORT will write it, keyed the way this session keys.
 
-        Every entry is a span of the ORIGINAL text, so the composed text is rebuilt from
-        the original each time and two entries compose by construction: an entry that
-        grows shifts every later one without any entry being rewritten, and no entry is
-        ever found by searching for its text. Measured, two earlier shapes each failed
-        here. The first built every edit from the original record and overwrote the
-        stored one, so two lines of one record kept only the second. The second stored a
-        renamed record as one whole new text and re-applied line entries by searching
-        that text for the line's own old text, so a rename plus a line edit could not be
-        combined at all, and two renames of one record kept only the second.
+        Rows are not derived by arithmetic on the record's text. They are read from the
+        plan's own built output, through the engine's own line rule, so a row's text is
+        what the exported image carries by construction rather than by a second opinion.
+        Measured, four review rounds each found a case where arithmetic on the record's
+        text disagreed with the export: edits to two rows of one record, a rename beside a
+        line edit, a row inside a whole-record edit, and a saved edit read back from a
+        project. None of those can drift here, because there is only one derivation.
+
+        Rows are matched to the partition they came from by (target, ordinal). A target
+        whose row COUNT changed has been restructured by an edit, and its rows are marked
+        rather than guessed at.
         """
-        return self._compose_with(target, self._entries(target))
-
-    @staticmethod
-    def _place_in(entries: tuple[Pending, ...],
-                  entry: Pending) -> tuple[Pending, ...] | None:
-        """`entries` with `entry` placed, or None when it straddles one of them.
-
-        An entry wholly inside the new one is superseded, because the new span's text IS
-        the reader's own answer for that text, and an entry with the identical span is
-        replaced. A PARTIAL overlap is the one case with no honest answer: two edits
-        claim overlapping text and neither contains the other, so the caller refuses
-        rather than guessing which text belongs where.
-        """
-        kept: list[Pending] = []
-        for existing in entries:
-            if entry.offset <= existing.offset and existing.end <= entry.end:
+        if not self.edits:
+            self._restructured = set()
+            return dict(self._original_rows)
+        plan = self.plan()
+        if plan is None:
+            self._restructured = set()
+            return dict(self._original_rows)
+        # The engine's own reader over the bytes the plan BUILT, so the rows below are the
+        # rows of the exported image and not a second opinion about them.
+        model = replace(self.model, image=plan.output,
+                        layout=textedit.detect(plan.output))
+        grouped: dict[str, list[str]] = {}
+        for row in textedit.lines(model, cutters_from_pool=self.cutters_from_pool):
+            grouped.setdefault(row.target, []).append(row.text)
+        derived: dict[str, str] = {}
+        self._restructured = set()
+        for target, keys in self._line_keys.items():
+            texts = grouped.get(target, [])
+            if len(texts) != len(keys):
+                self._restructured.add(target)
+                for key in keys:
+                    derived[key] = self._original_rows.get(key, "")
                 continue
-            if existing.offset < entry.end and entry.offset < existing.end:
-                return None
-            kept.append(existing)
-        kept.append(entry)
-        return tuple(sorted(kept, key=lambda item: item.offset))
+            for key, text in zip(keys, texts):
+                derived[key] = text
+        return derived
 
-    def _commit(self, target: str, entries: tuple[Pending, ...]) -> None:
-        """Store the entries and rebuild the target's edit, once, after composing.
+    def _refresh(self) -> None:
+        """Bring every row's text up to what the export would write, once per edit list."""
+        signature = tuple((key, _new_of(edit)) for key, edit in self.edits.items())
+        if signature == self._derived_for:
+            return
+        self._derived_for = signature
+        derived = self._derived()
+        for key, text in derived.items():
+            row = self._rows[LINES].get(key)
+            if row is not None and row.text != text:
+                refreshed = replace(row, text=text)
+                self._rows[LINES][key] = refreshed
+                # The lookup index holds the same rows, so leaving it behind made every
+                # caller that asks for a row by key see the text from before the edit. The
+                # clearing case caught it by finding no text left to clear.
+                if self._index.get(key) is row:
+                    self._index[key] = refreshed
 
-        The composed text is built BEFORE anything is written, so a combination that
-        cannot be composed leaves the session exactly as it was.
+    def set_edit(self, key: str, new: str) -> None:
+        """Record what one row should say, as the record's own whole text.
+
+        The only state this session keeps for a record is its text, so every way of
+        editing a record writes that one thing and every reader derives from it.
         """
-        text = self._compose_with(target, entries)
-        base = self._text_of(target)
-        holder = self._rows[RECORDS].get(target)
-        slot = self._rows[SLOT].get(target)
-        edit: object | None = None
-        if text is not None and base is not None and text != base:
-            # A set of entries that composes back to the original text is no edit at all,
-            # which is what makes clearing the last entry clear the row's state with it.
-            if holder is None and slot is not None:
-                edit = textedit.SlotEdit(slot=slot.position[1], old=slot.text, new=text)
-            elif holder is not None:
-                record = self._record_of(holder)
-                if record is not None:
-                    edit = textedit.RecordEdit(record.selector, record.start, record.length,
-                                               old=holder.text, new=text)
-        if entries:
-            self._pending[target] = entries
+        row = self.line(key)
+        if row is None:
+            raise KeyError(key)
+        if not row.text and not new:
+            return
+        target = row.target or key
+        current = self._pending(target)
+        if current is None:
+            raise textedit.TextEditError(
+                f"{key} names a target this image does not carry")
+        if self._is_whole_row(row, target):
+            self._store(target, new, current)
+            return
+        if target in self._restructured:
+            raise textedit.TextEditError(
+                f"{target} was restructured by an earlier edit, so its rows no longer "
+                "line up with it. Edit the record itself, or clear that edit first.")
+        self._store(target, self._replace(row, new, current), current)
+
+    def _is_whole_row(self, row: Line, target: str) -> bool:
+        """Whether this row is the target's whole text, which a record or slot row is."""
+        return row.key == target or row.view != LINES
+
+    def _replace(self, row: Line, new: str, current: str) -> str:
+        """The record's text with this row's own text replaced by `new`.
+
+        The row's text is located inside the record's CURRENT text and must occur exactly
+        once, so nothing is located by arithmetic on offsets that earlier edits moved. A
+        row whose text appears twice in its record, or is empty, is refused rather than
+        guessed at, and the message says which.
+        """
+        for candidate in (row.text, self._original_rows.get(row.key, "")):
+            if not candidate:
+                continue
+            found = current.count(candidate)
+            if found == 1:
+                return current.replace(candidate, new, 1)
+        raise textedit.TextEditError(
+            f"this line's own text appears {current.count(row.text)} time(s) in its "
+            "record, so which part of the record it replaces cannot be decided. Edit the "
+            "record itself.")
+
+    def _store(self, target: str, text: str, current: str) -> None:
+        """Keep the record's text, or drop it when it is back to what the image says."""
+        original = self._text_of(target)
+        if text == original or not text:
+            self._text.pop(target, None)
         else:
-            self._pending.pop(target, None)
+            self._text[target] = text
+        edit = self._edit_for(target)
         if edit is None:
             self.edits.pop(target, None)
         else:
             self.edits[target] = edit
         self._stale = True
+        self._refresh()
 
-    def set_edit(self, key: str, new: str) -> None:
-        """Record what one row should say, clearing that row's edit when it says it.
+    def _edit_for(self, target: str) -> object | None:
+        """The engine edit this session's stored text amounts to, if any."""
+        text = self._text.get(target)
+        original = self._text_of(target)
+        holder = self._rows[RECORDS].get(target)
+        if text is None or original is None or text == original:
+            return None
+        if holder is None:
+            slot = self._rows[SLOT].get(target)
+            if slot is None:
+                return None
+            return textedit.SlotEdit(slot=slot.position[1], old=original, new=text)
+        record = self._record_of(holder)
+        if record is None:
+            return None
+        return textedit.RecordEdit(record.selector, record.start, record.length,
+                                   old=original, new=text)
 
-        Check then commit: the new entry list and the composed text are built before
-        anything is written, so a combination with no honest answer leaves this session
-        exactly as it was. That is what stops a refused edit from wedging a record.
+    def set_rename(self, key: str, old: str, new: str, at: frozenset[int]) -> tuple[str, ...]:
+        """Replace `old` with `new` at the chosen offsets of the record's OWN text.
 
-        A row's span comes from the row, so an edit made in the Records shape is a span
-        over the whole record and supersedes the line entries inside it, which is
-        correct: the reader typed that text, and it already contains them.
-        """
-        row = self.line(key)
-        if row is None:
-            raise KeyError(key)
-        if not row.text:
-            raise textedit.TextEditError(
-                f"{key} is empty, so there is nothing for an edit to name as the text it "
-                "replaces")
-        target = row.target or key
-        entries = self._entries(target)
-        if new == row.text:
-            if row.key == target:
-                # The target's own row: what it now says is the whole of what it says.
-                remaining: tuple[Pending, ...] = ()
-            else:
-                remaining = tuple(entry for entry in entries if entry.key != row.key)
-            if remaining != entries:
-                self._commit(target, remaining)
-            return
-        offset, length = self._span(row)
-        placed = self._place_in(entries, Pending(row.key, offset, length, new))
-        if placed is None:
-            raise textedit.TextEditError(
-                f"{key} covers text another edit of this record has already changed. "
-                "Clear that edit first, or type the whole record.")
-        self._commit(target, placed)
-
-    def set_spans(self, key: str, old: str, new: str,
-                  at: frozenset[int]) -> tuple[str, ...]:
-        """Replace `old` with `new` at exactly the chosen offsets, as one target's edit.
-
-        Returns a reason per span that could not be placed, so a rename batch applies
-        what it can and says what it could not, rather than aborting whole or dropping
-        part of its work quietly. Two batches touching a record compose, because every
-        span is measured against the original text and never against a composed one.
+        Offsets come from the same text the dialog showed, so a rename composes with an
+        edit already made instead of replacing it, and two renames of one record compose
+        because both are measured against that one text.
         """
         row = self.line(key)
         if row is None:
             raise KeyError(key)
         target = row.target or key
-        base = self._text_of(target)
-        entries = self._entries(target)
+        current = self._pending(target)
+        if current is None:
+            return (f"{key} names a target this image does not carry",)
         skipped: list[str] = []
         for offset in sorted(at):
-            if base is None or offset < 0 or offset + len(old) > len(base):
-                # A span that does not lie inside the text cannot replace anything, and
-                # splicing one would corrupt the record. Fail closed with the reason.
+            if offset < 0 or offset + len(old) > len(current):
                 skipped.append(
-                    f"offset {offset} of {row.key} is not inside the record's own text, "
-                    "so it was left as it reads")
+                    f"offset {offset} of {key} is not inside the record's own text, so it "
+                    "was left as it reads")
                 continue
-            placed = self._place_in(entries, Pending("", offset, len(old), new))
-            if placed is None:
+            if current[offset:offset + len(old)] != old:
                 skipped.append(
-                    f"offset {offset} of {row.key} lies inside an edit that is already "
-                    "there, so it was left as it reads")
+                    f"offset {offset} of {key} no longer reads {old!r}, so it was left as "
+                    "it reads")
                 continue
-            entries = placed
-        if entries != self._entries(target):
-            self._commit(target, entries)
+            current = current[:offset] + new + current[offset + len(old):]
+        if current != self._pending(target):
+            self._store(target, current, self._pending(target) or current)
         return tuple(skipped)
 
-    def snapshot(self, key: str) -> tuple[Pending, ...]:
-        """The entries one row's target holds, for an undo step to restore exactly."""
+    def snapshot(self, key: str) -> str | None:
+        """The whole text one row's target holds, for an undo step to restore exactly."""
         row = self.line(key)
-        return self._entries((row.target or key) if row is not None else key)
+        return self._text.get((row.target or key) if row is not None else key)
 
-    def restore(self, key: str, entries: tuple[Pending, ...]) -> None:
-        """Put one target back to a snapshot this session was already in.
-
-        No combination is attempted, because a snapshot was a state this session held,
-        so this cannot fail. That is what makes undo of a rename, or of one row of a
-        record, exact rather than a reconstruction that can be refused.
-        """
-        row = self.line(key)
-        self._commit((row.target or key) if row is not None else key, tuple(entries))
-
-    def _edit_for(self, row: Line, new: str) -> object:
-        """One row's edit, on its own, with no other row of the record applied."""
-        if row.kind == SLOT:
-            return textedit.SlotEdit(slot=row.position[1], old=row.text, new=new)
-        holder = self._record_of(row)
-        if holder is None:
-            raise textedit.TextEditError(
-                f"{row.key} names record {row.target}, which this image does not carry")
-        offset, length = self._span(row)
-        replaced = holder.text[:offset] + new + holder.text[offset + length:]
-        return textedit.RecordEdit(holder.selector, holder.start, holder.length,
-                                   old=holder.text, new=replaced)
-
-    def clear_edit(self, key: str) -> None:
+    def restore(self, key: str, text: str | None) -> None:
+        """Put one target back to a whole text this session was already in."""
         row = self.line(key)
         target = (row.target or key) if row is not None else key
-        entries = self._entries(target)
-        if row is None or row.key == target:
-            # The target's own row: clearing it clears everything the target holds.
-            remaining: tuple[Pending, ...] = ()
+        if text is None:
+            self._text.pop(target, None)
         else:
-            remaining = tuple(entry for entry in entries if entry.key != row.key)
-        if len(remaining) != len(entries):
-            self._commit(target, remaining)
+            self._text[target] = text
+        edit = self._edit_for(target)
+        if edit is None:
+            self.edits.pop(target, None)
+        else:
+            self.edits[target] = edit
+        self._stale = True
+        self._refresh()
+
+    def clear_edit(self, key: str) -> None:
+        """Clear one row's edit: the whole target for a record row, its own text for a line."""
+        row = self.line(key)
+        if row is None:
+            self._text.pop(key, None)
+            self.edits.pop(key, None)
+            self._stale = True
+            self._refresh()
+            return
+        target = row.target or key
+        if self._is_whole_row(row, target):
+            self._store(target, self._text_of(target) or "", self._pending(target) or "")
+            return
+        current = self._pending(target)
+        if current is None or target in self._restructured:
+            return
+        original = self._original_rows.get(row.key)
+        if original is None:
+            return
+        try:
+            restored = self._replace(row, original, current)
+        except textedit.TextEditError:
+            return
+        self._store(target, restored, current)
 
     def clear_all(self) -> None:
-        if self.edits or self._pending:
+        if self.edits or self._text:
             self.edits = {}
-            self._pending = {}
+            self._text = {}
             self._stale = True
+            self._refresh()
 
     def ordered_edits(self) -> tuple[object, ...]:
         return tuple(self.edits[key] for key in self.edits)
 
     def pending_text(self, key: str) -> str:
-        """What this row will say, whether or not its target record has an edit.
+        """What this row will say, which is what the export writes for it.
 
-        A composed session edit knows where every row sits, including the rows nobody
-        typed into, which moved when an edit before them grew, and a row whose own text a
-        rename reached. A row with an entry of its own says exactly that entry's text. An
-        edit adopted from a project file carries no spans, so its change is located by
-        comparing the two texts instead.
+        A line row's text is the row's own, refreshed from the plan's built output. A
+        record or slot row's text is the target's whole stored text. Neither is computed
+        from offsets, so no edit can move one without the other following.
         """
         row = self.line(key)
         if row is None:
             raise KeyError(key)
+        self._refresh()
         target = row.target or key
-        entries = self._entries(target)
-        composed = self._compose(target)
-        if composed is None:
+        if self._is_whole_row(row, target):
+            return self._pending(target) if self._pending(target) is not None else row.text
+        refreshed = self._rows[LINES].get(row.key)
+        if refreshed is None:
             return row.text
-        if not entries:
-            edit = self.edits.get(target)
-            if edit is None:
-                return row.text
-            if row.view != LINES:
-                return _new_of(edit)
-            holder = self._record_of(row)
-            if holder is None:
-                return row.text
-            return _span_in_new(_old_of(edit), _new_of(edit),
-                                (row.position[1] - holder.start) // 2, len(row.text))
-        offset, length = self._span(row)
-        base = self._text_of(target)
-        if base is not None and offset == 0 and length == len(base):
-            # This row IS the target's whole text, which is what a record or slot row is,
-            # so what it says is the composed text and not any single entry of it. Reading
-            # an entry here showed 'U' for a record whose two entries composed to 'Une\nTvo'.
-            return composed
-        own = next((entry for entry in entries if entry.key == row.key), None)
-        if own is not None:
-            return own.text
-        if any(offset < entry.end and entry.offset < offset + length for entry in entries):
-            # An entry CONTAINS or STRADDLES this row, which is what a whole-record edit
-            # and a rename across a line break both are. The row's span no longer locates
-            # its text inside the composed one, so the text is located by comparing the
-            # two instead of by arithmetic. Measured: slicing at the row's ORIGINAL offset
-            # instead showed the wrong text for any whole-record edit that changed the
-            # length, and reported those rows as UNCHANGED.
-            base = self._text_of(target)
-            if base is not None:
-                return _span_in_new(base, composed, offset, length)
-            return row.text
-        start = offset + self._shift(target, offset)
-        inside = sum(entry.delta for entry in entries
-                     if offset <= entry.offset and entry.end <= offset + length)
-        return composed[start:start + length + inside]
-
+        return refreshed.text
     def edited_keys(self) -> tuple[str, ...]:
         return tuple(self.edits)
 
@@ -719,11 +687,16 @@ class Session:
         return loaded.count(_old_of(edit)) == 1
 
     def _changed(self, key: str) -> bool:
-        """Whether an edit on this row's target actually changes this row."""
+        """Whether an edit on this row's target actually changes this row.
+
+        Compared against the row's text as the IMAGE has it, not as the session currently
+        shows it, because the session's rows carry the derived text.
+        """
         row = self.line(key)
         if row is None or (row.target or key) not in self.edits:
             return False
-        return self.pending_text(key) != row.text
+        original = self._original_rows.get(row.key, row.text)
+        return self.pending_text(key) != original
 
     def state(self, key: str) -> State:
         self._prepare()
@@ -731,8 +704,11 @@ class Session:
         if row is None:
             # An edit this image carries no row for: reported, never dropped.
             return State.BASE_CHANGED if key in self.edits else State.UNCHANGED
-        if (row.target or key) not in self.edits:
+        target = row.target or key
+        if target not in self.edits:
             return State.UNCHANGED
+        if target in self._restructured and not self._is_whole_row(row, target):
+            return State.RESTRUCTURED
         if not self._changed(key):
             # This row's own words are what they were, but its record changed around it, so
             # the row's bytes still move. Measured: a whole-record edit that grew the
@@ -929,12 +905,16 @@ class Session:
             return ()
         hits: list[Hit] = []
         for row in self._rows[RECORDS].values() if rows is None else rows:
-            if old not in row.text or row.retail is None or len(row.text) != len(row.retail):
+            # The record's OWN text, so the offsets the dialog shows are offsets in the text
+            # a rename edits. Measuring them on the image's text instead would aim at
+            # offsets that an edit already moved.
+            text = self.pending_text(row.key)
+            if old not in text or row.retail is None or len(text) != len(row.retail):
                 continue
             try:
-                occurrences = textedit.rename_occurrences(row.text, row.retail, old)
+                occurrences = textedit.rename_occurrences(text, row.retail, old)
             except textedit.TextEditError:
-                hits.append(Hit(key=row.key, snippet=row.text, retail="",
+                hits.append(Hit(key=row.key, snippet=text, retail="",
                                 decision=textedit.UNCLEAR, at=-1))
                 continue
             for occurrence in occurrences:
@@ -975,51 +955,6 @@ def open_image(rom_path: str | Path, canonical: str | Path | None = None,
     changed = project is not None and project.rom_sha256 != model.sha256
     return Session(model, project=project, base_changed=changed, view=view, order=order,
                    cutters_from_pool=cutters_from_pool)
-
-
-def _span_between(old: str, new: str) -> tuple[int, int, str] | None:
-    """The span of `old` that `new` replaces, or None when the two are identical.
-
-    The inverse of `_span_in_new`, used to seed the span store from an edit that arrived
-    as two texts: a project file's edit, or any edit this session did not record as a span.
-    """
-    if old == new:
-        return None
-    shortest = min(len(old), len(new))
-    prefix = 0
-    while prefix < shortest and old[prefix] == new[prefix]:
-        prefix += 1
-    suffix = 0
-    while (suffix < shortest - prefix
-           and old[len(old) - 1 - suffix] == new[len(new) - 1 - suffix]):
-        suffix += 1
-    return prefix, len(old) - prefix - suffix, new[prefix:len(new) - suffix]
-
-
-def _span_in_new(old: str, new: str, offset: int, length: int) -> str:
-    """The span of `new` that corresponds to `old[offset:offset + length]`.
-
-    Used only for an edit this session did not type into a spoken line. The change
-    is located by the common prefix and suffix of the two texts: a span before the
-    change is unchanged, a span after it shifts by the change's length, and the
-    span that contains the change is that span plus the difference. An insertion
-    exactly at a span's end is attributed to the following span, which is the one
-    case where this reading can be off by the inserted text.
-    """
-    shortest = min(len(old), len(new))
-    prefix = 0
-    while prefix < shortest and old[prefix] == new[prefix]:
-        prefix += 1
-    suffix = 0
-    while (suffix < shortest - prefix
-           and old[len(old) - 1 - suffix] == new[len(new) - 1 - suffix]):
-        suffix += 1
-    if offset + length <= prefix:
-        return old[offset:offset + length]
-    delta = len(new) - len(old)
-    if offset >= len(old) - suffix:
-        return new[offset + delta:offset + delta + length]
-    return new[offset:offset + length + delta]
 
 
 def _parts(key: str) -> tuple[int, int, int]:

@@ -398,9 +398,61 @@ a reader takes.
 One finding the review recorded rather than fixed: a segfault it once saw in a combined run
 of the theme tests. Two attempts to reproduce it here, the same three files together and
 the full ten-file set, passed with exit 0, so it is recorded as seen once and not
-reproduced rather than declared fixed. And one cheap correction: the pane's own docstring
-cited a research document's section that lives on a branch the default branch cannot open,
-so the addresses are stated in the code and the branch is named beside them.
+reproduced rather than declared fixed. It then appeared twice more, in runs of the theme
+file alone and of the whole set, and after the state it was hiding behind was added it did
+not appear again in a 278-case run. That is still not a reproduction with a cause, so it
+stays recorded as intermittent rather than fixed. And one cheap correction: the pane's own
+docstring cited a research document's section that lives on a branch the default branch
+cannot read, so the addresses are stated in the code and the branch is named beside them.
+
+### The fourth review, and the model that replaced the arithmetic
+
+The fourth review blocked the third fix on two more findings in the same store: a row
+inside a whole-record edit was located by ONE prefix and suffix comparison of the whole
+record, so every row in the changed region absorbed the whole length change; and a saved
+edit with two edited lines reopened with the second row's text wrong. It was right about
+both, and it was the fourth block on the same arithmetic.
+
+**The decision, and the one measurement that changed it.** The coordinator's instruction
+was to store only a record's whole pending text and derive its rows by splitting that text
+on the record's own line separators, refusing the case where the line count changes. That
+cannot reproduce the shipped view. Measured over release 3.1, against the pool-limited
+cutter rule the tool ships:
+
+| | records | same segment count | identical text | the rest |
+| --- | --- | --- | --- | --- |
+| pool-limited cutters | 2,818 | 2,633 | 2,625 | 185 differ, 122 of them a record with NO row at all, such as `magi` or `he` |
+| every record a cutter | 2,818 | not counted | not counted | 113 records give two rows where a split gives one, because cutters cut at handle sites rather than at text |
+
+The partition is site-based and the pool filter is deliberate, so a split would ADD rows
+for 122 fragment records and change what the Lines view is. The model was therefore built
+with the SAME shape the instruction asked for and the derivation done by the engine instead
+of by separators.
+
+**The model.** The only state this session keeps for a record is its **whole pending
+text**, and it is kept for two reasons: it is what an undo restores, and it is what the
+next edit composes onto. Every row's text is derived by reading the plan's own BUILT output
+bytes through the engine's own line rule, so a row shows exactly what the export writes, by
+construction and not by a second opinion. Rows are matched to the partition by target and
+ordinal; a record whose row COUNT an edit changed has been restructured, its rows are
+read-only, and they say `RECORD RESTRUCTURED` with their own word, glyph and marker shape.
+A line edit replaces that line inside the record's own text; a rename applies to that text;
+Clear restores one row from the image's text; adopting a project stores the saved text.
+The span machinery this replaces, namely the entry type, the composer, the placement
+rules, the shift and both span locators, is DELETED rather than kept beside the new
+path.
+
+**The gate, and its control.** The random walk now asserts, after every step and for EVERY
+row whether it was typed into or not, that the row's text equals the row the exported image
+carries, reading that back through the engine as the export would. A second case breaks the
+derivation on purpose and requires the gate to notice, because a gate that cannot fail is
+how four rounds of arithmetic got past their own cases.
+
+**What it costs.** Measured on release 3.1: 37 ms to rebuild the plan per edit and 232 ms
+to re-derive the rows, cached per edit list, so a keystroke pays both once and a redraw
+that changes nothing pays neither. That is real lag on the largest image and it is the price
+of one derivation. If typing feels slow the answer is to debounce it rather than to cache
+rows that are no longer true.
 
 ## 7. End to end, on release 3.1, with digests
 

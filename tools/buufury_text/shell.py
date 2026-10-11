@@ -157,11 +157,10 @@ def span_detail(session: Session, key: str) -> str:
 
 
 class _EditCommand(QUndoCommand):
-    """One user edit: the target's edits before and after, one stack entry.
+    """One user edit: the target's whole text before and after, one stack entry.
 
-    Both sides are SNAPSHOTS of what the target held, not texts. Restoring a snapshot a
-    session was already in cannot be refused, which is what makes undo of a rename, or of
-    one row of a record that has other edits, exact instead of a reconstruction.
+    Both sides are the record's own text, which is the only state this session keeps for
+    it, so undo restores exactly what the record held and cannot be refused.
     """
 
     def __init__(self, shell: Shell, key: str, before, after,
@@ -600,12 +599,25 @@ class Shell(QMainWindow):
         self._update()
 
     def clear_edit(self) -> None:
-        """Clear the selected row's own edit, as one step."""
+        """Clear the selected row's own edit, as one step.
+
+        It calls the session's own clear rather than writing the row's text back. Under the
+        derived model a row already shows the text the export writes, so writing it back
+        changed nothing and the edit stayed: measured, clearing a row left its record
+        edited and an undo that restored it was the only way back.
+        """
         if self.session is None or not self._key:
             return
-        line = self.session.line(self._key)
-        if line is not None:
-            self.apply_edit(self._key, line.text)
+        before = self.session.snapshot(self._key)
+        self.session.clear_edit(self._key)
+        after = self.session.snapshot(self._key)
+        if after != before:
+            self.stack.push(_EditCommand(self, self._key, before, after,
+                                         f"clear {self._key}"))
+        if self._key:
+            self.pane.refresh(self._key)
+            self.show_line(self._key)
+        self._update()
 
     def clear_all_edits(self) -> None:
         """Every pending edit, as one step.
@@ -619,7 +631,11 @@ class Shell(QMainWindow):
                    if self.session.line(key) is not None]
         self.stack.beginMacro(f"clear {len(carried)} edit(s)")
         for key in carried:
-            self.apply_edit(key, self.session.line(key).text)
+            before = self.session.snapshot(key)
+            self.session.clear_edit(key)
+            after = self.session.snapshot(key)
+            if after != before:
+                self.stack.push(_EditCommand(self, key, before, after, f"clear {key}"))
         self.stack.endMacro()
         if len(carried) != len(self.session.edited_keys()):
             self.session.clear_all()
@@ -629,10 +645,10 @@ class Shell(QMainWindow):
                      chosen: tuple[tuple[str, frozenset[int]], ...]) -> int:
         """One undo step for a whole rename batch, through the same edit path.
 
-        Each move is a set of SPANS measured against the record's original text, so two
-        batches touching one record compose instead of the second replacing the first,
-        and a span that lies inside an edit already there is reported rather than applied
-        or dropped quietly.
+        Each move is applied to the record's OWN text, which is the only thing this
+        session stores per record, so two batches touching one record compose instead of
+        the second replacing the first, and an offset that no longer reads what the dialog
+        showed is reported rather than applied or dropped quietly.
         """
         if self.session is None:
             return 0
@@ -645,7 +661,7 @@ class Shell(QMainWindow):
         skipped: list[str] = []
         for key, offsets in moves:
             before = self.session.snapshot(key)
-            skipped.extend(self.session.set_spans(key, old, new, offsets))
+            skipped.extend(self.session.set_rename(key, old, new, offsets))
             after = self.session.snapshot(key)
             if after != before:
                 self.stack.push(_EditCommand(self, key, before, after,

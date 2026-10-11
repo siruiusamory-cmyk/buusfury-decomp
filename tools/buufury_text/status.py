@@ -34,6 +34,9 @@ PRESENTATION: dict[State, Presentation] = {
     State.WILL_MOVE: Presentation("arrow-up-right", "\u2197", "WILL MOVE", "dashed"),
     State.REFUSED: Presentation("square-x", "\u2612", "REFUSED", "block"),
     State.BASE_CHANGED: Presentation("refresh", "\u2260", "BASE CHANGED", "double"),
+    #: The record's row count changed, so its rows no longer line up with it. The word says
+    #: what to do rather than only what is wrong, and the marker is the one shape left.
+    State.RESTRUCTURED: Presentation("filter", "\u25a4", "RECORD RESTRUCTURED", "hatch"),
 }
 
 #: The auxiliary marker. It answers a different question from the primary state -

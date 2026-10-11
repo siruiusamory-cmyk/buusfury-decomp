@@ -74,6 +74,10 @@ TOKENS: dict[str, tuple[str, str]] = {
     "state_move": ("#8A5A00", "#F1BE5C"),
     "state_refused": ("#7A2E8A", "#E59AEF"),
     "state_base_changed": ("#5A4FB5", "#B7A9FF"),
+    # The restructured state is a record whose rows no longer line up with it. Its hue
+    # is a brown that survives the colour-vision conversions and reads against its own
+    # badge, and the state is carried by its word, glyph and marker shape as well.
+    "state_restructured": ("#7A4B1E", "#E8B37A"),
     # The dialogue preview is the one surface that shows the GAME rather than the
     # application, so its own tokens are the same in both modes. The box art and the
     # ink index come from the image the reader opened, so they are not tokens: the
@@ -89,6 +93,7 @@ BADGES: dict[State, tuple[tuple[str, str], tuple[str, str]]] = {
     State.WILL_MOVE: (("#FFF0C2", "#5C4000"), ("#F1BE5C", "#201B12")),
     State.REFUSED: (("#513457", "#FFFFFF"), ("#5D3A66", "#FFFFFF")),
     State.BASE_CHANGED: (("#EEEAFB", "#4B4098"), ("#3C355E", "#E2DDFF")),
+    State.RESTRUCTURED: (("#F6E7D6", "#6B3F14"), ("#4A3520", "#F0D2AC")),
 }
 
 #: A row fill is legible only if it is nearly the surface it sits on.
@@ -139,6 +144,7 @@ class Theme:
     state_move: str
     state_refused: str
     state_base_changed: str
+    state_restructured: str
     preview_screen: str
     preview_marker: str
 
@@ -517,6 +523,14 @@ def paint_marker(painter: QPainter, rect: QRect, marker: str, pen: QPen) -> None
         painter.fillRect(QRect(left, top, 2, height), pen.color())
         painter.fillRect(QRect(left + 4, top, 2, height), pen.color())
         return
+    if marker == "hatch":
+        # A bar with a notch, so the restructured state is a shape of its own and not the
+        # solid bar that any unrecognised marker would otherwise fall through to.
+        third = max(2, height // 3)
+        painter.fillRect(QRect(left, top, 3, third), pen.color())
+        painter.fillRect(QRect(left, top + third + 2, 3, max(2, height - third - 2)),
+                         pen.color())
+        return
     if marker == "dashed":
         third = max(2, height // 3)
         painter.fillRect(QRect(left, top, 3, third), pen.color())
@@ -713,6 +727,7 @@ def _control_rules(theme: Theme, shape) -> list[str]:
 #: role name -> the token it resolves to, for the five state hues.
 _STATE_ROLE = {
     "state_unchanged", "state_edited", "state_move", "state_refused", "state_base_changed",
+    "state_restructured",
 }
 
 #: The state's hue token. The words differ: WILL_MOVE reads as "state_move".
@@ -722,6 +737,7 @@ _STATE_TOKEN = {
     State.WILL_MOVE: "state_move",
     State.REFUSED: "state_refused",
     State.BASE_CHANGED: "state_base_changed",
+    State.RESTRUCTURED: "state_restructured",
 }
 
 

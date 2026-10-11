@@ -345,7 +345,11 @@ def test_paint_marker_gives_every_state_its_own_shape() -> None:
             1 for y in range(30) for x in range(40)
             if image.pixelColor(x, y).name() != "#000000")
     assert drawn["none"] == 0
-    assert len({count for marker, count in drawn.items() if marker != "none"}) == 4
+    # The count follows the table rather than being written down twice: a state added to
+    # PRESENTATION must bring its own shape, and this catches one that reuses another's.
+    shaped = {presentation.marker for presentation in status.PRESENTATION.values()
+              if presentation.marker != "none"}
+    assert len({count for marker, count in drawn.items() if marker in shaped}) == len(shaped)
     assert theme.state_marker(theme_, State.UNCHANGED).style() == Qt.PenStyle.NoPen
     assert theme.state_marker(theme_, State.REFUSED).width() == 4
 

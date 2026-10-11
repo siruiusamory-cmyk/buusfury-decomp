@@ -78,13 +78,13 @@ control defect described in section 6 below.
 
 At the frozen candidate:
 
-- Focused tests: 265 passed, none skipped, across the theme, the dialogue preview, the
+- Focused tests: 276 passed, none skipped, across the theme, the dialogue preview, the
   render, the list, the editor, the shell, colour vision, the model, the engine and the
   release files. Nothing was run from the full suite or `scripts/test.ps1`.
-- The preview's two ROM-gated cases now RUN rather than skip, because the canonical image
-  is present in this worktree: 3899 pixel-for-pixel agreements with the RE Lab's own
-  model across 2805 records, and native captures reproduced pixel for pixel. What they
-  count rather than compare is stated in section 9.
+- The preview's two ROM-gated cases RUN rather than skip, because the canonical image is
+  present in this worktree: 5,610 (record, limit) pairs compared against the RE Lab's own
+  model with no compared pair disagreeing, and native 240x160 captures reproduced pixel for
+  pixel. What each case counted rather than compared, and why, is stated in section 9.
 - `python -m tools.quality.public_release`: 4 products, 0 findings.
 - `python -m tools.quality.architecture`: 0 violations, 5 observations, all pre-existing
   large-module readings in the other desktop application.

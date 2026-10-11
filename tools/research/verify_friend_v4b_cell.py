@@ -77,6 +77,38 @@ def log2_frames(image: bytes) -> list[tuple[int, int, int, int, int, bytes]]:
     return out
 
 
+def log2_blocks(image: bytes) -> list[list[bytes]]:
+    """The source title's per-animation frame blocks, in slot order: one block per animation.
+
+    This is the unit a filled definition repeats, so it is what an order check must concatenate. The two
+    animations of a character need not have the same length, which is why the block sizes are read from the
+    slot spacing rather than divided out of a total.
+    """
+    base = pointer(image, LOG2_TABLE + 4 * LOG2_CELL_ID) - ROM_BASE
+    count = word(image, base + LOG2_SLOT_COUNT)
+    pointers = [pointer(image, base + LOG2_SLOT_ARRAY + 4 * slot) for slot in range(count)]
+    blocks: list[list[bytes]] = []
+    for group in range(count // 4):
+        frames = (pointers[4 * group + 1] - pointers[4 * group]) // PIECE_BYTES
+        # Frame-major within a group, which is the order the engine's own record walk produces
+        # (frame, then direction) - matching the port walk this is compared against.
+        per_direction = []
+        for direction in range(4):
+            cursor = pointers[4 * group + direction] - ROM_BASE
+            frames_here = []
+            for _ in range(frames):
+                frames_here.append(bytes(webfoot_lz.unpack(
+                    image, pointer(image, cursor + 8) - ROM_BASE).data))
+                cursor += PIECE_BYTES
+            per_direction.append(frames_here)
+        block: list[bytes] = []
+        for frame in range(frames):
+            for direction in range(4):
+                block.append(per_direction[direction][frame])
+        blocks.append(block)
+    return blocks
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log2", required=True)
@@ -185,19 +217,25 @@ def main() -> int:
             print("  NOTE: until a palette route is chosen, those indices show this image's own colours, "
                   "so the character renders but not in the source title's colours")
 
-    # The source's records must appear in the port IN ORDER: a set comparison would accept a reorder that
-    # changes which frame plays for which direction (the review's finding).
-    port_sequence = [item[5] for item in rendered]
-    source_sequence = [item[5] for item in source]
-    expected_sequence = (source_sequence * ((len(port_sequence) // max(1, len(source_sequence))) + 1))[
-        :len(port_sequence)]
-    if port_sequence != expected_sequence and len(port_sequence) == len(source_sequence):
-        failures.append("the ported frames are not in the source's order")
-    elif len(port_sequence) != len(source_sequence):
-        first = next((index for index, (a, b) in enumerate(zip(port_sequence, expected_sequence)) if a != b),
-                     None)
-        if first is not None:
-            failures.append(f"the ported frame order first differs from the source at index {first}")
+    # ORDER. A filled definition repeats the source's PER-ANIMATION blocks, so the ported sequence must be
+    # a concatenation of exactly those blocks. A set comparison would accept a scramble; comparing whole
+    # cycles would reject a correct port, which is what the first attempt did.
+    blocks = log2_blocks(log2)
+    position = 0
+    blocks_matched = 0
+    while position < len(rendered):
+        for block in blocks:
+            if [item[5] for item in rendered[position:position + len(block)]] == block:
+                position += len(block)
+                blocks_matched += 1
+                break
+        else:
+            failures.append(
+                f"the ported frames are not the source's blocks in order: stuck at frame "
+                f"{position} of {len(rendered)}")
+            break
+    sizes = [len(block) for block in blocks]
+    print(f"order: {blocks_matched} block(s) concatenated in slot order (source block sizes {sizes})")
 
     for failure in failures[:20]:
         print(f"FAIL: {failure}")

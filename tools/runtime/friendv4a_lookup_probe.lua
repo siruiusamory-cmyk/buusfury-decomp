@@ -116,8 +116,22 @@ arm(ACTOR_LOOKUP, "actor-lookup", function()
   end
 end)
 
+-- The resolver is the one door every actor's art goes through, and it is called with the sprite id
+-- in r0 when the actor is built. Logging each distinct id once names the actors in a scene even when
+-- they never change animation state, which the selector-based channels cannot see.
+local resolver_ids = {}
 arm(SPRITE_RESOLVER, "sprite-resolver", function()
   hits.resolver = hits.resolver + 1
+  local sprite_id = reg("r0")
+  if sprite_id == nil then return end
+  local key = tostring(sprite_id)
+  resolver_ids[key] = (resolver_ids[key] or 0) + 1
+  if resolver_ids[key] <= 2 then
+    local definition = nil
+    -- 0x086B6BB4 + 4*id is the character-table word; it is dereferenced to the definition.
+    definition = r32(0x086B6BB4 + 4 * sprite_id)
+    log(string.format("SPRITE id=%d definition=%s", sprite_id, hex(definition)))
+  end
 end)
 
 -- Frame callbacks are registered through the `callbacks` table on this build.

@@ -391,6 +391,31 @@ one is now a rule above rather than a thing to remember:
     for the row already current. Rule: a surface that selects something while building
     replays that selection after the parts are connected.
 
+### What the third audit round taught
+
+13. **Two representations of the same text have two coordinate systems, and every
+    boundary between them is a conversion.** A control unit is two characters in the
+    canonical string and one character in the document that draws it, so a document
+    position handed to a string function put every edit one character early for each
+    unit before the caret, and a unit at the end of a line refused the keystroke and said
+    nothing, which is a silent write failure rather than a display one. Rule: a position
+    crossing between a document and a string is converted at the boundary, both
+    directions, and the conversion is a pure function with its own test. The defect was
+    invisible until the previous rule let the editor hold a control unit at all, which is
+    why it is recorded as a lesson and not as a regression.
+14. **A surface that exists but is unreachable is not a feature.** The rename dialog was
+    written, tested and correct, and no menu item, key or button opened it, so the
+    per-occurrence decision flow the owner asked for could not be reached by any user,
+    and the audit that found it did so by searching the package for a reference to the
+    function. Rule: every surface a ticket names is reachable from the window, and the
+    test that proves it drives the entry point rather than constructing the dialog.
+15. **A fix that makes a control elide can remove it instead.** Giving the counters line
+    a zero minimum and an ignored width policy was meant to let it elide when the room
+    ran out; it measured 0 px wide at every window size and painted nothing, and its own
+    test asserted the broken state. Rule: when a fix is about behaviour under pressure,
+    the case asserts both pressures, with room and without it, and reads the pixels
+    rather than the property.
+
 ## 8. Review protocol
 
 Per Make Interfaces Feel Better: walk every state of every interactive element

@@ -364,6 +364,44 @@ vendored model's provenance names a commit that exists on origin, and six lines 
 decompiled pseudocode left the committed test in favour of the address and the source
 document.
 
+### The third review, and the two it found in the second fix
+
+That delta was blocked again, on two findings that were both in the store the previous
+pass introduced, and both were silent: the wedge was gone and renames composed, but two
+new ways to show or lose the wrong text had come with the span store.
+
+**The state lied about a row whose own words did not change.** A whole-record edit is one
+span over the whole record, so it CONTAINS every line of it. A row inside it that had no
+entry of its own was read by arithmetic that assumed the change sat before or after it, so
+a record set to `One\nTwo!!` reported both rows as UNCHANGED and the counts line said
+nothing would move for a record that moves entirely. The row's own text is genuinely
+unchanged, because the added text lies beyond its span; the state was the lie. A row whose
+span an entry contains or straddles is now located by comparing the record's original text
+with its pending one, and a row whose own words did not change now reads the record's own
+decision, so it says `will move`.
+
+**A saved edit was not in the store.** An edit adopted from a project file seeded the
+session's edit list and nothing else, so the next edit of that record composed from the
+original text and silently discarded the saved change, and the undo after it erased the
+change outright; rename and Clear did the same. Every adopted edit now seeds a span of its
+own, computed from the common prefix and suffix of the two texts it names, so what arrived
+from the file composes like anything typed in the session.
+
+**The gate for this grew a correctness assertion.** The random walk had checked that
+nothing raised and that a snapshot round-tripped, which is exactly the evidence that missed
+this: a row reporting one character of itself raises nothing. The walk now asserts, after
+every step, that a row says exactly what was typed into it and that a record says exactly
+what it was given. The adopted-edit finding has a case at the session level and one through
+the window, which writes the project to a file and reads it back, because that is the route
+a reader takes.
+
+One finding the review recorded rather than fixed: a segfault it once saw in a combined run
+of the theme tests. Two attempts to reproduce it here, the same three files together and
+the full ten-file set, passed with exit 0, so it is recorded as seen once and not
+reproduced rather than declared fixed. And one cheap correction: the pane's own docstring
+cited a research document's section that lives on a branch the default branch cannot open,
+so the addresses are stated in the code and the branch is named beside them.
+
 ## 7. End to end, on release 3.1, with digests
 
 - Input: `roms/v3-release31.gba`,

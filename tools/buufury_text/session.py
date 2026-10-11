@@ -346,15 +346,28 @@ class Session:
     # --- the edit list -------------------------------------------------------
 
     def adopt(self, project: Project) -> None:
-        """Take a saved edit list. An edit whose guard misses is kept, not rebased."""
+        """Take a saved edit list. An edit whose guard misses is kept, not rebased.
+
+        Each edit is ALSO seeded into the span store, from the common prefix and suffix of
+        the two texts it names, because the store is what the next edit composes onto and
+        what an undo restores. Measured without it: a saved edit lived only in `edits`, so
+        the next edit of that record in this session composed from the original text and
+        silently discarded the saved change, and undoing that edit erased it outright.
+        Rename and Clear on such a record did the same.
+        """
         edits: dict[str, object] = {}
+        seeded: dict[str, tuple[Pending, ...]] = {}
         unmatched: list[str] = []
         for edit in project.edits:
             key = _key_of(edit)
             if self._rows[RECORDS].get(key) is None and self._rows[SLOT].get(key) is None:
                 unmatched.append(key)
             edits[key] = edit
+            span = _span_between(_old_of(edit), _new_of(edit))
+            if span is not None:
+                seeded[key] = (Pending(key, *span),)
         self.edits = edits
+        self._pending = seeded
         self.unmatched = tuple(unmatched)
         self._stale = True
 
@@ -627,9 +640,26 @@ class Session:
             return _span_in_new(_old_of(edit), _new_of(edit),
                                 (row.position[1] - holder.start) // 2, len(row.text))
         offset, length = self._span(row)
+        base = self._text_of(target)
+        if base is not None and offset == 0 and length == len(base):
+            # This row IS the target's whole text, which is what a record or slot row is,
+            # so what it says is the composed text and not any single entry of it. Reading
+            # an entry here showed 'U' for a record whose two entries composed to 'Une\nTvo'.
+            return composed
         own = next((entry for entry in entries if entry.key == row.key), None)
         if own is not None:
             return own.text
+        if any(offset < entry.end and entry.offset < offset + length for entry in entries):
+            # An entry CONTAINS or STRADDLES this row, which is what a whole-record edit
+            # and a rename across a line break both are. The row's span no longer locates
+            # its text inside the composed one, so the text is located by comparing the
+            # two instead of by arithmetic. Measured: slicing at the row's ORIGINAL offset
+            # instead showed the wrong text for any whole-record edit that changed the
+            # length, and reported those rows as UNCHANGED.
+            base = self._text_of(target)
+            if base is not None:
+                return _span_in_new(base, composed, offset, length)
+            return row.text
         start = offset + self._shift(target, offset)
         inside = sum(entry.delta for entry in entries
                      if offset <= entry.offset and entry.end <= offset + length)
@@ -704,6 +734,16 @@ class Session:
         if (row.target or key) not in self.edits:
             return State.UNCHANGED
         if not self._changed(key):
+            # This row's own words are what they were, but its record changed around it, so
+            # the row's bytes still move. Measured: a whole-record edit that grew the
+            # record left every row whose own text it did not touch reading UNCHANGED, and
+            # the counts line said nothing would move for a record that moves entirely.
+            decision = self.decision(key)
+            if decision is not None:
+                if decision.method == textedit.REFUSED:
+                    return State.REFUSED
+                if decision.method == textedit.MOVE:
+                    return State.WILL_MOVE
             return State.UNCHANGED
         if not self.guard_holds(key):
             return State.BASE_CHANGED
@@ -935,6 +975,25 @@ def open_image(rom_path: str | Path, canonical: str | Path | None = None,
     changed = project is not None and project.rom_sha256 != model.sha256
     return Session(model, project=project, base_changed=changed, view=view, order=order,
                    cutters_from_pool=cutters_from_pool)
+
+
+def _span_between(old: str, new: str) -> tuple[int, int, str] | None:
+    """The span of `old` that `new` replaces, or None when the two are identical.
+
+    The inverse of `_span_in_new`, used to seed the span store from an edit that arrived
+    as two texts: a project file's edit, or any edit this session did not record as a span.
+    """
+    if old == new:
+        return None
+    shortest = min(len(old), len(new))
+    prefix = 0
+    while prefix < shortest and old[prefix] == new[prefix]:
+        prefix += 1
+    suffix = 0
+    while (suffix < shortest - prefix
+           and old[len(old) - 1 - suffix] == new[len(new) - 1 - suffix]):
+        suffix += 1
+    return prefix, len(old) - prefix - suffix, new[prefix:len(new) - suffix]
 
 
 def _span_in_new(old: str, new: str, offset: int, length: int) -> str:

@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from tests.text_fixture import SPACES, build, lowered_record_floor  # noqa: E402
 from tools.buufury_text import app as app_module  # noqa: E402
-from tools.buufury_text import chips, renamedialog, settings, theme  # noqa: E402
+from tools.buufury_text import chips, project as project_file, renamedialog, settings, theme  # noqa: E402
 from tools.buufury_text import shell as shell_module  # noqa: E402
 from tools.buufury_text import session as text_session  # noqa: E402
 from tools.buufury_text.session import (  # noqa: E402
@@ -758,6 +758,46 @@ def test_two_renames_of_one_record_both_survive_and_undo_separately(
         assert session.edited_keys() == ()
     finally:
         shell.close()
+
+
+def test_a_saved_project_edit_survives_editing_and_undoing_in_the_window(
+        qapp, tmp_path, monkeypatch) -> None:
+    """Reopen a saved edit through the window, edit the other row, then undo.
+
+    Measured: an edit adopted from a project lived only in the session's edit list, so the
+    next edit of that record composed from the original text and silently discarded the
+    saved change, and the undo that followed erased it. The project is written to a file
+    and read back here, because that is the route a reader takes.
+    """
+    shell, session, target, rows = two_line_window(qapp, tmp_path, monkeypatch)
+    shell.close()
+    session.set_edit(rows[0].key, "Une")
+    path = tmp_path / f"saved{project_file.SUFFIX}"
+    project_file.save(session.project(), path)
+
+    with lowered_record_floor():
+        reopened = text_session.open_image(
+            tmp_path / "two-line" / "working.gba",
+            canonical=tmp_path / "two-line" / "retail.gba",
+            view=text_session.LINES, cutters_from_pool=False,
+            project=project_file.load(path))
+    applied = theme.apply_theme(qapp, theme.MODE_DARK)
+    window = shell_module.Shell(reopened, applied, theme.MODE_DARK)
+    window.show()
+    QApplication.processEvents()
+    try:
+        again = sorted((row for row in reopened.lines if row.target == target),
+                       key=lambda row: row.position[1])
+        assert reopened.pending_text(again[0].key) == "Une"
+        window.apply_edit(again[1].key, "Tvo")
+        assert reopened.pending_text(again[0].key) == "Une", "the saved edit was discarded"
+        assert reopened.pending_text(target) == "Une\nTvo"
+        window.stack.undo()
+        assert reopened.pending_text(again[1].key) == again[1].text
+        assert reopened.pending_text(again[0].key) == "Une", "the undo erased the saved edit"
+        assert reopened.pending_text(target) == "Une\nTwo"
+    finally:
+        window.close()
 
 
 def test_undo_returns_each_line_of_one_record_separately(qapp, tmp_path, monkeypatch) -> None:

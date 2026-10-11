@@ -413,7 +413,7 @@ def test_no_sequence_of_edits_wedges_a_record_or_loses_a_snapshot(tmp_path: Path
     target = record_key(session)
     rows = _the_two_lines(session)
     session.set_edit(rows[1].key, "Tvo")
-    names = ("Une", "Dos", "Tres")
+    names = ("Une", "Dos", "Tres", "Une!", "Dos!", "Tres!")
     rng = random.Random(20261011)
     for step in range(200):
         row = rng.choice(rows)
@@ -422,11 +422,18 @@ def test_no_sequence_of_edits_wedges_a_record_or_loses_a_snapshot(tmp_path: Path
         kind = rng.choice(("type", "type", "rename", "records", "clear"))
         try:
             if kind == "type":
-                session.set_edit(row.key, rng.choice(names) + rng.choice(("", "!")))
+                typed = rng.choice(names) + rng.choice(("", "!!"))
+                session.set_edit(row.key, typed)
+                # The row must now say exactly what was typed. A no-raise check alone
+                # passed while a whole-record edit made a row report one character of
+                # itself, so the walk asserts the text and not only that it answered.
+                assert session.pending_text(row.key) == typed, f"step {step}: row text"
             elif kind == "rename":
                 session.set_spans(target, row.text[:2], "XX", frozenset({0}))
             elif kind == "records":
-                session.set_edit(target, "\n".join(rng.sample(names, 2)))
+                typed = "\n".join(rng.sample(names, 3))
+                session.set_edit(target, typed)
+                assert session.pending_text(target) == typed, f"step {step}: record text"
             else:
                 session.clear_edit(row.key)
         except textedit.TextEditError as error:
@@ -440,6 +447,67 @@ def test_no_sequence_of_edits_wedges_a_record_or_loses_a_snapshot(tmp_path: Path
         session.restore(target, whole)
         assert {r.key: session.pending_text(r.key) for r in session.lines} == before_texts, (
             f"step {step} ({kind}) did not restore the record")
+
+
+def test_a_whole_record_edit_that_grows_marks_the_rows_it_did_not_touch(tmp_path: Path) -> None:
+    """A row whose own words are unchanged still moves when its record grows.
+
+    Measured: the record's text became `One\\nTwo!!` and both rows reported UNCHANGED, so
+    the counts line said nothing would move for a record that moves entirely. The row's own
+    text is correctly unchanged (the added text is beyond its span); what was wrong was the
+    state, which now reads the record's own decision.
+    """
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    first, second = _the_two_lines(session)
+    session.set_edit(target, "One\nTwo!!")
+    assert session.pending_text(target) == "One\nTwo!!"
+    assert session.pending_text(first.key) == "One"
+    assert session.pending_text(second.key) == "Two"
+    assert session.state(second.key) is State.WILL_MOVE
+    assert session.state(first.key) is State.WILL_MOVE
+    assert session.counts(app_session.LINES)[State.UNCHANGED] == 0
+
+
+def test_a_whole_record_edit_that_replaces_a_rows_own_text_shows_that_text(
+        tmp_path: Path) -> None:
+    """The row whose span the change lands inside reads the new text, not the old one."""
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    first, second = _the_two_lines(session)
+    session.set_edit(target, "One\n2wo")
+    assert session.pending_text(second.key) == "2wo"
+    assert session.pending_text(first.key) == "One"
+    assert session.state(second.key) is State.EDITED
+
+
+def test_an_edit_adopted_from_a_project_survives_the_next_session_edit(
+        tmp_path: Path) -> None:
+    """A saved edit is a span in the store, not only a text in the edit list.
+
+    Measured: an adopted edit lived only in `edits`, so the next edit of that record
+    composed from the original text and silently discarded the saved change, and undoing
+    that edit erased it. Rename and Clear on such a record did the same.
+    """
+    saved = two_line_session(tmp_path)
+    target = record_key(saved)
+    first, second = _the_two_lines(saved)
+    saved.set_edit(first.key, "Une")
+    project = saved.project()
+
+    again = opened(tmp_path, image=hello_image("One\nTwo"), view=app_session.LINES,
+                   cutters_from_pool=False, project=project)
+    assert again.pending_text(first.key) == "Une"
+    again.set_edit(second.key, "Tvo")
+    assert again.pending_text(first.key) == "Une", "the saved edit was discarded"
+    assert again.pending_text(target) == "Une\nTvo"
+    assert len(again.edits) == 1
+    again.clear_edit(second.key)
+    assert again.pending_text(first.key) == "Une", "clearing erased the saved edit"
+    before = again.snapshot(second.key)
+    again.set_edit(second.key, "Tvo")
+    again.restore(second.key, before)
+    assert again.pending_text(first.key) == "Une"
 
 
 def test_the_control_unit_filter_and_the_progress_counters(tmp_path: Path) -> None:

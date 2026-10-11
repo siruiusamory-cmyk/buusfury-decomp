@@ -206,9 +206,15 @@ def box_for(operand: int | None) -> int:
     MEASURED, from the box constructor at ``0x08012012``: index 1 is chosen only when the
     record's portrait operand is exactly ``7`` (``0x08012104`` to ``0x0801210A``) and
     index 0 otherwise, index ``i`` being ``0x08071720 + 0x10 + 0x14*i`` (``0x0800B29E``).
-    Operand 0 means no portrait and takes index 0, so what selects the second layout is
-    the OPERAND VALUE, not whether a portrait is drawn. See
-    ``docs/research/DIALOGUE_PREVIEW_SEAM.md``, "Which layout record a box takes".
+    Index 0 is layout ``0x08071730`` with limit 144 and art ``0x08071758``; index 1 is
+    layout ``0x08071744`` with limit 128 and art ``0x08071A6C``. Operand 0 means no
+    portrait and takes index 0, so what selects the second layout is the OPERAND VALUE,
+    not whether a portrait is drawn.
+
+    The addresses above are stated here rather than left to a document, because the RE
+    Lab's write-up of this rule lives on its own branch and a reader of the default branch
+    cannot open it. It is ``docs/research/DIALOGUE_PREVIEW_SEAM.md``, the section "Which
+    layout record a box takes", on ``origin/ticket/dialogue-seam-layout-rule``.
     """
     return (LAYOUT_LIMITS[1] if operand == SECOND_LAYOUT_OPERAND
             else LAYOUT_LIMITS[0])

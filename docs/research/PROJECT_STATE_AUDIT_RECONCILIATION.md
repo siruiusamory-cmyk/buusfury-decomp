@@ -198,6 +198,39 @@ are labelled that way so they cannot be mistaken for original audit findings.
 | RELEASE-BLOCKING | 4 |
 | DEFERRED | 42 |
 
+#### B.1.1 The backlog re-measured 2026-10-11, after the parallel-gate work
+
+The coordinator directed the Lead to work the audit backlog directly, highest severity first. The
+first act was to re-measure rather than to trust the table above, and the re-measurement changed
+which items are actually outstanding.
+
+- **The must-fix set is empty.** Every `CRITICAL` and `HIGH` row is `CLOSED`, and the remediation
+  table's own `MUST FIX BEFORE ROM-CAPACITY-AND-ALLOCATION-001` list is discharged. The only
+  non-closed row was `CQA-10`.
+- **`CQA-11` is reconciled, not open.** Its three divergent overwrite policies are two fixes and one
+  decision: the Build tab now moves occupied artefacts aside and restores them on failure
+  (`build_panel.py`, pinned by `test_build_panel_overwrite.py`), `authored_image` refuses a
+  destination that is a protected input or a copy of the canonical image and states its policy in
+  `save_authored_image`'s docstring, and the remediation's suggested `overwrite` argument was not
+  adopted because replacing an ordinary existing artefact is deliberate. The audit carries this as a
+  re-measurement note under C.3.
+- **`CQA-10` had two live unguarded writers, both in `tools/webfoot/cli.py`.** The
+  `tileset census --occurrences` destination created its parent directory and wrote its file with no
+  destination predicate at all; it was fixed and merged in `CQA-10-UNGUARDED-OCCURRENCES-001`, which
+  reuses the project's four existing policies in the emitter's order and refuses before anything is
+  created. The `graphics export` branch enforced only the source-alias rule and is
+  `CQA-10-UNGUARDED-GRAPHICS-EXPORT-001`.
+- **The audit's line numbers have drifted completely, and this is the durable lesson.** It cites
+  `write.py:513-516` for the overwrite refusal; that address now holds `ChunkProvenance.to_json`,
+  and the refusal lives in `write.ensure_new_destination`. A citation in the audit is a pointer to
+  re-measure, never evidence of current state. Rows in B.2 that cite line numbers inherit that
+  caveat.
+- **Not yet re-measured, and therefore asserted as nothing:** the entries in the audit's
+  `SHOULD FIX BEFORE MAJOR NEW AUTHORING FEATURES` list other than `CQA-11` and `CQA-13`
+  (`CQA-14`, `CQA-19`, `CQA-20`, `CQA-21`, `CQA-23`, `CQA-26`, `CQA-27`, `CQA-35`). Given that
+  `CQA-11` was recorded open while its two concrete defects had already been fixed, those rows
+  should be re-measured before any of them is worked.
+
 ### B.2 Findings
 
 `Original status` is the severity and the claim as recorded, compressed. `Source`

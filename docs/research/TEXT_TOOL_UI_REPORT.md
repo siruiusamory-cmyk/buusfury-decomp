@@ -1,0 +1,303 @@
+# TEXT-TOOL-UI-001 report: the Buu's Fury text editor
+
+Ticket: TEXT-TOOL-UI-001, the standalone text editor for Buu's Fury in-game dialogue.
+Preset: DragonByte Z Product Studio. Worktree:
+`C:\Dev\log1-remake-text-tool-ui-001`, branch `ticket/text-tool-ui-001`, cut from
+`4b9e55e4`.
+
+## 1. What was asked, and what changed underneath it
+
+The deliverable is a standalone Windows application that edits the game's in-game text
+without any generated content, reusing the merged engine rather than restating it. Two
+owner decisions arrived mid-ticket and reshaped it:
+
+1. **Rebuild the presentation layer from the design references rather than audit it.**
+   The first presentation layer was written before the reference skills were installed.
+   The rebuild discarded it: theme, shell, panes, list, delegates, editors, context
+   pane, preview, both dialogs, menus, status bar and iconography were replaced in new
+   commits. History is intact; nothing was deleted from it.
+2. **The in-game preview must be a real render, never an approximation.** It is now a
+   real render or a line that says it is waiting, with the data contract it will consume
+   written down, and nothing drawn in between.
+
+What was kept because it was proven and is not presentation: the engine fix, the model
+layer (`session.py`, `project.py`, `status.py`), the engine seams, the authored project
+format, the release-3.1 export proof, the packaging approach and the Tabler icon
+licence notice.
+
+## 2. Feature checklist
+
+Owner's MUST items, all present:
+
+| Item | Where it stands |
+| --- | --- |
+| Open an image and detect its profile | `session.open_image`, the profile readout in the header, refusals surfaced verbatim |
+| Search the text | the header field, `Ctrl+F`, the empty state names the term that matched nothing |
+| Edit a line | the NEW section, one edit path through `session.set_edit` |
+| Undo and redo | one `QUndoStack`, one step per user action, one step per rename batch |
+| The three-way comparison | RETAIL, CURRENT and NEW, identical in treatment, one emphasis |
+| The length meter | two segmented bars, character and byte, with the threshold and a stated budget |
+| The move notice | persistent, names the covering records and the site count, never expires |
+| Rename with per-occurrence decisions | the rename dialog, one table, a decision per hit |
+| Export a new image | always Save As, always a new file, readback clean, the input untouched |
+| Settings persist | theme, splitter, shape, order, grouping |
+| A visible version | the title bar and Help, from `identity` |
+| Determinism | the same authored input and the same edit list produce the same bytes |
+
+Owner's SHOULD items: the shares/coverage statements, the context pane's evidence, the
+address disclosure and the export summary are all present.
+
+Owner's additions from the coordinator relay, all present:
+
+| Addition | Where it stands |
+| --- | --- |
+| One row per spoken line, with the record list behind a toggle | the Dialogue tab defaults to Lines; the shape control switches to Records |
+| Line-level separation, order of appearance | the line rule splits at the soft end and the line break; Appearance is the first handle site |
+| A speaker column and speaker grouping | `Speaker (by portrait)`, a filter, and a grouping whose headings are the 67 labels and the four honest gaps |
+| Group by map in map-table order | the placement route, 26 groups, ending in one `Unplaced` group whose reason line states why |
+| The in-game preview | the waiting state ships; the renderer seam and the pixel harness are in place with no fake render |
+
+## 3. The design the UI was written from
+
+`docs/research/TEXT_TOOL_UI_DESIGN.md` was written before the rebuild and the rebuild
+follows it. It names, per screen and component, which rules were applied from which
+entry: Refactoring UI for the scales, the two weights and the border-versus-divider
+distinction; Impeccable for hierarchy and disclosure; UserInterface.wiki for the
+control sizes, the tabular figures and Jakob's law; Laws of UX for Fitts, Hick,
+Von Restorff, Doherty, Peak-End and the active user; Make Interfaces Feel Better for
+the state set, the icon stroke and the review protocol; Hallmark for the eight states,
+the honest copy and the anti-generic gates; Nothing Design for the row rule, the
+chips, the segmented meter and the bracket status text; Swiss for the accent and the
+grid; and Taste only for its anti-generic tells and its content rules, because Taste's
+own text excludes dashboards and data tables from its scope.
+
+The note also records the conflicts with the adopted spec rather than resolving them
+quietly, and section 7 records what each build taught, including the light-theme
+control defect described in section 6 below.
+
+## 4. Gates and tests
+
+At the last full run, before the final review pass:
+
+- Focused tests: 225 passed, 1 skipped, across the theme, the dialogue preview, the
+  list, the editor, the shell, colour vision, the model, the engine and the release
+  files. Nothing was run from the full suite or `scripts/test.ps1`.
+- The one skip is the preview's capture harness, and it skips loudly: no extracted game
+  data and no reference captures exist on this machine. Claiming pixel fidelity without
+  them would be the lie the requirement forbids.
+- `python -m tools.quality.public_release`: 4 products, 0 findings.
+- `python -m tools.quality.architecture`: 0 violations.
+- `python -m tools.quality.public_surface --all`: 0 findings over 1,153 tracked files.
+- `python -m tools.quality.readability --all`: 0 hard hits.
+- `python -m tools.buufury_text --smoke`: exits 0.
+- The export end to end on release 3.1 passes.
+
+## 5. Screenshots and colour vision
+
+Five captures of the running application: dark and light at 100 percent, dark and light
+at 150 percent, and dark at the window's minimum size. They live under the ignored
+`build/acceptance/text-tool-ui-001/` and are not committed.
+
+Fifteen colour-vision conversions accompany them: each capture through deuteranopia,
+protanopia and tritanopia.
+
+**The conversions are a scripted simulator, not Color Oracle.** Color Oracle 1.3 is
+installed and launches, but its tray menu could not be driven from this harness: the
+tray is a transient X11-composited panel that the driver does not enumerate as a
+window, a desktop-scope click needs a foreground swap that fails on this busy desktop,
+and the panel closes on focus loss. This is reported as a substitution with its reason
+rather than presented as the tool the owner asked for. The substitute is
+`tools/qa/colorvision.py`, which applies the Machado, Oliveira and Fernandes 2009
+matrices at severity 1.0, read from the authors' own page, in linear RGB as the model
+defines. Every row of every matrix sums to one, which a test asserts.
+
+What the conversions establish: the only chroma in the window is the accent, and every
+state is carried by a word, a glyph, a marker shape and a brightness step. Measured for
+the rule itself: pure red and pure green start 120 degrees apart in hue and collapse to
+under 3 degrees under both protanopia and deuteranopia while their lightness stays
+about 40 apart, which is why a state may never ride on a hue. Under the conversions the
+selected row's fill and its accent indicator both survive as lightness steps.
+
+## 6. The two audits, before and after
+
+Two independent read-only passes ran against the rebuilt window. Both are quoted with
+their own counts, because the owner asked for the before and after numbers.
+
+### Hallmark audit
+
+| | Before, `a19b587` | After, `a4c0a28` |
+| --- | --- | --- |
+| Gates assessed | 58 | 58 |
+| Pass | 24 | 25 |
+| Fail | 4 (4, 40, 41, 48) | 4 (26, 39, 40, 41) |
+| Pass as recorded deviation | 4 | 4 |
+| Not applicable to a native desktop tool | 24 | 23 |
+| Could not check | 2 | 2 |
+| Severity | 1 critical, 2 major, 5 minor | 0 critical, 3 major, 4 minor |
+| Verdict | needs changes | needs changes, and the critical is gone |
+
+The critical is the one worth naming. With a stylesheet installed but no rule naming it,
+Qt paints a control with ink of its own choosing: the light theme rendered the menu bar,
+the four combo boxes and the address disclosure as white on the `#F3F4F6` window, about
+1.09:1, while the dark theme painted all of them correctly, so every dark reading was
+green. The theme now names every control class and gives it a token, and the guard is a
+rendered-pixel case in `tests/unit/test_text_tool_theme.py` that renders each class and
+requires 4.5:1 between a widget's own ink and its own fill in both themes. Proved
+against the defect rather than assumed: with the control rules removed the same
+measurement returns 1.09:1 in light and 14.98:1 in dark, the exact asymmetry that hid
+it, and with them in place 15.59:1 and 14.24:1.
+
+The after audit's three majors and their outcome: the combo boxes had lost their
+drop-down indicator, because the same commit that named the classes styled the
+subcontrol without supplying an indicator, and it now carries the bundled chevron in
+the theme's ink; the status column painted its own raised panel and broke the row's
+divider, which is fixed in the list's own file; and the meter's empty state printed one
+placeholder twice with no number, and it now states the budget, saying `unstated` where
+the engine states no limit.
+
+### break-ui worst-case pass
+
+| | Before, `a19b587` | After, `a4c0a28` |
+| --- | --- | --- |
+| Observations | 89 | 142 in the primary pass, 394 including the scaling passes |
+| Case families | 25 | 42 |
+| Families with a break | 8 | 11 |
+| Severity split | 2 blockers, 5 majors, 1 minor, 1 nit | 1 blocker, 2 major, 4 minor, 2 nit |
+
+Its blocker was the worst defect the rebuilt layer had, and it was found only by feeding
+the widget a line that carries a control unit: `ChipObject.intrinsicSize` and
+`drawObject` were declared without the position argument Qt passes positionally, so the
+character format bound to an integer and both raised inside the Qt override. The
+consequence was not a missing chip. The failure happened part way through rebuilding the
+document, so the editor was left holding the PREVIOUS row's text while the list had
+already moved on, and a commit from that state wrote the previous row's text under the
+new row's key. Both stubs now take the position; the atom is measured in the face it
+paints in rather than through a paint device that carries no font; and `set_text`
+assigns the canonical string only after the document is built.
+
+Why every test missed it: `intrinsicSize` runs during layout, so a widget that is never
+shown never calls it. The new case resizes and shows the widget and reads the laid-out
+size. Proved against the defect: with the old signature the same route raises
+`'int' object has no attribute 'property'`, and with the fix the document lays out at
+276x35 with its string intact.
+
+Its other majors and their outcome: the window opened with the editor and the context
+pane empty because the pane selects its first row before the shell can hear about it,
+now replayed once after the panes are built; the read-only sections' cap was inert at a
+short window height, now applied from the editor's own height; and at 150 and 200
+percent Windows text the list pane's own minimum grows past its fixed floor so the chips
+and counters elided, now the floor is the larger of the constant and the pane's own
+minimum.
+
+A defect this pass also caused to surface: the chip's check glyph, which is the channel
+the owner reads a chip's state by, had never painted at all. A base64 data URI is
+accepted by Qt's stylesheet parser and then paints nothing, silently. Measured on one
+button: 40 ink pixels for its text alone, 40 with the data URI, 100 with the same icon
+written to a file. The recoloured icons now go to temporary files and paint; a checked
+chip carries 118 ink pixels against 78 unchecked.
+
+## 7. End to end, on release 3.1, with digests
+
+- Input: `roms/v3-release31.gba`,
+  `f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201`, unchanged after
+  the export.
+- The plan renames one retail-attributed occurrence and grows one line, both chosen by
+  the acceptance test's own helper so the artifact and the tested export are the same
+  bytes: 2 records moved, 0 in place, 0 refused.
+- Output: `build/acceptance/text-tool-ui-001/release31-edited.gba`, 10,194,636 bytes,
+  sha256 `59d7fb22673848f9f45678dc0011ebee166404d256108afdc2a231be58ceab3d`.
+- Readback through the product reader is clean, and the authored strings are read out of
+  the output image: the renamed record reads
+  `Oh, one more thing... Do you see that circle on the ground? It's called a
+  \x08\x07Kakarotto Circle\x08\x02.` and the grown one ends
+  `... Have you no respect? and friends`.
+- Runtime: the image loads in mGBA and execution advances. Measured over 336 rows,
+  frame 60 to 20160, `rom_size` 10194636 on every row, 62 distinct program counters and
+  67 screenshots, with the title screen captured. Section 8 row three: execution
+  observed. The dialogue copier never fired on that cold boot, so the on-screen
+  rendering of the edited line is UNVERIFIED and is not claimed.
+- The canonical image and the save are unchanged: `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
+  and `7cf0a516ebebbc74a959d6fc1ebc7aac808fc99683ccbb9e4b82a0d58ba02a86`.
+
+The UI rebuild changes no generated byte, so the end-to-end proof is the same export the
+model layer produced. No new emulator run was made for the rebuild.
+
+## 8. Deviations from the visual spec, each with its reason
+
+1. **The left pane's floor is 368 px, not the spec's 260.** The owner's speaker column,
+   the four state chips, the status word and a readable text floor cannot all fit below
+   it. The spec's own range is 260 to 470 and the default of 420 sits inside it.
+2. **The row count is a tab tooltip, not part of the tab label.** Measured: the two tab
+   names plus a total on the counters line want 399 px inside the pane's 350 px viewport,
+   so one of the two must elide and the names are what a reader navigates by. The
+   counters line carries the three state counts.
+3. **The type ladder is six whole-pixel roles, not the spec's 9 and 10 pt.** Whole pixels
+   are what survive 100, 125 and 150 percent display scaling.
+4. **The light surface is pure white and the neutrals are pure greys.** Both are the
+   adopted table's own values; the anti-generic gates prefer a tinted neutral and no pure
+   white, and the spec governs.
+5. **The control border carries 1.60:1 in light, not the 3:1 the design note itself
+   asks for.** The adopted table calls the border intentionally subtle.
+6. **Mono appears in more than two slots.** The spec mandates it for identifiers,
+   offsets, sizes and hashes; it is a data role and never touches prose or labels.
+7. **The prose measure exceeds the 45 to 75 character band at a 750 px centre pane.**
+   Capping it would put the editor below the 80-column width the spec rejects.
+8. **A text scale above 100 percent grows the window rather than compressing the
+   controls**, because the pane's own minimum is larger than its floor.
+9. **`NEW`'s emphasis is the accent hairline alone.** The two-weight ladder cannot give
+   it a weight step; the note's wording was corrected rather than the build.
+10. **Color Oracle was replaced by a scripted simulator** for the colour-vision
+    conversions, with the reason in section 5.
+
+## 9. Boundaries held
+
+- The canonical ROM, every save and every savestate were never written, moved or
+  committed. The worktree keeps its own verified copies under the ignored `roms/`.
+- No ROM, save, savestate, extracted game art, font or game text was committed to the
+  repository, pasted into a report, or sent to any hosted service. Every extraction and
+  capture lives under ignored `build/` paths.
+- No new dependency was added. The colour-vision tool uses the Qt already required.
+- Nothing was installed for the application. The one installation in this ticket's
+  history is Color Oracle, which the owner ordered.
+- One writer per file at all times: four rebuild lanes and two fix lanes ran against
+  disjoint file sets, and the coordinator held the remainder.
+
+## 10. Harvest
+
+Toolbelt and tool entries added to the project:
+
+- `tools/qa/colorvision.py`, the colour-vision simulator, with
+  `tests/unit/test_colorvision.py`. Generic to any surface of this project, not specific
+  to this ticket.
+- `tools/webfoot/textedit`: `MapTable`, `MapRow`, `maps()`, `record_maps()`,
+  `line_maps()` and the map fields on `TitleProfile`, which turn a map into a dialogue
+  line's owner for any caller.
+- `tools/buufury_text/session.py`: `Line.place`, `Line.place_index`, `place_coverage()`,
+  `map_order()`, `PLACE_EVIDENCE`, and a `BY_PLACE` grouping in map-table order.
+- `tests/unit/test_text_tool_theme.py::test_every_control_class_is_painted_in_the_theme_ink`,
+  the rendered-pixel guard that a source-level gate structurally cannot be.
+- `docs/research/TEXT_TOOL_UI_DESIGN.md`, the design note, which is the reusable part of
+  this ticket: the entries applied, the token set, the per-surface build, the recorded
+  conflicts and the rules each defect taught.
+- `build/ttui-exit-check.py` (ignored, not committed), the mechanical gate runner for the
+  anti-generic checks, which now prints what it cannot see.
+
+## 11. Unverified, and the risk that carries
+
+- **The in-game preview has never rendered a real glyph.** No extraction and no
+  reference captures exist on this machine, so the pane ships its waiting state and the
+  harness skips. What ships is honest; what is unproven is the renderer itself.
+- **The edited line has not been seen on screen in the emulator.** The image loads and
+  executes and the strings are present in the output, which is what was asked for here;
+  seeing it in a dialogue box needs a driven route.
+- **Most interactive states are unverified in pixels.** No capture shows a checked chip,
+  a refusal, an edited row, the changed-run underline, `BASE CHANGED`, the address
+  disclosure expanded, either dialog, or a menu open. The code declares them and the
+  states carry a word, a glyph and a shape; no capture proves them.
+- **Keyboard traversal, screen-reader names and focus order** were not exercised.
+- **The two dialogs were not driven** in the audit pass.
+- **125 percent display scaling** is claimed by the ladder and was not captured; 100, 150
+  and the window minimum were.
+- **The mGBA rule changed during this ticket**: runtime evidence now requires a visible,
+  non-minimized window from the launcher the runtime skill names. No emulator run was
+  needed for the rebuild, so the rule was not exercised here.

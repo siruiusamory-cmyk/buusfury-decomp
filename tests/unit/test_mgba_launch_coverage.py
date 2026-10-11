@@ -102,6 +102,13 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
     ("tests/unit/test_mgba_extra_script.py", "dry_run", "prerequisites['shell']"):
         "runs the GDB launcher with -DryRun, which prints the identity it would write and exits "
         "before any emulator starts; it proves the extra-script path and hash are recorded",
+    ("tests/unit/test_friend_v4b_cell.py", "built", "sys.executable"):
+        "runs the Cell port builder over the two retail images into the test's own temporary directory; "
+        "it starts no emulator",
+    ("tests/unit/test_friend_v4b_cell.py", "test_the_independent_verifier_passes", "sys.executable"):
+        "runs the port's independent verifier on the image the builder produced; it starts no emulator",
+    ("tests/unit/test_palette_census.py", "census", "sys.executable"):
+        "runs the palette index census over the canonical image; it starts no emulator",
     ("tools/research/build_friend_v3_text_derivative.py", "run", "command"):
         "runs this interpreter on the repository's own text-batch and padding-repair "
         "modules; it starts no emulator",

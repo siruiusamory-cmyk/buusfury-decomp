@@ -307,6 +307,23 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
               "counterpart are listed for the owner. The renamed container's declared size grows "
               "from 2,266 to 23,794 bytes, which is why the image grows by 23,850 bytes.",
     ),
+    ApprovedRelease(
+        name="release-4a",
+        base_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
+        base_bytes=10169982,
+        output_sha256="e5d47f616114ef124ca618ea0b1961ab9751e8630862b9ee47631b08a32fcc10",
+        output_bytes=10169982,
+        stages=("dabura-broly-swap",),
+        notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form included. "
+              "Five draw sites take sprite 38 through the one resolver that all three map-object "
+              "families and the script operands use, so the scripts follow with no edit of their own; "
+              "the two FD55 fights take stat selector 10, Broly's own chapter-6 record, proven by map "
+              "390 slot 0; appearances 28 and 29 take Broly's sprite and portrait; text slot 1024 "
+              "reads Broly, written in place because the wording is shorter. 18 bytes change in all. "
+              "No enemy stat record, behaviour table, placement descriptor or dialogue record is "
+              "touched, and description slot 1025 still names Dabura until the owner supplies "
+              "wording.",
+    ),
 )
 
 

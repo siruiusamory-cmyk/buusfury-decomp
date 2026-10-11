@@ -103,13 +103,15 @@ test-sdk:
     - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
     # Size the worker count from what this runner actually has rather than
-    # copying a local default. Four workers is the floor and also the value
-    # these jobs measured: the runner's `nproc` and its available memory are
-    # printed below, so the number is a reading rather than an assumption. Raise
-    # it only when a job log shows a larger runner, because each worker repeats
-    # the module's own decode setup.
-    - nproc
-    - free -m
+    # copying a local default. Four workers is the value the measurements on this
+    # repository used, and the runner's core count is printed below so the number
+    # can be confirmed from a job log instead of assumed: raise it only when a log
+    # shows a larger runner, because each worker repeats its module's own fixture
+    # setup. The memory reading comes from `/proc/meminfo` rather than `free`,
+    # which does not exist in this image, and the core reading falls back to the
+    # interpreter in case `nproc` is ever absent too.
+    - nproc || python -c "import os; print(os.cpu_count())"
+    - grep -E '^(MemTotal|MemAvailable)' /proc/meminfo
     # The JUnit report is what makes a failure legible in the merge request
     # without downloading the raw job log, and xdist merges every worker's
     # results into this one file.

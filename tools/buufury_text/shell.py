@@ -352,6 +352,13 @@ class Shell(QMainWindow):
         previous.deleteLater()
         if session is not None:
             self._apply_shape(shape)
+            # The pane selects its first row while it is being built, which is before
+            # this window can hear about it, so the editor and the context pane used to
+            # open empty beside a highlighted row until the reader clicked a DIFFERENT
+            # row. Replaying the selection once costs one call and closes that gap.
+            selected = self.pane.selected()
+            if selected:
+                self.show_line(selected)
         self._update()
 
     def _build_body(self) -> QWidget:

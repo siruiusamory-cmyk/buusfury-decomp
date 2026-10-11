@@ -183,6 +183,20 @@ def test_the_notice_action_says_so_when_nothing_can_be_selected(window) -> None:
 # --- the window --------------------------------------------------------------
 
 
+def test_the_window_opens_with_its_first_row_already_shown(window) -> None:
+    """The pane selects row 0 while it is built, which is before this window can hear.
+
+    Measured: the editor and the context pane opened empty beside a highlighted row,
+    and clicking that same row did nothing, because a table does not report a
+    current-row change for the row that is already current.
+    """
+    selected = window.pane.selected()
+    assert selected, "the pane selects a first row"
+    assert window._editor_key == selected
+    assert window.editor.new_text() == window.session.line(selected).text
+    assert window.context.retail.text() != "No line is selected."
+
+
 def test_the_window_builds_and_every_pane_is_reachable(window) -> None:
     assert [name for name, _pane in window.panes()] == ["list", "editor", "context"]
     assert window.walk_panes() == ("list", "editor", "context")

@@ -37,7 +37,13 @@ ADDRESS_LABEL = "Address, offset and size"
 #: The heading says what the label means: the record stores a portrait operand and
 #: never a speaker field.
 SPEAKER_HEADING = "Speaker (by portrait)"
-SITE_LINE = "{count} handle site(s) name this line in the image."
+SITE_LINE = "{count} handle site names this line in the image."
+SITE_LINES = "{count} handle sites name this line in the image."
+
+
+def site_line(count: int) -> str:
+    """One site is one site: the plural is spelt, never parenthesised."""
+    return (SITE_LINE if count == 1 else SITE_LINES).format(count=count)
 
 RULE = "border-top: 1px solid %s;"
 INK = "color: %s;"
@@ -117,7 +123,7 @@ class ContextPane(QWidget):
         self._show_speaker(session, line)
         self._show_retail(session, line)
         self._show_covering(session, session.covering(line.key))
-        self.sites.setText(SITE_LINE.format(count=session.sites(line.key)))
+        self.sites.setText(site_line(session.sites(line.key)))
 
     def set_preview_state(self, text: str) -> None:
         """The preview draws its own waiting state; the pane only forwards the text."""

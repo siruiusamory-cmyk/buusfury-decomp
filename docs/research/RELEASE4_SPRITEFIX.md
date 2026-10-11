@@ -56,10 +56,26 @@ ticket:
   The code's own numbering is a position in ascending file offset and is pinned by
   `tests/unit/test_graphic_identity_numbering.py` (N6, SPRITEFIX-N6-001); see
   `ROM_ATLAS_REGENERATION.md`.
-* naming one character per frame is the atlas's first reachability path, not the
-  only one. The review's own walk also reaches `0x4565CC` and `0x46C29C` from
-  character 043, and `0x5C6FB4` from characters 177 and 220, so every character
-  that shares these animation frames is affected by the same repaired bytes.
+* the table above names the FIRST reachability path for each frame, and a frame can
+  be shared. The full attribution, from the toolkit's own `characters_using`, is
+  measured and pinned (N7, SPRITEFIX-N7-001):
+
+  | restored frame | container | every character affected |
+  | --- | --- | --- |
+  | `0x40E178` | `0x40E0DC` | 33 |
+  | `0x4567CC` | `0x4565CC` | 42, 43 |
+  | `0x46C29C` | `0x46C1D8` | 42, 43 |
+  | `0x4D99A8` | `0x4D995C` | 99 |
+  | `0x545A04` | `0x5459C4` | 114 |
+  | `0x5C6FB4` | `0x5C6DF0` | 123, 177, 220 |
+
+  So two of the repaired frames are shared by two characters and a third by three,
+  and every one of them loses the same corrupted pixels. Reproduce the sets with
+  `python tools/research/report_spritefix_attribution.py --image <canonical image>`,
+  which also reports the three sites that no reached graphic holds (the two tile
+  words and `0x316A18`). The sets are pinned by
+  `tests/unit/test_spritefix_attribution.py`, so a walk change that quietly widens
+  or narrows who is affected fails rather than going unnoticed.
 
 The two tile blocks are not in that atlas, which is why they are named by the OAM
 descriptor that points at them; the verifier re-reads each descriptor and checks it
@@ -136,7 +152,9 @@ non-blocking:
   authority available; what reads it remains unknown.
 * **The atlas attribution is a walk, not a runtime observation.** It reaches a
   frame through the character and animation tables; it does not prove the game
-  draws that frame in any particular scene.
+  draws that frame in any particular scene, and the character set it reports is
+  every character whose animation data reaches the payload, which is who the repair
+  can affect rather than who is seen to use it.
 * **This fix is additive to the Release 4 image**, which stays the base: it writes
   28 bytes and nothing else, so every other property of that image (including the
   spacing pass's own changes) travels unchanged.

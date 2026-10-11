@@ -131,6 +131,11 @@ class TitleProfile:
     text_slots: int
     live_selectors: int
     grown_selector: int
+    #: File offset of the RETAIL container table, measured on the canonical image
+    #: (its literal word is 0x087B5B64). Its words are live structure: three code
+    #: loads reach the grown slot through the literal at file 0x03D92C. A table at
+    #: this offset is copied aside before any of its words is written.
+    retail_table: int = 0x7B5B64
 
 
 #: Game code bytes 0xAC..0xB0 of the GBA header, measured on the canonical image.
@@ -697,12 +702,14 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
                 "SpacingEdit")
 
     builder = _Builder(model.image)
-    in_place, decisions, rewritten = _write_in_place(model, in_place, decisions, builder)
+    in_place, decisions, rewritten = _write_in_place(model, in_place, decisions, builder,
+                                                          warnings)
     placements, decisions = _write_moves(model, placements, decisions, builder, warnings)
     if placements:
         rewritten.add(model.profile.grown_selector)
     slot_moves, decisions = _write_slots(model, slot_moves, decisions, builder)
-    spacing, decisions, spacing_written = _write_spacing(model, spacing, decisions, builder)
+    spacing, decisions, spacing_written = _write_spacing(model, spacing, decisions,
+                                                          builder, warnings)
     rewritten |= spacing_written
 
     output = bytes(builder.out)
@@ -960,7 +967,8 @@ def _decide_rename(model: Model, edit: RenameEdit, decisions: list[Decision],
 
 
 def _write_in_place(model: Model, in_place: list[_InPlace], decisions: list[Decision],
-                    builder: _Builder) -> tuple[list[_InPlace], list[Decision], set[int]]:
+                    builder: _Builder, warnings: list[str]) -> tuple[list[_InPlace],
+                                                                   list[Decision], set[int]]:
     """Repack every edited container in place, preserving the kind it came in."""
     by_selector: dict[int, list[_InPlace]] = {}
     for row in in_place:
@@ -1009,8 +1017,14 @@ def _write_in_place(model: Model, in_place: list[_InPlace], decisions: list[Deci
                 final.extend(by_selector[selector])
                 continue
             at = builder.append(packed, f"container {selector} relocated")
-            entry = _table_base(model.profile, builder.out) + selector * 4
-            builder.write(entry, (ROM_BASE + at).to_bytes(4, "little"), f"table slot {selector}")
+            table = _writable_table(
+                model, builder, decisions, applied, warnings,
+                f"selector {selector} has to be relocated and its table entry rewritten")
+            if table is None:
+                final.extend(by_selector[selector])
+                continue
+            builder.write(table + selector * 4, (ROM_BASE + at).to_bytes(4, "little"),
+                          f"table slot {selector}")
         else:
             builder.write(at, packed, f"container {selector}")
         rewritten.add(selector)
@@ -1023,19 +1037,54 @@ def _refuse_all(decisions: list[Decision], rows: list[_Placement], reason: str) 
         decisions[row.decision] = replace(decisions[row.decision], method=REFUSED, reason=reason)
 
 
+def _writable_table(model: Model, builder: _Builder, decisions: list[Decision],
+                    rows, warnings: list[str], why: str) -> int | None:
+    """The container table base to write entries into, moving the retail table aside.
+
+    A table at the RETAIL offset is live structure: three code loads reach its grown
+    slot through the literal at file 0x03D92C, and every other slot is read by the
+    engine's own dispatch. Its words are therefore never written. When a build needs
+    to write an entry there, the whole 64-slot block is copied into appended space
+    and the one literal that names it is repointed - the route the shipped releases
+    took, and the route the first RELEASE4-SPACES-001 review demanded. The copy is
+    refused when that literal is not named exactly once, because a table with more
+    than one owner cannot be moved aside (P-027).
+
+    Returns the new table base, or `None` after refusing every row in `rows`.
+    """
+    table = _table_base(model.profile, builder.out)
+    if table != model.profile.retail_table:
+        return table
+    literal_at = model.profile.table_literal
+    literal = int.from_bytes(model.image[literal_at:literal_at + 4], "little")
+    references = _references(model.image, literal)
+    if references != 1:
+        _refuse_all(decisions, list(rows),
+                    f"{why}; the retail table at {table:#x} is named by {references} "
+                    "word-aligned references and a table with more than one owner cannot be "
+                    "moved aside, so its slot is not proven free")
+        return None
+    block = bytes(builder.out[table:table + SELECTOR_SLOTS * 4])
+    moved = builder.append(block, "container table")
+    builder.write(literal_at, (ROM_BASE + moved).to_bytes(4, "little"),
+                  "container table literal")
+    warnings.append(
+        f"{why}; the container table is copied to {ROM_BASE + moved:#010x} and the literal at "
+        f"{literal_at:#x} repointed, because the image's own table words are live structure")
+    return moved
+
+
 def _write_moves(model: Model, placements: list[_Placement], decisions: list[Decision],
                  builder: _Builder, warnings: list[str]) -> tuple[list[_Placement], list[Decision]]:
     """Copy every moved record into the appended container, prefix carried forward.
 
-    THE RETAIL TABLE IS NEVER WRITTEN. A table whose grown slot does not already
-    name a container is the image's own table, and its words are live structure:
-    measured on the canonical image, the grown slot holds 0x03004A68 and three
-    code loads reach that word through the literal at file 0x03D92C. The shipped
-    releases never wrote it either: they ran on images whose table had already
-    been moved into expansion space. This route does the same - copy the whole
-    64-slot table into appended space and repoint the one literal that names it -
-    and refuses when that literal is not named exactly once, rather than writing
-    a word whose owner is unproven (P-027).
+    THE RETAIL TABLE IS NEVER WRITTEN. A table that still sits at the retail offset
+    is the image's own table, and its words are live structure: measured on the
+    canonical image, its grown slot holds 0x03004A68 and three code loads reach that
+    word through the literal at file 0x03D92C. The shipped releases never wrote it
+    either: they ran on images whose table had already been moved into expansion
+    space. `_writable_table` moves it aside first (P-027), and refuses when its
+    literal is not named exactly once.
     """
     if not placements:
         return [], decisions
@@ -1057,27 +1106,13 @@ def _write_moves(model: Model, placements: list[_Placement], decisions: list[Dec
                         f"the container that table slot {selector} names does not decode, so "
                         f"its payload cannot be carried forward: {error}")
             return [], decisions
-    else:
-        literal_at = model.profile.table_literal
-        literal = int.from_bytes(model.image[literal_at:literal_at + 4], "little")
-        references = _references(model.image, literal)
-        if references != 1:
-            _refuse_all(decisions, placements,
-                        f"table slot {selector} holds {pointer:#010x}, not a container, so the "
-                        f"table would have to be moved before that slot can be used; the table "
-                        f"at {table:#x} is named by {references} word-aligned references and a "
-                        "table with more than one owner cannot be moved aside, so the slot is "
-                        "not proven free")
-            return [], decisions
-        block = bytes(out[table:table + SELECTOR_SLOTS * 4])
-        table = builder.append(block, "container table")
-        builder.write(literal_at, (ROM_BASE + table).to_bytes(4, "little"),
-                      "container table literal")
-        slot_at = table + selector * 4
-        warnings.append(
-            f"the container table is copied to {ROM_BASE + table:#010x} and the literal at "
-            f"{literal_at:#x} repointed, because table slot {selector} held {pointer:#010x}, "
-            "not a container, and the image's own table words are live structure")
+    moved = _writable_table(
+        model, builder, decisions, placements, warnings,
+        f"a move has to write table slot {selector}, which holds {pointer:#010x}")
+    if moved is None:
+        return [], decisions
+    if moved != table:
+        slot_at = moved + selector * 4
     kept: list[_Placement] = []
     for row in placements:
         bad = next((site for site in row.sites
@@ -1255,7 +1290,8 @@ def _spacing_spans(model: Model, selector: int, deleted: frozenset[int],
 
 
 def _write_spacing(model: Model, spacing: list[_Spacing], decisions: list[Decision],
-                   builder: _Builder) -> tuple[list[_Spacing], list[Decision], set[int]]:
+                   builder: _Builder, warnings: list[str]) -> tuple[list[_Spacing],
+                                                                   list[Decision], set[int]]:
     """Rewrite each collapsed container where it stands, then every handle it moved."""
     final: list[_Spacing] = []
     written: set[int] = set()
@@ -1282,8 +1318,14 @@ def _write_spacing(model: Model, spacing: list[_Spacing], decisions: list[Decisi
                 final.append(row)
                 continue
             at = builder.append(packed, f"container {row.selector} relocated")
-            entry = _table_base(model.profile, builder.out) + row.selector * 4
-            builder.write(entry, (ROM_BASE + at).to_bytes(4, "little"),
+            table = _writable_table(
+                model, builder, decisions, [row], warnings,
+                f"selector {row.selector} has to be repointed where it stands, and its table "
+                "entry is not writable")
+            if table is None:
+                final.append(row)
+                continue
+            builder.write(table + row.selector * 4, (ROM_BASE + at).to_bytes(4, "little"),
                           f"table slot {row.selector}")
         else:
             builder.write(at, packed, f"container {row.selector} collapsed")

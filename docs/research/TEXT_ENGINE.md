@@ -135,8 +135,14 @@ stage and rename, returning the output sha256.
   its bytes. A moved record whose only words are outside the pool is listed by a
   rename and REFUSED by a targeted edit. Measured effect: revision 1 of the release
   pass wrote 155 such words, 142 of them in code and graphics; revision 2 writes
-  none, and the independent verifier's allowed-changed-byte set is the pool range
-  rather than the shape-filtered site list, so the two cannot share the defect.
+  none. The independent verifier asserts that every out-of-pool record-shaped word
+  is byte-identical and, since RELEASE4-SPRITEFIX-001, allows a changed byte inside
+  the pool only at a four-byte in-pool site word rather than anywhere in the range.
+  That narrowed set is built from the same shape filter the engine uses, so its
+  residual risk is the opposite one: a word the filter wrongly calls a handle could
+  be written and whitelisted. The resolve-and-compare check is what still guards it,
+  because every in-pool site must resolve as a record with unchanged non-space
+  characters.
 - **Detection.** The container table is reached through the image's own literal
   word, the containers through the table, the records through their handles, and
   the string table through its declared base. Every candidate is then validated:
@@ -193,7 +199,18 @@ This engine reproduces it every byte except **28 bytes across nine words outside
 the event-resource pool**: `0x316A18`, `0x40E178`, `0x4567CC`, `0x46C29C`,
 `0x4D99A8`, `0x545A04`, `0x5C6FB4`, `0x725474`, `0x726074`. Every one is a shape
 coincidence the release's builder wrote because it used the inventory without the
-pool rule; two of them (`0x725474`, `0x726074`) sit in a repeating tile-data run.
+pool rule.
+
+Those nine writes are not merely coincidences: they damaged shipped data. Six sit
+inside compressed character animation frames (characters 033, 042 twice, 099, 114
+and 123), and five of those six no longer decode at all, while the sixth decodes
+with 1,230 wrong bytes; two are uncompressed 8bpp sprite tiles (a 3-pixel speck
+each); one is unclassified data with no consumer identified. Release 4A and the
+Release 4 image both carry the damage, and RELEASE4-SPRITEFIX-001 restores the
+canonical bytes and proves each frame decodes identically to canonical again. The
+per-frame detail, with the atlas attribution and the fingerprint of each restored
+word, is in `docs/research/RELEASE4_SPRITEFIX.md`.
+
 All 26 in-pool handle words the release wrote are reproduced byte for byte, and the
 record counts agree with the release's own manifest: 34 rows, 3 slots, 60 records
 listed for the owner. The further 8 listed records are the ones no pool word names.
@@ -240,19 +257,22 @@ any ROM.
 - **No box metrics.** There is no font or dialogue-box model, so nothing checks
   whether a line fits the box. The engine bounds a record by the handle's 4,094
   byte length field and the container's 65,534 byte start field, not by pixels.
-- **The table is relocated when the grown slot is not already a container.** On
-  the retail image that slot holds `0x03004A68`, an IWRAM word three code loads
-  reach through the literal at file `0x03D92C`, so the engine copies the whole
-  table into appended space and repoints the `0x123CC` literal on first use, and
-  refuses when that literal is not named exactly once. A table that already
-  carries a container in the grown slot (the shape every shipped release has) gets
-  one slot word written in place, which is the route the releases used.
-- **A mixed plan writes a dead retail table word (F1).** If one plan both
-  relocates a container in place and moves a record, the in-place phase writes the
-  container's table entry into the image's own table before the table is copied.
-  The write is dead, since the literal is repointed in the same export, but the
-  retail block is then not byte-identical. Fix and test are the first item of the
-  UI ticket; see section 3 for the measured example.
+- **No word of the retail table is ever written.** A table at the retail offset
+  (`TitleProfile.retail_table`, file `0x7B5B64`, the canonical image's own literal
+  `0x087B5B64`) is live structure: its grown slot holds `0x03004A68` and three code
+  loads reach that word through the literal at file `0x03D92C`, and its other slots
+  are read by the engine's dispatch. `_writable_table` therefore copies the whole
+  64-slot block into appended space and repoints the one literal that names it
+  before ANY entry is written, whether the write comes from a move or from a
+  container that has to be relocated, and it refuses when that literal is not named
+  exactly once (P-027). A table already in expansion space, which every shipped
+  release has, is written in place.
+- **A mixed plan no longer writes a dead retail table word (F1, closed).** An
+  in-place container relocation now goes through the same `_writable_table` guard,
+  so the table is copied aside before the entry is written and the retail block
+  stays byte-identical. `test_an_in_place_relocation_leaves_every_retail_table_word_alone`
+  pins it, and `test_a_spacing_relocation_leaves_every_retail_table_word_alone`
+  pins the spacing path.
 - **A move leaves the old bytes.** Every longer record covering the same span
   keeps the old wording; the plan reports each one and warns. Release 4's
   container rebuild is what removes the case.
@@ -268,12 +288,12 @@ any ROM.
   in-place edit pays its difference as trailing spaces, so a covering record can
   legitimately lose interior spaces; those sites are compared with spaces removed,
   and a moved record's sites are compared exactly.
-- **A spacing pass keeps retail runs, including one that a non-retail record also
 - **A spacing pass keeps retail runs, including ones a second record also reads.**
   On the Release 4A image, run `0:47756` is retail spacing and is also inside a
-  longer record's span, so that record still shows the two spaces. Five kept runs
-  in all are each read by two records, and in every case both readers carry the run
-  in the canonical image. Measured detail in `RELEASE4_SPACING.md` section 6.
+  longer record's span, so that record still shows the two spaces. Of the six kept
+  positions that more than one word reads, only `0:5428` has two in-pool readers;
+  at the other five the second reader is an out-of-pool coincidence word, which by
+  the pool rule is not a record. Measured detail in `RELEASE4_SPACING.md` section 6.
 - **A spacing pass can be defeated by an image whose canonical correspondence does
   not hold.** The keep rule maps the base's byte offsets straight onto the canonical
   payload. Every release preserved record lengths, so that correspondence holds for
@@ -307,8 +327,10 @@ ticket:
 - **P-060**: the review of the spacing release found the engine and its verifier
   sharing ONE shape filter to find handle words, so 155 words outside the
   event-resource pool were written and the verifier's allowed-changed-byte set
-  whitelisted exactly those words. The rule now names the pool, and the verifier's
-  allowed set is the pool range rather than the filtered list.
+  whitelisted exactly those words. The rule now names the pool, and the verifier
+  allows a changed pool byte only at a four-byte in-pool site word. The shared
+  filter survives inside that narrowing, which is why P-060's check keeps the
+  resolve-and-compare test as the guard rather than the allowed set alone.
 
 Also `references/tools.md` T-011 records the module itself, its invocation, the
 two golden digests and its limits.

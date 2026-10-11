@@ -19,11 +19,17 @@ WHAT IT PROVES.
 3. Every handle in the pool resolves inside its container's decoded payload.
 4. Record containment is preserved: if one base record's span held another's, the
    built spans hold the same way (the covering relations the corpus depends on).
-5. Every changed byte lies inside a dialogue container's stored extent or inside
-   the event-resource pool. The allowed set comes from the placement contract, NOT
-   from the shape filter this file also uses to read records, so sharing that
-   filter with the builder cannot hide a write. The Release 4A sites are checked
-   directly when the 4A manifest is passed in.
+5. Every changed byte lies inside a dialogue container's stored extent or inside a
+   FOUR-BYTE WORD at an in-pool site. The allowed set is the base container extents
+   plus the four bytes at each in-pool site word the shape filter found, NOT the
+   whole 127 KB pool: a write anywhere else in the pool, an event-record kind byte
+   or script data, now fails instead of being whitelisted. RESIDUAL RISK, stated
+   rather than hidden: the site list still comes from the same shape filter the
+   engine uses, so a word the filter wrongly calls a handle could be written AND
+   whitelisted here. Check 1 is the guard that remains for that case, because it
+   requires every in-pool site to resolve as a record with unchanged non-space
+   characters. The Release 4A sites are checked directly when the 4A manifest is
+   passed in.
 """
 
 from __future__ import annotations
@@ -255,24 +261,30 @@ def main() -> int:
     if broken:
         problems.append(f"{broken} containment pair(s) no longer hold")
 
-    # 5. every changed byte is inside a container extent or the event-resource pool.
-    #    The allowed set is the CONTRACT's pool range, NOT the site list this file
-    #    read with the shape filter: sharing that filter with the builder is the
-    #    common-mode failure this check exists to break.
+    # 5. every changed byte is inside a container extent or inside a FOUR-BYTE WORD
+    #    at an in-pool site. The allowed set is deliberately narrow: a write anywhere
+    #    in the pool that is not a handle word (an event-record kind byte, script
+    #    data) is a defect, and whitelisting the whole 127 KB range would hide it.
+    #    The pool range still decides which words may be written at all, and the
+    #    out-of-pool check above is what pins that.
     allowed = set()
+    container_bytes = set()
     for selector, extent in base_extents.items():
         for at in range(base_offsets[selector], base_offsets[selector] + extent):
             allowed.add(at)
-    for at in range(POOL[0], POOL[1]):
-        allowed.add(at)
+            container_bytes.add(at)
+    for site in in_pool:
+        for at in range(site, site + 4):
+            allowed.add(at)
     changed = [at for at in range(min(len(base), len(built))) if base[at] != built[at]]
     stray = [at for at in changed if at not in allowed]
     in_pool_changed = [at for at in changed if POOL[0] <= at < POOL[1]]
+    at_site_words = len([at for at in changed if at in allowed and at not in container_bytes])
     notes.append(f"changed bytes: {len(changed)}, of them inside the event pool "
-                 f"{len(in_pool_changed)}")
+                 f"{len(in_pool_changed)}, in in-pool site words {at_site_words}")
     if stray:
         problems.append(f"{len(stray)} changed byte(s) outside the dialogue containers and the "
-                        f"event-resource pool, first at {stray[0]:#x}")
+                        f"in-pool site words, first at {stray[0]:#x}")
 
     # 6. Release 4A content, when its manifest is supplied
     if args.release4_manifest:

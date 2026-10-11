@@ -59,7 +59,8 @@ EVENT_PROFILE = "buus_fury_usa_rev0_01c1707f"
 NATIVE_STACK = 2
 PUSH_OPS = {0, 1, 29}
 SPAWN_SLOT = 53
-TYPE4_MAXIMUM = 2048
+STATE_SLOT = 60
+TYPE4_MAXIMUM = 1024        # measured: the largest natural decode is 827
 
 
 def word(image: bytes, offset: int) -> int:
@@ -120,8 +121,27 @@ def _pushes(instructions, position: int, count: int) -> list[int]:
     return list(reversed(values))
 
 
-def script_spawn_ids(image: bytes) -> list[dict]:
-    """Every native-53 spawn's sprite argument, from both record types, walked here."""
+def slots_of(image: bytes, sprite_id: int) -> list[int]:
+    """The animation records a definition holds, one entry per slot, 0 when the slot is empty.
+
+    Some live appearance records name ids whose table entry is not a pointer at all, so an id with no
+    usable definition yields no slots rather than an exception.
+    """
+    definition = definition_of(image, sprite_id)
+    if definition < ROM_BASE or definition - ROM_BASE + 0x58 >= len(image):
+        return []
+    at = definition - ROM_BASE
+    count = image[at] & 0xFF
+    if at + 0x54 + 4 * count > len(image):
+        return []
+    return [word(image, at + 0x54 + 4 * index) for index in range(count)]
+
+
+_WALK_CACHE: dict[str, dict] = {}
+
+
+def _walk_uncached(image: bytes) -> dict:
+    """One pass over both record types, yielding spawn sites and state calls at once."""
     from tools.webfoot.data.placement_contracts import CONTRACTS
     from tools.webfoot.data.script_specs import OPCODE_SETS
     from tools.webfoot.formats.placement_links import dialog_code_block, event_resource_records
@@ -130,17 +150,24 @@ def script_spawn_ids(image: bytes) -> list[dict]:
 
     spec = OPCODE_SETS[CONTRACTS[EVENT_PROFILE]["encoding"]]
     records = event_resource_records(image, CONTRACTS[EVENT_PROFILE]["event_resource"])
-    found = []
+    spawns: list[dict] = []
+    calls: list[dict] = []
+    failures: list[int] = []
+    counts = {"type 0": 0, "type 4": 0, "undecodable": 0}
+
     for record in records:
         streams = []
         if record.supported:
+            counts["type 0"] += 1
             try:
                 block = dialog_code_block(image, record, spec)
             except Exception:
-                block = None
+                failures.append(record.index)
+                continue
             if block is not None:
-                streams.append(("type 0", block[2]))
+                streams.append(block[2])
         elif record.dialog_type == 4:
+            counts["type 4"] += 1
             best = None
             for size in range(4, TYPE4_MAXIMUM + 1):
                 try:
@@ -148,25 +175,62 @@ def script_spawn_ids(image: bytes) -> list[dict]:
                 except Exception:
                     continue
                 best = decoded
-            if best is not None:
-                try:
-                    ir = disassemble(best, (Entry("payload", 0),), spec)
-                except Exception:
-                    ir = None
-                if ir is not None and assemble(ir) == best:
-                    streams.append(("type 4", ir))
-        for kind, ir in streams:
+            if best is None:
+                counts["undecodable"] += 1
+                failures.append(record.index)
+                continue
+            if len(best) == TYPE4_MAXIMUM:
+                raise SystemExit(
+                    f"REFUSED: resource {record.index} decodes to the scan ceiling "
+                    f"{TYPE4_MAXIMUM}, so the ceiling may be truncating it")
+            try:
+                ir = disassemble(best, (Entry("payload", 0),), spec)
+            except Exception:
+                failures.append(record.index)
+                continue
+            if assemble(ir) != best:
+                failures.append(record.index)
+                continue
+            streams.append(ir)
+        for ir in streams:
             for block in ir.blocks:
                 instructions = block.instructions
                 for position, instruction in enumerate(instructions):
                     if instruction.opcode != NATIVE_STACK or not instruction.operands:
                         continue
-                    if instruction.operands[0].value != SPAWN_SLOT:
+                    slot = instruction.operands[0].value
+                    if slot not in (SPAWN_SLOT, STATE_SLOT):
                         continue
-                    arguments = _pushes(instructions, position, 3)
-                    found.append({"resource": record.index, "kind": kind, "arguments": arguments,
-                                  "sprite": arguments[0] if arguments else None})
-    return found
+                    wanted = 3 if slot == SPAWN_SLOT else 2
+                    values: list[int] = []
+                    index = position - 1
+                    while index >= 0 and len(values) < wanted:
+                        earlier = instructions[index]
+                        if earlier.opcode not in PUSH_OPS:
+                            break
+                        operands = (earlier.operands[1:] if earlier.opcode == 29
+                                    else earlier.operands)
+                        for operand in reversed(operands):
+                            values.append(operand.value)
+                        index -= 1
+                    arguments = list(reversed(values))
+                    entry = {"resource": record.index, "arguments": arguments}
+                    if slot == SPAWN_SLOT:
+                        entry["sprite"] = arguments[0] if arguments else None
+                        spawns.append(entry)
+                    else:
+                        calls.append(entry)
+    return {"spawns": spawns, "calls": calls, "counts": counts, "failures": failures}
+
+
+def _walk(image: bytes) -> dict:
+    """The corpus walk, computed once per image and cached by content hash."""
+    key = hashlib.sha256(image).hexdigest()
+    cached = _WALK_CACHE.get(key)
+    if cached is None:
+        cached = _walk_uncached(image)
+        _WALK_CACHE[key] = cached
+    return cached
 
 
 def main() -> int:
@@ -198,8 +262,11 @@ def main() -> int:
         claim_word(site["sprite_field"], BROLY_SPRITE)
         if site["stat_field"] is not None and site["stat"] == DABURA_STAT:
             claim_word(site["stat_field"], BROLY_STAT)
+    # The two definition pointers are claimed as fields but not pinned to a constant: they point into
+    # the appended copies, whose addresses the verifier derives from the image below. Pinning them to
+    # the donor's address is exactly the mistake the review caught.
     for sprite_id in DABURA_SPRITES:
-        claim_word(CHARACTER_TABLE + 4 * sprite_id, broly_definition)
+        claim_word(CHARACTER_TABLE + 4 * sprite_id, None)
     name_slot_file = word(retail, TEXT_TABLE_START + 4 * NAME_SLOT) - ROM_BASE
     for offset in range(name_slot_file, name_slot_file + 2 * len(NEW_NAME) + 2):
         fields[offset] = None
@@ -209,7 +276,36 @@ def main() -> int:
         claim_word(base_offset + 0x08, 16)
     claim_word(APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x0C, BROLY_STAT)
 
-    # --- check 1: the diff is a subset of that set ----------------------------------------------
+    # --- the appended copies, and every byte outside the base -----------------------------------
+    appended = [offset for offset in range(len(base), len(image))]
+    copy_regions = []
+    for sprite_id in DABURA_SPRITES:
+        definition = definition_of(image, sprite_id)
+        if definition < ROM_BASE + len(base):
+            fail(f"id {sprite_id} does not point at an appended definition copy")
+            continue
+        at = definition - ROM_BASE
+        count = image[at] & 0xFF
+        copy_regions.append((at, count))
+        occupied = {index for index in range(count)
+                    if word(image, at + 0x54 + 4 * index) >= ROM_BASE}
+        original = {index for index, record in enumerate(slots_of(retail, sprite_id))
+                    if record >= ROM_BASE}
+        missing = sorted(original - occupied)
+        if missing:
+            fail(f"id {sprite_id}: the copy leaves slots {missing} empty that the original filled")
+    starts = sorted(start for start, _count in copy_regions)
+    bounds = [(start, starts[index + 1] if index + 1 < len(starts) else len(image))
+              for index, start in enumerate(starts)]
+    strays = [offset for offset in appended
+              if not any(start <= offset < end for start, end in bounds)]
+    # Alignment padding before the first copy, and between copies, is legal - but it must be zero,
+    # because a non-zero byte there is an unintended write.
+    strays = [offset for offset in strays if image[offset] != 0x00]
+    if strays:
+        fail(f"{len(strays)} appended byte(s) outside any definition copy: {strays[:12]}")
+
+    # --- check 1: the diff inside the base is a subset of that set -------------------------------
     changed = [offset for offset in range(min(len(image), len(base)))
                if image[offset] != base[offset]]
     outside = [offset for offset in changed if offset not in fields]
@@ -220,14 +316,54 @@ def main() -> int:
     if missing:
         fail(f"{len(missing)} field(s) do not hold the intended word: {missing[:12]}")
 
-    # --- check 2: the ids this release owns resolve to Broly, and no other id moved ---------------
-    spawns = script_spawn_ids(image)
+    # --- check 2: the ids this release owns draw the donor's art, and no other id moved -----------
+    walked = _walk(image)
+    base_walked = _walk(base)
+    spawns, calls = walked["spawns"], walked["calls"]
+    record_counts, failures = walked["counts"], walked["failures"]
+    base_spawns, base_calls = base_walked["spawns"], base_walked["calls"]
+    base_counts, base_failures = base_walked["counts"], base_walked["failures"]
+    # The record counts are asserted against the base, and the decode-failure SET must match it: this
+    # release may neither introduce a failure nor hide one. Both images report the same single
+    # unreadable record, resource 9, which the canonical ROM reads and the base does not.
+    for label in ("type 0", "type 4"):
+        if record_counts[label] != base_counts[label]:
+            fail(f"{label} record count is {record_counts[label]}, the base has {base_counts[label]}")
+    if sorted(failures) != sorted(base_failures):
+        fail(f"decode failures changed: {sorted(failures)} against the base's {sorted(base_failures)}")
+    if len(spawns) < len(base_spawns) or len(calls) < len(base_calls):
+        fail(f"the walk sees fewer sites than the base: {len(spawns)}/{len(base_spawns)} spawns, "
+             f"{len(calls)}/{len(base_calls)} state calls")
+    # The canonical counts, recorded rather than guessed: 236 type-0 records and 141 type-4.
+    if record_counts["type 0"] < 236 or record_counts["type 4"] < 141:
+        fail(f"corpus counts too low: {record_counts}")
+
+    # The check that would have caught the borrowed-definition defect: every animation index a script
+    # selects for one of these actors must be a slot that actor's definition actually fills.
+    state_table = image[0x72670:0x72670 + 25]
+    for call in calls:
+        if len(call["arguments"]) < 2:
+            continue
+        actor_id, state = call["arguments"][0], call["arguments"][1]
+        if state >= len(state_table):
+            continue
+        animation = state_table[state]
+        slots = slots_of(image, actor_id)
+        if 0 <= animation < len(slots) and slots[animation] >= ROM_BASE:
+            continue
+        if actor_id in DABURA_SPRITES or actor_id == BROLY_SPRITE:
+            fail("resource " + str(call["resource"]) + " sets state " + str(state)
+                 + " which selects animation " + str(animation) + " for sprite " + str(actor_id)
+                 + ", whose definition leaves that slot empty")
     ids_named = {site["sprite"] for site in object_sites(image, (38, 73, 98))}
     ids_named |= {spawn["sprite"] for spawn in spawns if spawn["sprite"] is not None}
     for sprite_id in (BROLY_SPRITE,) + DABURA_SPRITES:
-        if definition_of(image, sprite_id) != broly_definition:
-            fail(f"sprite id {sprite_id} resolves to 0x{definition_of(image, sprite_id):08X}, "
-                 f"not Broly's 0x{broly_definition:08X}")
+        resolved = definition_of(image, sprite_id)
+        if sprite_id == BROLY_SPRITE:
+            if resolved != broly_definition:
+                fail(f"sprite id {sprite_id} resolves to 0x{resolved:08X}, not 0x{broly_definition:08X}")
+        elif resolved == broly_definition or resolved == definition_of(retail, sprite_id):
+            fail(f"sprite id {sprite_id} must have its own definition copy, not 0x{resolved:08X}")
     # Every other id must resolve exactly as it does in the canonical ROM: this release may own two
     # table words, not the table.
     moved = [sprite_id for sprite_id in range(CHARACTER_FIRST_ID, 307)
@@ -236,10 +372,11 @@ def main() -> int:
         fail(f"character-table entries changed for ids {sorted(moved)}, expected only "
              f"{sorted(DABURA_SPRITES)}")
     for spawn in spawns:
-        if spawn["sprite"] in DABURA_SPRITES and \
-                definition_of(image, spawn["sprite"]) != broly_definition:
-            fail(f"resource {spawn['resource']} spawns sprite {spawn['sprite']}, which does not "
-                 "draw Broly")
+        actor_id = spawn["sprite"]
+        if actor_id in DABURA_SPRITES and \
+                definition_of(image, actor_id) == definition_of(retail, actor_id):
+            fail(f"resource {spawn['resource']} spawns sprite {actor_id}, which still draws the "
+                 "old actor's definition")
 
     # --- check 3: the fights and Broly's own record ----------------------------------------------
     for site in object_sites(image, (BROLY_SPRITE,)):
@@ -294,8 +431,8 @@ def main() -> int:
     print(f"# changed bytes {len(changed)} (all inside the derived field set)")
     print(f"# draw paths walked: object slots naming 38/73/98 {len(object_sites(image, (38, 73, 98)))}, "
           f"script spawns {len(spawns)}")
-    print(f"# sprite ids any path names: {sorted(ids_named)}; every one resolves to Broly's "
-          f"definition 0x{broly_definition:08X}")
+    print(f"# sprite ids any path names: {sorted(ids_named)}; ids 73 and 98 resolve to their own "
+          f"definition copies, id 38 to the donor at 0x{broly_definition:08X}")
     print(f"# type-4 cutscene spawns naming the old ids: "
           f"{[spawn['resource'] for spawn in spawns if spawn['sprite'] in DABURA_SPRITES]}")
     print(f"# records naming the old actor, all unchanged: {naming}")

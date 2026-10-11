@@ -311,8 +311,8 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         name="release-4a",
         base_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
         base_bytes=10169982,
-        output_sha256="569f39345e14c154a7d8bd3ebc30fa436db49db393942975cd70208b8ee386b4",
-        output_bytes=10169982,
+        output_sha256="b11c7201efb2c987d1b607f446978cbd89ce56b57f62486f75e0c2cf44398f0d",
+        output_bytes=10170720,
         stages=("dabura-broly-swap",),
         notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form included. "
               "The mechanism that makes that true rather than merely sampled is the character table: "

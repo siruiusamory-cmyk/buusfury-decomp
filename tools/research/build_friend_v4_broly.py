@@ -4,12 +4,22 @@ Base: the shipped release-3.1 image (sha256 f5c9648b...). Read-only on everythin
 
 THE ROUTE, AND WHY IT IS THIS SMALL. A placed or scripted actor gets its art from ONE door: the
 engine's resolver 0x08000158 maps a sprite id through the character table to a sprite definition, and
-all three map-object families and the event-script operands reach it that way. So changing the sprite
-id a draw site carries changes what that site draws, and the scripts follow with no edit of their own.
-The census (tools/research/census_draw_sites.py, re-derived in this tool) finds exactly five sites
-carrying Dabura's ids: sprite 73 at map 207 slot 4 (the Babidi's-ship fight), map 32 slot 42, map 206
-slot 3 and map 207 slot 3, and sprite 98 at map 451 slot 0 (the Heaven form). The owner asked for
-Broly everywhere, so all five take sprite 38.
+all three map-object families and the event-script operands reach it that way. The census
+(tools/research/script_spawns.py, re-derived in this tool) finds exactly five object-array sites
+carrying Dabura's ids - sprite 73 at map 207 slot 4 (the Babidi's-ship fight), map 32 slot 42, map 206
+slot 3 and map 207 slot 3, and sprite 98 at map 451 slot 0 (the Heaven form) - and the scripts name
+the ids too: event resources 340, 341 and 342 spawn sprite 73 through native slot 53, and resource 490
+drives the Heaven actor's animation through native slot 60. Those paths are NOT left alone; they are
+covered by the character table word for each id, which every one of them resolves its art through.
+
+THE TWO IDS GET THEIR OWN DEFINITION COPIES, NOT A BORROWED ONE. Pointing ids 73 and 98 at Broly's
+definition was wrong and the review caught it: a definition's animation array is indexed by the
+scripts with NO missing-animation check, and Broly's array is empty in slots the originals filled.
+Measured: resource 490 sets state 12, whose animation index the Heaven actor's original definition
+fills with 2 frames and Broly's leaves empty, so that actor would have been given no animation at all.
+Each id therefore gets its own copy of Broly's definition in appended space, with every slot the
+original occupied non-empty - padded to the original's frame count where the donor is shorter, and
+built from the closest donor animation where the donor has no such pose. See COPY_SLOTS.
 
 THE FIGHT'S NUMBERS ARE BROLY'S OWN, UNCHANGED. Both FD55 fights carry stat selector 18 (Dabura's).
 Broly's chapter-6 fight is map 390 slot 0, whose stat selector is 10 - measured, not assumed - so
@@ -39,6 +49,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.research.definition_copy import build_copy, slots_of  # noqa: E402
 from tools.research.friend_v3_text_approvals import APPROVED_RELEASES  # noqa: E402
 from tools.webfoot.write import WriteError, ensure_not_source_alias  # noqa: E402
 
@@ -60,19 +71,17 @@ BROLY_STAT_RECORD = 10          # map 390 slot 0 carries stat selector 10: Broly
 #: (label, file offset, expected word, new word). The expected word is what the canonical ROM holds,
 #: so a base image that disagrees refuses instead of writing over something else.
 #:
-#: THE LAST TWO ARE THE ONES THAT COVER THE WHOLE GAME. Every path that names a sprite id - the three
-#: map-object families, the event-resource scripts of both types (a type-4 payload is a packed
-#: bitstream, and three of them spawn sprite 73 in cutscenes), the attached-actor native, and any
-#: constant passed from code - reaches the definition through the character table word at
-#: `0x086B6BB4 + 4*id`, which is then dereferenced. Repointing ids 73 and 98 at Broly's own definition
-#: therefore covers every draw site by construction, including any site a census did not enumerate,
-#: which is why a script payload never has to be re-packed at all.
+#: THE TWO DEFINITION POINTERS ARE NOT IN THIS TABLE. Ids 73 and 98 no longer point at Broly's shared
+#: definition: a definition's animation array is indexed by the scripts with NO missing-animation
+#: check, and Broly's array is empty in slots the originals filled, so a shared definition silently
+#: removed animations the scenes select. Measured: the Heaven actor (map 451 slot 0) runs event
+#: resource 490, which sets state 12, and Broly's slot 12 is empty, so that actor got no animation.
+#: Each id now gets its OWN copy of Broly's definition in appended space, built so that every slot the
+#: original definition occupied is non-empty, which is checked here and by the verifier.
 BROLY_DEFINITION = 0x086A9B78
+BROLY_SPRITE = 38
+COPY_SLOTS = {73: (22,), 98: (12,)}     # slots a script can select that the donor leaves empty
 SITES = (
-    ("character table id 73 -> Broly definition (covers every 73 draw site)", 0x6B6CD8,
-     0x086AB24C, BROLY_DEFINITION),
-    ("character table id 98 -> Broly definition (covers every 98 draw site)", 0x6B6D3C,
-     0x086AC6A4, BROLY_DEFINITION),
     ("map207 slot4 sprite (ship fight, sprite 73 -> 38)", 0x7F09C, 73, 38),
     ("map207 slot4 stat selector (Dabura 18 -> Broly 10)", 0x7F094, 18, BROLY_STAT_RECORD),
     ("map32 slot42 sprite (other Dabura fight, 73 -> 38)", 0x74AE0, 73, 38),
@@ -199,7 +208,21 @@ def main() -> int:
                                   "bytes": len(encoded),
                                   "tail_left": len(OLD_NAME) * 2 + 2 - len(encoded)}
 
-    # Readback, on the in-memory image, before anything is written.
+    # --- the two definition copies ---------------------------------------------------------------
+    #
+    # The artwork follows from the definition a sprite id resolves to, and the character table word is
+    # that door for every path - both object families, both script record types, the attached-actor
+    # native and any code constant. A COPY is used rather than the shared definition because the
+    # animation array is indexed by the scripts with no missing-animation check: see COPY_SLOTS.
+    copies = {}
+    copy_original_occupied = {
+        target_id: {index for index, record in enumerate(slots_of(image, target_id))
+                    if record >= ROM_BASE}
+        for target_id in COPY_SLOTS}
+    for target_id, extra in sorted(COPY_SLOTS.items()):
+        out, proof = build_copy(bytes(out), target_id, BROLY_SPRITE, extra)
+        copies[str(target_id)] = proof
+    document["definition_copies"] = copies
     problems = 0
     for label, offset, expected, new in SITES + APPEARANCES:
         if word(out, offset) != new:
@@ -217,15 +240,24 @@ def main() -> int:
     if len(broly_now) != 6:
         problems += 1
         print(f"FAIL after the swap {len(broly_now)} slot(s) carry sprite 38, expected 6")
-    # The character-table entries are what make the claim corpus-complete: every id that anything
-    # still names must resolve to Broly own definition, or a cutscene or spawn the census did not
-    # enumerate would still draw the old actor.
+    # The copies must satisfy the property the shared definition broke: every slot the ORIGINAL
+    # definition occupied, and every slot a script can select for that id, is non-empty.
     import struct as _struct
-    for sprite_id in (38, 73, 98):
-        resolved = _struct.unpack_from("<I", out, 0x6B6BB4 + 4 * sprite_id)[0]
-        if resolved != BROLY_DEFINITION:
-            problems += 1
-            print(f"FAIL sprite id {sprite_id} resolves to 0x{resolved:08X}, not Broly definition")
+    for target_id, extra in sorted(COPY_SLOTS.items()):
+        resolved = _struct.unpack_from("<I", out, 0x6B6BB4 + 4 * target_id)[0] - ROM_BASE
+        count = out[resolved] & 0xFF
+        occupied = {index for index in range(count)
+                    if _struct.unpack_from("<I", out, resolved + 0x54 + 4 * index)[0] >= ROM_BASE}
+        for index in extra:
+            if index not in occupied:
+                problems += 1
+                print(f"FAIL id {target_id} leaves script-selected slot {index} empty")
+        for index in range(count):
+            if index in occupied:
+                continue
+            if index < len(copy_original_occupied[target_id]) and index in copy_original_occupied[target_id]:
+                problems += 1
+                print(f"FAIL id {target_id} leaves slot {index} empty that its original filled")
     for entry in after:
         if entry["family"] == 0x0800FD55 and entry["stat"] != BROLY_STAT_RECORD:
             problems += 1
@@ -255,6 +287,10 @@ def main() -> int:
         raise BrolyError(f"REFUSED: {error}") from error
     # The output must equal the frozen release identity, and the check runs BEFORE anything is
     # written, so a build that disagrees leaves no image on disk to be played or shipped.
+    if len(written) != RELEASE.output_bytes:
+        raise BrolyError(
+            f"REFUSED: the chain produced {len(written)} bytes and release 4A is "
+            f"{RELEASE.output_bytes}. A recorded size that nothing asserts is a claim, not a check.")
     if document["output_sha256"] != RELEASE.output_sha256:
         raise BrolyError(
             f"REFUSED: the chain produced {document['output_sha256']} and release 4A is "

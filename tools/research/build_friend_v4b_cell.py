@@ -58,7 +58,7 @@ BF_SECONDARY_ARRAY_OFFSET = 0x50
 #: replacement carries the header of the definition it replaces. A zero-filled header is CRASH-ROOT-CAUSE-001:
 #: +0x02 = 0 is a value none of the 297 retail definitions carries.
 BF_DEFINITION_HEADER = 0x54
-NAME_TEXT_TABLE = 0x123CC
+NAME_TEXT_TABLE = 0x6BCE8
 NAME_TEXT_SLOT = 1018
 PIECE_BYTES = 12
 FRAME_HEADER_BYTES = 8
@@ -80,7 +80,7 @@ def pointer_at(image: bytes, offset: int) -> int | None:
     return word if ROM_BASE <= word < ROM_BASE + len(image) else None
 
 
-def read_log2_cell(image: bytes) -> tuple[list[list[tuple[int, int, int, int, int, int]]], list[bytes]]:
+def read_log2_cell(image: bytes):
     """Cell's animation slots from the LoG II image, with each piece's container payload resolved.
 
     Returns one list per LoG II slot, each holding `(x, y, w, h, attr, payload)` in frame order, plus the
@@ -224,12 +224,44 @@ def build_port(slots, payloads, image: bytes, header: bytes,
     return bytes(out), report
 
 
+def write_name(image: bytes, text: str, slot: int = NAME_TEXT_SLOT) -> tuple[bytes, dict]:
+    """Write a short name into a text-table slot, refusing when it would not fit.
+
+    The text table is a word array of slot pointers at file `NAME_TEXT_TABLE` and each string is UTF-16LE
+    terminated by a zero halfword. Only a SHORTER name is safe: a longer one would run into the next slot,
+    which is why it is refused rather than silently overlapping.
+    """
+    out = bytearray(image)
+    pointer = struct.unpack_from("<I", out, NAME_TEXT_TABLE + 4 * slot)[0]
+    if not (ROM_BASE <= pointer < ROM_BASE + len(out)):
+        raise CellPortError(f"text slot {slot} does not point into the image")
+    start = pointer - ROM_BASE
+    end = start
+    while end + 1 < len(out) and (out[end] | (out[end + 1] << 8)) != 0:
+        end += 2
+    existing = end - start
+    needed = 2 * (len(text) + 1)
+    if needed > existing:
+        raise CellPortError(
+            f"REFUSED: {text!r} needs {needed} bytes but slot {slot} holds {existing}; lengthening a name "
+            f"would overlap the next slot")
+    out[start:start + needed] = text.encode("utf-16-le") + b"\x00\x00"
+    for index in range(start + needed, end, 2):
+        out[index] = 0
+        out[index + 1] = 0
+    return bytes(out), {"name_slot": slot, "name": text, "name_bytes": needed,
+                        "name_slot_capacity": existing}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log2", required=True)
     parser.add_argument("--image", required=True, help="the Buu's Fury derivative image to extend")
     parser.add_argument("--expect-sha256", required=True)
     parser.add_argument("--id", type=int, required=True, help="definition id to repoint at the port")
+    parser.add_argument("--name", default="",
+                        help="write this name into the name text slot; a LONGER name than what is there "
+                             "is refused, because it would overlap the next slot")
     parser.add_argument("--slots", type=int, default=0,
                         help="fill this many animation slots, cycling Cell's animations; the definition "
                              "being replaced announces 20, so an empty index cannot be selected")
@@ -275,6 +307,10 @@ def main() -> int:
     report["header_from"] = f"0x{base_pointer:08X}"
     report["header_allocator_bytes"] = base_allocator
     out = bytearray(out)          # the table word is repointed below
+    if args.name:
+        out, name_report = write_name(bytes(out), args.name)
+        report.update(name_report)
+        out = bytearray(out)      # write_name returns bytes; the table repoint below needs it mutable
     table_word = BF_DEFINITION_TABLE + 4 * args.id
     struct.pack_into("<I", out, table_word, report["definition"])
     report["id"] = args.id
@@ -291,9 +327,11 @@ def main() -> int:
     for target, label in ((out_path, "--out"), (manifest_path, "--manifest")):
         if target in protected:
             raise CellPortError(f"REFUSED: {label} names an input this build reads: {target}")
-        if any(part in ("roms", "extracted", "dump", "dumps", "stock", "exports")
+        if any(part.lower() in ("roms", "extracted", "dump", "dumps", "stock", "exports")
                for part in target.parts):
             raise CellPortError(f"REFUSED: {label} is inside a protected input directory: {target}")
+    if out_path == manifest_path:
+        raise CellPortError("REFUSED: --out and --manifest name the same file")
     for target, payload in ((out_path, out),
                             (manifest_path, ("\n".join(f"{key}: {value}"
                                                         for key, value in report.items())

@@ -61,6 +61,12 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv4a_lookup_probe.lua')
     )
+    # Added by the dialogue font work: the line-limit probe. READ-ONLY: it arms breakpoints and logs the
+    # limit the engine passes to its own line fitter at 0x0800AF3A. It does not press keys - an earlier
+    # version did, and moved the player around under the operator, which is not a script's job.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_limit_probe.lua')
+    )
     # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the padding-repair render
     # observer. The trailing-pad repair shortens a record's handle by its pad, so the
     # engine copies fewer units; static reading says no other record's span changes,

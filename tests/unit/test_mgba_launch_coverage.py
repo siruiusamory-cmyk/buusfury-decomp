@@ -95,6 +95,13 @@ POWERSHELL_FILE_PATH = re.compile(r"-FilePath\s+([^\s`]+)", re.IGNORECASE)
 #: with a reason, or `test_the_current_tree_has_no_unregistered_launch_site`
 #: fails. That is what makes the exemption explicit rather than implicit.
 NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
+    ("tests/unit/test_mgba_extra_script.py",
+     "test_a_dry_run_with_the_switch_variable_records_none", "prerequisites['shell']"):
+        "runs the GDB launcher with -DryRun and the switch variable set, to prove the switch wins "
+        "over a bridge that names a real file; it starts no emulator",
+    ("tests/unit/test_mgba_extra_script.py", "dry_run", "prerequisites['shell']"):
+        "runs the GDB launcher with -DryRun, which prints the identity it would write and exits "
+        "before any emulator starts; it proves the extra-script path and hash are recorded",
     ("tools/research/build_friend_v3_text_derivative.py", "run", "command"):
         "runs this interpreter on the repository's own text-batch and padding-repair "
         "modules; it starts no emulator",

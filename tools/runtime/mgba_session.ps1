@@ -158,9 +158,75 @@ function Start-MgbaSession {
     # Paths go in as ONE argument string. As separate array elements PowerShell
     # mangles the embedded quotes and mGBA then reports "Failed to open game file"
     # for a ROM that is perfectly readable.
+    # The owner's dashboard sends key presses through a bridge that lives outside this repository and is
+    # named only by an environment variable, so no machine path is tracked here. It runs as a second
+    # --script. OWNER AUTHORISATION (2026-10-11): it is loaded on every run that can load it, and every
+    # run RECORDS its absolute path and SHA-256 in the run directory, which is what makes the exception in
+    # docs/skills/mgba-runtime.md section 6 reviewable. A build without --script skips it with a printed
+    # note rather than refusing to launch, because the GDB launcher is pinned to such a build.
+    # A variable set to "" does NOT survive to the child on Windows PowerShell 5.1 - it arrives as $null -
+    # so "set but empty" cannot be the switch that disables the bridge. The switch is a real sentinel the
+    # shell cannot drop: the literal value `none`, or LOG1_MGBA_NO_EXTRA_SCRIPT=1.
+    $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
+    $extraScriptDisabled = ($env:LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1') -or ($extraScript -ieq 'none')
+    if ($extraScriptDisabled) {
+        $extraScript = $null
+    }
+    elseif ($null -eq $extraScript) {
+        # Already-running shells predate the user variable, so fall back to the registry.
+        $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+        if (-not $extraScript) { $extraScript = $null }
+    }
+    $extraScriptMissing = $false
+    if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
+        Write-Host "extra script SKIPPED: LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+        $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+        $extraScriptMissing = $true
+        $extraScript = $null
+    }
+    $extraScriptSha = $null
+    $extraScriptLoaded = $false
+    if ($extraScriptDisabled) {
+        $extraScriptNote = 'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
+    }
+    elseif (-not $extraScriptMissing) {
+        # Only a genuinely unset variable says "not set": a set-but-missing path keeps its own note, which
+        # the earlier version overwrote two lines later (the review's finding).
+        $extraScriptNote = 'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+    }
+    if ($extraScriptDisabled) {
+        Write-Host "extra script SKIPPED: $extraScriptNote"
+    }
+    elseif ($extraScript) {
+        $extraScriptPath = (Resolve-Path -LiteralPath $extraScript).Path
+        $supportsScript = ((& $MGBPath --help 2>&1 | Out-String) -match '--script')
+        if (-not $supportsScript) {
+            $extraScriptNote = "this mGBA build has no --script flag ($mgbVersion), so the bridge was not loaded"
+            Write-Host "extra script SKIPPED: $extraScriptNote"
+        }
+        else {
+            $extraScriptSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $extraScriptPath).Hash
+            $extraScriptLoaded = $true
+            $extraScriptNote = 'loaded as a second --script; it presses only keys the dashboard holds'
+            Write-Host "extra script: $extraScriptPath"
+            Write-Host "  sha256    : $extraScriptSha"
+        }
+    }
+
+    # Recorded in the run directory beside inputs.json, so a reviewer sees what was loaded even for the
+    # launchers that write their own identity block and know nothing about this flag.
+    $record = [ordered]@{
+        path    = if ($extraScriptLoaded) { $extraScriptPath } else { $null }
+        sha256  = $extraScriptSha
+        loaded  = $extraScriptLoaded
+        note    = $extraScriptNote
+    }
+    $record | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $RunDir 'extra-script.json') -Encoding utf8
+
     $options = @()
     if ($ArgumentList.Count -gt 0) { $options += $ArgumentList }
     $options += @('--script', $bootstrap)
+    if ($extraScriptLoaded) { $options += @('--script', $extraScriptPath) }
     $argumentText = (($options | ForEach-Object { '"{0}"' -f $_ }) -join ' ') +
         (' "{0}"' -f $RomPath)
 

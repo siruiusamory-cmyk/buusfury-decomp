@@ -178,3 +178,18 @@ def test_a_dry_run_naming_a_missing_file_says_so(prerequisites) -> None:
     assert identity.get("extra_script_loaded") is False
     assert "does not exist" in identity.get("extra_script_note", ""), (
         "a set-but-missing path is not the same state as 'not set'")
+
+
+def test_the_missing_file_note_cannot_be_overwritten() -> None:
+    """The session helper set the missing-file note and then overwrote it, which is the review's finding.
+
+    The fix is the ORDER: the default assignment must be guarded by the missing-file flag. A test that only
+    checks both strings exist would pass on the broken version, so this checks the order too.
+    """
+    text = SESSION.read_text(encoding="utf-8")
+    assert "elseif (-not $extraScriptMissing)" in text, (
+        "the default 'not set' note must be suppressed when the variable named a missing file")
+    missing_note = text.index("does not exist: $extraScript")
+    default_note = text.index("'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'")
+    assert missing_note < default_note, (
+        "the missing-file note must be set before the default assignment, not after it")

@@ -1336,16 +1336,6 @@ and none is currently worth dedicated work.
 | CQA-40 | `data/placement_contracts.py:9`, `atlas_producers/seed.py:346-357`, `placement_events.py:293-305` | A data table whose extent is documented UNKNOWN (the seed file says extent and count are "not simultaneously consistent") is indexed as production truth for relocation anchors and Thumb handler fetches. Fails loud (a `ValueError` on a non-Thumb word), hence LOW. |
 | CQA-41 | `tests/gates.py:51-106` | The `writer` gate is a filename heuristic, so write-path tests whose names do not state the concern (the LZ encoder, the sprite payload planner) carry only `-m fast`; an edit to the encoder that runs `-m writer` sees green. |
 | CQA-42 | `scripts/test.ps1:9` | The repository's single test entry point runs the bare ~90-minute full suite with no gate selection, contradicting the Full-Suite Policy and `docs/testing.md`. |
-> **ANNOTATED at the TEST-SPEED-001 closeout (2026-10-10).** CQA-42 is **CLOSED**;
-> the row above is the finding as recorded and is not restated. `scripts/test.ps1:9`
-> now runs `& $Python -m pytest -m fast @args`, so the single entry point defaults
-> to the portable gate and passes every extra argument through to pytest: the bare
-> full-suite invocation the finding names no longer exists. `README.md:213-216` and
-> `docs/testing.md:57-63` state the new behaviour, and the remediation-status row
-> for CQA-42 records its severity, at `:1547`. One earlier reference is left as written and is
-> superseded: section E observation 6, at `:1454-1455`, still says this script "runs the
-> forbidden bare full suite".
-
 | CQA-43 | `tests/unit/test_code_review_workflow.py` (since removed) | Asserted exact English phrases in the policy files and was counted in the "passed" total, so a documentation reword turned CI red and the cheapest fix was to weaken the test. Closed by removing the file: the review rules it policed now live in `docs/REVIEW.md`, which does not pin sentences. |
 | CQA-44 | `tests/unit/test_write_invariants_property.py:47-61` | The property sweep is derandomized at a fixed 50 examples and nothing raises `WEBFOOT_PROPERTY_EXAMPLES`, so its discovery power is frozen. |
 | CQA-45 | `workbench/app.py:546` | View -> Detailed Editor follows an editor *switch* but not the Maps mode change it depends on; the smoke test and a QA probe both work around it by forcing the action. |
@@ -1356,6 +1346,18 @@ and none is currently worth dedicated work.
 | CQA-50 | `workbench/map_tab.py:319-331`, `graphics_tab.py`, `widgets.py:_COLORS`, `theme.STATE_COLORS` | Duplicated UI state: `selected_map` has two writers; the map-support label is built twice; two role→colour tables exist, and the two differ (`theme.state_color` is unused and lacks the `edit` role). |
 | CQA-51 | `workbench/map_tab.py:617,854`, `graphics_tab.py:722,748,777,850`, `launcher.py:201` | `QTimer.singleShot` callbacks holding widgets with no receiver context, so a timer can fire into a destroyed object. |
 | CQA-52 | `workbench/map_browser_tab.py` `_on_save_as`, `graphics_tab.py` `_on_export` | The status line is set locally without publishing to the shell, so the authoritative status bar can go stale after a successful save/export. |
+
+> **ANNOTATED at the TEST-SPEED-001 closeout (2026-10-10).** CQA-42 is **CLOSED**;
+> the row above is the finding as recorded and is not restated. `scripts/test.ps1:9`
+> now runs `& $Python -m pytest -m fast @args`, so the single entry point defaults
+> to the portable gate and passes every extra argument through to pytest: the bare
+> full-suite invocation the finding names no longer exists. `README.md:213-216` and
+> `docs/testing.md:57-63` state the new behaviour, and the remediation-status row
+> for CQA-42 records its severity, at `:1549`. One earlier reference is left as written and is
+> superseded: section E observation 6, at `:1456`, still says this script "runs the
+> forbidden bare full suite". This note sits BELOW the C.4 table rather than beside the
+> CQA-42 row, because a blockquote directly under a table row ends the table there and the
+> ten findings after it lose their header and render as plain text.
 
 ### C.5 INFO
 
@@ -1461,7 +1463,7 @@ local-only.
 > `& $Python -m pytest -m fast @args`, so it defaults to the portable gate and
 > passes every extra argument through to pytest, as `README.md:213-216` and
 > `docs/testing.md:57-63` now state. The finding's own row is annotated in
-> place at `:1339` and its severity in the remediation-status row at `:1547`.
+> place at `:1338` and its severity in the remediation-status row at `:1549`.
 > The other two observations in this paragraph (CQA-41, CQA-44) are unchanged.
 
 7. **High-value guards that work well, and should be preserved as the pattern:**

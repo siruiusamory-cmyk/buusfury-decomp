@@ -59,8 +59,23 @@ gate, `-m fast`, by default and passes every extra argument through to pytest
 after that selection. So `.\scripts\test.ps1 tests/unit/test_relocation.py` runs
 that file inside the default gate, and a narrower `-k`, `--maxfail` or path
 argument composes with it. A second `-m` replaces the default rather than
-composing with it, because pytest keeps the last one: the full suite needs
-`.\scripts\test.ps1 -m ""`.
+composing with it, because pytest keeps the last one.
+
+To run the whole tree through the entry point, replace the selection with the
+expression that covers every gate, rather than trying to clear it: an empty `-m`
+does not work here, because Windows PowerShell 5.1 (the requirement `README.md`
+names) drops an empty string argument and pytest then exits with
+`argument -m: expected one argument`.
+
+```powershell
+.\scripts\test.ps1 -m "fast or rom or workbench or writer or map or research"
+```
+
+That expression is exhaustive rather than a guess: measured 2026-10-11, those six
+markers are the complete set in `pyproject.toml`, the expression collects the same
+6,781 tests as no `-m` at all, and its complement
+(`-m "not (fast or rom or workbench or writer or map or research)"`) collects zero.
+Every test carries at least one of them.
 
 A gate is a *selection*, not a promise: `-m rom` on a machine with no ROM
 reports skips, and `-m fast` includes members that need the canonical image or a

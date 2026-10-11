@@ -15,11 +15,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
+from PySide6.QtCore import QMimeData  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from tests.text_fixture import SPACES, build, lowered_record_floor  # noqa: E402
 from tools.buufury_text import app as app_module  # noqa: E402
-from tools.buufury_text import settings, theme  # noqa: E402
+from tools.buufury_text import chips, settings, theme  # noqa: E402
 from tools.buufury_text import shell as shell_module  # noqa: E402
 from tools.buufury_text import session as text_session  # noqa: E402
 from tools.buufury_text.session import (  # noqa: E402
@@ -370,6 +371,20 @@ def test_ctrl_f_focuses_the_search_and_a_term_reaches_the_list(window) -> None:
     window.clear_search()
     assert window.search.text() == ""
     assert len(window.pane.rows()) == rows
+
+
+def test_a_refused_paste_reaches_the_status_bar(window) -> None:
+    """The one refusal a reader can cause by pasting says why, in the status bar.
+
+    `insertFromMimeData` is the method `paste()` hands the clipboard's data to.
+    """
+    prose_row(window)
+    before = window.editor.new_text()
+    source = QMimeData()
+    source.setText("more\x08\x03")
+    window.editor.new.editor.insertFromMimeData(source)
+    assert window.editor.new_text() == before
+    assert window.statusBar().currentMessage() == chips.CONTROL_CODE
 
 
 def test_the_window_without_an_image_shows_what_to_do(qapp, tmp_path, monkeypatch) -> None:

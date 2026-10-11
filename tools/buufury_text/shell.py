@@ -371,6 +371,9 @@ class Shell(QMainWindow):
         self.pane.line_chosen.connect(self.show_line)
         self.pane.line_entered.connect(self.focus_new)
         self.editor.committed.connect(self.apply_edit)
+        # A refused edit in NEW says why, in the same status line as every other
+        # refusal in this window, instead of leaving the text silently unchanged.
+        self.editor.refused.connect(self.statusBar().showMessage)
         # The move notice's one action selects the records that carry the row, so a
         # reader can act on what it just said without hunting in the list.
         self.editor.notice.records_requested.connect(self.show_records)

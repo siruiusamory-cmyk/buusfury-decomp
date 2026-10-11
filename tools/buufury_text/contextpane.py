@@ -12,6 +12,7 @@ label, so the table and the list cannot disagree.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QFrame,
     QHeaderView,
@@ -85,6 +86,10 @@ class ContextPane(QWidget):
         self.raw_field.setReadOnly(True)
         self.raw_field.setFont(theme_module.type_scale().data)
         self.raw_field.setVisible(False)
+        # A wrapped label that is not given a line's height is a line short of its
+        # own font, measured at 12 px against a 14 px line spacing.
+        for label in (self._speaker_label, self.portrait, self.retail, self.sites):
+            label.setMinimumHeight(QFontMetrics(label.font()).lineSpacing())
         column = QVBoxLayout(self)
         column.setContentsMargins(metrics.pad_lg, metrics.pad_md, metrics.pad_lg,
                                   metrics.pad_md)

@@ -15,9 +15,10 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import Qt  # noqa: E402
+from PySide6.QtCore import QMimeData, Qt  # noqa: E402
+from PySide6.QtGui import QFontMetrics  # noqa: E402
 from PySide6.QtTest import QSignalSpy, QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QTableWidgetItem  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QTableWidgetItem  # noqa: E402
 
 from tests.text_fixture import (  # noqa: E402
     SPACES,
@@ -25,7 +26,7 @@ from tests.text_fixture import (  # noqa: E402
     line_payload,
     lowered_record_floor,
 )
-from tools.buufury_text import chipedit, contextpane  # noqa: E402
+from tools.buufury_text import chipedit, chips, contextpane  # noqa: E402
 from tools.buufury_text import session as app_session  # noqa: E402
 from tools.buufury_text import theme  # noqa: E402
 from tools.buufury_text.session import State  # noqa: E402
@@ -279,6 +280,42 @@ def test_the_meter_marks_an_unstated_limit_as_unstated(window, session) -> None:
     assert editor.meter.chars.track.tick_x(100) is None
 
 
+def test_the_meter_names_the_unit_of_each_bar_even_with_no_edit(window, session) -> None:
+    """Two identical empty readouts are told apart by their own unit labels."""
+    editor, _pane = window
+    show(editor, session)
+    assert editor.meter.text() == f"{chipedit.NO_EDIT}     {chipedit.NO_EDIT}"
+    assert editor.meter.chars.unit_label.text() == chipedit.CHARS
+    assert editor.meter.bytes.unit_label.text() == chipedit.BYTES
+    caption = theme.type_scale().caption.pixelSize()
+    for bar in (editor.meter.chars, editor.meter.bytes):
+        assert bar.unit_label.isVisibleTo(editor.meter) is True
+        assert bar.unit_label.font().pixelSize() == caption
+
+
+# --- one border, not a nest ---------------------------------------------------
+
+
+def test_the_section_border_is_scoped_to_the_frame_alone(window) -> None:
+    """A bare border rule on the frame also boxed every caption and button in it."""
+    editor, _pane = window
+    for frame, caption in ((editor.retail.frame, editor.retail.explanation),
+                           (editor.current.frame, editor.current.explanation),
+                           (editor.new.frame, editor.new.explanation)):
+        rule = frame.styleSheet()
+        assert rule.startswith(f"#{frame.objectName()} ")
+        assert "border: 1px solid" in rule
+        assert caption.styleSheet() == ""
+        names = [widget.objectName() for widget in editor.findChildren(type(frame))]
+        assert names.count(frame.objectName()) == 1
+    notice = editor.notice
+    assert notice.objectName() == "moveNotice"
+    assert notice.styleSheet().startswith("#moveNotice ")
+    for child in (notice.headline, notice.detail, notice.select_button,
+                  notice.collapse_button):
+        assert child.styleSheet() == ""
+
+
 # --- the move notice ---------------------------------------------------------
 
 
@@ -295,11 +332,26 @@ def test_the_move_notice_names_the_covering_records_and_the_site_count(window, s
     assert editor.notice.headline.text() == chipedit.MOVE_HEADLINE
     for carrier in covering:
         assert carrier in editor.notice.detail.text()
-    assert f"{session.sites(key)} handle site(s)" in editor.notice.detail.text()
+    sites = session.sites(key)
+    sites_word = "handle site" if sites == 1 else "handle sites"
+    assert f"{sites} {sites_word}," in editor.notice.detail.text()
+    assert "site(s)" not in editor.notice.detail.text()
     spy = QSignalSpy(editor.notice.records_requested)
     editor.notice.select_button.click()
     assert spy.count() == 1
     assert tuple(spy.at(0)[0]) == covering
+
+
+def test_the_move_notice_counts_one_handle_site_in_the_singular(window, session) -> None:
+    """One site reads as one site, and more than one reads as sites."""
+    editor, _pane = window
+    key = show(editor, session)
+    covering = session.covering(key)
+    editor.notice.show_notice(covering, 1, True, True)
+    assert "It is named by 1 handle site," in editor.notice.detail.text()
+    assert "site(s)" not in editor.notice.detail.text()
+    editor.notice.show_notice(covering, 4, True, True)
+    assert "It is named by 4 handle sites," in editor.notice.detail.text()
 
 
 def test_the_collapse_button_says_what_it_will_do_next(window, session) -> None:
@@ -345,6 +397,61 @@ def test_a_refused_row_shows_the_engines_own_reason(window, session) -> None:
     assert editor.meter.reason.text() == session.refusal_reason(key)
 
 
+def test_a_refused_paste_in_new_names_the_reason(window, session) -> None:
+    """A paste carrying a control unit is refused, and the reader is told why.
+
+    Driven through `insertFromMimeData`, which is the method `paste()` hands the
+    clipboard's data to. The offscreen clipboard is skipped: setting mime data on
+    it crashes Qt at interpreter exit on this machine.
+    """
+    editor, _pane = window
+    show(editor, session)
+    before = editor.new_text()
+    seen: list[str] = []
+    editor.refused.connect(seen.append)
+    source = QMimeData()
+    source.setText("more\x08\x03")
+    editor.new.editor.insertFromMimeData(source)
+    assert editor.new_text() == before
+    assert seen == [chips.CONTROL_CODE]
+
+
+def test_every_refusal_answers_with_its_own_reason() -> None:
+    """The three rules that can refuse an edit do not all read the same."""
+    assert chips.refusal_reason("hello", 5, 0, "\x08\x03") == chips.CONTROL_CODE
+    assert chips.refusal_reason("hello", 5, 0, "\x00") == chips.CONTROL_CODE
+    assert chips.refusal_reason("hello", 5, 0, "\ud83d") == chips.UNSTORABLE
+    assert chips.refusal_reason("AB\nCD", 2, 1, "") == chips.BREAKS_LOCK
+    # An edit that is simply a no-op is not a refusal, so it says nothing.
+    assert chips.refusal_reason("hello", 5, 0, "hi") == ""
+    assert chips.refusal_reason("hello", 99, 0, "") == ""
+
+
+# --- the two read-only sections -----------------------------------------------
+
+
+def test_the_read_only_sections_are_capped_so_new_takes_the_stretch(window) -> None:
+    """At the pane minimum the references take four lines and NEW takes the rest."""
+    editor, _pane = window
+    prose = "words " * 60
+    for section in (editor.retail, editor.current, editor.new):
+        section.set_text(prose)
+    editor.resize(360, 620)
+    editor.show()
+    QApplication.processEvents()
+    cap = chipedit.read_only_cap(editor.retail.editor)
+    assert cap >= 4 * QFontMetrics(editor.retail.editor.font()).lineSpacing()
+    assert editor.retail.editor.height() <= cap
+    assert editor.current.editor.height() <= cap
+    assert editor.new.editor.height() > cap
+    # Still readable: the whole wording is there and the box scrolls, not clips.
+    for section in (editor.retail, editor.current):
+        assert section.editor.serialized() == prose
+        assert section.editor.verticalScrollBar().maximum() > 0
+        # The cap is a height policy only: the caption still explains the section.
+        assert section.explanation.isVisibleTo(editor) is True
+
+
 # --- the context pane --------------------------------------------------------
 
 
@@ -356,6 +463,20 @@ def test_the_context_pane_agrees_when_retail_and_current_agree(window, session) 
     pane.set_line(session, session.line(key))
     assert pane.retail.text() == contextpane.AGREES
     assert INNER not in pane.retail.text()
+
+
+def test_every_wrapped_context_label_gets_a_line_of_its_own_font(window) -> None:
+    """Measured before: a wrapped label was 12 px tall against a 14 px line."""
+    _editor, pane = window
+    pane.resize(280, 600)
+    pane.show()
+    QApplication.processEvents()
+    wrapped = [label for label in pane.findChildren(QLabel) if label.wordWrap()]
+    assert len(wrapped) == 4
+    for label in wrapped:
+        line = QFontMetrics(label.font()).lineSpacing()
+        assert label.minimumHeight() >= line
+        assert label.height() >= line
 
 
 def test_the_context_pane_shows_the_wording_when_the_two_differ(window, differing) -> None:

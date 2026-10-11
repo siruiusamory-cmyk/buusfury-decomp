@@ -13,7 +13,7 @@ site count and the refusal reason. This module computes no ROM value.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -56,13 +56,33 @@ UNPROVEN_TARGET = "Its edit target is unproven: no proven handle site reaches th
 
 #: One accent hairline above NEW, and one 1 px control border around every section.
 HAIRLINE = "border-top: 1px solid %s;"
-FRAME = "border: 1px solid %s;"
 INK = "color: %s;"
+#: Four lines of the prose role is the cap for a read-only reference: at the window
+#: minimum, measured, RETAIL and CURRENT took 170 px each for one line of text
+#: while NEW, the section the reader types into, was left 62 px. The labels, the
+#: frames and the explanations stay identical; only the height policy differs.
+READ_ONLY_LINES = 4
 
 
 def _token(theme, role: str) -> str:
     """One theme token by name, in the form a stylesheet needs it."""
     return getattr(theme, role)
+
+
+def _frame_rule(widget: QWidget, theme) -> str:
+    """One 1 px control border, scoped to `widget` alone.
+
+    A stylesheet set on a widget is applied to it AND to its children, so a bare
+    `border` rule also boxed every caption and every button inside the frame.
+    """
+    return f"#{widget.objectName()} {{ border: 1px solid {_token(theme, 'border')}; }}"
+
+
+def read_only_cap(editor) -> int:
+    """Four lines of the editor's own font, plus its document margin and frame."""
+    line = QFontMetrics(editor.font()).lineSpacing()
+    chrome = 2 * int(editor.document().documentMargin()) + 2 * editor.frameWidth()
+    return READ_ONLY_LINES * line + chrome
 
 
 class Section:
@@ -73,7 +93,7 @@ class Section:
         self.name = name
         self.frame = QFrame(owner)
         self.frame.setObjectName(f"section{name}")
-        self.frame.setStyleSheet(FRAME % _token(theme, "border"))
+        self.frame.setStyleSheet(_frame_rule(self.frame, theme))
         self.label = QLabel(name, self.frame)
         self.label.setProperty("role", "sectionLabel")
         self.label.setFont(theme_module.type_scale().label)
@@ -107,9 +127,21 @@ class Section:
         body.setSpacing(metrics.pad_xs)
         body.addLayout(head)
         body.addWidget(self.editor, 1)
+        self.head = head
+        self.body = body
 
     def set_text(self, text: str) -> None:
         self.editor.set_text(text)
+
+    def cap_text_height(self, height: int) -> None:
+        """At most `height` px of text here, whatever the column offers.
+
+        The frame is capped as well as the text box: capping the box alone left the
+        frame stretched to its old share with the freed space dead inside it.
+        """
+        self.editor.setMaximumHeight(height)
+        self.frame.setMaximumHeight(height + self.head.sizeHint().height()
+                                   + self.body.spacing())
 
 
 class BarTrack(QWidget):
@@ -155,12 +187,17 @@ class BarTrack(QWidget):
 
 
 class SegmentBar(QWidget):
-    """One unit of the meter: a tabular readout above its own segments."""
+    """One unit of the meter: its unit label, a tabular readout, and its segments."""
 
     def __init__(self, unit: str, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.unit = unit
         self._theme = theme
+        # The static unit label is what keeps the two readouts apart when both are
+        # in their empty state, where neither number carries a unit of its own.
+        self.unit_label = QLabel(unit, self)
+        self.unit_label.setProperty("role", "caption")
+        self.unit_label.setFont(theme_module.type_scale().caption)
         self.readout = QLabel(NO_EDIT, self)
         self.readout.setFont(theme_module.type_scale().data)
         self.readout.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -168,9 +205,11 @@ class SegmentBar(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(metrics.pad_xs)
+        column.addWidget(self.unit_label)
         column.addWidget(self.readout)
         column.addWidget(self.track)
-        self.setFixedHeight(self.readout.sizeHint().height() + metrics.pad_xs
+        self.setFixedHeight(self.unit_label.sizeHint().height()
+                            + self.readout.sizeHint().height() + 2 * metrics.pad_xs
                             + self.track.height())
 
     def show_measure(self, value: int, limit: int | None) -> None:
@@ -260,8 +299,9 @@ class MoveNotice(QFrame):
     def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._covering: tuple[str, ...] = ()
+        self.setObjectName("moveNotice")
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setStyleSheet(FRAME % _token(theme, "border"))
+        self.setStyleSheet(_frame_rule(self, theme))
         self.headline = QLabel(MOVE_HEADLINE, self)
         self.headline.setWordWrap(True)
         self.headline.setFont(theme_module.type_scale().body)
@@ -313,7 +353,8 @@ class MoveNotice(QFrame):
     @staticmethod
     def _detail(covering: tuple[str, ...], sites: int, proven: bool) -> str:
         names = ", ".join(covering) if covering else "no other record"
-        second = (f"It is named by {sites} handle site(s), and the original bytes are "
+        sites_word = "handle site" if sites == 1 else "handle sites"
+        second = (f"It is named by {sites} {sites_word}, and the original bytes are "
                   f"also referenced by {names}.")
         return second if proven else f"{second} {UNPROVEN_TARGET}"
 
@@ -322,6 +363,8 @@ class EditorSections(QWidget):
     """RETAIL, CURRENT and NEW over one line, then the meter and the move notice."""
 
     committed = Signal(str, str)
+    #: NEW refused an edit, so the shell can say why in its own status bar.
+    refused = Signal(str)
 
     def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -332,12 +375,17 @@ class EditorSections(QWidget):
         self.current = Section(self, CURRENT, CURRENT_EXPLANATION, False, theme, metrics)
         self.new = Section(self, NEW, NEW_EXPLANATION, True, theme, metrics,
                            emphasised=True)
+        # The two references are one short paragraph each, so they are capped and
+        # NEW takes the stretch; the frame, label and explanation stay identical.
+        for section in (self.retail, self.current):
+            section.cap_text_height(read_only_cap(section.editor))
         self.meter = LengthMeter(theme, metrics, self)
         self.notice = MoveNotice(theme, metrics, self)
         # A hidden notice keeps its slot, so the editor does not jump when it shows.
         self.notice.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.notice.hide()
         self.new.editor.edited.connect(self._edited)
+        self.new.editor.refused.connect(self.refused.emit)
         column = QVBoxLayout(self)
         column.setContentsMargins(metrics.pad_lg, metrics.pad_md, metrics.pad_lg,
                                   metrics.pad_md)

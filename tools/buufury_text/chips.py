@@ -46,6 +46,13 @@ def atom_ranges(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(ranges)
 
 
+#: What a refusal says, in the user's own words. One place, so every edit route
+#: reports the same sentence for the same refusal.
+CONTROL_CODE = "that paste carries a control code, which cannot be typed"
+BREAKS_LOCK = "that edit would break a locked control code"
+UNSTORABLE = "that character cannot be stored"
+
+
 def protected_edit(current: str, position: int, removed: int, inserted: str) -> str:
     """What the text becomes when a user edits it, with every atom intact.
 
@@ -57,23 +64,37 @@ def protected_edit(current: str, position: int, removed: int, inserted: str) -> 
     carries a control unit, and a lone high surrogate. Every refusal returns
     `current` unchanged.
     """
+    return _decide(current, position, removed, inserted)[0]
+
+
+def refusal_reason(current: str, position: int, removed: int, inserted: str) -> str:
+    """Why `protected_edit` refuses this edit, or "" when it allows it.
+
+    The companion to `protected_edit`, which answers only with the text: a widget
+    that silently kept the old text cannot tell the reader which rule stopped it.
+    """
+    return _decide(current, position, removed, inserted)[1]
+
+
+def _decide(current: str, position: int, removed: int, inserted: str) -> tuple[str, str]:
+    """The edit's result and the reason for a refusal, decided in one place."""
     if removed > 0:
         end = min(len(current), position + removed)
         for start, stop in atom_ranges(current):
             if start < end and position < stop:
-                return current
+                return current, BREAKS_LOCK
             if position <= start and stop <= end:
-                return current
+                return current, BREAKS_LOCK
     elif position in _inside(current):
-        return current
+        return current, BREAKS_LOCK
     elif any(start == position for start, _ in atom_ranges(current)):
-        return current
+        return current, BREAKS_LOCK
     if any(isinstance(unit, textedit.Control) for unit in textedit.units(inserted)):
-        return current
+        return current, CONTROL_CODE
     result = current[:position] + inserted + current[position + removed:]
     if _lone_high_surrogate(result):
-        return current
-    return result
+        return current, UNSTORABLE
+    return result, ""
 
 
 def _inside(text: str) -> frozenset[int]:
@@ -135,6 +156,8 @@ class ChipTextEdit(QTextEdit):
     """A QTextEdit that refuses every edit which would split an atom."""
 
     edited = Signal(str)
+    #: Fired when an edit was refused, carrying the reason in the reader's words.
+    refused = Signal(str)
 
     def __init__(self, parent=None, editable: bool = True) -> None:
         super().__init__(parent)
@@ -177,9 +200,12 @@ class ChipTextEdit(QTextEdit):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if not self.isReadOnly() and event.key() in (
-                Qt.Key.Key_Backspace, Qt.Key.Key_Delete) and self._touches_atom():
-            event.accept()
-            return
+                Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            reason = self._refusal()
+            if reason:
+                event.accept()
+                self.refused.emit(reason)
+                return
         super().keyPressEvent(event)
 
     def canInsertFromMimeData(self, source) -> bool:  # noqa: N802
@@ -196,27 +222,40 @@ class ChipTextEdit(QTextEdit):
             self.insertFromMimeData(QApplication.clipboard().mimeData())
 
     def cut(self) -> None:  # noqa: N802
-        if not self.isReadOnly() and not self._touches_atom():
-            super().cut()
+        if self.isReadOnly():
+            return
+        reason = self._refusal()
+        if reason:
+            self.refused.emit(reason)
+            return
+        super().cut()
 
     def dropEvent(self, event) -> None:  # noqa: N802
-        if self.isReadOnly() or _carries_atom(event.mimeData()):
+        if self.isReadOnly():
+            event.ignore()
+            return
+        if _carries_atom(event.mimeData()):
+            self.refused.emit(CONTROL_CODE)
             event.ignore()
             return
         super().dropEvent(event)
 
     # --- internals -----------------------------------------------------------
 
-    def _touches_atom(self) -> bool:
+    def _refusal(self) -> str:
+        """Why the pending deletion or cut is refused, or "" when it is allowed."""
         cursor = self.textCursor()
         position, removed = cursor.selectionStart(), len(cursor.selectedText())
         if removed == 0:
             position, removed = cursor.position(), 1
-        return protected_edit(self._serialized, position, removed, "") == self._serialized
+        return refusal_reason(self._serialized, position, removed, "")
 
     def _apply(self, position: int, removed: int, inserted: str) -> None:
         result = protected_edit(self._serialized, position, removed, inserted)
         if result == self._serialized:
+            reason = refusal_reason(self._serialized, position, removed, inserted)
+            if reason:
+                self.refused.emit(reason)
             return
         self._reload(result, min(len(result), position + len(inserted)))
         self.edited.emit(result)
@@ -241,6 +280,9 @@ class ChipTextEdit(QTextEdit):
         if result == self._serialized:
             if added or removed:
                 self._reload(self._serialized, position + len(inserted))
+                reason = refusal_reason(self._serialized, position, removed, inserted)
+                if reason:
+                    self.refused.emit(reason)
             return
         self._serialized = result
         if self.document().toPlainText() != _presentation(result):

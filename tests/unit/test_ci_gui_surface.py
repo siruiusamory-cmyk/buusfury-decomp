@@ -16,7 +16,11 @@ instead of silently reducing the suite:
   claim about dependency-guarded GUI modules rather than an arbitrary path list;
 - the list must cover the named editor regressions (the state and error-surface
   regression, the palette editor, undo/redo and palette cost), which is what
-  pins the acceptance criterion durably.
+  pins the acceptance criterion durably;
+- ``deploy-site`` must need ``test-sdk``, because the deploy job's only rule is
+  the default branch while the test job's second rule can exclude it from
+  exactly that pipeline, and a rule-excluded job cannot fail anything. Audit
+  finding CQA-20 records the hole this asserts shut.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -308,3 +312,27 @@ def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
             conftest._COLLECTED_TEST_FILES,
             conftest._COLLAPSED_REASONS,
         ) = saved
+
+
+def test_the_deploy_job_needs_the_test_job():
+    """Prevents: publishing a commit whose portable suite never ran.
+
+    ``deploy-site`` matches only the default branch, while ``test-sdk``'s second
+    rule skips it when that branch push has an open merge request. A
+    rule-excluded job cannot fail anything, so without this dependency the deploy
+    job publishes regardless of whether the suite ran. The dependency must be
+    required, not ``optional``: an optional need is silently dropped when the
+    job is absent from the pipeline, which is the exact case being closed.
+    """
+    deploy = _ci_config().get("deploy-site") or {}
+    needs = deploy.get("needs") or []
+    required = {
+        need.get("job") if isinstance(need, dict) else need
+        for need in needs
+        if not (isinstance(need, dict) and need.get("optional"))
+    }
+    assert TEST_JOB in required, (
+        f"{_cited('deploy-site:')}: deploy-site must require a `needs:` entry "
+        f"naming {TEST_JOB}; its needs are {needs!r}, so a pipeline whose "
+        f"{TEST_JOB} was excluded by its rules can still publish the site"
+    )

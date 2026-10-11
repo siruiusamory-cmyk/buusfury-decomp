@@ -170,6 +170,10 @@ test-site:
 
 deploy-site:
   stage: deploy
+  # The one irreversible action in CI waits for the portable suite. `needs` is
+  # deliberately not `optional:`, so a pipeline whose `test-sdk` was excluded by
+  # its rules fails to be created rather than publishing without the suite.
+  needs: ["test-sdk"]
   image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"

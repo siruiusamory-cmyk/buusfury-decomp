@@ -78,7 +78,7 @@ control defect described in section 6 below.
 
 At the frozen candidate:
 
-- Focused tests: 276 passed, none skipped, across the theme, the dialogue preview, the
+- Focused tests: 280 passed, none skipped, across the theme, the dialogue preview, the
   render, the list, the editor, the shell, colour vision, the model, the engine and the
   release files. Nothing was run from the full suite or `scripts/test.ps1`.
 - The preview's two ROM-gated cases RUN rather than skip, because the canonical image is

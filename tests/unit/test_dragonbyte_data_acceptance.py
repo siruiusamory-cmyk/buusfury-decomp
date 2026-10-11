@@ -34,10 +34,12 @@ from tools.webfoot.build import extract_project  # noqa: E402
 from tools.webfoot.catalog import load_catalog  # noqa: E402
 from tools.webfoot.rom import identify_rom  # noqa: E402
 
-from tests.unit.test_dragonbyte_state import (  # noqa: E402
+from tests.unit.dragonbyte_acceptance_support import (  # noqa: E402, F401
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    one_decode,
+    surfaces,
 )
 
 GAMES = ("buus_fury", "logii", "log1")

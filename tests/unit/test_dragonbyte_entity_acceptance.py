@@ -46,10 +46,12 @@ from tools.webfoot.placement_events import Descriptor  # noqa: E402
 from tools.webfoot.project import read_project  # noqa: E402
 from tools.webfoot.rom import identify_rom  # noqa: E402
 
-from tests.unit.test_dragonbyte_state import (  # noqa: E402
+from tests.unit.dragonbyte_acceptance_support import (  # noqa: E402, F401
     CANONICAL_SHA256,
     SIBLING_CHECKOUT,
     _close,
+    one_decode,
+    surfaces,
     wait_for_text_surface,
 )
 

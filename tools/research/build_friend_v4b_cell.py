@@ -53,7 +53,13 @@ BF_DEFINITION_TABLE = 0x6B6BB4
 BF_SLOT_COUNT_OFFSET = 0x00
 BF_SLOT_ARRAY_OFFSET = 0x54
 BF_SECONDARY_ARRAY_OFFSET = 0x50
+#: The definition header's length. The character constructor reads fields inside it - the slot count as the
+#: low byte of +0x00, the allocator BYTE SIZE at +0x02, the secondary array pointer at +0x50 - so a
+#: replacement carries the header of the definition it replaces. A zero-filled header is CRASH-ROOT-CAUSE-001:
+#: +0x02 = 0 is a value none of the 297 retail definitions carries.
 BF_DEFINITION_HEADER = 0x54
+NAME_TEXT_TABLE = 0x123CC
+NAME_TEXT_SLOT = 1018
 PIECE_BYTES = 12
 FRAME_HEADER_BYTES = 8
 ANIMATION_HEADER_BYTES = 4
@@ -147,7 +153,8 @@ def read_log2_cell(image: bytes) -> tuple[list[list[tuple[int, int, int, int, in
     return slots, payloads
 
 
-def build_port(slots, payloads, image: bytes, slot_count: int | None = None) -> tuple[bytes, dict]:
+def build_port(slots, payloads, image: bytes, header: bytes,
+               slot_count: int | None = None) -> tuple[bytes, dict]:
     """Append payloads, frames, animations and the definition; fill `slot_count` slots if given.
 
     `slot_count` mirrors the definition being replaced: Spopovich announces 20 slots, so a two-animation
@@ -194,9 +201,14 @@ def build_port(slots, payloads, image: bytes, slot_count: int | None = None) -> 
         animation_addresses.append(record_address)
 
     definition_address = len(out)
-    out += b"\x00" * BF_DEFINITION_HEADER
-    struct.pack_into("<I", out, definition_address + BF_SLOT_COUNT_OFFSET, total_slots)
-    struct.pack_into("<I", out, definition_address + BF_SECONDARY_ARRAY_OFFSET, 0)
+    # The header comes from the definition being replaced, so every constructor-read field keeps the value
+    # this actor's own definition carries; only the slot count is ours to set.
+    if len(header) != BF_DEFINITION_HEADER:
+        raise CellPortError(f"the donor header is {len(header)} bytes, expected {BF_DEFINITION_HEADER}")
+    out += header
+    # ONLY the low byte of +0x00 is the slot count: packing a u32 here would clobber the allocator size
+    # field at +0x02, which is exactly the crash-class defect this fix exists to remove.
+    out[definition_address + BF_SLOT_COUNT_OFFSET] = total_slots & 0xFF
     for animation, record_address in enumerate(animation_addresses):
         out += struct.pack("<I", ROM_BASE + record_address)
 
@@ -244,7 +256,24 @@ def main() -> int:
     print(f"LoG II Cell: {len(slots)} slot(s), {sum(len(s) for s in slots)} record(s), "
           f"{len(payloads)} distinct container(s), payload bytes {sum(len(p) for p in payloads)}")
 
-    out, report = build_port(slots, payloads, image, args.slots)
+    base_pointer = pointer_at(image, BF_DEFINITION_TABLE + 4 * args.id)
+    if base_pointer is None:
+        raise CellPortError(
+            f"REFUSED: id {args.id} has no definition in the base image to take a header from")
+    base_header = image[base_pointer - ROM_BASE:base_pointer - ROM_BASE + BF_DEFINITION_HEADER]
+    if len(base_header) != BF_DEFINITION_HEADER:
+        raise CellPortError("REFUSED: the base definition's header runs past the image")
+    # The allocator field is a u16 at +0x02 (retail carries 0x1000 for one 64x64 8bpp frame), so its LOW
+    # byte is legitimately zero; the field as a whole must not be.
+    base_allocator = struct.unpack_from("<H", base_header, 0x02)[0]
+    if base_allocator == 0:
+        raise CellPortError(
+            "REFUSED: the base definition carries 0 for the allocator size field at +0x02, which no retail "
+            "definition does, so this is not the definition the port should mimic")
+
+    out, report = build_port(slots, payloads, image, base_header, args.slots)
+    report["header_from"] = f"0x{base_pointer:08X}"
+    report["header_allocator_bytes"] = base_allocator
     out = bytearray(out)          # the table word is repointed below
     table_word = BF_DEFINITION_TABLE + 4 * args.id
     struct.pack_into("<I", out, table_word, report["definition"])

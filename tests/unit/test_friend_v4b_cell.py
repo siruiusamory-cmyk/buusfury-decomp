@@ -26,7 +26,10 @@ from tests.rom_support import (  # noqa: E402
 
 LOG2_SHA256 = "6E6C370C339EC9171CB1956ADF837A0D342A197F78964882EF46C3086656FF75"
 LOG2_DEFAULT = Path("roms") / "Dragon Ball Z - The Legacy of Goku II (USA).gba"
-PORT_ID = 104
+#: The release configuration: Perfect Cell replaces SPOPOVICH, whose id is 252 and whose definition
+#: announces 20 animation slots. Testing any other id would not exercise what ships.
+PORT_ID = 252
+PORT_SLOTS = "20"
 
 
 #: The second retail title this port reads. Named by an environment variable first, so a worktree that
@@ -61,7 +64,7 @@ def built(tmp_path_factory) -> dict:
     result = subprocess.run(
         [sys.executable, "-m", "tools.research.build_friend_v4b_cell",
          "--log2", str(log2), "--image", str(canonical_rom_path()),
-         "--expect-sha256", CANONICAL_ROM_SHA256, "--id", str(PORT_ID),
+         "--expect-sha256", CANONICAL_ROM_SHA256, "--id", str(PORT_ID), "--slots", PORT_SLOTS,
          "--out", str(out), "--manifest", str(manifest)],
         cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -90,17 +93,23 @@ def test_the_build_repoints_the_named_id_and_appends(built) -> None:
     word = struct.unpack_from("<I", port, 0x6B6BB4 + 4 * PORT_ID)[0]
     assert word >= 0x08000000 + len(base), "the id must point into the appended region"
     definition = word - 0x08000000
-    assert port[definition] & 0xFF == 2
+    assert port[definition] & 0xFF == int(PORT_SLOTS), (
+        "the definition must announce the slot count the release fills")
 
 
 def test_the_independent_verifier_passes(built) -> None:
     result = subprocess.run(
         [sys.executable, "-m", "tools.research.verify_friend_v4b_cell",
          "--log2", str(built["log2"]), "--image", str(built["out"]),
-         "--id", str(PORT_ID), "--palette", "0x0805652C", "--source-palette", "0x081DA6C8"],
+         "--id", str(PORT_ID), "--base-image", str(canonical_rom_path()), "--base-id", str(PORT_ID),
+             "--palette", "0x0805652C", "--source-palette", "0x081DA6C8"],
         cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "verdict: PASS" in result.stdout
+    assert "header: identical to the base definition" in result.stdout, (
+        "the crash-class fix: every header field the constructor reads must match the definition replaced")
+    assert "allocator size 4096" in result.stdout, (
+        "0x1000 is the value Spopovich's definition carries for one 64x64 8bpp frame")
     assert "every source payload present: True" in result.stdout
     assert "block(s) concatenated in slot order" in result.stdout, (
         "the verifier must state that the order was checked, not only the membership")

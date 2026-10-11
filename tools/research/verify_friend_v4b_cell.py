@@ -116,6 +116,10 @@ def main() -> int:
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--palette", help="this image's object palette file offset")
     parser.add_argument("--source-palette", help="the source title's object palette offset")
+    parser.add_argument("--base-image", help="the image whose definition this port replaces, so every "
+                                             "header field the constructor reads can be compared")
+    parser.add_argument("--base-id", type=int, default=None,
+                        help="the id in the base image (defaults to --id)")
     args = parser.parse_args()
 
     log2_path, image_path = Path(args.log2), Path(args.image)
@@ -220,6 +224,30 @@ def main() -> int:
     # ORDER. A filled definition repeats the source's PER-ANIMATION blocks, so the ported sequence must be
     # a concatenation of exactly those blocks. A set comparison would accept a scramble; comparing whole
     # cycles would reject a correct port, which is what the first attempt did.
+    # HEADER FIELDS. The character constructor reads fields inside the definition header - the slot count as
+    # the low byte of +0x00, the allocator size as a u16 at +0x02, the secondary array pointer at +0x50 - so
+    # every byte must match the definition being replaced except the slot count (CRASH-ROOT-CAUSE-001).
+    if args.base_image and definition_pointer is not None:
+        base = Path(args.base_image).read_bytes()
+        base_id = args.id if args.base_id is None else args.base_id
+        base_pointer = pointer(base, BF_TABLE + 4 * base_id)
+        if base_pointer is None:
+            failures.append(f"the base image has no definition for id {base_id}")
+        else:
+            base_offset = base_pointer - ROM_BASE
+            port_offset = definition_pointer - ROM_BASE
+            differing = [hex(offset) for offset in range(0x54)
+                         if offset != 0x00
+                         and port[port_offset + offset] != base[base_offset + offset]]
+            allocator = struct.unpack_from("<H", port, port_offset + 0x02)[0]
+            if differing:
+                failures.append(f"definition header differs from the base image at {differing}")
+            else:
+                print(f"header: identical to the base definition over 0x54 bytes except the slot count "
+                      f"(allocator size {allocator})")
+            if allocator == 0:
+                failures.append("the allocator size at +0x02 is zero, which no retail definition carries")
+
     blocks = log2_blocks(log2)
     position = 0
     blocks_matched = 0

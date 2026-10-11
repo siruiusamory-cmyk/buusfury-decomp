@@ -1370,20 +1370,7 @@ and none is currently worth dedicated work.
 | CQA-32 | `map_layout_write.py:48-58`, `map_layout_edit.py:306-350`, `maps.py:548-559` | Repeated whole-table work: `MapLayoutWriter._layer` re-reads all 452 map records per call (measured 2.75 ms/call; 176 ms for a 64-cell grid build), and `Maps.map_placements` rescans all placements per call (78 ms across 452 maps). Bounded today; the pattern is what becomes a stall when allocation adds per-cell work. |
 | CQA-33 | `text.py:689-755,839-852` | Every over-length text edit re-derives the whole relocation plan (document rebuild + allocator run) to learn whether the new total fits, so N over-length edits cost O(N²) document builds. Fails safe; latency only. |
 | CQA-34 | `graphics.py:292-319` | A shared graphic's dimensions/depth are taken from the **first** consumer piece and never reconciled against the other consumers, so two pieces declaring different extents of equal byte size would silently transpose one of them. Whether the canonical corpus contains such a pair is UNKNOWN (needs the ROM). |
-| CQA-35 | `compressed_dialogue.py:46-51,61-76,112-118`
-> **RE-MEASURED 2026-10-11, and the finding is PARTLY FIXED and PARTLY REFUTED.** The GBA-window
-> arithmetic half is fixed: the file no longer contains the base literal and goes through
-> `GBA_ROM_BASE` with `FileOffset`. The data-placement half is REFUTED rather than deferred: the
-> project's own classification at `docs/research/ROM_ATLAS_IDENTITY_AND_EXTENTS.md:214` places
-> per-game dicts keyed by profile id in `tools/webfoot/data/*.py`, which is the shape
-> `AUTHORED_DIALOGUE_TARGETS` already has, and the profile schema is closed
-> (`_ALLOWED_KEYS`, `_ALLOWED_TABLES`, unexpected-key and unexpected-table refusal,
-> `schema_version == 1`), so moving one tuple would mean inventing a table kind, a dataclass, a
-> loader and two byte-pinned YAML copies. The tuple is where it belongs and the citation above is
-> stale. The real defect found underneath is that the same offset is read without reference to the
-> active profile at `tools/dragonbyte/textsurface.py:819-824`, which takes the FIRST registry entry
-> for whatever profile is active; with one entry it is latent, and it is tracked separately.
- | The only authorable dialogue target's four numeric fields live in code rather than in profile data, and the GBA-window arithmetic is done by hand (`old_pointer - 0x08000000`) while the same function uses the sanctioned helper 25 lines later. It is the one path that writes a relocated payload and rewrites a pointer. |
+| CQA-35 | `compressed_dialogue.py:46-51,61-76,112-118` | The only authorable dialogue target's four numeric fields live in code rather than in profile data, and the GBA-window arithmetic is done by hand (`old_pointer - 0x08000000`) while the same function uses the sanctioned helper 25 lines later. It is the one path that writes a relocated payload and rewrites a pointer. |
 | CQA-36 | `atlas_producers/seed.py:481-505` and siblings | Seed rows cite `config/roms.yaml` by **line number** and feed `CONFIRMED` atlas coverage; two citations have already drifted (`:501` cites `:47` for `enemy_stats`, actually `:48`). Cite the profile key instead, or assert the cited line's text. |
 | CQA-37 | `formats/placement_links.py:235-242` | `image[dialog + 2]` is indexed without a bound check, so a boundary dialog pointer raises a raw `IndexError` instead of the function's own refusal. |
 | CQA-38 | `formats/indexed_png.py:139-155,173` | The reader verifies no chunk CRC (the writer emits them) and calls `zlib.decompress` with no output bound, checking the expected size only after inflating. |
@@ -1413,6 +1400,19 @@ and none is currently worth dedicated work.
 > forbidden bare full suite". This note sits BELOW the C.4 table rather than beside the
 > CQA-42 row, because a blockquote directly under a table row ends the table there and the
 > ten findings after it lose their header and render as plain text.
+> **RE-MEASURED 2026-10-11, and the finding is PARTLY FIXED and PARTLY REFUTED.** The GBA-window
+> arithmetic half is fixed: the file no longer contains the base literal and goes through
+> `GBA_ROM_BASE` with `FileOffset`. The data-placement half is REFUTED rather than deferred: the
+> project's own classification at `docs/research/ROM_ATLAS_IDENTITY_AND_EXTENTS.md:214` places
+> per-game dicts keyed by profile id in `tools/webfoot/data/*.py`, which is the shape
+> `AUTHORED_DIALOGUE_TARGETS` already has, and the profile schema is closed
+> (`_ALLOWED_KEYS`, `_ALLOWED_TABLES`, unexpected-key and unexpected-table refusal,
+> `schema_version == 1`), so moving one tuple would mean inventing a table kind, a dataclass, a
+> loader and two byte-pinned YAML copies. The tuple is where it belongs and the citation above is
+> stale. The real defect found underneath is that the same offset is read without reference to the
+> active profile at `tools/dragonbyte/textsurface.py:819-824`, which takes the FIRST registry entry
+> for whatever profile is active; with one entry it is latent, and it is tracked separately.
+
 
 ### C.5 INFO
 

@@ -28,10 +28,13 @@ nothing on that path measured. The armed record now reports the identity of the
 manifest that `verify_instrumented_mgba` actually verified, and no literal may
 be bound to that field anywhere in the instrumented verification path.
 
-Every refusal below is proven to happen before any emulator process exists: the
-machine's own process list is counted before and after, and `subprocess.Popen`
-is replaced by a recorder that raises, so a launch path that had lost its gate
-would be caught rather than started.
+Every refusal below is proven to happen before any emulator process exists:
+`subprocess.Popen` is replaced by a recorder that raises, so a launch path that
+had lost its gate would be caught rather than started, and the machine's own
+process list is asked for the one image name this test handed the launcher.
+`_own_executable` makes that name unique to the test, so neither another test's
+emulator nor another session's can answer for it, while a launch that did go out
+still leaves a process under it.
 """
 
 from __future__ import annotations
@@ -78,18 +81,20 @@ INSTRUMENTED_PATH = (
 )
 
 
-def _emulator_processes() -> int:
-    """How many mGBA processes this machine has, read from the OS itself.
+def _emulator_processes(image: str) -> int:
+    """How many processes of one image this machine has, read from the OS itself.
 
-    A missing process lister is not a failure and must not be read as "none":
-    ``ps`` is absent from some CI images, so Linux falls back to reading
+    ``image`` is the executable name this test handed the launcher, and
+    ``_own_executable`` makes it a name no other process on the machine can be
+    running. A missing process lister is not a failure and must not be read as
+    "none": ``ps`` is absent from some CI images, so Linux falls back to reading
     ``/proc`` directly, which answers the same question without one.
     """
     if os.name == "nt":
         listing = subprocess.run(
             ["tasklist", "/NH"], capture_output=True, text=True, check=False
         ).stdout
-        return sum("mgba" in line.lower() for line in listing.splitlines())
+        return sum(image.lower() in line.lower() for line in listing.splitlines())
     try:
         listing = subprocess.run(
             ["ps", "-A", "-o", "comm="], capture_output=True, text=True, check=False
@@ -98,7 +103,7 @@ def _emulator_processes() -> int:
         listing = ""
     if not listing.strip():
         listing = "\n".join(_proc_commands())
-    return sum("mgba" in line.lower() for line in listing.splitlines())
+    return sum(image.lower() in line.lower() for line in listing.splitlines())
 
 
 def _proc_commands() -> list[str]:
@@ -117,9 +122,15 @@ def _proc_commands() -> list[str]:
     return names
 
 
-def _refuse(call, run_root: Path) -> str:
-    """Run ``call`` expecting a refusal, and prove nothing was launched."""
-    before = _emulator_processes()
+def _refuse(call, run_root: Path, image: str | None = None) -> str:
+    """Run ``call`` expecting a refusal, and prove nothing was launched.
+
+    ``image`` is the executable this test handed the launcher, named uniquely by
+    ``_own_executable``, so a process running it can only be this test's and the
+    count cannot be moved by an emulator someone else started. A caller whose
+    launcher target is the machine's shared install owns no such name and
+    passes none.
+    """
     attempts: list[tuple[object, ...]] = []
 
     def _forbidden(*args: object, **kwargs: object) -> None:
@@ -130,11 +141,13 @@ def _refuse(call, run_root: Path) -> str:
         patch.setattr(subprocess, "Popen", _forbidden)
         with pytest.raises((ValueError, OSError)) as caught:
             call()
-    after = _emulator_processes()
 
     assert attempts == [], "the refused path tried to create a process"
     assert not run_root.exists(), "the refused path created its run root"
-    assert after == before, "the emulator process count changed on a refused path"
+    if image is not None:
+        assert _emulator_processes(image) == 0, (
+            "the refused path left a process of its own running"
+        )
     return str(caught.value)
 
 
@@ -187,6 +200,16 @@ def _launch(
             manifest_path=manifest_path,  # type: ignore[arg-type]
             **common,  # type: ignore[arg-type]
         )
+
+
+def _own_executable(tmp_path: Path) -> Path:
+    """The binary this test hands the launcher, named so a process is its own.
+
+    The name is unique to the test and short enough that Linux reports it whole
+    in the 15-character ``comm``, which is what lets the process count name a
+    fact about this test rather than about the machine.
+    """
+    return tmp_path / f"mgba{uuid.uuid4().hex[:6]}.exe"
 
 
 def _run_root(module: str) -> Path:
@@ -263,7 +286,7 @@ def test_the_superseded_revision_is_the_tracked_patches_own_history():
 
 @pytest.mark.parametrize("module", ["rom011", "rom012"])
 def test_a_superseded_probe_patch_build_is_refused_by_name(module, tmp_path):
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"instrumented")
     manifest = _manifest(tmp_path, executable)
     manifest["patch_sha256"] = runtime.SUPERSEDED_PATCH_SHA256
@@ -279,6 +302,7 @@ def test_a_superseded_probe_patch_build_is_refused_by_name(module, tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
     assert "superseded" in message
     assert runtime.SUPERSEDED_PATCH_SHA256 in message
@@ -286,7 +310,7 @@ def test_a_superseded_probe_patch_build_is_refused_by_name(module, tmp_path):
 
 @pytest.mark.parametrize("module", ["rom011", "rom012"])
 def test_an_unknown_probe_patch_digest_is_refused_generically(module, tmp_path):
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"instrumented")
     manifest = _manifest(tmp_path, executable)
     manifest["patch_sha256"] = "0" * 64
@@ -302,13 +326,14 @@ def test_an_unknown_probe_patch_digest_is_refused_generically(module, tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
     assert message == "instrumented mGBA patch hash mismatch"
 
 
 @pytest.mark.parametrize("module", ["rom011", "rom012"])
 def test_a_wrong_source_identity_is_refused(module, tmp_path):
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"instrumented")
     manifest = _manifest(tmp_path, executable)
     manifest["source_commit"] = "1" * 40
@@ -324,6 +349,7 @@ def test_a_wrong_source_identity_is_refused(module, tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
     assert message == "instrumented mGBA source commit mismatch"
 
@@ -333,7 +359,7 @@ def test_a_wrong_executable_digest_is_refused(module, tmp_path):
     described = tmp_path / "described.exe"
     described.write_bytes(b"the build the manifest describes")
     manifest = _manifest(tmp_path, described)
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"a different build entirely")
     manifest_path = _write(tmp_path / "manifest.json", manifest)
     run_root = _run_root(module)
@@ -347,13 +373,14 @@ def test_a_wrong_executable_digest_is_refused(module, tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
     assert message == "instrumented mGBA executable hash mismatch"
 
 
 @pytest.mark.parametrize("module", ["rom011", "rom012"])
 def test_a_missing_manifest_file_is_refused(module, tmp_path):
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"instrumented")
     run_root = _run_root(module)
 
@@ -366,11 +393,12 @@ def test_a_missing_manifest_file_is_refused(module, tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
 
 
 def test_a_native_probe_without_a_manifest_is_refused(tmp_path):
-    executable = tmp_path / "mgba-sdl.exe"
+    executable = _own_executable(tmp_path)
     executable.write_bytes(b"instrumented")
     run_root = _run_root("rom011")
 
@@ -383,6 +411,7 @@ def test_a_native_probe_without_a_manifest_is_refused(tmp_path):
             run_root=run_root,
         ),
         run_root,
+        executable.name,
     )
     assert message == "native probe requires an instrumented-build manifest"
 
@@ -394,6 +423,8 @@ def test_the_real_instrumented_build_refuses_the_shared_dev_install(tmp_path):
         pytest.skip("the instrumented build tree or the dev install is absent")
     run_root = _run_root("rom012")
 
+    # No image of this test's own to count: the target is the machine's shared
+    # install, whose name another session may legitimately be running under.
     message = _refuse(
         lambda: _launch(
             "rom012",

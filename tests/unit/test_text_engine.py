@@ -418,6 +418,32 @@ def test_a_targeted_edit_refuses_a_record_no_pool_word_names(tmp_path: Path) -> 
         textedit.apply(built, tmp_path / "unused.gba")
 
 
+def test_a_refused_relocation_appends_nothing(tmp_path: Path) -> None:
+    """N5: the table is settled before the container is appended, so a refusal is inert.
+
+    The guard refuses when the table's literal has a second owner, which is the
+    cheapest way to reach the refusal with a container that has to move. The plan
+    must then hold the image it was given, with nothing appended: before the fix the
+    relocation appended its container first and the refusal left those bytes in the
+    buffer for a caller that never exported them.
+    """
+    base = build(payloads={1: line_payload("Say hello!")}, records=[(1, 0x20, 20)])
+    second = bytearray(base)
+    second[0x9000:0x9004] = base[TABLE_LITERAL:TABLE_LITERAL + 4]
+    model = open_image(bytes(second), tmp_path)
+    original = webfoot_lz.build_stored
+
+    def oversized(payload: bytes) -> bytes:
+        return original(bytes(payload) + bytes(64))
+
+    with mock.patch.object(webfoot_lz, "build_stored", oversized):
+        built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 20, "hello", "hi")])
+    assert built.decisions[0].method == textedit.REFUSED
+    assert "more than one owner" in built.decisions[0].reason
+    assert len(built.output) == len(second)
+    assert built.output == bytes(second)
+
+
 def test_a_spacing_relocation_leaves_every_retail_table_word_alone(tmp_path: Path) -> None:
     """A container that must move on a retail-table image may not write a retail word."""
     base = build(payloads={1: line_payload("Hi  there")}, records=[(1, 0x20, 18)])

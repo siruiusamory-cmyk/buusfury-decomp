@@ -30,7 +30,6 @@ from PySide6.QtGui import (
     QColor,
     QIcon,
     QImage,
-    QKeySequence,
     QPainter,
     QPen,
     QPixmap,
@@ -2189,13 +2188,13 @@ class MapBrowserTab(QWidget):
 
         # -- undo/redo ---------------------------------------------------------
         #
-        # The stack's own actions, so the keyboard shortcuts (Ctrl+Z / Ctrl+Y or
-        # Ctrl+Shift+Z) come from Qt rather than from a hand-rolled key map, and
-        # the buttons stay enabled in step with the history.
+        # The stack's own actions, so the buttons stay enabled in step with the
+        # history. The keys are NOT set here: CQA-23 leaves Ctrl+Z and Ctrl+Y to
+        # the shell's Edit -> Undo/Redo, which route to the ACTIVE mode's history
+        # (`MapsEditor.undo_stack`). Binding the standard keys here as well made
+        # one key answer to two live actions in this window.
         self._undo_action = self._undo_stack.createUndoAction(self, "Undo paint")
-        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self._redo_action = self._undo_stack.createRedoAction(self, "Redo paint")
-        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._undo_button = QPushButton("Undo")
         self._undo_button.setToolTip("Undo the last paint gesture (Ctrl+Z)")
         self._undo_button.clicked.connect(self._undo_action.trigger)

@@ -49,19 +49,40 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import tempfile
+from bisect import bisect_left
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from .. import compressed_dialogue as cd
 from ..binary import GBA_ROM_BASE as ROM_BASE
+from ..data.placement_contracts import CONTRACTS
 from ..destination import refuse_rom_destination
 from ..dialogue_repack import container_pointers, text_of
 from ..formats import text_tables as tt
 from ..formats import webfoot_lz
 from ..handles import DialogueHandle, unpack_handle
 from ..write import WriteError, ensure_new_destination, ensure_not_source_alias
+
+#: The only file-offset range in which a record word is a PROVEN reference to a
+#: dialogue record: the event-resource record pool, whose extent is the placement
+#: contract's (pool_start, table) pair rather than a number written here.
+#:
+#: WHY A RANGE AND NOT THE SHAPE FILTER. `dialogue_record_inventory` matches a
+#: 4-byte-aligned word whose +1 is zero and +2 is 0x05, followed by a word that
+#: decodes to a legal span. Outside this pool that filter is near-random: measured
+#: on the Release 4A image, 907 record-shaped words lie outside it and 281 pass the
+#: filter, 256 of them naming spans that share no edge with any real record. The
+#: same measurement inside the pool gives 11 of 2,639. Rewriting an outside word
+#: corrupts whatever actually lives there, and no earlier release did, because
+#: every earlier pass preserved record spans, so a false site was rewritten with
+#: the value it already held. A pass that MOVES a record changes the value, so it
+#: writes only here.
+_EVENT_RESOURCE = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
+PROVEN_HANDLE_POOL = (_EVENT_RESOURCE["pool_start"] - ROM_BASE,
+                      _EVENT_RESOURCE["table"] - ROM_BASE)
 
 #: One UTF-16LE code unit. A handle's start and length fields count these.
 UNIT = 2
@@ -136,6 +157,7 @@ class Layout:
     offsets: Mapping[int, int]
     kinds: Mapping[int, int]
     room: Mapping[int, int]
+    handle_pool: tuple[int, int] = (0, 0)
 
 
 def detect(image: bytes) -> Layout:
@@ -221,7 +243,7 @@ def validate(image: bytes, profile: TitleProfile) -> Layout:
                 f"REFUSED: {profile.key}: text slot {index} does not decode: {error}") from error
 
     return Layout(profile=profile, table_offset=table_offset, streams=streams,
-                  offsets=offsets, kinds=kinds, room=room)
+                  offsets=offsets, kinds=kinds, room=room, handle_pool=PROVEN_HANDLE_POOL)
 
 
 # --- the read-only model -----------------------------------------------------
@@ -441,6 +463,26 @@ class RenameEdit:
     relocated_slots: tuple[int, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class SpacingEdit:
+    """Collapse every interior 2+ space run the canonical image does not carry.
+
+    WHY A STREAM REBUILD AND NOT A RECORD EDIT. The containers are chain-shared:
+    one record's bytes are read by every longer record covering them, so an edit
+    inside a record's own span is read by all of them. Collapsing a run in the
+    RECORD and paying the difference back as trailing spaces re-creates the run
+    inside a covering record (pitfall P-023). Collapsing the run in the STREAM
+    removes it from every view at once, and each record's handle is rewritten to
+    its new span, so no record keeps a length it paid for.
+
+    The edit needs the canonical image at open, and it must be the only edit in
+    its plan: it rewrites the payloads every other edit addresses.
+    """
+
+    retail_test: str = ("a run survives only where the canonical image's record at the same "
+                        "identity carries a 2+ space run at the same unit offset")
+
+
 def rename_positions(current: str, counterpart: str, *, old: str,
                      new: str) -> tuple[str, int, int, int]:
     """Rename each occurrence of `old` only where `counterpart` names the same actor.
@@ -553,6 +595,18 @@ class _SlotMove:
 
 
 @dataclass(frozen=True, slots=True)
+class _Spacing:
+    """One container's collapse: the units deleted, and every span they moved."""
+
+    decision: int
+    selector: int
+    deleted: tuple[int, ...]
+    texts: Mapping[str, str]
+    handles: Mapping[int, int]
+    kept_retail: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Plan:
     """A deterministic, fully built export that has not been written anywhere."""
 
@@ -567,6 +621,7 @@ class Plan:
     in_place: tuple[_InPlace, ...]
     placements: tuple[_Placement, ...]
     slot_moves: tuple[_SlotMove, ...]
+    spacing: tuple[_Spacing, ...] = ()
 
     @property
     def refusals(self) -> tuple[Decision, ...]:
@@ -618,8 +673,14 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
     in_place: list[_InPlace] = []
     placements: list[_Placement] = []
     slot_moves: list[_SlotMove] = []
+    spacing: list[_Spacing] = []
     warnings: list[str] = []
     listed: list[str] = []
+
+    if any(isinstance(edit, SpacingEdit) for edit in edits) and len(edits) != 1:
+        raise TextEditError(
+            "REFUSED: a SpacingEdit rewrites the payloads every other edit addresses, so it is "
+            "the only edit a plan may carry")
 
     for edit in edits:
         if isinstance(edit, SlotEdit):
@@ -628,9 +689,12 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
             _decide_record(model, edit, decisions, in_place, placements, warnings)
         elif isinstance(edit, RenameEdit):
             _decide_rename(model, edit, decisions, placements, slot_moves, warnings, listed)
+        elif isinstance(edit, SpacingEdit):
+            _decide_spacing(model, edit, decisions, spacing, warnings)
         else:
             raise TextEditError(
-                f"REFUSED: {edit!r} is not a SlotEdit, a RecordEdit or a RenameEdit")
+                f"REFUSED: {edit!r} is not a SlotEdit, a RecordEdit, a RenameEdit or a "
+                "SpacingEdit")
 
     builder = _Builder(model.image)
     in_place, decisions, rewritten = _write_in_place(model, in_place, decisions, builder)
@@ -638,6 +702,8 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
     if placements:
         rewritten.add(model.profile.grown_selector)
     slot_moves, decisions = _write_slots(model, slot_moves, decisions, builder)
+    spacing, decisions, spacing_written = _write_spacing(model, spacing, decisions, builder)
+    rewritten |= spacing_written
 
     output = bytes(builder.out)
     return Plan(
@@ -652,6 +718,7 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
         in_place=tuple(in_place),
         placements=tuple(placements),
         slot_moves=tuple(slot_moves),
+        spacing=tuple(spacing),
     )
 
 
@@ -663,6 +730,17 @@ def _refuse(decisions: list[Decision], target: str, reason: str, covering=(),
     decisions.append(Decision(target=target, method=REFUSED, reason=reason,
                               covering=tuple(covering), sites=sites))
     return len(decisions) - 1
+
+
+def proven_sites(layout_or_pool, sites: Iterable[int]) -> tuple[int, ...]:
+    """The sites that are PROVEN carriers: those inside the event-resource pool.
+
+    Every handle-word write goes through this. A site outside the pool is a shape
+    coincidence in code or graphics until someone proves who reads it, and this
+    engine writes only what it can prove. See `PROVEN_HANDLE_POOL`.
+    """
+    low, high = getattr(layout_or_pool, "handle_pool", layout_or_pool)
+    return tuple(site for site in sites if low <= site < high)
 
 
 def _note(decisions: list[Decision], target: str, method: str, covering=(), sites: int = 0,
@@ -790,13 +868,20 @@ def _decide_record(model: Model, edit: RecordEdit, decisions: list[Decision],
         return
     conflict = _boundary_conflict(model, edit.selector, edit.start, edit.length)
     method = IN_PLACE if not conflict and len(encoded) <= edit.length else MOVE
-    index = _note(decisions, target, method, covering=record.covering, sites=len(record.sites),
+    carriers = proven_sites(model.layout, record.sites)
+    if not carriers:
+        _refuse(decisions, target,
+                "no handle word inside the event-resource pool names this record, so an edit to "
+                "it could not be read by the engine; every word that appears to name it outside "
+                "the pool is a shape coincidence")
+        return
+    index = _note(decisions, target, method, covering=record.covering, sites=len(carriers),
                   bytes_before=edit.length, bytes_after=len(encoded))
     if method == IN_PLACE:
         in_place.append(_InPlace(decision=index, selector=edit.selector,
                                  start=edit.start, length=edit.length, old=edit.old, new=edit.new))
         return
-    placements.append(_Placement(decision=index, key=target, text=replaced, sites=record.sites,
+    placements.append(_Placement(decision=index, key=target, text=replaced, sites=carriers,
                                  old_handle=DialogueHandle(edit.selector, edit.start,
                                                            edit.length).encode()))
     if record.covering:
@@ -846,10 +931,18 @@ def _decide_rename(model: Model, edit: RenameEdit, decisions: list[Decision],
                 continue
             found = model.record(selector, start, length)
             covering = found.covering if found is not None else ()
-            index = _note(decisions, key, MOVE, covering=covering, sites=len(record.sites),
+            carriers = proven_sites(model.layout, record.sites)
+            if not carriers:
+                # A record no pool word names is a slice of the blob, not a line the
+                # engine can display. Release 3.1 renamed eight of them and wrote the
+                # coincidence words that named them, which is finding B1; this pass
+                # still places the text (so the layout matches the release) and
+                # writes nothing, and lists the record instead.
+                listed.append(key)
+            index = _note(decisions, key, MOVE, covering=covering, sites=len(carriers),
                           bytes_before=length, bytes_after=len(encoded))
             placements.append(_Placement(
-                decision=index, key=key, text=text, sites=tuple(record.sites),
+                decision=index, key=key, text=text, sites=carriers,
                 old_handle=DialogueHandle(selector, start, length).encode()))
             if covering:
                 warnings.append(
@@ -1054,6 +1147,154 @@ def _write_slots(model: Model, slot_moves: list[_SlotMove], decisions: list[Deci
     return final, decisions
 
 
+# --- the spacing pass --------------------------------------------------------
+
+#: One UTF-16LE space unit, and a run of two or more of them.
+SPACE_UNIT = b"\x20\x00"
+SPACE_RUN = re.compile(r" {2,}")
+
+
+def _stream_runs(stream: bytes) -> list[tuple[int, int]]:
+    """(start byte, unit count) of every maximal 2+ space run in a decoded payload."""
+    text = stream.decode("utf-16le")
+    return [(match.start() * 2, match.end() - match.start())
+            for match in SPACE_RUN.finditer(text)]
+
+
+def _retail_units(model: Model, selector: int, start: int, units: int) -> int | None:
+    """How many space units the canonical image carries at this byte offset.
+
+    `None` when no record covering the offset has a canonical counterpart with a
+    2+ space run there, which is what makes the run a rename artifact. The
+    correspondence is the offset one the release passes rely on: the same
+    identity and the same character offsets, valid because every pass preserved
+    record lengths by padding. Where two holders disagree, the shorter run wins,
+    so the least retail spacing is kept.
+    """
+    other = model.retail_streams.get(selector, b"")
+    best: int | None = None
+    for record in model.selector_records(selector):
+        if not record.start <= start < record.start + record.length:
+            continue
+        if record.start + record.length > len(other):
+            continue
+        offset = record.start + (start - record.start)
+        count = 0
+        while count < units and other[offset + 2 * count:offset + 2 * count + 2] == SPACE_UNIT:
+            count += 1
+        if count >= 2:
+            best = count if best is None else min(best, count)
+    return best
+
+
+def _decide_spacing(model: Model, edit: SpacingEdit, decisions: list[Decision],
+                    spacing: list[_Spacing], warnings: list[str]) -> None:
+    if not model.retail_streams:
+        _refuse(decisions, "spacing", "a spacing pass needs the canonical image as the retail "
+                                      "reference, which was not supplied at open")
+        return
+    for selector in sorted(model.layout.streams):
+        stream = model.layout.streams[selector]
+        deletions: list[int] = []
+        kept: list[str] = []
+        for start, units in _stream_runs(stream):
+            if start == 0 or start + units * 2 >= len(stream):
+                continue
+            retailed = _retail_units(model, selector, start, units)
+            if retailed is None:
+                deletions.extend(range(start + 2, start + units * 2, 2))
+            else:
+                kept.append(f"{selector}:{start}")
+                deletions.extend(range(start + retailed * 2, start + units * 2, 2))
+        if kept:
+            warnings.append(
+                f"selector {selector}: {len(kept)} run(s) kept because the canonical image "
+                f"carries the same run at the same offset: {', '.join(kept)}")
+        if not deletions:
+            continue
+        for at in deletions:
+            if stream[at:at + 2] != SPACE_UNIT:
+                raise TextEditError(
+                    f"REFUSED: selector {selector}: the unit at {at:#x} is not a space and would "
+                    "have been deleted")
+        deleted = frozenset(at // 2 for at in deletions)
+        texts, handles = _spacing_spans(model, selector, deleted)
+        index = _note(decisions, f"selector {selector}", IN_PLACE, sites=len(handles),
+                      bytes_before=len(stream), bytes_after=len(stream) - len(deletions) * 2)
+        spacing.append(_Spacing(decision=index, selector=selector, deleted=tuple(deletions),
+                                texts=texts, handles=handles, kept_retail=tuple(kept)))
+
+
+def _spacing_spans(model: Model, selector: int, deleted: frozenset[int],
+                   ) -> tuple[dict[str, str], dict[int, int]]:
+    """Each record's collapsed text, and every site whose packed handle moved."""
+    stream = model.layout.streams[selector]
+    ordered = sorted(deleted)
+
+    def remap(byte_at: int) -> int:
+        return 2 * (byte_at // 2 - bisect_left(ordered, byte_at // 2))
+
+    texts: dict[str, str] = {}
+    handles: dict[int, int] = {}
+    for record in model.selector_records(selector):
+        units = [stream[at:at + 2].decode("utf-16le")
+                 for at in range(record.start, record.start + record.length, 2)
+                 if at // 2 not in deleted]
+        text = "".join(units)
+        if not text:
+            raise TextEditError(
+                f"REFUSED: {record.key} would collapse to an empty record; a handle of length "
+                "zero is not legal")
+        texts[record.key] = text
+        start, end = remap(record.start), remap(record.start + record.length)
+        handle = DialogueHandle(selector, start, end - start).encode()
+        if handle != DialogueHandle(selector, record.start, record.length).encode():
+            for site in proven_sites(model.layout, record.sites):
+                handles[site] = handle
+    return texts, handles
+
+
+def _write_spacing(model: Model, spacing: list[_Spacing], decisions: list[Decision],
+                   builder: _Builder) -> tuple[list[_Spacing], list[Decision], set[int]]:
+    """Rewrite each collapsed container where it stands, then every handle it moved."""
+    final: list[_Spacing] = []
+    written: set[int] = set()
+    for row in spacing:
+        stream = model.layout.streams[row.selector]
+        deleted = frozenset(at // 2 for at in row.deleted)
+        payload = bytearray()
+        for at in range(0, len(stream), 2):
+            if at // 2 not in deleted:
+                payload += stream[at:at + 2]
+        kind = model.layout.kinds[row.selector]
+        packed = (webfoot_lz.build_stored(bytes(payload)) if kind == webfoot_lz.STORED
+                  else webfoot_lz.pack(bytes(payload), kind=kind))
+        at = model.layout.offsets[row.selector]
+        if len(packed) > model.layout.room[row.selector]:
+            pointer = container_pointers(model.image)[row.selector]
+            if _references(model.image, pointer) != 1:
+                decisions[row.decision] = replace(
+                    decisions[row.decision], method=REFUSED,
+                    reason=f"selector {row.selector} needs {len(packed)} bytes of "
+                           f"{model.layout.room[row.selector]}, and its old pointer has "
+                           f"{_references(model.image, pointer)} word-aligned references, so it "
+                           "cannot be repointed")
+                final.append(row)
+                continue
+            at = builder.append(packed, f"container {row.selector} relocated")
+            entry = _table_base(model.profile, builder.out) + row.selector * 4
+            builder.write(entry, (ROM_BASE + at).to_bytes(4, "little"),
+                          f"table slot {row.selector}")
+        else:
+            builder.write(at, packed, f"container {row.selector} collapsed")
+        for site, handle in sorted(row.handles.items()):
+            builder.write(site, handle.to_bytes(4, "little"),
+                          f"handle for selector {row.selector}")
+        written.add(row.selector)
+        final.append(row)
+    return final, decisions, written
+
+
 # --- reading the result back -------------------------------------------------
 
 
@@ -1121,9 +1362,22 @@ def readback(plan: Plan) -> tuple[str, ...]:
         for site in row.sites:
             expected[site] = (want, False)
     for row in plan.placements:
+        if not row.sites:
+            stream = _container_stream(model, image, model.profile.grown_selector, cache)
+            got = stream[row.new_start:row.new_start + row.new_length].decode("utf-16le")
+            if got != row.text:
+                problems.append(f"{row.key}: placed text reads {got[:44]!r}, expected "
+                                f"{row.text[:44]!r}")
+            continue
         for site in row.sites:
             expected[site] = (row.text, True)
+    proven = set(proven_sites(model.layout, expected))
     for site in sorted(expected):
+        if site not in proven:
+            if image[site:site + 4] != model.image[site:site + 4]:
+                problems.append(f"site {site:#06x} is outside the event-resource pool and was "
+                                "written; a word there is a shape coincidence, not a reference")
+            continue
         want, exact = expected[site]
         got, why = _text_at_site(model, image, site, cache)
         if why:
@@ -1142,6 +1396,22 @@ def readback(plan: Plan) -> tuple[str, ...]:
             continue
         if got != row.new:
             problems.append(f"text:{row.slot}: reads {got[:50]!r}, expected {row.new[:50]!r}")
+    for row in plan.spacing:
+        if plan.decisions[row.decision].method == REFUSED:
+            continue
+        for record in model.selector_records(row.selector):
+            want = row.texts[record.key]
+            for site in proven_sites(model.layout, record.sites):
+                got, why = _text_at_site(model, image, site, cache)
+                if why:
+                    problems.append(why)
+                elif got != want:
+                    problems.append(f"{record.key}: site {site:#06x} reads {got[:44]!r}, "
+                                    f"expected {want[:44]!r}")
+        for site, handle in sorted(row.handles.items()):
+            if int.from_bytes(image[site:site + 4], "little") != handle:
+                problems.append(f"site {site:#06x} does not carry its planned handle "
+                                f"{handle:#010x}")
     return tuple(problems)
 
 

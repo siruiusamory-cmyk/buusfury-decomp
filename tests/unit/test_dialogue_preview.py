@@ -18,7 +18,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QMimeData, Qt  # noqa: E402
+from PySide6.QtCore import QBuffer, QIODevice, QMimeData, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QImage, QKeyEvent, QTextCursor  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTextEdit  # noqa: E402
 
@@ -293,8 +293,18 @@ def shot(widget) -> QImage:
 
 
 def pixels(widget) -> bytes:
-    """The pane's canvas as bytes, for an equality that does not depend on QImage."""
-    return bytes(shot(widget).constBits())
+    """The pane's canvas as bytes, for an equality that does not depend on QImage.
+
+    The image is ENCODED rather than read through `constBits()`. Measured: the raw buffer
+    view came back one byte off at its start on roughly three runs in four when this case
+    was selected alone, so two grabs of an unchanged widget compared unequal and the case
+    read as a repaint that never happened. The encoded form of one image is one byte
+    string, so the comparison is about the pixels and not about how the buffer was read.
+    """
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    shot(widget).save(buffer, "PNG")
+    return bytes(buffer.data())
 
 
 def canvas_colours(widget) -> set[str]:
@@ -331,11 +341,13 @@ def test_an_image_whose_font_will_not_decode_is_waiting_and_names_the_font() -> 
 
 def test_an_image_whose_box_will_not_decode_is_waiting_and_names_the_box() -> None:
     image = synthetic_image()
-    # A stored container of the wrong length where the 128 box's container lives.
+    # A stored container of the wrong length where the 128 box's container lives, with
+    # the operand that selects that layout so the decode of it is what is attempted.
     blob = webfoot_lz.build_stored(bytes(preview.SURFACE_BYTES // 10))
     offset = preview.BOX_ART[128]
     image[offset:offset + len(blob)] = blob
     widget = pane(bytes(image), "shot.gba", "A")
+    widget.set_portrait(preview.SECOND_LAYOUT_OPERAND)
     assert widget.state() == "waiting"
     assert widget.missing()[0].startswith("the box art at 0x71A6C")
     assert not (canvas_colours(widget) & engine_colours()), \
@@ -354,16 +366,26 @@ def test_a_ready_pane_paints_the_engines_own_surface() -> None:
     x, y = preview.TEXT_ORIGIN
     assert canvas.pixelColor(MARGIN + x, MARGIN + y).name() == \
         QColor(*palette[preview.DEFAULT_INK]).name()
+    # A record with no portrait operand takes the FIRST layout, the 144 box.
+    assert widget._render.limit == 144
     assert canvas.pixelColor(MARGIN + x + GLYPH_ADVANCE, MARGIN + y).name() == \
-        QColor(*palette[BOX_FILLS[128]]).name()
+        QColor(*palette[BOX_FILLS[144]]).name()
 
 
 def test_the_portrait_operand_selects_which_box_is_drawn() -> None:
+    """The operand the record stores is what picks the layout, art and limit together."""
     image = bytes(synthetic_image())
     widget = pane(image, "shot.gba", "A")
     palette = preview.decode_palette(image)
+    # Operand 0 is no portrait and takes the first layout, the 144 box.
+    assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[144]]).name()
+    widget.set_portrait(7)
     assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
         QColor(*palette[BOX_FILLS[128]]).name()
+    widget.set_portrait(0)
+    assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[144]]).name()
     widget.set_portrait(0x3F)
     assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
         QColor(*palette[BOX_FILLS[144]]).name()
@@ -465,3 +487,119 @@ def test_the_context_pane_clears_the_preview_when_no_line_is_selected(tmp_path: 
     panel.set_line(None, None)
     assert panel.preview.state() == "waiting"
     assert panel.preview.missing() == ("an open image",)
+
+
+# --- the layout rule, and the two cases the pane states rather than draws -------
+
+
+def test_the_operand_seven_rule_selects_the_layout_and_its_own_box_art() -> None:
+    """F3: index 1 only for the operand that is exactly 7, and the art follows it.
+
+    MEASURED from the box constructor `0x08012012`: index 0 unless the portrait operand
+    is exactly 7 (`0x08012104` to `0x0801210A`), the layout being
+    `0x08071720 + 0x10 + 0x14*index` (`0x0800B29E`), and the layout record carries BOTH
+    the wrap limit and the art container. The rule this replaces was "portrait present"
+    against "no portrait", which gave operand 0 - no portrait - the WRONG box: it took
+    index 1 where the engine takes index 0. So operand 0 is a case here, not an aside.
+    """
+    image = bytes(synthetic_image())
+    palette = preview.decode_palette(image)
+    widget = pane(image, "shot.gba", "A")
+    # Operand 0 means no portrait and takes the FIRST layout, limit 144, art 0x71758.
+    assert preview.box_for(0) == 144
+    # Only 7 takes the second layout, limit 128, art 0x71A6C.
+    assert preview.box_for(7) == 128
+    # An ordinary portrait operand, and a record with no operand at all, both take 0.
+    for operand in (None, 1, 6, 8, 0x3F):
+        assert preview.box_for(operand) == 144, operand
+    for operand, limit in ((0, 144), (7, 128), (8, 144), (None, 144)):
+        widget.set_portrait(operand)
+        assert widget.state() == "ready", (operand, widget.missing())
+        assert widget._render.limit == limit, operand
+        assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
+            QColor(*palette[BOX_FILLS[limit]]).name(), operand
+    # The limit and the art are one choice, so what was decoded is the layout's own art.
+    assert set(widget._arts) <= {144, 128}
+    assert widget._arts[128] == preview.decode_box(image, 128)
+    assert widget._arts[144] == preview.decode_box(image, 144)
+
+
+def test_the_two_layout_records_and_their_limits_are_measured() -> None:
+    assert preview.LAYOUT_LIMITS == (144, 128)
+    assert tuple(preview.BOX_ART) == preview.LAYOUT_LIMITS
+    assert preview.BOX_ART == {144: 0x71758, 128: 0x71A6C}
+    assert preview.SECOND_LAYOUT_OPERAND == 7
+
+
+def test_a_record_that_never_had_a_portrait_operand_keeps_the_first_layout() -> None:
+    """The end of the wrong rule: operand 0 and an absent operand are NOT the 128 box.
+
+    Measured before this case: the pane picked its box by portrait PRESENCE, so a record
+    whose operand is 0 was drawn with the limit-128 art and wrapped at 128 instead of
+    144, which changes where its lines break, not only its colours.
+    """
+    image = bytes(synthetic_image())
+    widget = pane(image, "shot.gba", "A")
+    widget.set_portrait(0)
+    assert widget._render.limit == 144
+    widget.set_portrait(7)
+    assert widget._render.limit == 128
+    widget.set_portrait(None)
+    assert widget._render.limit == 144
+
+
+def test_a_record_that_keeps_text_after_its_soft_end_is_limited_and_names_the_rule(
+) -> None:
+    """F6: 0x0B stops the fitter, and what follows it is not established.
+
+    Measured: 307 of 5,610 (record, limit) pairs carry a 0x0B. The pane drew the first
+    segment and still said ready, so an edit after the soft end never appeared in the
+    render and nothing said so. The fitter sets the record's end flag at the soft end
+    (0x0803DEB4) and leaves its cursor ON that unit; the rule that carries the reveal
+    past it is not in the seam document and is not guessed here. The record is stated
+    instead, so the pane is limited rather than falsely ready.
+    """
+    image = bytes(synthetic_image())
+    font = preview.decode_font(image)
+    art = preview.decode_box(image, 128)
+    result = preview.render(font, art, "A\x0bB")
+    assert result.drawn is False
+    assert result.surface == b""
+    assert result.missing == preview.SOFT_RULE
+    assert preview.LIMITED + result.problem == \
+        "In-game preview: this record keeps text after its own 0x0B soft end, and the " \
+        "rule that draws what follows is not established"
+    widget = pane(image, "shot.gba", "A")
+    widget.set_text("A\x0bB")
+    assert widget.state() == "limited"
+    assert widget.missing() == (preview.SOFT_RULE,)
+    assert not (canvas_colours(widget) & engine_colours()), \
+        "the soft-end state drew part of a segment it refuses to guess"
+    # A record that ENDS at its soft end is still the record, and still renders.
+    assert preview.render(font, art, "A\x0b").drawn is True
+
+
+def test_a_string_slot_row_is_reported_rather_than_drawn_as_an_empty_box(
+        tmp_path: Path) -> None:
+    """A slot is not drawn in a dialogue box at all, so an empty box is a lie.
+
+    Measured before the fix: the shell handed the pane `""` for a slot row, the pane
+    drew the art with no glyphs on it and reported ready, so a row the engine never
+    draws in a box looked like a record that says nothing.
+    """
+    _bytes, model = simple(tmp_path)
+    session = lined(model)
+    slot = session.rows_of(app_session.SLOT)[0]
+    panel = contextpane.ContextPane(theme.active_theme(), theme.metrics(QAPP))
+    # A record first, so the slot is reached in the state a reader reaches it in.
+    panel.set_line(session, session.rows_of(app_session.LINES)[0])
+    panel.set_preview_state(session.rows_of(app_session.LINES)[0].text)
+    assert panel.preview.ready()
+    panel.set_line(session, slot)
+    panel.set_preview_state("")
+    assert slot.view == app_session.SLOT and slot.target == ""
+    assert panel.preview.state() == "waiting"
+    assert panel.preview.missing() == ("a dialogue record",)
+    assert panel.preview.ready() is False
+    assert not (canvas_colours(panel.preview) & engine_colours()), \
+        "a slot row drew the game's box"

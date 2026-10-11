@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from . import preview
 from . import theme as theme_module
 from .lineview import NO_PLACE_LINK
-from .session import UNKNOWN_SPEAKER
+from .session import SLOT, UNKNOWN_SPEAKER
 
 NO_RETAIL = "No retail reference is loaded, so there is nothing to compare with."
 NO_LINE = "No line is selected."
@@ -134,11 +134,13 @@ class ContextPane(QWidget):
             self.preview.set_image(None)
             return
         # The preview draws the image the window opened, so it is handed the image
-        # itself and the record's portrait operand, which is what picks the box.
+        # itself and the record's portrait operand, which is what picks the layout
+        # record and therefore both the wrap limit and the box art.
         model = session.model
         self.preview.set_image(model.image, model.path.name)
         operand = self._operand(session, line)
         self.preview.set_portrait(operand)
+        self.preview.set_no_box(line.view == SLOT)
         self._show_speaker(line, operand)
         self._show_place(line)
         self._show_retail(session, line)

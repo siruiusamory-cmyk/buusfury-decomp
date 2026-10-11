@@ -230,29 +230,90 @@ def test_clearing_one_line_of_a_record_keeps_the_other(tmp_path: Path) -> None:
     assert session.edited_keys() == ()
 
 
-def test_a_whole_record_text_composes_with_a_pending_line_edit(tmp_path: Path) -> None:
-    """A rename replaces the record's whole text, and a pending line edit survives it.
+def test_two_renames_of_one_record_both_land(tmp_path: Path) -> None:
+    """Measured: two rename batches on one record kept only the second, silently.
 
-    Measured: the rename batch built its text from the original record as well, so it
-    discarded a pending line edit the same way a second line edit did. A whole-record
-    text is now a base the pending rows are re-applied to, and where a row cannot be
-    located exactly once the combination is refused rather than guessed.
+    Each batch stored the record's WHOLE replacement text, so the second overwrote the
+    first. Every batch is now a set of SPANS measured against the record's original text,
+    so two of them compose the way two line edits do.
+    """
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    session.set_spans(target, "One", "Uno", frozenset({0}))
+    assert session.pending_text(target) == "Uno\nTwo"
+    session.set_spans(target, "Two", "Dos", frozenset({4}))
+    assert session.pending_text(target) == "Uno\nDos"
+    assert session.state(target) is State.EDITED
+    assert len(session.edits) == 1
+
+
+def test_a_rename_and_a_line_edit_of_one_record_compose_and_undo(tmp_path: Path) -> None:
+    """A rename on one line and a typed edit on the other both survive, and undo restores.
+
+    Measured: undo of a rename on a record that also had a line edit raised, did nothing,
+    and left the record unusable, because the undo wrote a composed text back as a whole
+    record and the line entry was then looked for by its old text inside it. Entries are
+    now spans of the original and a snapshot is restored whole, so undo restores exactly
+    what the record held and cannot be refused.
     """
     session = two_line_session(tmp_path)
     target = record_key(session)
     first, second = _the_two_lines(session)
     session.set_edit(second.key, "Tvo")
-    original = session.line(target).text
-    # Both changes are the same length as what they replace, so this case is about the
-    # composition and not about the record moving.
-    renamed = original.replace("One", "Uno", 1)
-    assert renamed != original and len(renamed) == len(original)
-    session.set_edit(target, renamed, whole=True)
+    before = session.snapshot(second.key)
+    session.set_spans(target, "One", "Uno", frozenset({0}))
     assert session.pending_text(second.key) == "Tvo"
-    # The record's own pending text carries BOTH: the rename it was given and the line
-    # edit that was already pending inside it.
     assert session.pending_text(target) == "Uno\nTvo"
-    assert session.state(second.key) is State.EDITED
+    session.restore(second.key, before)
+    assert session.pending_text(target) == "One\nTvo"
+    assert session.pending_text(first.key) == "One"
+    session.clear_edit(target)
+    assert session.edited_keys() == ()
+
+
+def test_a_rename_inside_an_edited_line_is_reported_and_wedges_nothing(tmp_path: Path) -> None:
+    """A span that straddles an edit already there is skipped, and the record still reads.
+
+    Measured: the same combination raised from inside the session and left the record
+    raising for every later question about it. It is now refused before anything is
+    written: the span is skipped with a reason, the edit that was there is untouched, and
+    every reader of that record still answers.
+    """
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    first, second = _the_two_lines(session)
+    # Same length, so the state is about the edit and not about the record moving.
+    session.set_edit(first.key, "Une")
+    skipped = session.set_spans(target, "n", "N", frozenset({2}))
+    assert skipped and "lies inside an edit" in skipped[0]
+    assert session.pending_text(first.key) == "Une"
+    assert session.pending_text(target) == "Une\nTwo"
+    assert session.pending_text(second.key) == "Two"
+    assert session.state(first.key) is State.EDITED
+    assert session.counts(app_session.LINES)[State.EDITED] == 1
+
+
+def test_typing_the_whole_record_supersedes_the_lines_inside_it(tmp_path: Path) -> None:
+    """An edit made in the Records shape says what the record says, and is never refused.
+
+    Measured: with a line edit pending, every keystroke in the Records shape was refused,
+    because the stored record text was searched for the line's old text. A row's span is
+    its own, so the record's span contains the line's entries and supersedes them, which
+    is correct: the text typed into that row already contains what they said.
+    """
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    first, second = _the_two_lines(session)
+    session.set_edit(second.key, "Tvo")
+    session.set_edit(target, "Uno\nDos")
+    assert session.pending_text(target) == "Uno\nDos"
+    assert session.state(target) is State.EDITED
+    # The line rows read their own slices of the text the record now says, and none of
+    # them raises.
+    assert session.pending_text(first.key).startswith("Uno")
+    assert session.pending_text(second.key).startswith("Dos")
+    session.clear_edit(target)
+    assert session.edited_keys() == ()
 
 
 
@@ -334,6 +395,51 @@ def test_search_and_filters_read_the_same_rows(tmp_path: Path) -> None:
     assert [line.key for line in session.matching(states=frozenset({State.EDITED}))] == [key]
     assert len(session.matching(kind=SLOT)) == 1534
     assert session.counts(RECORD)[State.EDITED] == 1
+
+
+def test_no_sequence_of_edits_wedges_a_record_or_loses_a_snapshot(tmp_path: Path) -> None:
+    """A random walk of the operations the window makes, checking two invariants.
+
+    A single hand-written case per refusal route is weaker evidence than it looks: the
+    review found a wedge reachable from three routes, and the routes interact. So this
+    drives a fixed sequence of line edits, rename spans, whole-record edits and clears,
+    and after every step asks the session everything the window asks of it, then restores
+    a snapshot and requires the record to read exactly as it did. A refusal is allowed and
+    expected; a question that raises, or a restore that does not restore, is not.
+    """
+    import random
+
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    rows = _the_two_lines(session)
+    session.set_edit(rows[1].key, "Tvo")
+    names = ("Une", "Dos", "Tres")
+    rng = random.Random(20261011)
+    for step in range(200):
+        row = rng.choice(rows)
+        before_texts = {r.key: session.pending_text(r.key) for r in session.lines}
+        whole = session.snapshot(target)
+        kind = rng.choice(("type", "type", "rename", "records", "clear"))
+        try:
+            if kind == "type":
+                session.set_edit(row.key, rng.choice(names) + rng.choice(("", "!")))
+            elif kind == "rename":
+                session.set_spans(target, row.text[:2], "XX", frozenset({0}))
+            elif kind == "records":
+                session.set_edit(target, "\n".join(rng.sample(names, 2)))
+            else:
+                session.clear_edit(row.key)
+        except textedit.TextEditError as error:
+            assert "already changed" in str(error), f"step {step}: unexpected refusal"
+        questions = (lambda: session.pending_text(target),
+                     lambda: session.counts(app_session.LINES),
+                     lambda: session.matching(term="U"),
+                     lambda: session.plan())
+        for question in questions:
+            question()
+        session.restore(target, whole)
+        assert {r.key: session.pending_text(r.key) for r in session.lines} == before_texts, (
+            f"step {step} ({kind}) did not restore the record")
 
 
 def test_the_control_unit_filter_and_the_progress_counters(tmp_path: Path) -> None:

@@ -312,6 +312,55 @@ boundary" could not be reproduced under any definition tried; what was measured 
 and recorded in the engine doc, is 179 records that never cut a line and 821 lines that
 run across a boundary one of those records owns.
 
+### The delta review, and the two blocking findings it found in that fix
+
+The delta review returned BLOCKED again, and it was right about both. It held B2 (0
+failures in 20,000 randomized conversion checks), B3's states and engine rules, the four
+counted cases recomputed, the scroll refusal, the edge insertion, the icon count and the
+five earlier claims.
+
+**F1. The fix for the first blocker introduced a wedge.** `set_edit` wrote its whole-record
+text BEFORE checking that the combination composed, so a refusal left the record holding a
+text nothing could be read through: the review's own repro is edit line 2, rename line 1,
+then Undo, which raised, did nothing, and left `pending_text`, `state`, `counts` and
+`matching` raising for that record until the window closed. A second Undo then baked the
+line edit into the record with an empty undo stack. The root cause was that a whole-record
+text was a base and line entries were found inside it by SEARCHING for their old text,
+which has no answer once the base already contains a different version of that line, and
+which is why the same wedge appeared from the Records shape on every keystroke.
+
+**F2. Renames did not compose.** Two rename batches on one record kept only the second,
+because each built its text from the original and replaced the whole of it: `One\nTwo`
+renamed `One` to `Uno` and then `Two` to `Dos` read `One\nDos`. The same silent-loss class
+as the first blocker, on the very path the fix claimed was closed.
+
+**How they are closed.** Every edit this session holds is now a SPAN of the ORIGINAL
+canonical text: one per edited row, plus one per span a rename batch contributes, each
+carrying the row it came from and nothing else. The composed text is rebuilt from the
+original by applying them in offset order, so two entries compose by construction, a
+rename and a line edit compose, and two renames compose, none of them ever located by
+searching. Three placement rules replace the search: an entry wholly inside a new one is
+superseded, an identical span is replaced, and a PARTIAL overlap is the one case with no
+honest answer and is refused BEFORE anything is written. Undo stores SNAPSHOTS of what a
+record held rather than texts, so restoring one cannot be refused, which is what makes the
+review's own repro restore cleanly and leave every reader of that record answering.
+
+The cases that carry it: two renames of one record both land; a rename and a line edit
+compose and a snapshot restores them; a rename inside an edited line is reported and
+wedges nothing; typing the whole record in the Records shape supersedes the line entries
+inside it and is never refused; and at the window, undo of a rename beside a pending line
+edit restores both and leaves the record's state, counts and matching answering.
+
+Under three more findings: the layout choice is a coordinator instruction that is not
+measured and it is now disclosed where a render is read; the capture comparison mapped a
+`per_character` index onto unit positions and cut every multi-line reveal short, so the
+instrument was wrong rather than the render, and it now asserts the outcome; the corpus
+case counted 588 pairs it can compare and now compares them; the pane's soft end and a
+string slot both reported ready while drawing something the engine would not; the
+vendored model's provenance names a commit that exists on origin, and six lines of
+decompiled pseudocode left the committed test in favour of the address and the source
+document.
+
 ## 7. End to end, on release 3.1, with digests
 
 - Input: `roms/v3-release31.gba`,
@@ -364,12 +413,7 @@ model layer produced. No new emulator run was made for the rebuild.
    it a weight step; the note's wording was corrected rather than the build.
 10. **Color Oracle was replaced by a scripted simulator** for the colour-vision
     conversions, with the reason in section 5.
-11. **The preview's box choice follows the owner's relay, not a measurement.** The seam
-    document names the two layout records and their limits but does not establish which
-    one a portrait selects. The relay says portrait to the 144 box and no portrait to the
-    128 box, that is what the code does, and the function that decides it says so in its
-    own docstring, so a reader can tell a relay from a measurement.
-12. **The changed-run underline is drawn at the font's thickness rather than a chosen
+11. **The changed-run underline is drawn at the font's thickness rather than a chosen
     2 px**, because Qt exposes no underline width. Recorded at the call site.
 
 ## 9. The in-game preview, and what it is proved against
@@ -379,33 +423,65 @@ through its 12-byte descriptor, the box art through the layout record's own cont
 and the colours through the image's own 256-entry object palette. Nothing ROM-derived is
 committed, no path is machine-specific, and the widget computes no engine value.
 
-The layout rules are the seam document's, and one of them was re-read from the image's
-own code because two models disagreed about it. `FUN_0803DE6A` accumulates each glyph's
-advance, compares the sum against the caller's limit, and on overflow either rewinds to
-the last space it saw or, when it saw no space, returns without advancing. The advance is
-the record's stored width plus one, read from the same code. A run wider than the limit is
-therefore broken inside the run, which is what this pane draws and what the RE Lab's
-copied model does not.
+The layout rules are the seam document's, and two of them were settled by reading the
+image's own code rather than by preference. **Which layout a record takes** is measured:
+the dialogue box constructor at `0x08012012` picks layout index 1 only when the record's
+portrait operand is EXACTLY 7 (`0x08012104` to `0x0801210A`), and index 0 otherwise, and
+the builder composes the layout as `0x08071720 + 0x10 + index * 0x14` and stores it at
+`0x0800B29E`. Index 0 is layout `0x08071730`, limit 144, art container `0x08071758`; index
+1 is layout `0x08071744`, limit 128, art container `0x08071A6C`. The layout carries BOTH
+the wrap limit and the box art, and the pane takes both from the same record.
 
-**What it is proved against.** Two cases, both from the canonical image at test time:
+This corrects an earlier version of this pane, which chose by whether a portrait was drawn
+at all. That proxy is wrong for exactly one operand: operand 0 means no portrait and takes
+index 0 with the 144 limit, where the proxy gave it 128. Operands 1 to 6 and 8 and above
+take index 0, which the proxy got right by accident. The rule that first arrived with this
+ticket, "portrait to 144 and no portrait to 128", was a coordinator instruction that also
+claimed the seam document established it, which it did not; it is replaced here by the
+measured rule, and the case for operand 0 is the one that proves the difference.
+
+The second rule re-read from the code is the fitter. `FUN_0803DE6A` accumulates each
+glyph's advance, compares the sum against the caller's limit, and on overflow either
+rewinds to the last space it saw or, when it saw no space, returns without advancing. The
+advance is the record's stored width plus one, read from the same code. A run wider than
+the limit is therefore broken inside the run, which is what this pane draws and what the
+RE Lab's copied model does not.
+
+**What it is proved against.** Two cases, both from the canonical image at test time. The
+counts are (record, limit) PAIRS, not records: 2,805 records at two limits is 5,610 pairs,
+and the first review of this section found the earlier wording calling them records.
 
 | Case | What it compared | Result |
 | --- | --- | --- |
-| The RE Lab's own model, whole corpus | 2805 records at both layout limits | 3899 comparisons exact, no disagreement |
-| Native 240x160 captures | the box located in each frame, its ink pixels against the render | every frame that holds a box whose record is in the corpus is reproduced pixel for pixel |
+| The RE Lab's own model, whole corpus | 5,610 (record, limit) pairs | 3,899 exact, no disagreement, and the comparable remainder compared by adapting the reference rather than counted |
+| Native 240x160 captures | the box located in each frame, its ink pixels against the render | every frame whose box was located and whose record the corpus carries is reproduced pixel for pixel, asserted rather than assumed |
 
 Counted rather than compared, because the two models are not models of the same thing
-there, and each is stated rather than hidden: 1097 records the box cannot hold (the scroll
-case, refused), 335 the reference runs past the box, 26 carrying a run wider than the
-limit (the branch the code above settles), and 253 carrying a control unit the reference
-prices differently.
+there, and each is stated rather than hidden: 1,097 pairs whose record the box cannot hold
+(the scroll case, refused), 335 the reference runs past the box, 26 carrying a run wider
+than the limit (the branch the code above settles), and the pairs carrying a control unit,
+which the test now compares by adapting the reference to the engine's own unit handling
+instead of counting.
+
+**The two documents disagree about the 20 px reduction.** `DIALOGUE_EXPANSION_TOKEN_DESIGN.md`
+states that a reduction to 124 and 108 is handed in on the canonical image; the seam
+document states that the `-0x14` reduction is not established. Both cannot be true, the
+seam document is the later measurement, and this preview therefore treats the case as
+unestablished and refuses it. The contradiction is recorded here instead of being resolved
+by picking the convenient one.
 
 **The states it refuses to guess.** `waiting` when there is no image, or the font or the
-box art will not decode, and it names the exact missing part. `limited` when the record
-needs more lines than the box holds: measured on release 3.1, `this record needs 81 lines
-and the box holds 4. Missing: the scroll-advance rule`, with no box drawn at all. Both
-states paint one sentence and nothing else, so a case the measurement leaves open is
-visibly not drawn rather than drawn approximately.
+box art will not decode, and it names the exact missing part. `limited` when a case the
+measurement leaves open is on screen, and it names WHICH rule is missing, because there
+are two: a record that needs more lines than the box holds says so and names the
+scroll-advance rule, and a record that keeps drawable text after its own `0x0B` says so
+and names the reveal rule after the soft end, which no read code establishes a
+continue-past path for. A string slot states that no box is drawn because the row is a
+string slot. Measured on release 3.1: the largest record needs 92 lines at the 128 limit
+and 80 at the 144 limit against a box that holds four, and a record reached from the list
+shows `this record needs 81 lines and the box holds 4`. Every one of those states paints
+one sentence and nothing else, so a case the measurement leaves open is visibly not drawn
+rather than drawn approximately.
 
 Three captures of the render and one of the refusal are in the colour-vision set: the
 render at 100 percent in both modes, at 150 percent, and the limited state naming the

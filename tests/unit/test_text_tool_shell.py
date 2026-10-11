@@ -38,10 +38,15 @@ from tools.buufury_text.session import (  # noqa: E402
 from tools.webfoot import textedit  # noqa: E402
 
 
+#: Bound at module level on purpose, so the application cannot be collected when the
+#: fixture's scope ends and leave the rest of the session building widgets under Qt with
+#: no application. See the same note in `test_text_tool_editor.py`.
+QAPP = QApplication.instance() or QApplication([])
+
+
 @pytest.fixture(scope="module")
 def qapp():
-    application = QApplication.instance() or QApplication([])
-    yield application
+    yield QAPP
 
 
 class _Dialogs:
@@ -682,6 +687,77 @@ def test_a_refused_image_answers_two_without_a_traceback(qapp, tmp_path, monkeyp
     broken.write_bytes(b"\x00" * 0x200)
     assert app_module.main([str(broken)]) == 2
     assert dialogs.warnings and dialogs.warnings[0].startswith("REFUSED:")
+
+
+def two_line_window(qapp, tmp_path, monkeypatch):
+    """A shown window over one record whose text is two spoken lines."""
+    monkeypatch.setattr(settings, "directory", lambda: tmp_path / "user-config")
+    folder = tmp_path / "two-line"
+    folder.mkdir()
+    payload = bytearray(SPACES)
+    payload[0x20:0x20 + 8] = "One\nTwo".encode("utf-16le")
+    image = build(payloads={1: bytes(payload)}, records=[(1, 0x20, 14)])
+    (folder / "retail.gba").write_bytes(image)
+    path = folder / "working.gba"
+    path.write_bytes(image)
+    with lowered_record_floor():
+        session = text_session.open_image(path, canonical=folder / "retail.gba",
+                                          view=text_session.LINES, cutters_from_pool=False)
+    applied = theme.apply_theme(qapp, theme.MODE_DARK)
+    shell = shell_module.Shell(session, applied, theme.MODE_DARK)
+    shell.show()
+    QApplication.processEvents()
+    target = session.model.records[0].key
+    rows = sorted((row for row in session.lines if row.target == target),
+                  key=lambda row: row.position[1])
+    assert len(rows) == 2, [row.text for row in rows]
+    return shell, session, target, rows
+
+
+def test_undo_of_a_rename_beside_a_line_edit_restores_and_does_not_wedge(
+        qapp, tmp_path, monkeypatch) -> None:
+    """The review's own repro: edit line 2, rename line 1, undo.
+
+    Measured before: the undo wrote the pre-rename composed text back as a whole record,
+    the line entry was then looked for by its old text inside it, and the write raised.
+    The record was left unable to answer later questions and a second undo baked the line
+    edit into it. Snapshots cannot be refused, so undo restores and every reader answers.
+    """
+    shell, session, target, rows = two_line_window(qapp, tmp_path, monkeypatch)
+    try:
+        shell.apply_edit(rows[1].key, "Tvo")
+        assert shell.apply_rename("One", "Uno", ((target, frozenset({0})),)) == 1
+        assert session.pending_text(target) == "Uno\nTvo"
+        shell.stack.undo()
+        assert session.pending_text(target) == "One\nTvo"
+        assert session.pending_text(rows[1].key) == "Tvo"
+        assert session.state(rows[0].key) is not None
+        assert session.counts(text_session.LINES)
+        assert session.matching(kind=text_session.LINES) is not None
+        shell.stack.undo()
+        assert session.edited_keys() == ()
+        assert session.pending_text(target) == "One\nTwo"
+    finally:
+        shell.close()
+
+
+def test_two_renames_of_one_record_both_survive_and_undo_separately(
+        qapp, tmp_path, monkeypatch) -> None:
+    """Measured: two rename batches on one record kept only the second.
+
+    Both are spans of the original text now, so each lands and each undoes on its own.
+    """
+    shell, session, target, _rows = two_line_window(qapp, tmp_path, monkeypatch)
+    try:
+        assert shell.apply_rename("One", "Uno", ((target, frozenset({0})),)) == 1
+        assert shell.apply_rename("Two", "Dos", ((target, frozenset({4})),)) == 1
+        assert session.pending_text(target) == "Uno\nDos"
+        shell.stack.undo()
+        assert session.pending_text(target) == "Uno\nTwo"
+        shell.stack.undo()
+        assert session.edited_keys() == ()
+    finally:
+        shell.close()
 
 
 def test_undo_returns_each_line_of_one_record_separately(qapp, tmp_path, monkeypatch) -> None:

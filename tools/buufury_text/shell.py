@@ -157,19 +157,23 @@ def span_detail(session: Session, key: str) -> str:
 
 
 class _EditCommand(QUndoCommand):
-    """One user edit: the text before, the text after, one stack entry."""
+    """One user edit: the target's edits before and after, one stack entry.
 
-    def __init__(self, shell: Shell, key: str, before: str, after: str,
-                 whole: bool = False) -> None:
-        super().__init__(f"edit {key}")
-        self._shell, self._key = shell, key
-        self._before, self._after, self._whole = before, after, whole
+    Both sides are SNAPSHOTS of what the target held, not texts. Restoring a snapshot a
+    session was already in cannot be refused, which is what makes undo of a rename, or of
+    one row of a record that has other edits, exact instead of a reconstruction.
+    """
+
+    def __init__(self, shell: Shell, key: str, before, after,
+                 label: str | None = None) -> None:
+        super().__init__(label or f"edit {key}")
+        self._shell, self._key, self._before, self._after = shell, key, before, after
 
     def redo(self) -> None:
-        self._shell.write(self._key, self._after, whole=self._whole)
+        self._shell.restore(self._key, self._after)
 
     def undo(self) -> None:
-        self._shell.write(self._key, self._before, whole=self._whole)
+        self._shell.restore(self._key, self._before)
 
 
 class Shell(QMainWindow):
@@ -475,9 +479,12 @@ class Shell(QMainWindow):
         # The preview draws the RECORD, not the row, because that is what the box holds:
         # a record split by the game's own line break is one page of up to four lines,
         # and showing one row of it would show a fraction of what the reader will see.
-        # The record's pending text carries every row's edit in it.
+        # The record's pending text carries every row's edit in it. A string slot names
+        # no record, so the pane is told the row has no box rather than shown an empty
+        # one, which is a box the engine never draws for it.
         self.context.set_preview_state(
-            self.session.pending_text(line.target) if line.target else "")
+            "" if line.view == SLOT
+            else self.session.pending_text(line.target) if line.target else "")
         if self._editor_key != key:
             self._editor_key = key
             self.editor.set_line(line, state, meter, differs, reason,
@@ -548,12 +555,12 @@ class Shell(QMainWindow):
 
     # --- the one edit path ---------------------------------------------------
 
-    def apply_edit(self, key: str, new: str, *, whole: bool = False) -> None:
+    def apply_edit(self, key: str, new: str) -> None:
         """The one way a line changes: one user action, one undo step.
 
-        `whole` says this replaces the row's whole text rather than typing into one line
-        of it, and it is carried into the undo command so undoing a rename restores the
-        row the same way the rename wrote it.
+        The edit is applied first and both sides are recorded as SNAPSHOTS of what the
+        record held, so an undo restores exactly what was there. A refused combination
+        leaves the record as it was and pushes nothing.
         """
         if self.session is None:
             return
@@ -561,24 +568,32 @@ class Shell(QMainWindow):
         if line is None or not line.text:
             self.statusBar().showMessage(f"{key} has no text for an edit to replace.")
             return
-        before = self.session.pending_text(key)
-        if new == before:
+        before = self.session.snapshot(key)
+        self.write(key, new)
+        after = self.session.snapshot(key)
+        if after == before:
             return
-        self.stack.push(_EditCommand(self, key, before, new, whole))
+        self.stack.push(_EditCommand(self, key, before, after))
 
-    def write(self, key: str, text: str, *, whole: bool = False) -> None:
-        """Write one row's pending text and redraw. It never pushes a command.
-
-        `whole` says this replaces the row's whole text rather than typing into one line
-        of it, which is what a rename batch does.
-        """
+    def write(self, key: str, text: str) -> None:
+        """Write one row's pending text and redraw. It never pushes a command."""
         if self.session is None:
             return
         try:
-            self.session.set_edit(key, text, whole=whole)
+            self.session.set_edit(key, text)
         except (textedit.TextEditError, KeyError) as error:
             self.statusBar().showMessage(str(error))
             return
+        if self._key:
+            self.pane.refresh(self._key)
+            self.show_line(self._key)
+        self._update()
+
+    def restore(self, key: str, entries) -> None:
+        """Put a record back to a snapshot. It never pushes a command."""
+        if self.session is None:
+            return
+        self.session.restore(key, entries)
         if self._key:
             self.pane.refresh(self._key)
             self.show_line(self._key)
@@ -614,24 +629,32 @@ class Shell(QMainWindow):
                      chosen: tuple[tuple[str, frozenset[int]], ...]) -> int:
         """One undo step for a whole rename batch, through the same edit path.
 
-        Each move is the record's WHOLE text, so it is recorded as such: a rename
-        replaces the row's text rather than typing into one line of it, and the session
-        cannot tell the two apart from the key, because a spoken line that covers its
-        whole record carries the same key the record does.
+        Each move is a set of SPANS measured against the record's original text, so two
+        batches touching one record compose instead of the second replacing the first,
+        and a span that lies inside an edit already there is reported rather than applied
+        or dropped quietly.
         """
         if self.session is None:
             return 0
-        moves = [(key, self.session.rename_text(key, old, new, offsets))
-                 for key, offsets in chosen if self.session.line(key) is not None]
-        moves = [(key, text) for key, text in moves
-                 if text != self.session.pending_text(key)]
+        moves = [(key, offsets) for key, offsets in chosen
+                 if self.session.line(key) is not None and offsets]
         if not moves:
             return 0
         self.stack.beginMacro(f"rename {len(moves)} record(s)")
-        for key, text in moves:
-            self.apply_edit(key, text, whole=True)
+        applied = 0
+        skipped: list[str] = []
+        for key, offsets in moves:
+            before = self.session.snapshot(key)
+            skipped.extend(self.session.set_spans(key, old, new, offsets))
+            after = self.session.snapshot(key)
+            if after != before:
+                self.stack.push(_EditCommand(self, key, before, after,
+                                             f"rename in {key}"))
+                applied += 1
         self.stack.endMacro()
-        return len(moves)
+        if skipped:
+            self.statusBar().showMessage("; ".join(skipped))
+        return applied
 
     # --- open, save and export -----------------------------------------------
 

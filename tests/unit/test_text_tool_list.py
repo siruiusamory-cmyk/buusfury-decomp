@@ -59,10 +59,15 @@ SHAPE_KEYS = {"alpha": "1:32:20", "beta": "2:32:18", "gamma": "3:32:20"}
 DIGEST = "a1" * 32
 
 
+#: Bound at module level on purpose, so the application cannot be collected when the
+#: fixture's scope ends and leave the rest of the session building widgets under Qt with
+#: no application. See the same note in `test_text_tool_editor.py`.
+QAPP = QApplication.instance() or QApplication([])
+
+
 @pytest.fixture(scope="module")
 def qapp():
-    app = QApplication.instance() or QApplication([])
-    yield app
+    yield QAPP
 
 
 @pytest.fixture(autouse=True)

@@ -21,13 +21,23 @@ The rules, each of them measured from the image bytes or from native 240x160 cap
   its own operand;
 * the line fitter is a greedy word wrap against the LIMIT OF THE LAYOUT RECORD the
   record selects (144 or 128), breaking at the last space it saw, so a trailing space
-  is never drawn, with ``0x0A`` ending the line and ``0x0B`` the record.
+  is never drawn, with ``0x0A`` ending the line and ``0x0B`` the record;
+* the layout record is the one the record's own portrait OPERAND selects, and it carries
+  BOTH the limit and the art, so the two are never mixed: the box constructor at
+  ``0x08012012`` takes index 1 only when the operand is exactly ``7`` (``0x08012104`` to
+  ``0x0801210A``) and index 0 otherwise, index ``i`` being ``0x08071720 + 0x10 + 0x14*i``
+  (``0x0800B29E``): index 0 is layout ``0x08071730``, limit 144, art container
+  ``0x08071758``; index 1 is layout ``0x08071744``, limit 128, art container
+  ``0x08071A6C``. Operand 0 means no portrait and still takes index 0.
 
-Two things this pane refuses to do. It does not guess a scroll window: a record whose
+Three things this pane refuses to do. It does not guess a scroll window: a record whose
 wrapped text needs more lines than the box holds is drawn by the engine as a window
 into the record, the rule that advances that window is not established, and the case is
-reported instead. And it draws nothing at all while it cannot render this record - no
-box, no glyph, no stand-in font - only one line naming what is missing.
+reported instead. It does not draw past a ``0x0B`` soft end into text the record keeps
+after it: the fitter stops at that unit, the rule that carries the reveal past it is not
+established, and the case is reported the same way. And it draws nothing at all while it
+cannot render this record - no box, no glyph, no stand-in font - only one line naming
+what is missing.
 """
 
 from __future__ import annotations
@@ -49,9 +59,12 @@ OBJ_PALETTE = 0x5652C
 ROM_BASE = 0x08000000
 
 #: The two layout records' own limit field, and the art container each one draws. The
-#: limit is a field of the record, never a constant of the renderer.
+#: limit is a field of the record, never a constant of the renderer, and the record
+#: carries the art too, so the pair is taken together or not at all.
 LAYOUT_LIMITS = (144, 128)
 BOX_ART = {144: 0x71758, 128: 0x71A6C}
+#: The one portrait operand that selects the SECOND layout record, the 128 one.
+SECOND_LAYOUT_OPERAND = 7
 
 #: The surface: 160 by 64 at one byte per pixel, and the length its decoder must yield.
 SURFACE_WIDTH = 160
@@ -82,6 +95,8 @@ NO_FONT = "In-game preview: the font will not decode from this image."
 NO_BOX = "In-game preview: the box art will not decode from this image."
 LIMITED = "In-game preview: "
 SCROLL_RULE = "the scroll-advance rule"
+SOFT_RULE = "the reveal rule after the 0x0B soft end"
+NO_DIALOGUE_BOX = "no box is drawn, because this row is a string slot"
 
 _MARGIN = 8
 _MAX_SCALE = 4
@@ -185,15 +200,18 @@ def _rgb555(word: int) -> tuple[int, int, int]:
 # --- the box, chosen from the record's portrait ------------------------------
 
 
-def box_for(portrait: int | None) -> int:
-    """The layout limit this record's box uses; 144 with a portrait, 128 without.
+def box_for(operand: int | None) -> int:
+    """The layout limit this record's box uses: 128 only for the operand that is 7.
 
-    The direction came to this tool as an INSTRUCTION and not from a measurement: the
-    two layout records and their limits are measured, but nothing yet says which one a
-    record selects. A reader has to be able to tell an instruction from a measurement,
-    so it is stated here and nowhere else.
+    MEASURED, from the box constructor at ``0x08012012``: index 1 is chosen only when the
+    record's portrait operand is exactly ``7`` (``0x08012104`` to ``0x0801210A``) and
+    index 0 otherwise, index ``i`` being ``0x08071720 + 0x10 + 0x14*i`` (``0x0800B29E``).
+    Operand 0 means no portrait and takes index 0, so what selects the second layout is
+    the OPERAND VALUE, not whether a portrait is drawn. See
+    ``docs/research/DIALOGUE_PREVIEW_SEAM.md``, "Which layout record a box takes".
     """
-    return LAYOUT_LIMITS[0] if portrait is not None else LAYOUT_LIMITS[1]
+    return (LAYOUT_LIMITS[1] if operand == SECOND_LAYOUT_OPERAND
+            else LAYOUT_LIMITS[0])
 
 
 def decode_box(image: bytes, limit: int) -> bytes:
@@ -290,6 +308,24 @@ def wrap(font: Font, units: tuple[int, ...], limit: int) -> tuple[tuple[int, int
         cursor = stop
 
 
+def carries_soft_end(units: tuple[int, ...]) -> bool:
+    """Whether the record keeps a drawable unit after its own ``0x0B``.
+
+    The fitter sets the record's end flag at a soft end and leaves its cursor ON that
+    unit, so text after it belongs to a segment the engine starts at the soft end, and
+    the reveal rule for that segment is not established. That is a separate question
+    from how the first segment lays out, so `wrap` answers only the first and this
+    answers the second. Whitespace after the soft end is not a second segment, and a
+    ``0x0B`` that ends the record is the ordinary case.
+    """
+    for position, unit in enumerate(units):
+        if unit != SOFT_END:
+            continue
+        return any(later not in (TERMINATOR, NEWLINE, SOFT_END, SPACE)
+                   for later in units[position + 1:])
+    return False
+
+
 def paint(font: Font, art: bytes, units: tuple[int, ...],
           lines: tuple[tuple[int, int], ...], ink: int = DEFAULT_INK) -> bytes:
     """The box surface with the record drawn on it, as palette indices."""
@@ -325,6 +361,8 @@ class Render:
     lines: int = 0
     limit: int = 0
     problem: str = ""
+    #: The one rule that is missing where there is no surface, named for the reader.
+    missing: str = ""
 
     @property
     def drawn(self) -> bool:
@@ -336,16 +374,24 @@ def render(font: Font, art: bytes, text: str, portrait: int | None = None) -> Re
     """Render one record the way the engine draws it, or say why there is none.
 
     A record that needs more lines than the box holds is drawn by the engine as a
-    window into the record. No window is guessed here: the case is reported and the
-    surface is empty, so a caller cannot paint an approximation of it by accident.
+    window into the record, and a record that keeps text past its ``0x0B`` soft end is
+    a segment the reveal rule is not established for. Neither is guessed here: both are
+    reported and the surface is empty, so a caller cannot paint an approximation of one
+    by accident.
     """
     limit = box_for(portrait)
     units = units_of(text)
     lines = wrap(font, units, limit)
+    if carries_soft_end(units):
+        return Render(lines=len(lines), limit=limit,
+                      problem=("this record keeps text after its own 0x0B soft end, and "
+                               "the rule that draws what follows is not established"),
+                      missing=SOFT_RULE)
     if len(lines) > LINES_PER_PAGE:
         return Render(lines=len(lines), limit=limit,
                       problem=(f"this record needs {len(lines)} lines and the box holds "
-                               f"{LINES_PER_PAGE}"))
+                               f"{LINES_PER_PAGE}"),
+                      missing=SCROLL_RULE)
     return Render(surface=paint(font, art, units, lines), lines=len(lines), limit=limit)
 
 
@@ -366,6 +412,7 @@ class DialoguePreview(QWidget):
         self._arts: dict[int, bytes] = {}
         self._problem = WAITING_IMAGE
         self._missing: tuple[str, ...] = ("an open image",)
+        self._no_box = False
         self._render: Render | None = None
         self.setObjectName("dialoguePreview")
         self.setProperty("role", "viewport")
@@ -379,6 +426,8 @@ class DialoguePreview(QWidget):
         self._font = None
         self._palette = ()
         self._arts = {}
+        if image is None:
+            self._no_box = False
         self._refresh()
 
     def set_text(self, text: str) -> None:
@@ -393,6 +442,17 @@ class DialoguePreview(QWidget):
         if operand == self._portrait:
             return
         self._portrait = operand
+        self._refresh()
+
+    def set_no_box(self, no_box: bool) -> None:
+        """Whether this row has no dialogue box at all.
+
+        A string slot is not drawn in a dialogue box by the engine, so the pane says
+        what the row is rather than drawing an empty box for it.
+        """
+        if no_box == self._no_box:
+            return
+        self._no_box = no_box
         self._refresh()
 
     # --- what the window asks -------------------------------------------------
@@ -434,11 +494,17 @@ class DialoguePreview(QWidget):
             self._problem, self._missing = "", ()
         else:
             self._problem = f"{LIMITED}{self._render.problem}."
-            self._missing = (SCROLL_RULE,)
+            self._missing = (self._render.missing,)
         self.update()
 
     def _source(self) -> tuple[Font, bytes] | None:
         """This image's font and its box art for the selected portrait, or None."""
+        if self._no_box:
+            # A row that is not a dialogue record has no box to decode, so the decode
+            # is not attempted and the pane says what the row is instead.
+            self._problem = f"{LIMITED}{NO_DIALOGUE_BOX}."
+            self._missing = ("a dialogue record",)
+            return None
         if self._font is None:
             try:
                 self._font = decode_font(self._image)

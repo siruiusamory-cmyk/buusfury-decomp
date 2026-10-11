@@ -64,10 +64,16 @@ def inner_key(session) -> str:
     return found[0].key
 
 
+#: Bound at module level on purpose. Held only by the fixture below, the application
+#: object can be collected when that fixture's scope ends, and Qt then has no application
+#: while the rest of the session keeps making widgets: measured as an intermittent death
+#: with exit 255 partway through a multi-file run, with no traceback to read.
+QAPP = QApplication.instance() or QApplication([])
+
+
 @pytest.fixture(scope="module")
 def qapp():
-    app = QApplication.instance() or QApplication([])
-    yield app
+    yield QAPP
 
 
 @pytest.fixture()

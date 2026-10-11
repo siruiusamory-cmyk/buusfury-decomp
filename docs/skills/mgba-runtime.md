@@ -211,9 +211,16 @@ Qt key events. So the dashboard holds the keys and hands them to a Lua bridge th
 - what it does: it adds only the keys the dashboard currently holds and releases everything when the
   dashboard disconnects. It touches no emulated memory, writes no save, and loads no state.
 
-A run with the variable unset records that it was not set. The test that holds this is
-`tests/unit/test_mgba_launch_coverage.py`'s extra-script family, which fails if the recording, the SHA-256
-or the skip-not-refuse behaviour goes missing.
+A run with the variable unset records that it was not set, and a variable that names a missing
+file records THAT, because the two are different states. The bridge holds no port of its own in this
+repository: it connects to the dashboard's listener on `127.0.0.1:61234`, which is why the dashboard, not
+the emulator, owns the keys.
+
+The test that holds all of this is `tests/unit/test_mgba_extra_script.py`: its source-level checks always
+run, and its functional checks exercise the GDB launcher's `-DryRun` where a dev mGBA build and the
+launcher's `.venv` are present, naming the missing prerequisite and skipping otherwise. A build's location
+can be given with `WEBFOOT_MGBA_DEV`, the same way the ROM gates accept an environment variable, so the
+checks can run in a checkout that does not download the emulator.
 
 ## 7. Observers stay read-only
 

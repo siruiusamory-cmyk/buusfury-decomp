@@ -170,8 +170,14 @@ $stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
 # docs/skills/mgba-runtime.md section 6 reviewable. A build without --script - the default here, since
 # this launcher is digest-pinned to 0.10.5 - SKIPS it with a printed note instead of refusing the launch.
 $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
-if (-not $extraScript) {
+if ($null -eq $extraScript) {
+    # Fall back to the registry for shells that predate the variable, but treat an EXPLICITLY EMPTY
+    # variable as "load no bridge", so a test can run hermetically on a machine where it is set.
     $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+    if (-not $extraScript) { $extraScript = $null }
+}
+elseif ($extraScript -eq '') {
+    $extraScript = $null
 }
 $extraScriptPath = $null
 $extraScriptSha = $null

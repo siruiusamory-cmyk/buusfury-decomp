@@ -165,12 +165,19 @@ function Start-MgbaSession {
     # docs/skills/mgba-runtime.md section 6 reviewable. A build without --script skips it with a printed
     # note rather than refusing to launch, because the GDB launcher is pinned to such a build.
     $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
-    if (-not $extraScript) {
-        # Already-running shells predate the user variable, so fall back to the registry.
+    if ($null -eq $extraScript) {
+        # Already-running shells predate the user variable, so fall back to the registry. An EXPLICITLY
+        # EMPTY variable is different: it says "do not load a bridge at all", which is how a test can run
+        # hermetically on a machine where the registry value is set.
         $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+        if (-not $extraScript) { $extraScript = $null }
+    }
+    elseif ($extraScript -eq '') {
+        $extraScript = $null
     }
     if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
-        Write-Output "extra script SKIPPED: LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+        Write-Host "extra script SKIPPED: LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+        $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
         $extraScript = $null
     }
     $extraScriptSha = $null
@@ -181,14 +188,14 @@ function Start-MgbaSession {
         $supportsScript = ((& $MGBPath --help 2>&1 | Out-String) -match '--script')
         if (-not $supportsScript) {
             $extraScriptNote = "this mGBA build has no --script flag ($mgbVersion), so the bridge was not loaded"
-            Write-Output "extra script SKIPPED: $extraScriptNote"
+            Write-Host "extra script SKIPPED: $extraScriptNote"
         }
         else {
             $extraScriptSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $extraScriptPath).Hash
             $extraScriptLoaded = $true
             $extraScriptNote = 'loaded as a second --script; it presses only keys the dashboard holds'
-            Write-Output "extra script: $extraScriptPath"
-            Write-Output "  sha256    : $extraScriptSha"
+            Write-Host "extra script: $extraScriptPath"
+            Write-Host "  sha256    : $extraScriptSha"
         }
     }
 

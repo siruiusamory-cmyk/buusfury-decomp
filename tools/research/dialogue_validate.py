@@ -141,9 +141,16 @@ def identify(font: Font, corpus: list[str], engine: set[tuple[int, int]],
     # not. Read the engine's own glyphs and identify from those before calling a capture a hold-out.
     for wrap in WRAP_WIDTHS:
         found = identify_by_pixels(font, corpus, engine, ink, wrap)
-        if found is not None and (best is None or found["missed"] + found["extra"]
-                                  < best["missed"] + best["extra"]):
+        if found is None:
+            continue
+        if found["missed"] == 0 and found["extra"] == 0 and wrap not in exact_widths:
+            exact_widths.append(wrap)
+        if best is None or found["missed"] + found["extra"] < best["missed"] + best["extra"]:
             best = found
+    # The fallback path must report its widths too, or a capture identified from pixels prints "none"
+    # although its width list is real (the review caught this on two captures).
+    if best is not None:
+        best["exact_widths"] = exact_widths
     return best
 
 

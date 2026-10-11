@@ -16,11 +16,14 @@ The checks, in order:
 
 1. the byte diff against the base is a SUBSET of the field set derived here, so a change anywhere else
    fails;
-2. every id that ANY draw path names resolves to Broly's definition, and no path still resolves the
-   old actor's definition: object arrays, type-0 scripts, type-4 scripts, and the character table;
-3. both FD55 fights name Broly's stat selector, and his stat record is byte-identical to the base;
-4. appearances 28 and 29 read his sprite and portrait; text slot 1024 reads Broly; description slot
-   1025 is untouched; every dialogue record that names the old actor is unchanged.
+2. the ids this release owns - 38, 73 and 98 - resolve to the donor's definition or to their own copies,
+   no OTHER id 10..306 moves, and every script target id matches a definition some placed actor or
+   spawn carries, so a script can still find the actor it names;
+3. every map-object fight site carrying one of those ids names the donor's stat selector, and the whole
+   enemy stat record table is byte-identical to the base;
+4. appearances 28 and 29 KEEP the sprite ids their actors carry (the scanner pairs on that id) and take
+   the donor's portrait; text slot 1024 reads Broly; description slot 1025 is untouched; every dialogue
+   record that names the old actor is unchanged.
 """
 
 from __future__ import annotations
@@ -414,7 +417,10 @@ def main() -> int:
     print(f"# script target ids matched to a placed or spawned actor: {matched} of {len(targets)}")
 
     # --- check 3: the fights and Broly's own record ----------------------------------------------
-    for site in object_sites(image, (BROLY_SPRITE,)):
+    # The fights carry id 73, not the donor's 38, so walking only 38 left this loop silent (review N2).
+    # The stat word is also pinned by the field-set check; this stays as the readable statement of the
+    # property, over the ids the fights actually carry.
+    for site in object_sites(image, (BROLY_SPRITE,) + DABURA_SPRITES):
         if site["stat_field"] is not None and site["map"] in (32, 207):
             if site["stat"] != BROLY_STAT:
                 fail(f"map {site['map']} slot {site['slot']} stat selector is {site['stat']}")

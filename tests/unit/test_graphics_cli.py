@@ -279,6 +279,7 @@ def test_export_refuses_to_overwrite_an_existing_destination(
 
     out = tmp_path / "export" / "sprite_0000.png"
     assert main(_export_argv(config, rom, str(identity), out)) == 0
+    capsys.readouterr()  # discard the successful run, so the negative reads only the refusal
     before = hashlib.sha256(out.read_bytes()).hexdigest()
 
     # Byte-identical to what the same command produces, so an overwrite would be

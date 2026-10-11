@@ -1727,9 +1727,10 @@ def _run_graphics(args) -> int:
             # below already reports the refusal and exits non-zero.
             #
             # `authored_image.refuse_canonical_destination` is deliberately not
-            # asked: it compares a digest against the destination FILE's bytes,
-            # and this branch emits a PNG, so no PNG destination can hold the
-            # canonical image's digest and the refusal could never fire.
+            # asked: it inspects an EXISTING destination's bytes, and
+            # `ensure_new_destination` below already refuses any existing
+            # destination, a copy of the canonical image included. Asking it too
+            # would be redundant rather than protective.
             from .destination import refuse_rom_destination
 
             out = Path(args.out)

@@ -113,7 +113,11 @@ def _advance_positions(font: Font, text: str, wrap: int) -> list[list[tuple[int,
 
 #: Wrap widths by box style: with a portrait the text area is four cells wide, without one it is two.
 #: Both fitted from captures: 108 with a portrait, 132 without, everything else identical.
-WRAP_WIDTHS = (124, 144)
+#: MEASURED at runtime: the limit the engine passes to its line fitter is the layout record's own
+#: limit field, 128 for the layout at 0x08071744 and 144 for the one at 0x08071730 (the two records sit
+#: 20 bytes apart). The third case is the -0x14 reduction, which applies when [text_object+0x28] == 0;
+#: no capture has shown it yet, so 108 is carried as the candidate and is reported per capture.
+WRAP_WIDTHS = (108, 128, 144)
 
 
 def identify(font: Font, corpus: list[str], engine: set[tuple[int, int]],

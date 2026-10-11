@@ -61,9 +61,9 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv4a_lookup_probe.lua')
     )
-    # Added by the dialogue font work: the line-limit probe. It TAPS A so a dialogue box opens, which
-    # makes it a driver rather than a read-only observer; what it records is the limit the engine passes
-    # to its own line fitter at 0x0800AF3A, which is a parameter and not causal evidence.
+    # Added by the dialogue font work: the line-limit probe. READ-ONLY: it arms breakpoints and logs the
+    # limit the engine passes to its own line fitter at 0x0800AF3A. It does not press keys - an earlier
+    # version did, and moved the player around under the operator, which is not a script's job.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\dialogue_limit_probe.lua')
     )

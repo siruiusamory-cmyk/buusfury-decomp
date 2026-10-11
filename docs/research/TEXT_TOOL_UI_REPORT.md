@@ -258,6 +258,60 @@ button: 40 ink pixels for its text alone, 40 with the data URI, 100 with the sam
 written to a file. The recoloured icons now go to temporary files and paint; a checked
 chip carries 118 ink pixels against 78 unchecked.
 
+### The independent review, and its four blockers
+
+The independent review of the frozen candidate returned BLOCKED with four blockers. It
+held five other claims and reproduced the release-3.1 export independently at
+`59d7fb22`. All four are fixed, and the fix carries a case that bites:
+
+**Two edits to one record kept only the second, silently.** The one that lost work: the
+edit for a row was built from the original record text and stored under the record, so a
+second row's edit overwrote the first and undo could not bring the first back, because
+undo restores the record's text and the first edit was no longer in it; a rename batch did
+the same. Every edited row is now an entry of its own carrying its span in the original
+record, and the record's text is rebuilt from the original with all of them applied in
+offset order. A whole-record text is a base the pending rows are re-applied to, and where
+a row cannot be located exactly once the combination is REFUSED with a reason rather than
+guessed. Measured before the fix on release 3.1, a record with eleven lines: editing its
+first line then its second left only the second. Three session cases and one window case
+now cover the two-line edit, the clear of one row, the rename composed with a pending line
+edit, and the undo of each.
+
+**A one-character control unit was converted as if it were two.** Only the ink escape
+`0x08` plus its operand is two canonical characters; `0x0A`, `0x0B` and every other code
+below `0x20` are one, so the document-to-string conversion put the caret one character
+late for each such unit before it, accumulating. The exposure is the Records shape, 306 of
+release 3.1's 2,818 records. Proved by falsification against the restored old code: typing
+just after a one-character unit landed one character late in five of six probe strings.
+An insertion at a unit's own start edge was also refused contrary to its docstring, and
+now is allowed while the interior stays refused.
+
+**The preview's states were dishonest in two ways.** It turned ready when data files
+merely existed, without the harness the design requires, and a malformed part counted as
+present. That whole file-presence path is gone with the runtime decode, and the equivalent
+rule is that the pane is ready only when it can actually render the record, with any
+decode failure a stated missing part and a waiting state.
+
+**The empty state claimed a speaker field the data does not have.** `no line in this image
+is spoken by` now says the portrait is not drawn, which is what the record supports. The
+rest of that file was read for the same over-claim and that sentence was the only one.
+
+The review's non-blocking findings are also in: the licence notice said eighteen icons
+while nineteen ship, and a case now checks the notice against the icon directory; the
+engine research doc said no map link exists and now records the measured route with its
+inferred step named as inferred; the recoloured-icon directory is removed when the process
+ends; the rendered-ink guard covers the menu, the popup, the tab bar, a header, a table
+body and the tooltip, which were unverified in pixels; and the per-keystroke undo
+granularity with its unmeasured plan-recompute cost is recorded rather than left implied.
+
+Two of the review's statements are contested with both measurements named. Its pane-floor
+finding reports 664 px from the offscreen platform, whose missing font directory falls
+back to a font about 50 percent wider; the same pane measures 350 px on the real platform
+and the window's own minimum is 1018x611. And its "178 lines span a non-cutter record
+boundary" could not be reproduced under any definition tried; what was measured instead,
+and recorded in the engine doc, is 179 records that never cut a line and 821 lines that
+run across a boundary one of those records owns.
+
 ## 7. End to end, on release 3.1, with digests
 
 - Input: `roms/v3-release31.gba`,

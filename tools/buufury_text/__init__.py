@@ -8,22 +8,47 @@ file, and the state of a row.
 
 from __future__ import annotations
 
-from .identity import PRODUCT_NAME, PRODUCT_VERSION
+from .identity import PACKAGE, PRODUCT_NAME, PRODUCT_VERSION, VERSION_TUPLE
 from .project import Project, ProjectFileError, load, save
-from .session import RECORD, SLOT, Hit, Line, Meter, Session, State, open_image
+from .session import (
+    APPEARANCE,
+    BY_PLACE,
+    BY_SPEAKER,
+    LINES,
+    RECORDS,
+    RECORD,
+    SLOT,
+    STORAGE,
+    UNGROUPED,
+    Hit,
+    Line,
+    Meter,
+    Session,
+    State,
+    open_image,
+)
 
 __all__ = [
-    "PRODUCT_NAME",
-    "PRODUCT_VERSION",
+    "APPEARANCE",
+    "BY_PLACE",
+    "BY_SPEAKER",
     "Hit",
+    "LINES",
     "Line",
     "Meter",
+    "PACKAGE",
+    "PRODUCT_NAME",
+    "PRODUCT_VERSION",
     "Project",
     "ProjectFileError",
+    "RECORDS",
     "RECORD",
     "SLOT",
+    "STORAGE",
     "Session",
     "State",
+    "UNGROUPED",
+    "VERSION_TUPLE",
     "load",
     "open_image",
     "save",

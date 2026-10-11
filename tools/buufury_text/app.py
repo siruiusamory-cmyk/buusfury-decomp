@@ -44,7 +44,10 @@ def main(argv: list[str] | None = None) -> int:
     application.setApplicationDisplayName(PRODUCT_NAME)
     application.setOrganizationName("Webfoot")
     stored = settings.load()
-    applied = theme.apply_theme(application, str(stored.get("theme", theme.MODE_SYSTEM)))
+    # The mode as stored, not the mode it resolved to, so "follow the system"
+    # survives a round trip through the settings file.
+    mode = str(stored.get("theme", theme.MODE_SYSTEM))
+    applied = theme.apply_theme(application, mode)
     session = None
     if arguments.rom:
         try:
@@ -53,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         except (textedit.TextEditError, project_file.ProjectFileError, OSError) as error:
             QMessageBox.critical(None, PRODUCT_NAME, str(error))
             return 2
-    window = Shell(session, applied)
+    window = Shell(session, applied, mode)
     window.show()
     if arguments.smoke:
         window.walk_panes()

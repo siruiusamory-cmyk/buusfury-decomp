@@ -62,7 +62,13 @@ from .session import (
 
 #: The panes start here, and no side pane may collapse into an unreadable column.
 DEFAULT_SPLIT = (420, 560, 340)
-LEFT_MIN, RIGHT_MIN = 300, 280
+#: Pane floors. The list's is the sum of its three column floors plus the frame, so
+#: the text column can never be starved: the status needs about 130 px for its whole
+#: word, the speaker column will not go below 108, and the text keeps 130. The
+#: adopted spec's range for this pane is 260 to 470 with a nominal 330, and the
+#: owner's speaker column and four state chips are what push the floor above the
+#: spec's number; the default of 420 sits inside the spec's own range.
+LEFT_MIN, CENTRE_MIN, RIGHT_MIN = 368, 360, 280
 WINDOW_START = (1240, 780)
 
 #: The three panes the View menu shows and hides.
@@ -354,6 +360,7 @@ class Shell(QMainWindow):
         self.pane = lineview.LinePane(self.session, self.metrics, self.theme, self)
         self.pane.setMinimumWidth(LEFT_MIN)
         self.editor = EditorSections(self.theme, self.metrics, self)
+        self.editor.setMinimumWidth(CENTRE_MIN)
         self.context = contextpane.ContextPane(self.theme, self.metrics, self)
         self.context.setMinimumWidth(RIGHT_MIN)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -491,10 +498,18 @@ class Shell(QMainWindow):
         return {key: stored.get(key) for key in ("view", "order", "group")}
 
     def _stored_sizes(self) -> list[int]:
+        """The remembered pane sizes, floored so a stored file cannot starve a pane.
+
+        A settings file written by an earlier build, or edited by hand, can hold a
+        left pane narrower than the list needs. Measured: at 330 px the speaker and
+        status columns left the text column 32 px, which draws as an ellipsis, so a
+        stale size is a defect the user cannot see the cause of.
+        """
         stored = settings.load().get("splitter")
         if isinstance(stored, list) and len(stored) == 3 and all(
                 isinstance(size, int) and size > 0 for size in stored):
-            return list(stored)
+            floors = (LEFT_MIN, CENTRE_MIN, RIGHT_MIN)
+            return [max(size, floor) for size, floor in zip(stored, floors)]
         return list(DEFAULT_SPLIT)
 
     # --- the one edit path ---------------------------------------------------

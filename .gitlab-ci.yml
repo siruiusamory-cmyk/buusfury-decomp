@@ -107,13 +107,15 @@ test-sdk:
     # nothing: measured 2026-10-11, the job took 237s and 252s under `-n 4`
     # against 216s to 287s for the serial master baseline, which is inside the
     # noise. `-n auto` is pytest-xdist's own reading of the core count, so the
-    # sizing cannot drift from this comment, and the count it chose is printed in
-    # the pytest header below. The counting commands above stay as evidence: the
-    # interpreter is used because `nproc` is not guaranteed on this slim image
-    # and printed nothing when it was tried, and `/proc/meminfo` is read because
-    # `free` does not exist here at all.
+    # sizing cannot drift from this comment. The count is printed explicitly
+    # because the job runs pytest with `-q`, which suppresses the header where
+    # xdist would otherwise report it. The core and memory readings stay as
+    # evidence: the interpreter is used because `nproc` is not guaranteed on this
+    # slim image and printed nothing when it was tried, and `/proc/meminfo` is
+    # read because `free` does not exist here at all.
     - python -c "import os; print('cores:', os.cpu_count())"
     - grep -E '^(MemTotal|MemAvailable)' /proc/meminfo
+    - python -c "import os; print('xdist workers (auto):', os.cpu_count())"
     # The JUnit report is what makes a failure legible in the merge request
     # without downloading the raw job log, and xdist merges every worker's
     # results into this one file.

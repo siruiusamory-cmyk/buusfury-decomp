@@ -97,11 +97,15 @@ everything in one process:
 .\scripts\test.ps1 tests\unit\test_relocation.py -n 0          # serial, one file
 ```
 
-The `-n 0` check comes first and matches that exact spelling, because the
-requirement `README.md` names is Windows PowerShell 5.1, which has no `--%`
-stop-parsing token. A caller that passes its own `-n` or `--dist` in any other
-form overrides the default rather than colliding with it, since the default
-pair is written first and the caller's arguments are appended.
+The `-n 0` check comes first and matches that exact spelling. Windows PowerShell
+5.1 splits the pair before the script sees it, which is why the check looks for
+two arguments rather than one string. `--%` does exist from PowerShell 3, and it
+is deliberately not the mechanism here: measured on this machine's 5.1.26100, it
+stops parsing where it appears, so a caller must place it before every argument,
+and it still passes the shell's own redirection tokens through to the child as
+literal arguments. A caller that passes its own `-n` or `--dist` in any other
+form overrides the default rather than colliding with it, since the default pair
+is written first and the caller's arguments are appended.
 
 **Same counts, either mode.** A serial and a parallel run of the same commit
 must report identical collected, passed, skipped and failed counts. A test that

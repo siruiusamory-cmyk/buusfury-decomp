@@ -330,16 +330,25 @@ def test_the_deploy_job_needs_both_test_jobs():
     are named because ``needs`` bypasses the stage barrier, so naming only the
     suite would drop the wait on the site job that the barrier used to give.
     """
-    deploy = _ci_config().get("deploy-site") or {}
+    config = _ci_config()
+    deploy = config.get("deploy-site") or {}
     needs = deploy.get("needs") or []
     required = {
         need.get("job") if isinstance(need, dict) else need
         for need in needs
         if not (isinstance(need, dict) and need.get("optional"))
     }
-    assert required == {TEST_JOB, SITE_JOB}, (
-        f"{_cited('deploy-site')}: deploy-site must require a `needs:` entry "
-        f"naming both {TEST_JOB} and {SITE_JOB}; its required needs are "
-        f"{required!r}, so a pipeline whose jobs were excluded by their rules "
-        f"can still publish the site without them"
+    # Every job in the test stage, not a fixed pair: a new test job added later
+    # must be waited on too, or `needs` will silently bypass it.
+    test_stage = {
+        name
+        for name, job in config.items()
+        if isinstance(job, dict) and job.get("stage") == "test"
+    }
+    assert test_stage, f"{_cited('stage: test')}: no test-stage job found"
+    assert required == test_stage, (
+        f"{_cited('deploy-site')}: deploy-site must require a non-optional "
+        f"`needs:` entry for every test-stage job {sorted(test_stage)}; its "
+        f"required needs are {sorted(required)}, so a pipeline whose jobs were "
+        f"excluded by their rules can still publish the site without them"
     )

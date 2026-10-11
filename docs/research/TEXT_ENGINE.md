@@ -265,13 +265,31 @@ any ROM.
   fragments real messages. `SpokenLine.proven` names the rows and records that
   would move if the filter changed, and 23 of release 3.1's rows are carried only
   by unproven records.
-- **No map, chapter or scene link exists.** Nothing in this repository joins a
-  dialogue record, a handle or a handle site to a map id: the only measured
-  map-to-dialogue relation covers four event resources out of 522, and exactly one
-  handle site falls inside them. Chapter order and names are external walkthrough
-  prose, not ROM data. Nothing here may be presented as order of appearance in the
-  game; `lines` returns the image's own storage order and a caller may re-sort by
-  first handle site, which is an address order inside a script pool.
+- **A record's map comes from an INFERRED route.** The profile's map table
+  (`TitleProfile.maps`) sits at file `0x8E2E0` with stride `0x38` and 452 rows, and
+  429 of those rows carry a name on the canonical image; `maps` resolves a name
+  through the row's own name slot in the loaded image's text table. The chain from
+  a map to a dialogue record is: a map row's `+0x14` array holds placement
+  pointers; a placement's `+0x14` names a descriptor; a descriptor whose handler is
+  `0x0800424F` carries a payload that is the start of an event resource; and a
+  record belongs to that map when one of its own handle sites falls inside that
+  resource's extent. Measured on the canonical image, this places 486 of its 2,805
+  records and 538 of its 3,003 lines, across 25 of the table's maps in map-table
+  order, and a record that two maps reach is given neither, because a row shown
+  under one of two owners would be a guess (one record of the reached set is
+  shared). The payload's semantics are INFERRED: the handler is known to load and
+  branch and its payload is known to be a resource start, but no runtime
+  observation yet shows that this handler is what reads that resource's dialogue.
+  The route under-claims for that reason, and a caller that shows a map must say
+  which map came from here. Chapter order and names are external walkthrough prose,
+  not ROM data. Nothing here may be presented as order of appearance in the game;
+  `lines` returns the image's own storage order and a caller may re-sort by first
+  handle site, which is an address order inside a script pool.
+- **Two measured side effects of the line rule ship with it.** On release 3.1, 79
+  of its 2,818 records (74 of the canonical 2,805) carry no line at all and appear
+  only in the Records shape, and 179 of its records (166 canonical) never cut a
+  line, so 821 of its lines (731 canonical) run across a boundary that one of those
+  records owns.
 - **Forty-three percent of lines have no attributable speaker.** 1,223 of release
   3.1's 2,818 records, and 1,317 of its 3,024 lines, resolve to no name: 891 are
   the runtime party face, 311 are portraits that name no character, and 21 are

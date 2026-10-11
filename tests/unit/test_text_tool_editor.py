@@ -647,7 +647,10 @@ def test_every_wrapped_context_label_gets_a_line_of_its_own_font(window) -> None
     pane.show()
     QApplication.processEvents()
     wrapped = [label for label in pane.findChildren(QLabel) if label.wordWrap()]
-    assert len(wrapped) == 4
+    # Five since the pane gained its Place line: the speaker, the portrait, the retail
+    # text, the sites sentence and the place. The count is a guard against a wrapped
+    # label losing its height, so it moves with the pane's own list of them.
+    assert len(wrapped) == 5
     for label in wrapped:
         line = QFontMetrics(label.font()).lineSpacing()
         assert label.minimumHeight() >= line

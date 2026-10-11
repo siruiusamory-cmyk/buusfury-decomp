@@ -175,10 +175,10 @@ as documentation consulted during research, not as a source of code or data.
 
 ### What is incorporated
 
-Eighteen outline icons, copied unmodified: `search`, `pencil`, `arrow-up-right`,
+Nineteen outline icons, copied unmodified: `search`, `pencil`, `arrow-up-right`,
 `square-x`, `check`, `lock`, `copy`, `folder-open`, `device-floppy`,
 `arrow-back-up`, `arrow-forward-up`, `link`, `chevron-down`, `photo`, `x`,
-`external-link`, `refresh`, `filter`. They are the application's toolbar, list and
+`external-link`, `refresh`, `filter`, `minus`. They are the application's toolbar, list and
 dialog icons. Tabler draws them on a 24x24 grid with a 2 px stroke and the
 application renders them at 16 logical pixels, so the set stays legible at the
 density the visual specification calls for without a bitmap pack per scale.

@@ -159,15 +159,17 @@ def span_detail(session: Session, key: str) -> str:
 class _EditCommand(QUndoCommand):
     """One user edit: the text before, the text after, one stack entry."""
 
-    def __init__(self, shell: Shell, key: str, before: str, after: str) -> None:
+    def __init__(self, shell: Shell, key: str, before: str, after: str,
+                 whole: bool = False) -> None:
         super().__init__(f"edit {key}")
-        self._shell, self._key, self._before, self._after = shell, key, before, after
+        self._shell, self._key = shell, key
+        self._before, self._after, self._whole = before, after, whole
 
     def redo(self) -> None:
-        self._shell.write(self._key, self._after)
+        self._shell.write(self._key, self._after, whole=self._whole)
 
     def undo(self) -> None:
-        self._shell.write(self._key, self._before)
+        self._shell.write(self._key, self._before, whole=self._whole)
 
 
 class Shell(QMainWindow):
@@ -541,8 +543,13 @@ class Shell(QMainWindow):
 
     # --- the one edit path ---------------------------------------------------
 
-    def apply_edit(self, key: str, new: str) -> None:
-        """The one way a line changes: one user action, one undo step."""
+    def apply_edit(self, key: str, new: str, *, whole: bool = False) -> None:
+        """The one way a line changes: one user action, one undo step.
+
+        `whole` says this replaces the row's whole text rather than typing into one line
+        of it, and it is carried into the undo command so undoing a rename restores the
+        row the same way the rename wrote it.
+        """
         if self.session is None:
             return
         line = self.session.line(key)
@@ -552,14 +559,18 @@ class Shell(QMainWindow):
         before = self.session.pending_text(key)
         if new == before:
             return
-        self.stack.push(_EditCommand(self, key, before, new))
+        self.stack.push(_EditCommand(self, key, before, new, whole))
 
-    def write(self, key: str, text: str) -> None:
-        """Write one row's pending text and redraw. It never pushes a command."""
+    def write(self, key: str, text: str, *, whole: bool = False) -> None:
+        """Write one row's pending text and redraw. It never pushes a command.
+
+        `whole` says this replaces the row's whole text rather than typing into one line
+        of it, which is what a rename batch does.
+        """
         if self.session is None:
             return
         try:
-            self.session.set_edit(key, text)
+            self.session.set_edit(key, text, whole=whole)
         except (textedit.TextEditError, KeyError) as error:
             self.statusBar().showMessage(str(error))
             return
@@ -596,7 +607,13 @@ class Shell(QMainWindow):
 
     def apply_rename(self, old: str, new: str,
                      chosen: tuple[tuple[str, frozenset[int]], ...]) -> int:
-        """One undo step for a whole rename batch, through the same edit path."""
+        """One undo step for a whole rename batch, through the same edit path.
+
+        Each move is the record's WHOLE text, so it is recorded as such: a rename
+        replaces the row's text rather than typing into one line of it, and the session
+        cannot tell the two apart from the key, because a spoken line that covers its
+        whole record carries the same key the record does.
+        """
         if self.session is None:
             return 0
         moves = [(key, self.session.rename_text(key, old, new, offsets))
@@ -607,7 +624,7 @@ class Shell(QMainWindow):
             return 0
         self.stack.beginMacro(f"rename {len(moves)} record(s)")
         for key, text in moves:
-            self.apply_edit(key, text)
+            self.apply_edit(key, text, whole=True)
         self.stack.endMacro()
         return len(moves)
 

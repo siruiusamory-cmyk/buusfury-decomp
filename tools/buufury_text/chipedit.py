@@ -132,8 +132,8 @@ def changed_run(held: str, pending: str) -> tuple[int, int] | None:
 def marked_ranges(text: str, run: tuple[int, int] | None) -> tuple[tuple[int, int], ...]:
     """The document ranges a canonical run covers, with every control atom left out.
 
-    A control unit already carries its own chip, and its two canonical characters are
-    one document character, so a run that reaches one is split around it rather than
+    A control unit already carries its own chip, and its canonical characters are one
+    document character, so a run that reaches one is split around it rather than
     underlined.
     """
     if run is None:

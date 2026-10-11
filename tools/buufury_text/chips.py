@@ -48,26 +48,32 @@ def atom_ranges(text: str) -> tuple[tuple[int, int], ...]:
 
 
 def document_length(text: str) -> int:
-    """How many characters the document holds for `text`: one per control unit."""
-    return len(text) - len(atom_ranges(text))
+    """How many characters the document holds for `text`: one per control unit.
+
+    A unit occupies `len(unit.raw)` canonical characters - two for the ink escape
+    0x08 with its operand, one for every other unit - and exactly one document
+    character, so the document is the canonical length less that difference.
+    """
+    return len(text) - sum(stop - start - 1 for start, stop in atom_ranges(text))
 
 
 def document_positions(text: str) -> tuple[int, ...]:
     """For every document position, the canonical index it stands for.
 
-    A control unit is two characters in the canonical string and one in the document,
-    so a document position is not a string position. Measured on a line carrying one
-    unit: typing at the end of `Line one .. end` produced `Line one .. enXYZd`, one
-    character early per unit before the caret, and a unit at the very end refused the
-    keystroke and said nothing at all. This mapping is what both directions use.
+    A control unit is ONE character in the document and `len(unit.raw)` in the
+    canonical string: two for 0x08 plus its operand, one for 0x0A, 0x0B and every
+    other unit. Measured on a line carrying one unit: typing at the end of
+    `Line one .. end` produced `Line one .. enXYZd`, one character early per unit
+    before the caret, and a unit at the very end refused the keystroke and said
+    nothing at all. This mapping is what both directions use.
     """
-    starts = {start for start, _end in atom_ranges(text)}
+    lengths = {start: stop - start for start, stop in atom_ranges(text)}
     positions = []
     canonical = 0
     for _ in range(document_length(text) + 1):
         positions.append(canonical)
         if canonical < len(text):
-            canonical += 2 if canonical in starts else 1
+            canonical += lengths.get(canonical, 1)
     return tuple(positions)
 
 
@@ -129,8 +135,6 @@ def _decide(current: str, position: int, removed: int, inserted: str) -> tuple[s
             if position <= start and stop <= end:
                 return current, BREAKS_LOCK
     elif position in _inside(current):
-        return current, BREAKS_LOCK
-    elif any(start == position for start, _ in atom_ranges(current)):
         return current, BREAKS_LOCK
     if any(isinstance(unit, textedit.Control) for unit in textedit.units(inserted)):
         return current, CONTROL_CODE

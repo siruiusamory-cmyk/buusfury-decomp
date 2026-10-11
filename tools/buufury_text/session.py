@@ -186,6 +186,16 @@ class Session:
         self.places = textedit.line_maps(model, cutters_from_pool=cutters_from_pool)
         self._edited_row: dict[str, str] = {}
         self._rows: dict[str, dict[str, Line]] = self._read_rows()
+        #: target -> {row key: the text that row should say}. One entry per edited LINE,
+        #: each with its own span in the ORIGINAL record, which is what lets two edits
+        #: to one record compose instead of the second replacing the first.
+        self._pending: dict[str, dict[str, str]] = {}
+        #: target -> a replacement for the row's WHOLE text, which is what a rename batch
+        #: and an edit made in the Records shape are. Kept apart from the line entries
+        #: because it cannot be told apart from one by its key: a spoken line that covers
+        #: its whole record carries the same key the record does.
+        self._whole: dict[str, str] = {}
+        self._lines_by_target: dict[str, tuple[Line, ...]] = self._index_lines()
         if project is not None:
             self.adopt(project)
         self._resort()
@@ -329,6 +339,17 @@ class Session:
     def _record_of(self, row: Line) -> textedit.Record | None:
         return self.model.record(*_parts(row.target)) if row.target else None
 
+    def _index_lines(self) -> dict[str, tuple[Line, ...]]:
+        """Every spoken line, grouped by the record an edit of it would address."""
+        grouped: dict[str, list[Line]] = {}
+        for row in self._rows[LINES].values():
+            grouped.setdefault(row.target or row.key, []).append(row)
+        return {target: tuple(rows) for target, rows in grouped.items()}
+
+    def _rows_for(self, target: str) -> tuple[Line, ...]:
+        """Every row of one record, in the record's own order."""
+        return self._lines_by_target.get(target, ())
+
     def _span(self, row: Line) -> tuple[int, int]:
         """The row's character offset and length inside its target record."""
         holder = self._record_of(row)
@@ -336,8 +357,113 @@ class Session:
             return 0, len(row.text)
         return (row.position[1] - holder.start) // 2, len(row.text)
 
-    def set_edit(self, key: str, new: str) -> None:
-        """Record what one row should say, clearing the edit when it says that already."""
+    def _shift(self, target: str, offset: int) -> int:
+        """How far an ORIGINAL offset moves once every line edit before it applies."""
+        shift = 0
+        for key, text in self._pending.get(target, {}).items():
+            row = self.line(key)
+            if row is None:
+                continue
+            start, length = self._span(row)
+            if start + length <= offset:
+                shift += len(text) - length
+        return shift
+
+    def _compose(self, target: str) -> tuple[str, dict[str, tuple[int, int]]] | None:
+        """The record's pending text, and where its rows sit in that text.
+
+        Every entry is the text for ONE row, stored with that row's span in the
+        ORIGINAL record, and the record text is rebuilt from the original each time.
+        That is what makes two edits compose: an edit that grows shifts every later
+        span without any span needing to be rewritten, and a second row's edit cannot
+        discard the first row's, because the first is still an entry. Measured, the
+        earlier shape built each edit from the original record text and overwrote the
+        stored edit, so editing two lines of one record kept only the second, silently,
+        and no undo could bring the first back.
+
+        A whole-record text (a rename batch, or an edit typed in the Records shape) is
+        the BASE, and the pending lines are re-applied to it. Each is located by its own
+        original text, and where that cannot be found exactly once the combination is
+        refused rather than guessed, because guessing there would silently drop a line
+        the reader edited.
+        """
+        entries = self._pending.get(target, {})
+        base = self._whole.get(target)
+        if not entries and base is None:
+            return None
+        holder = self._rows[RECORDS].get(target)
+        slot = self._rows[SLOT].get(target)
+        if holder is None and slot is None:
+            return None
+        if slot is not None:
+            # A slot is one whole text with no inner spans to compose.
+            text = base if base is not None else entries.get(target, slot.text)
+            return text, {target: (0, len(text))}
+        edited = sorted(((self._span(self.line(key)), key)
+                         for key in entries if self.line(key) is not None),
+                        key=lambda item: item[0][0])
+        where: dict[str, tuple[int, int]] = {}
+        if base is not None:
+            text = base
+            for _span, key in edited:
+                row = self.line(key)
+                old = row.text
+                at = text.find(old)
+                if at < 0 or text.find(old, at + 1) >= 0:
+                    raise textedit.TextEditError(
+                        f"{key} has its own edit and the record's text has changed around "
+                        "it, so the two cannot be combined without guessing which text "
+                        "belongs where. Clear one of them and make the change again.")
+                text = text[:at] + entries[key] + text[at + len(old):]
+                where[key] = (at, len(entries[key]))
+            return text, where
+        pieces: list[str] = []
+        cursor = 0
+        running = 0
+        for (offset, length), key in edited:
+            pieces.append(holder.text[cursor:offset])
+            running += offset - cursor
+            where[key] = (running, len(entries[key]))
+            pieces.append(entries[key])
+            running += len(entries[key])
+            cursor = offset + length
+        pieces.append(holder.text[cursor:])
+        for row in self._rows_for(target):
+            if row.key not in where:
+                offset, length = self._span(row)
+                where[row.key] = (offset + self._shift(target, offset), length)
+        return "".join(pieces), where
+
+    def _rebuild(self, target: str) -> None:
+        """The stored edit for one target, rebuilt from every pending row of it."""
+        row = self._rows[RECORDS].get(target) or self._rows[SLOT].get(target)
+        composed = self._compose(target)
+        if row is None or composed is None:
+            self.edits.pop(target, None)
+            self._stale = True
+            return
+        text = composed[0]
+        if row.kind == SLOT:
+            self.edits[target] = textedit.SlotEdit(slot=row.position[1], old=row.text,
+                                                   new=text)
+        else:
+            holder = self._record_of(row)
+            if holder is None:
+                self.edits.pop(target, None)
+            else:
+                self.edits[target] = textedit.RecordEdit(holder.selector, holder.start,
+                                                         holder.length, old=holder.text,
+                                                         new=text)
+        self._stale = True
+
+    def set_edit(self, key: str, new: str, *, whole: bool = False) -> None:
+        """Record what one row should say, clearing that row's edit when it says it.
+
+        `whole` says the caller is replacing the row's WHOLE text rather than typing
+        into one line of it, which is what a rename batch does. It cannot be inferred
+        from the key, because a spoken line that covers its whole record carries the
+        same key the record does.
+        """
         row = self.line(key)
         if row is None:
             raise KeyError(key)
@@ -345,18 +471,24 @@ class Session:
             raise textedit.TextEditError(
                 f"{key} is empty, so there is nothing for an edit to name as the text it "
                 "replaces")
-        if new == row.text:
-            self.clear_edit(key)
-            return
         target = row.target or key
-        self.edits[target] = self._edit_for(row, new)
-        if row.view == LINES:
-            # Which spoken line was typed into, so its siblings can be read at
-            # their shifted offsets when this edit changes the record's length.
-            self._edited_row[target] = row.key
-        self._stale = True
+        if whole or row.view != LINES:
+            if new == row.text:
+                self._whole.pop(target, None)
+            else:
+                self._whole[target] = new
+        else:
+            entries = self._pending.setdefault(target, {})
+            if new == row.text:
+                entries.pop(row.key, None)
+            else:
+                entries[row.key] = new
+            if not entries:
+                self._pending.pop(target, None)
+        self._rebuild(target)
 
     def _edit_for(self, row: Line, new: str) -> object:
+        """One row's edit, on its own, with no other row of the record applied."""
         if row.kind == SLOT:
             return textedit.SlotEdit(slot=row.position[1], old=row.text, new=new)
         holder = self._record_of(row)
@@ -371,14 +503,19 @@ class Session:
     def clear_edit(self, key: str) -> None:
         row = self.line(key)
         target = (row.target or key) if row is not None else key
-        self._edited_row.pop(target, None)
-        if self.edits.pop(target, None) is not None:
-            self._stale = True
+        self._whole.pop(target, None)
+        entries = self._pending.get(target)
+        if entries is not None:
+            entries.pop(row.key if row is not None else key, None)
+            if not entries:
+                self._pending.pop(target, None)
+        self._rebuild(target)
 
     def clear_all(self) -> None:
-        if self.edits:
+        if self.edits or self._pending or self._whole:
             self.edits = {}
-            self._edited_row = {}
+            self._pending = {}
+            self._whole = {}
             self._stale = True
 
     def ordered_edits(self) -> tuple[object, ...]:
@@ -387,15 +524,20 @@ class Session:
     def pending_text(self, key: str) -> str:
         """What this row will say, whether or not its target record has an edit.
 
-        A whole record or slot row IS its target, so its pending text is the edit
-        itself; slicing it to the old length would truncate a growth. A spoken line
-        is a span inside its target, and a length-changing edit moves the offsets
-        of the lines after it, so the span is read where the edit left it.
+        A composed session edit knows exactly where every row sits, including the rows
+        nobody typed into, which moved when an edit before them grew. A whole record or
+        slot row IS its target, so its pending text is the edit itself, and slicing it
+        to the old length would truncate a growth. An edit adopted from a project file
+        carries no per-row spans, so its change is located instead.
         """
         row = self.line(key)
         if row is None:
             raise KeyError(key)
         target = row.target or key
+        composed = self._compose(target)
+        if composed is not None and row.key in composed[1]:
+            offset, length = composed[1][row.key]
+            return composed[0][offset:offset + length]
         edit = self.edits.get(target)
         if edit is None:
             return row.text
@@ -404,22 +546,8 @@ class Session:
         holder = self._record_of(row)
         if holder is None:
             return row.text
-        old, new = _old_of(edit), _new_of(edit)
         offset = (row.position[1] - holder.start) // 2
-        length = len(row.text)
-        edited = self._edited_row.get(target)
-        if edited is None:
-            # An edit this session did not type, from a loaded project: nothing
-            # records which line moved, so the change is located instead.
-            return _span_in_new(old, new, offset, length)
-        if edited == row.key:
-            return new[offset:offset + length + (len(new) - len(old))]
-        other = self._rows[LINES].get(edited)
-        if other is None:
-            return row.text
-        other_offset = (other.position[1] - holder.start) // 2
-        shift = (len(new) - len(old)) if offset > other_offset else 0
-        return new[offset + shift:offset + shift + length]
+        return _span_in_new(_old_of(edit), _new_of(edit), offset, len(row.text))
 
     def edited_keys(self) -> tuple[str, ...]:
         return tuple(self.edits)

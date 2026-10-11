@@ -217,6 +217,7 @@ class LineModel(QAbstractTableModel):
         self._session = session
         self._rows: tuple[Line, ...] = ()
         self._entries: tuple[Line | Group, ...] = ()
+        self._by = UNGROUPED
 
     def rows(self) -> tuple[Line, ...]:
         """The rows themselves, without the headings."""
@@ -249,6 +250,7 @@ class LineModel(QAbstractTableModel):
             term, kind=kind, states=states, locked=locked, speaker=speaker)
         # The grouping sees the rows the filters left, so no heading hides an excluded row.
         groups = () if session is None else session.grouped(by=by, rows=found)
+        self._by = by
         entries: list[Line | Group] = []
         for group in groups:
             if group.label:
@@ -321,23 +323,34 @@ class LineModel(QAbstractTableModel):
             return line.speaker_label
         return line.key
 
-    @staticmethod
-    def _heading(group: Group, column: int, role: int) -> object:
-        """A heading's label, its row count and the reason an Unplaced row is there.
+    def _heading(self, group: Group, column: int, role: int) -> object:
+        """A heading's label, its row count and the reason this row is under it.
 
         The heading answers on every column, because the table skips a hidden column
         when it measures a row, and the first column is hidden in the line list. It
         carries its own tooltip because a long map label is elided in the band and a
         heading is not selectable, so the band is the only place it appears.
         """
+        note = self._note(group)
         if role == ROLE_HEADING:
-            note = NO_PLACE_LINK if group.label == UNPLACED else ""
             return (f"{group.label} ({len(group.rows)})", note)
         if role == Qt.ItemDataRole.ToolTipRole:
-            note = NO_PLACE_LINK if group.label == UNPLACED else ""
             return f"{group.label} ({len(group.rows)})\n{note}" if note \
                 else f"{group.label} ({len(group.rows)})"
         return None
+
+    def _note(self, group: Group) -> str:
+        """What the heading says the group rests on, so no link reads as a fact.
+
+        A map heading carries the same inference the tooltip and the Unplaced note do:
+        the map reaches the line through the placement route, and no runtime
+        observation yet shows that route reading the dialogue.
+        """
+        if group.label == UNPLACED:
+            return NO_PLACE_LINK
+        if self._by == BY_PLACE:
+            return f"The link is {PLACE_EVIDENCE}."
+        return ""
 
 
 class LineDelegate(QStyledItemDelegate):
@@ -987,7 +1000,7 @@ class LinePane(QWidget):
             return (f'No {name} matches "{self._term}". Clear the search to see the list '
                     "again.", CLEAR_SEARCH)
         if self._kind == RECORD and self.speaker() is not None:
-            return (f"No line in this image is spoken by {self.speaker()}. Choose "
+            return (f"No line in this image draws {self.speaker()}'s portrait. Choose "
                     f"{ALL_SPEAKERS} to see every line.", ALL_SPEAKERS)
         if any(chip.isChecked() for chip in [*self.chips, self.control_chip]):
             return ("The checked filters hide every row here. Clear them to see the list "

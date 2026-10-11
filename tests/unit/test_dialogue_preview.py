@@ -72,10 +72,20 @@ def test_control_label_names_the_units_the_catalogue_will_replace() -> None:
 # --- protected_edit refusals -------------------------------------------------
 
 
-def test_protected_edit_refuses_typing_inside_an_atom() -> None:
-    for atom in ATOMS:
-        for at in range(*atom):
-            assert chips.protected_edit(CURRENT, at, 0, "Q") == CURRENT
+def test_protected_edit_allows_typing_at_an_atoms_edges_and_refuses_inside_it() -> None:
+    """FINDING 2: a caret at an atom's start is a legitimate place to type.
+
+    Only an insertion STRICTLY inside a unit is refused. Measured before the fix:
+    `protected_edit(CURRENT, 2, 0, "Q")` returned the text unchanged, so a caret just
+    before a control unit could not be typed into at all.
+    """
+    for start, stop in ATOMS:
+        assert chips.protected_edit(CURRENT, start, 0, "Q") == \
+            CURRENT[:start] + "Q" + CURRENT[start:]
+        assert chips.protected_edit(CURRENT, stop, 0, "Q") == \
+            CURRENT[:stop] + "Q" + CURRENT[stop:]
+    # Only the 0x08-plus-operand unit has an interior position, and only it refuses.
+    assert chips.protected_edit(CURRENT, 6, 0, "Q") == CURRENT
 
 
 def test_protected_edit_refuses_backspace_at_each_edge_of_an_atom() -> None:
@@ -153,14 +163,22 @@ def test_a_document_with_a_control_unit_lays_out_and_round_trips() -> None:
     "\x08\x0BLine one end",
     "\x08\x0Bmid\x08\x0Btail",
     "Line one end\x08\x0B",
+    # FINDING 1: 0x0A, 0x0B and every other unit below 0x20 without an operand is ONE
+    # canonical character, where 0x08 plus its operand is two.
+    "Line one \x0b end",
+    "\x0bLine one end",
+    "Line one end\x0b",
+    "\x0bmid\x0bLine one end",
+    "\x0bmid\x08\x0Btail",
 ])
 def test_typing_at_the_end_of_a_line_with_a_control_unit_lands_at_the_end(text) -> None:
-    """A document position is not a string position, and the difference is one each.
+    """A document position is not a string position, and the difference is per unit.
 
-    A control unit is two characters in the canonical string and one character in the
-    document, so handing a document position to a string function puts the edit one
-    character early for every unit before the caret. Measured on the shipping widget
-    before this case existed: typing at the end of `Line one <unit> end` produced
+    A control unit is `len(unit.raw)` canonical characters - two for 0x08 plus its
+    operand, one for every other unit - and one character in the document, so handing
+    a document position to a string function puts the edit one character early for
+    every two-character unit before the caret. Measured on the shipping widget before
+    this case existed: typing at the end of `Line one <unit> end` produced
     `Line one <unit> enXYZd`, the two-unit line landed two characters early, and a line
     ENDING in a unit refused the keystroke and said nothing at all.
     """
@@ -176,15 +194,40 @@ def test_typing_at_the_end_of_a_line_with_a_control_unit_lands_at_the_end(text) 
     editor.insertPlainText("XYZ")
     assert editor.serialized() == text + "XYZ"
     assert said == []
-    # The same line still refuses an insertion INTO an atom, and says why.
+    # FINDING 1, mid-line: the caret just AFTER the unit is the position the mapping
+    # read one character late, and clamping the end position hid that. Measured before
+    # the fix: `ab<0x0B>cd` at document position 3 produced `ab<0x0B>cXd`, one
+    # character late, and `Line one <0x0B> end` produced `Line one <0x0B>!end`.
     if chips.atom_ranges(text):
-        start, _end = chips.atom_ranges(text)[0]
+        _start, stop = chips.atom_ranges(text)[0]
         caret = editor.textCursor()
-        caret.setPosition(chips.document_index(text + "XYZ", start + 1))
+        caret.setPosition(chips.document_index(text + "XYZ", stop))
         editor.setTextCursor(caret)
         editor.insertPlainText("!")
-        assert editor.serialized() == text + "XYZ"
-        assert said == [chips.BREAKS_LOCK]
+        assert editor.serialized() == text[:stop] + "!" + text[stop:] + "XYZ"
+        assert said == []
+    editor.close()
+
+
+def test_typing_at_a_control_unit_start_lands_before_it_and_is_not_refused() -> None:
+    """FINDING 2, through the widget: the keystroke at a unit's start was dropped.
+
+    Measured before the fix: a caret at the unit's own start followed by
+    `insertPlainText("X")` left `ab<0x0B>cd` unchanged and emitted `BREAKS_LOCK`, so a
+    legitimate caret in front of a control unit could not be typed into at all.
+    """
+    editor = chips.ChipTextEdit()
+    editor.resize(300, 90)
+    editor.show()
+    editor.set_text("ab\x0bcd")
+    said: list[str] = []
+    editor.refused.connect(said.append)
+    caret = editor.textCursor()
+    caret.setPosition(chips.document_index("ab\x0bcd", 2))
+    editor.setTextCursor(caret)
+    editor.insertPlainText("X")
+    assert editor.serialized() == "abX\x0bcd"
+    assert said == []
     editor.close()
 
 

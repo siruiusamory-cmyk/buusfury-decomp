@@ -682,3 +682,44 @@ def test_a_refused_image_answers_two_without_a_traceback(qapp, tmp_path, monkeyp
     broken.write_bytes(b"\x00" * 0x200)
     assert app_module.main([str(broken)]) == 2
     assert dialogs.warnings and dialogs.warnings[0].startswith("REFUSED:")
+
+
+def test_undo_returns_each_line_of_one_record_separately(qapp, tmp_path, monkeypatch) -> None:
+    """Measured: an edit of a second line discarded the first, so undo restored one.
+
+    Each row's edit is its own undo command, and the record's text is rebuilt from the
+    original with every pending row applied, so undoing the two edits puts both back.
+    """
+    monkeypatch.setattr(settings, "directory", lambda: tmp_path / "user-config")
+    folder = tmp_path / "two-line"
+    folder.mkdir()
+    payload = bytearray(SPACES)
+    payload[0x20:0x20 + 8] = "One\nTwo".encode("utf-16le")
+    image = build(payloads={1: bytes(payload)}, records=[(1, 0x20, 14)])
+    (folder / "retail.gba").write_bytes(image)
+    path = folder / "working.gba"
+    path.write_bytes(image)
+    with lowered_record_floor():
+        session = text_session.open_image(path, canonical=folder / "retail.gba",
+                                          view=text_session.LINES, cutters_from_pool=False)
+    applied = theme.apply_theme(qapp, theme.MODE_DARK)
+    shell = shell_module.Shell(session, applied, theme.MODE_DARK)
+    shell.show()
+    QApplication.processEvents()
+    try:
+        target = session.model.records[0].key
+        rows = sorted((row for row in session.lines if row.target == target),
+                      key=lambda row: row.position[1])
+        assert len(rows) == 2, [row.text for row in rows]
+        shell.apply_edit(rows[0].key, "Une")
+        shell.apply_edit(rows[1].key, "Tvo")
+        assert session.pending_text(rows[0].key) == "Une"
+        assert session.pending_text(rows[1].key) == "Tvo"
+        assert len(session.edits) == 1
+        shell.stack.undo()
+        assert session.pending_text(rows[0].key) == "Une"
+        assert session.pending_text(rows[1].key) == rows[1].text
+        shell.stack.undo()
+        assert session.edited_keys() == ()
+    finally:
+        shell.close()

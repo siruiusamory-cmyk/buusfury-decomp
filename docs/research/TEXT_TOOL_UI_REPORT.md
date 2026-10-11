@@ -369,3 +369,7 @@ Toolbelt and tool entries added to the project:
   offscreen runner paints an extra-selection underline in a plain document and none in a
   document carrying an inline object, measured at 91 accent columns against 0, so the
   atom case asserts its marked ranges offscreen and its pixels on Windows.
+- **Every keystroke in `NEW` pushes its own undo command and invalidates the plan.** No
+  command merging happens, and each invalidation recomputes the plan, which copies the
+  whole image. The latency of that on release 3.1 is not measured. It is recorded as a
+  known cost rather than a defect, which is how the review recorded it.

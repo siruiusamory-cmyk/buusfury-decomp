@@ -1,5 +1,6 @@
-"""The right pane: who is drawn, what retail said, what contains the line, its sites,
-the in-game preview, and the addresses behind one disclosure.
+"""The right pane: who is drawn, which map reaches the line, what retail said, what
+contains the line, its sites, the in-game preview, and the addresses behind one
+disclosure.
 
 Sections are separated by 1 px dividers and spacing, never by cards. Raw addresses,
 offsets and sizes are copyable and stay behind one disclosure, because they are
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from . import preview
 from . import theme as theme_module
+from .lineview import NO_PLACE_LINK
 from .session import UNKNOWN_SPEAKER
 
 NO_RETAIL = "No retail reference is loaded, so there is nothing to compare with."
@@ -37,6 +39,9 @@ ADDRESS_LABEL = "Address, offset and size"
 #: The heading says what the label means: the record stores a portrait operand and
 #: never a speaker field.
 SPEAKER_HEADING = "Speaker (by portrait)"
+#: The same honesty one section down: the map comes from the placement route, which is
+#: an inference, so the heading names it the way the speaker heading names the portrait.
+PLACE_HEADING = "Place (by placement route)"
 SITE_LINE = "{count} handle site names this line in the image."
 SITE_LINES = "{count} handle sites name this line in the image."
 
@@ -71,6 +76,10 @@ class ContextPane(QWidget):
         self.portrait.setWordWrap(True)
         self.portrait.setProperty("role", "caption")
         self.portrait.setFont(theme_module.type_scale().caption)
+        self.place_heading = self._heading(PLACE_HEADING)
+        self.place = QLabel(NO_LINE, self)
+        self.place.setWordWrap(True)
+        self.place.setFont(theme_module.type_scale().body)
         self.retail_heading = self._heading("Retail says")
         self.retail = QLabel(NO_LINE, self)
         self.retail.setWordWrap(True)
@@ -94,13 +103,15 @@ class ContextPane(QWidget):
         self.raw_field.setVisible(False)
         # A wrapped label that is not given a line's height is a line short of its
         # own font, measured at 12 px against a 14 px line spacing.
-        for label in (self._speaker_label, self.portrait, self.retail, self.sites):
+        for label in (self._speaker_label, self.portrait, self.place, self.retail,
+                      self.sites):
             label.setMinimumHeight(QFontMetrics(label.font()).lineSpacing())
         column = QVBoxLayout(self)
         column.setContentsMargins(metrics.pad_lg, metrics.pad_md, metrics.pad_lg,
                                   metrics.pad_md)
         column.setSpacing(metrics.gap)
         for widget in (self._speaker_label, self.portrait, rule(theme),
+                       self.place_heading, self.place, rule(theme),
                        self.retail_heading, self.retail, rule(theme),
                        self.contained_heading, self.contained, self.sites, rule(theme),
                        self.preview_heading, self.preview):
@@ -116,11 +127,13 @@ class ContextPane(QWidget):
         if session is None or line is None:
             self._speaker_label.setText(NO_LINE)
             self.portrait.setVisible(False)
+            self.place.setText(NO_LINE)
             self.retail.setText(NO_LINE)
             self.contained.setRowCount(0)
             self.sites.setText(NO_LINE)
             return
         self._show_speaker(session, line)
+        self._show_place(line)
         self._show_retail(session, line)
         self._show_covering(session, session.covering(line.key))
         self.sites.setText(site_line(session.sites(line.key)))
@@ -142,6 +155,14 @@ class ContextPane(QWidget):
         self.portrait.setText("" if operand is None
                               else f"Portrait operand 0x{operand:02X}")
         self.portrait.setVisible(operand is not None)
+
+    def _show_place(self, line) -> None:
+        """The map the placement route reaches, or the stated absence of one.
+
+        `place_index` is the route's own answer, and it is what the grouping buckets
+        on, so the pane and the heading cannot disagree.
+        """
+        self.place.setText(line.place if line.place_index >= 0 else NO_PLACE_LINK)
 
     def _show_retail(self, session, line) -> None:
         """The retail wording appears only where it differs, never as a repeat."""

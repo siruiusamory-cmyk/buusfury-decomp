@@ -33,6 +33,7 @@ from tests.text_fixture import (  # noqa: E402
     lowered_record_floor,
 )
 from tools.buufury_text import (  # noqa: E402
+    contextpane,
     exportdialog,
     lineview,
     renamedialog,
@@ -189,6 +190,23 @@ def split_pane(split_session, applied):
 
 
 @pytest.fixture()
+def placed_session(tmp_path, monkeypatch):
+    """One map reaches the alpha line through the placement route."""
+    monkeypatch.setattr(textedit, "maps",
+                        lambda model: (textedit.MapRow(index=0, name="Kame House"),))
+    monkeypatch.setattr(textedit, "line_maps",
+                        lambda model, **kwargs: {SHAPE_KEYS["alpha"]: 0})
+    return opened(tmp_path, "placed.gba", shape_image())
+
+
+@pytest.fixture()
+def placed_pane(placed_session, applied):
+    pane = pane_over(placed_session, applied)
+    yield pane
+    pane.close()
+
+
+@pytest.fixture()
 def gap_pane(tmp_path, applied):
     pane = pane_over(opened(tmp_path, "gap.gba", gap_image()), applied)
     yield pane
@@ -316,6 +334,37 @@ def test_place_grouping_is_ordered_by_map_table_and_names_why_a_row_is_unplaced(
     # and the room above its label is larger than the room below it.
     assert shape_pane.table.rowHeight(0) > shape_pane.table.rowHeight(1)
     assert shape_session.map_order() == ()
+
+
+def test_a_map_heading_carries_the_inference_its_link_rests_on(placed_pane) -> None:
+    """A map heading says the link is inferred, not only the tooltip and Unplaced."""
+    placed_pane.set_group(app_session.BY_PLACE)
+    model = placed_pane.table.model()
+    headings = [entry for entry in model.entries() if isinstance(entry, lineview.Group)]
+    assert [group.label for group in headings] == ["Kame House", app_session.UNPLACED]
+    assert model.data(model.index(0, 0), lineview.ROLE_HEADING) == \
+        ("Kame House (1)", f"The link is {app_session.PLACE_EVIDENCE}.")
+    assert app_session.PLACE_EVIDENCE in model.data(
+        model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+    # The note is a second line, so a map heading is taller than a row and the room
+    # above its label is larger than the room below it.
+    assert placed_pane.table.rowHeight(0) > placed_pane.table.rowHeight(1)
+
+
+def test_the_context_pane_shows_the_map_or_states_that_none_reaches_the_line(
+        placed_session, applied) -> None:
+    pane = contextpane.ContextPane(applied, theme.active_metrics())
+    pane.set_line(placed_session, placed_session.line(SHAPE_KEYS["alpha"]))
+    assert pane.place_heading.text() == contextpane.PLACE_HEADING
+    assert pane.place.text() == "Kame House"
+    # A wrapped label that is not given a line's height is a line short of its own font.
+    assert pane.place.wordWrap() is True
+    assert pane.place.minimumHeight() >= QFontMetrics(pane.place.font()).lineSpacing()
+    # The same absence the Unplaced heading states, so the two surfaces agree.
+    pane.set_line(placed_session, placed_session.line(SHAPE_KEYS["beta"]))
+    assert pane.place.text() == lineview.NO_PLACE_LINK
+    pane.set_line(None, None)
+    assert pane.place.text() == contextpane.NO_LINE
 
 
 def test_the_place_tooltip_states_the_coverage_and_where_the_link_comes_from(
@@ -574,6 +623,24 @@ def test_a_row_can_be_selected_by_key_and_counted(named_pane) -> None:
     assert named_pane.selected() == keys[2]
     assert named_pane.select_key("no such key") is False
     assert named_pane.select_first([keys[0], keys[1]]) is True
+
+
+def test_the_empty_speaker_state_says_drawn_and_never_claims_a_stored_speaker(
+        named_pane) -> None:
+    """FINDING 3: the record stores a PORTRAIT operand, never a speaker field.
+
+    Measured before the fix: choosing a speaker the checked filters leave empty said
+    `No line in this image is spoken by Bulma.`, which claims the image carries a
+    speaker the record does not hold. Only the two spellings are asserted, because the
+    rest of the sentence is the action's own words.
+    """
+    named_pane.set_speaker("Bulma")
+    named_pane.chips[2].setChecked(True)  # nothing in this synthetic image is refused
+    assert named_pane.rows() == ()
+    sentence = named_pane.empty_label.text()
+    assert "No line in this image draws Bulma's portrait." in sentence
+    assert "spoken" not in sentence
+    assert named_pane.empty_action.text() == lineview.ALL_SPEAKERS
 
 
 # --- the rename window -------------------------------------------------------

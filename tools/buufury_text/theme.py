@@ -17,6 +17,8 @@ moves a background, an outline or a text colour and never a border width.
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
@@ -759,11 +761,18 @@ def _icon_uri(name: str, ink: str) -> str:
 
 
 def _icon_cache() -> Path:
-    """One directory for the recoloured copies, created on first use."""
+    """One directory for the recoloured copies, made on first use, removed at exit."""
     global _ICON_FILES
     if _ICON_FILES is None or not _ICON_FILES.is_dir():
         _ICON_FILES = Path(tempfile.mkdtemp(prefix="buufury-icons-"))
+        atexit.register(_drop_icon_cache)
     return _ICON_FILES
+
+
+def _drop_icon_cache() -> None:
+    """Remove the recoloured copies at exit; a failed delete must not break exit."""
+    if _ICON_FILES is not None:
+        shutil.rmtree(_ICON_FILES, ignore_errors=True)
 
 
 def theme_tokens(theme: Theme) -> Mapping[str, str]:

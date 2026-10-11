@@ -10,13 +10,14 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QRect, QSize, Qt  # noqa: E402
+from PySide6.QtCore import QPoint, QRect, QSize, Qt  # noqa: E402
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter  # noqa: E402
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem, QStyle  # noqa: E402
 
@@ -413,6 +414,47 @@ def test_a_missing_icon_is_null_rather_than_wrong() -> None:
     assert theme.icon("no-such-icon").isNull()
 
 
+def test_the_licence_notice_lists_exactly_the_icons_that_ship() -> None:
+    """The notice is a licence claim, so its list and its count must match the tree.
+
+    Measured drift: the notice said eighteen and listed eighteen while nineteen were
+    tracked, `minus.svg` having been added for the meter's empty state without a line
+    in the notice. A count nobody checks is a claim that can go quietly wrong.
+    """
+    from tests.gates import REPOSITORY_ROOT
+
+    directory = REPOSITORY_ROOT / "tools" / "buufury_text" / "icons"
+    shipped = sorted(path.stem for path in directory.glob("*.svg"))
+    assert shipped, "the icon directory is part of the package"
+
+    notice = (REPOSITORY_ROOT / "THIRD-PARTY-NOTICES.md").read_text(encoding="utf-8")
+    listed = re.findall(r"`([a-z0-9-]+)`", notice)
+    named = sorted({name for name in listed if name in shipped})
+    words = {18: "Eighteen", 19: "Nineteen", 20: "Twenty"}
+
+    assert named == shipped, (
+        f"the notice does not name {sorted(set(shipped) - set(named))}")
+    assert words.get(len(shipped), str(len(shipped))) in notice, (
+        f"the notice does not say its own count for {len(shipped)} icons")
+
+
+def test_the_icon_cache_is_registered_for_removal_and_reused(monkeypatch, tmp_path) -> None:
+    """The recoloured copies live in one directory that goes when the process does."""
+    registered: list = []
+    monkeypatch.setattr(theme, "atexit", SimpleNamespace(register=registered.append))
+    monkeypatch.setattr(theme, "_ICON_FILES", None)
+    first = theme._icon_cache()
+    assert first.is_dir() and first.name.startswith("buufury-icons-")
+    assert registered == [theme._drop_icon_cache]
+    assert theme._icon_cache() == first, "a live directory must be reused, not leaked"
+    assert len(registered) == 1, "a second call must not register a second removal"
+    theme._drop_icon_cache()
+    assert not first.is_dir()
+    # A directory that is already gone must not break interpreter exit.
+    monkeypatch.setattr(theme, "_ICON_FILES", tmp_path / "gone")
+    theme._drop_icon_cache()
+
+
 def test_color_refuses_a_name_that_is_not_a_token() -> None:
     with pytest.raises(KeyError):
         theme.color(theme.active_theme(), "not-a-token")
@@ -554,4 +596,94 @@ def test_every_control_class_is_painted_in_the_theme_ink(qapp) -> None:
             assert background.name().lower() in (
                 applied.surface.lower(), applied.surface_raised.lower(),
                 applied.window.lower()), (mode, name, background.name())
+        host.close()
+
+
+#: The classes the case above does not reach, and how each one is rendered here:
+#: the combo popup's own view, a menu, the tab strip, a header section, a table body
+#: and the real tooltip window.
+EXTRA_CONTROL_CLASSES = ("QComboBox view", "QMenu", "QTabBar", "QHeaderView",
+                         "QTableView", "QToolTip")
+
+
+def _theme_ink_present(image: QImage, applied) -> bool:
+    """Whether any rendered pixel is exactly one of the theme's two text tokens.
+
+    The tab strip also carries a 1 px base line that Qt draws itself, so on that row
+    the most-contrasting pixel is not a label; requiring a token pixel keeps the row
+    an honest measurement of the control's own ink.
+    """
+    tokens = {QColor(applied.text_primary).rgb(), QColor(applied.text_secondary).rgb()}
+    return any(image.pixel(x, y) in tokens
+               for y in range(image.height()) for x in range(image.width()))
+
+
+def test_the_extra_control_classes_are_painted_in_the_theme_ink(qapp) -> None:
+    """The same rendered-pixel rule, for the classes the first case does not reach.
+
+    Every one of the six renders offscreen and no stand-in is used: the tooltip row
+    is the QTipLabel Qt itself creates, not a QLabel wearing its name.
+    """
+    from PySide6.QtGui import QStandardItem, QStandardItemModel
+    from PySide6.QtWidgets import (QComboBox, QMenu, QTabBar, QTableView, QToolTip,
+                                   QVBoxLayout, QWidget)
+
+    for mode in (theme.MODE_LIGHT, theme.MODE_DARK):
+        applied = theme.apply_theme(qapp, mode)
+        host = QWidget()
+        host.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+        column = QVBoxLayout(host)
+        combo = QComboBox()
+        combo.addItems(["Lines", "Records"])
+        tabs = QTabBar()
+        tabs.addTab("Lines")
+        tabs.addTab("Records")
+        table = QTableView()
+        model = QStandardItemModel(3, 2)
+        model.setHorizontalHeaderItem(0, QStandardItem("Line"))
+        model.setHorizontalHeaderItem(1, QStandardItem("Record"))
+        for row in range(3):
+            model.setItem(row, 0, QStandardItem(f"Line {row}"))
+            model.setItem(row, 1, QStandardItem("World Tournament Stadium"))
+        table.setModel(model)
+        for widget in (combo, tabs, table):
+            column.addWidget(widget)
+        host.resize(400, 260)
+        host.show()
+        QApplication.processEvents()
+        # The popup list, the menu and the tooltip are their own windows, so each is
+        # shown before anything in it is painted.
+        combo.showPopup()
+        QApplication.processEvents()
+        menu = QMenu()
+        menu.addAction("Rename")
+        menu.addAction("Export")
+        menu.popup(QPoint(12, 12))
+        QApplication.processEvents()
+        QToolTip.showText(QPoint(12, 12), "Line 1 of 3", table)
+        QApplication.processEvents()
+        tip = next((widget for widget in qapp.topLevelWidgets()
+                    if widget.metaObject().className() == "QTipLabel"
+                    and widget.isVisible()), None)
+        for name, widget in (("QComboBox view", combo.view()), ("QMenu", menu),
+                             ("QTabBar", tabs),
+                             ("QHeaderView", table.horizontalHeader()),
+                             ("QTableView", table), ("QToolTip", tip)):
+            assert name in EXTRA_CONTROL_CLASSES
+            assert widget is not None, name
+            grabbed = _flatten(widget.grab().toImage(), QColor(applied.window))
+            ink, background = _rendered_ink_and_background(grabbed)
+            ratio = contrast(ink, background)
+            assert ratio >= TEXT_FLOOR, (
+                f"{mode} {name} draws ink {ink.name()} on {background.name()}, "
+                f"{ratio:.2f}:1 against the {TEXT_FLOOR} floor: the stylesheet names no "
+                f"rule for it, so Qt is choosing the ink"
+            )
+            assert background.name().lower() in (
+                applied.surface.lower(), applied.surface_raised.lower(),
+                applied.window.lower()), (mode, name, background.name())
+            assert _theme_ink_present(grabbed, applied), (mode, name)
+        QToolTip.hideText()
+        menu.close()
+        combo.hidePopup()
         host.close()

@@ -180,7 +180,81 @@ def test_headroom_states_a_rows_budget_with_nothing_used(tmp_path: Path) -> None
     assert pending.bytes > headroom.bytes
 
 
-# --- states ------------------------------------------------------------------
+def two_line_session(directory) -> Session:
+    """One record whose text is two spoken lines, so both share a record."""
+    return opened(directory, image=hello_image("One\nTwo"), view=app_session.LINES,
+                  cutters_from_pool=False)
+
+
+def _the_two_lines(session: Session) -> tuple:
+    target = record_key(session)
+    rows = sorted((row for row in session.lines if row.target == target),
+                  key=lambda row: row.position[1])
+    assert len(rows) == 2, [row.text for row in rows]
+    return rows
+
+
+def test_two_edits_of_one_record_both_survive(tmp_path: Path) -> None:
+    """Measured: editing a second line of one record discarded the first, silently.
+
+    The edit was built from the ORIGINAL record text and stored under the record, so the
+    second line's edit overwrote the first and no undo could bring the first back. Each
+    edited row is now an entry of its own, carrying its span in the original record, and
+    the record's text is rebuilt from the original every time.
+    """
+    session = two_line_session(tmp_path)
+    first, second = _the_two_lines(session)
+    # Same-length edits, so this case is about the composition and not about growth,
+    # which the plan decides separately.
+    session.set_edit(first.key, "Une")
+    session.set_edit(second.key, "Tvo")
+    assert session.pending_text(first.key) == "Une"
+    assert session.pending_text(second.key) == "Tvo"
+    assert session.state(first.key) is State.EDITED
+    assert session.state(second.key) is State.EDITED
+    # One record, so one stored edit, and its text carries both rows.
+    assert len(session.edits) == 1
+    stored = session.edits[record_key(session)]
+    assert stored.new == "Une\nTvo"
+
+
+def test_clearing_one_line_of_a_record_keeps_the_other(tmp_path: Path) -> None:
+    session = two_line_session(tmp_path)
+    first, second = _the_two_lines(session)
+    session.set_edit(first.key, "First!")
+    session.set_edit(second.key, "Second!")
+    session.clear_edit(first.key)
+    assert session.pending_text(first.key) == first.text
+    assert session.pending_text(second.key) == "Second!"
+    session.clear_edit(second.key)
+    assert session.edited_keys() == ()
+
+
+def test_a_whole_record_text_composes_with_a_pending_line_edit(tmp_path: Path) -> None:
+    """A rename replaces the record's whole text, and a pending line edit survives it.
+
+    Measured: the rename batch built its text from the original record as well, so it
+    discarded a pending line edit the same way a second line edit did. A whole-record
+    text is now a base the pending rows are re-applied to, and where a row cannot be
+    located exactly once the combination is refused rather than guessed.
+    """
+    session = two_line_session(tmp_path)
+    target = record_key(session)
+    first, second = _the_two_lines(session)
+    session.set_edit(second.key, "Tvo")
+    original = session.line(target).text
+    # Both changes are the same length as what they replace, so this case is about the
+    # composition and not about the record moving.
+    renamed = original.replace("One", "Uno", 1)
+    assert renamed != original and len(renamed) == len(original)
+    session.set_edit(target, renamed, whole=True)
+    assert session.pending_text(second.key) == "Tvo"
+    # The record's own pending text carries BOTH: the rename it was given and the line
+    # edit that was already pending inside it.
+    assert session.pending_text(target) == "Uno\nTvo"
+    assert session.state(second.key) is State.EDITED
+
+
 
 
 def test_a_base_changed_edit_is_marked_and_never_rebased(tmp_path: Path) -> None:

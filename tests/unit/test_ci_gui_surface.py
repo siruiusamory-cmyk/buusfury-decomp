@@ -332,7 +332,7 @@ def test_the_deploy_job_needs_the_test_job():
         if not (isinstance(need, dict) and need.get("optional"))
     }
     assert TEST_JOB in required, (
-        f"{_cited('deploy-site:')}: deploy-site must require a `needs:` entry "
+        f"{_cited('deploy-site')}: deploy-site must require a `needs:` entry "
         f"naming {TEST_JOB}; its needs are {needs!r}, so a pipeline whose "
         f"{TEST_JOB} was excluded by its rules can still publish the site"
     )

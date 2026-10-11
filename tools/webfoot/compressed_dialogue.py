@@ -283,6 +283,30 @@ AUTHORED_DIALOGUE_TARGETS = {
 }
 
 
+def target_supports_profile(
+    target: CompressedDialogueTarget, profile: RomProfile
+) -> bool:
+    """Whether a registry entry belongs to this profile.
+
+    An entry with no ``profile_id`` is game-independent; an entry with one is that
+    profile's own record, and `_retail_container` refuses it anywhere else.
+    """
+    return target.profile_id is None or target.profile_id == profile.id
+
+
+def authored_dialogue_targets(profile: RomProfile) -> tuple[CompressedDialogueTarget, ...]:
+    """The registry entries that belong to this profile, in registry order.
+
+    Every reader that needs a target's own measured fields - its table offset
+    included - asks through this, so one profile can never be answered with
+    another profile's table.
+    """
+    return tuple(
+        target for target in AUTHORED_DIALOGUE_TARGETS.values()
+        if target_supports_profile(target, profile)
+    )
+
+
 def target_named(name: str) -> CompressedDialogueTarget:
     try:
         return AUTHORED_DIALOGUE_TARGETS[name]
@@ -292,7 +316,7 @@ def target_named(name: str) -> CompressedDialogueTarget:
 
 def _retail_container(canonical: bytes, profile: RomProfile,
                       target: CompressedDialogueTarget):
-    if target.profile_id is not None and profile.id != target.profile_id:
+    if not target_supports_profile(target, profile):
         raise CompressedDialogueError(
             f"{target.name}: target is not supported by profile {profile.id!r}"
         )

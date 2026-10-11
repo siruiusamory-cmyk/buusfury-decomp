@@ -54,9 +54,9 @@ from typing import Any
 
 from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
 from tools.webfoot.compressed_dialogue import (
-    AUTHORED_DIALOGUE_TARGETS,
     CompressedDialogueError,
     CompressedDialogueTarget,
+    authored_dialogue_targets,
     container_selectors,
     dialogue_record_inventory,
 )
@@ -516,11 +516,7 @@ class TextSurface:
 
     def authored_dialogue(self) -> tuple[CompressedDialogueTarget, ...]:
         """Every record this build can replace, from the SDK's own registry."""
-        return tuple(
-            target
-            for target in AUTHORED_DIALOGUE_TARGETS.values()
-            if target.profile_id is None or target.profile_id == self.profile.id
-        )
+        return authored_dialogue_targets(self.profile)
 
     def dialogue_text(self, target: CompressedDialogueTarget) -> str:
         """The text one authored target's current handle names in this image."""
@@ -816,10 +812,11 @@ def load_text_surface(
 
     table_offset = 0
     selectors: tuple[int, ...] = ()
-    authored = tuple(AUTHORED_DIALOGUE_TARGETS.values())
+    # The container table's address is the authored registry's own measured fact,
+    # so it is read from this profile's entries rather than restated as a literal
+    # and never from an entry that belongs to a different profile.
+    authored = authored_dialogue_targets(profile)
     if authored:
-        # The container table's address is the authored registry's own measured
-        # fact, so it is read from there rather than restated as a literal.
         table_offset = authored[0].table_offset
         selectors = container_selectors(image, table_offset)
     pool: RomRange | None = None

@@ -148,8 +148,9 @@ Three stacked sections, **identical in treatment**, in the order the data flows:
 keeps the spec's own explanation line so a read-only section is never merely dimmed
 and unexplained.
 
-- **Exactly one section is emphasised**, and it is NEW: one weight step on its
-  label, one accent hairline above its frame, and the caret. Von Restorff says use
+- **Exactly one section is emphasised**, and it is NEW: one accent hairline above its
+  frame plus the caret. The type ladder allows two weights, so a weight step is not
+  available and the hairline carries the emphasis alone. Von Restorff says use
   restraint, so nothing else in the editor competes.
 - The two read-only sections show **no caret**, because a blinking cursor on static
   text is a named tell of a generated interface.
@@ -286,6 +287,9 @@ These are decisions, not citations. Each names the entries that constrain it.
 | Body text at 9 to 10 pt | the spec's density band | Hallmark's 14 px floor and 16 px body | the spec governs for chrome and the list; editor prose takes 13 px, one step above the chrome, which is the most the dense band allows |
 | Mono in many slots | the spec mandates it for ids, offsets, sizes and hashes | the outlier face is capped at two slots | the spec governs; mono is a data role, not a register, and it never touches prose or labels |
 | The status word always shows in full | the spec | narrow panes force eliding | the spec governs: the text column gives ground before the status does |
+| A list's row count sits in its tab label | the spec's tab strip | the references put a count beside the tab rather than inside it | both readings are served: the tab names stand alone, each list's total is that tab's tooltip, and the counters line beside the tabs carries the three state counts. Measured, the two labels plus a total on the counters line want 399 px inside the pane's 350 px viewport, so one of the two must elide and the names are the ones a reader navigates by |
+| The light theme needs no rule for a control Qt can draw itself | nothing in the spec | the references assume a surface resolves its own colours | the spec governs, and the build now names every control class in the stylesheet anyway, because a rule that does not exist is a rule Qt fills in with ink the theme never chose. See 7.4 |
+| NEW is emphasis by one weight step | the design note's 3.3 | the type ladder allows two weights only | the accent hairline carries the emphasis; a third weight would break the ladder. The note's wording is corrected here rather than the build |
 
 ## 7. The exit check
 
@@ -325,6 +329,33 @@ one is now a rule above rather than a thing to remember:
    left the text column about 24 px wide, measured with the real font. Counting rules
    in the references did not catch this; measuring did. This is why the pane widths
    are part of the build and why the acceptance pass measures rather than looks.
+
+### What the rebuilt layer taught, found by the audit and the worst-case pass
+
+4. **A control with no rule is a control Qt paints its own way.** The light theme
+   rendered the menu bar, the four combo boxes and the address disclosure as white on
+   a `#F3F4F6` window, about 1.1 to 1, because the stylesheet named no rule for
+   `QMenuBar`, `QComboBox`, `QLineEdit` or a plain `QToolButton`. The dark theme
+   painted all four correctly, so every dark pass missed it, and light is the default
+   on a light Windows. Rule: the stylesheet names every control class the window uses,
+   and a token-free fallback is treated as a defect even when it happens to look
+   right in one mode. The mechanical exit check could not see this: it greps source
+   for hex literals, and a widget with no rule contains no literal at all. A rendered
+   pixel check found it, and the acceptance pass now reads the pixels of each theme.
+5. **A floor that is negotiated away is not a floor.** `_fit_columns` asked the
+   speaker column for `max(fixed_floor, room - text_floor)`, which keeps the fixed
+   floor even when that starves the text: measured, 87 px against a documented 130.
+   Rule: the stated priority order is enforced by arithmetic, not by intent, and the
+   column that is allowed to give ground is the one that must have no floor.
+6. **A style sheet on a frame leaks to its children.** Qt applies a widget stylesheet
+   to that widget and every descendant, so the editor's section frames put a border
+   round the explanation captions and three nested rules inside the move notice. Rule:
+   scope a frame rule by object name, and check the child's own border when a frame
+   gains one.
+7. **A source-level gate cannot see a paint.** The exit check reported zero findings
+   while the light theme was unreadable, because the defect lives in the absence of a
+   rule. Rule: an exit check claims only what its method can see, and the audit that
+   reads rendered pixels is what covers what the grep cannot.
 
 ## 8. Review protocol
 

@@ -125,6 +125,10 @@ def _no_launch_attempt() -> Iterator[list[str]]:
         owner = {"subprocess": subprocess, "os": os}.get(owner_name)
         if owner is not None and callable(getattr(owner, attribute, None)):
             sites.append((owner, attribute))
+    assert sites, (
+        "no launch-call patch site was installed, so a passing attempt count "
+        f"would prove nothing: {LAUNCH_CALL_NAMES!r} resolved to nothing here"
+    )
     attempts: list[str] = []
 
     def _refuse(name: str):

@@ -251,14 +251,6 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "lists tracked files with git to check the exception table; it starts "
         "no emulator",
     ("tests/unit/test_runtime_evidence_report.py",
-     "_emulator_processes",
-     "'ps'"):
-        "reads the POSIX process list to assert no emulator appeared",
-    ("tests/unit/test_runtime_evidence_report.py",
-     "_emulator_processes",
-     "'tasklist'"):
-        "reads the Windows process list to assert no emulator appeared",
-    ("tests/unit/test_runtime_evidence_report.py",
      "test_the_module_entry_point_prints_the_report",
      "sys.executable"):
         "runs the offline inspector as a module; that module starts nothing",

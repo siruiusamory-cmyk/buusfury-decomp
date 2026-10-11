@@ -128,7 +128,16 @@ def identify(font: Font, corpus: list[str], engine: set[tuple[int, int]],
         found = identify_at_width(font, corpus, engine, wrap)
         if found is not None and (best is None or found["missed"] + found["extra"]
                                   < best["missed"] + best["extra"]):
-            best = {**found, "wrap": wrap}
+            best = {**found, "wrap": wrap, "identified_by": "ink-count"}
+    if best is not None and best["missed"] + best["extra"] == 0:
+        return best
+    # The count filter is a pre-filter and can pick a record whose ink count agrees while the text does
+    # not. Read the engine's own glyphs and identify from those before calling a capture a hold-out.
+    for wrap in WRAP_WIDTHS:
+        found = identify_by_pixels(font, corpus, engine, ink, wrap)
+        if found is not None and (best is None or found["missed"] + found["extra"]
+                                  < best["missed"] + best["extra"]):
+            best = found
     return best
 
 
@@ -155,6 +164,99 @@ def identify_at_width(font: Font, corpus: list[str], engine: set[tuple[int, int]
                         "ink_pixels": count}
     return best
 
+
+
+PRINTABLE = [code for code in range(32, 127)]
+
+
+def read_line_from_pixels(font: Font, band: set[tuple[int, int]], low: int,
+                          start: int = TEXT_ORIGIN[0]) -> str:
+    """The characters the engine drew on one line, read glyph by glyph from its own ink.
+
+    A glyph is accepted only when its pattern explains the engine's pixels EXACTLY over its columns, in
+    both directions; anything else becomes a gap, because a wrong guess is worse than a hole. The cursor
+    advances by that glyph's own advance, which is the rule the engine uses.
+    """
+    if not band:
+        return ""
+    columns = sorted(x for x, _ in band)
+    cursor = start
+    text = ""
+    while cursor <= columns[-1]:
+        chosen = None
+        for code in PRINTABLE:
+            glyph = font.glyph(code)
+            if glyph is None:
+                continue
+            cost = 0
+            for column in range(glyph.width):
+                x = cursor + column
+                for row in range(GLYPH_ROWS):
+                    engine_has = (x, low + row) in band
+                    glyph_has = bool((glyph.columns[column] >> row) & 1)
+                    if glyph_has != engine_has:
+                        cost += 1
+            if chosen is None or cost < chosen[1]:
+                chosen = (code, cost, glyph)
+        if chosen is None or chosen[1] != 0:
+            text += "?"
+            cursor += 1
+        else:
+            text += chr(chosen[0])
+            cursor += chosen[2].width + 1
+    return text
+
+
+def longest_run(text: str, minimum: int = 6) -> str:
+    """The longest stretch of exact characters in a reconstruction, gaps excluded."""
+    best = ""
+    run = ""
+    for character in text + "?":
+        if character == "?":
+            if len(run) > len(best):
+                best = run
+            run = ""
+        else:
+            run += character
+    return best if len(best) >= minimum else ""
+
+
+def identify_by_pixels(font: Font, corpus: list[str], engine: set[tuple[int, int]],
+                       ink: tuple[int, int, int], wrap: int) -> dict | None:
+    """Identify the line by reading the engine's own glyphs, then match records containing that run."""
+    low = TEXT_ORIGIN[1]
+    band = {position for position in engine if low <= position[1] < low + GLYPH_ROWS}
+    drawn = read_line_from_pixels(font, band, low)
+    run = longest_run(drawn)
+    if not run:
+        return None
+    # A run can carry a misread character at its tail, so shorten it until records match rather than
+    # discarding the whole reconstruction.
+    candidates: list[str] = []
+    for length in range(len(run), 5, -1):
+        candidates = [text for text in corpus if run[:length] in text]
+        if candidates:
+            break
+    best = None
+    for text in candidates:
+        for start in range(0, len(text)):
+            window = text[start:]
+            per_character = _advance_positions(font, window, wrap)
+            cumulative: set[tuple[int, int]] = set()
+            count = 0
+            for index, pixels in enumerate(per_character):
+                cumulative = cumulative | set(pixels)
+                count += len(pixels)
+                if abs(count - len(engine)) > 3:
+                    continue
+                missed = len(engine - cumulative)
+                extra = len(cumulative - engine)
+                if best is None or missed + extra < best["missed"] + best["extra"]:
+                    best = {"text": text, "window": start, "prefix": start + index + 1,
+                            "missed": missed, "extra": extra, "ink_pixels": count,
+                            "wrap": wrap, "identified_by": "pixels",
+                            "run_used": run}
+    return best
 
 def main() -> int:
     parser = argparse.ArgumentParser()

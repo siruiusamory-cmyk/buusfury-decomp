@@ -1715,14 +1715,27 @@ def _run_graphics(args) -> int:
             result = sprites.reference_document().to_json()
         elif command == "export":
             # The destination is free-form and this branch is the one writer here
-            # that emits a non-ROM artefact. Ask the write module's shared
-            # source-alias policy BEFORE creating a parent directory or opening
-            # the destination, so `--out` naming the input ROM is refused with the
-            # ROM byte-identical rather than truncated to a PNG. `WriteError` is a
-            # `ValueError`, so the handler below already reports it and exits
-            # non-zero.
+            # that emits a non-ROM artefact. Its destination policy is the one
+            # every other writer asks, in `emit_image`'s own order and before a
+            # parent directory is created or the destination is opened: the write
+            # module's source-alias and new-destination rules and the destination
+            # module's protected-input rule. So `--out` naming the input ROM is
+            # refused with the ROM byte-identical rather than truncated to a PNG,
+            # an existing artefact is not silently replaced, and a path inside
+            # `roms/` or another protected input directory is refused however it
+            # is reached. Both error families are `ValueError`s, so the handler
+            # below already reports the refusal and exits non-zero.
+            #
+            # `authored_image.refuse_canonical_destination` is deliberately not
+            # asked: it compares a digest against the destination FILE's bytes,
+            # and this branch emits a PNG, so no PNG destination can hold the
+            # canonical image's digest and the refusal could never fire.
+            from .destination import refuse_rom_destination
+
             out = Path(args.out)
             ensure_not_source_alias(args.rom, out)
+            refuse_rom_destination(args.rom, out)
+            ensure_new_destination(out)
             asset = sprites.graphic(_parse_graphic_identity(args.identity))
             blob = indexed_png.encode(
                 asset.pixels,

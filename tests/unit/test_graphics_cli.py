@@ -6,17 +6,22 @@ undeclared or spoofed profile is turned away before any offset is trusted. The
 happy paths need real graphics and live in
 `tests/integration/test_graphics_rom.py`.
 
-The last block is CQA-01-OUTPUT-SAFETY-001: `graphics export` is the only
-ROM-loading command whose destination is a caller-chosen artefact path, and it
-must refuse a destination that is the input ROM. These drive the real `main`
-argument vector, not the guard in isolation, because a correct helper that no
-command calls is exactly the defect being closed.
+The last two blocks are the output-safety tickets for `graphics export`, the one
+ROM-loading command whose destination is a caller-chosen artefact path.
+CQA-01-OUTPUT-SAFETY-001 refuses a destination that is the input ROM;
+CQA-10-UNGUARDED-GRAPHICS-EXPORT-001 refuses one that already exists or that
+lies inside a protected input directory. These drive the real `main` argument
+vector, not the guard in isolation, because a correct helper that no command
+calls is exactly the defect being closed.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -243,3 +248,108 @@ def test_export_still_writes_a_safe_distinct_destination(
     assert decoded[1:3] == (2, 2)
     # The out directory did not exist: the command creates it, as before.
     assert rom.read_bytes() == before
+
+
+# --- CQA-10: the export destination answers the shared destination policy -----
+#
+# The defect: the branch called only `ensure_not_source_alias`, so
+# `graphics export ... --out <an existing PNG>` replaced that artefact silently
+# and `--out <checkout>/roms/anything.png` was accepted, writing a caller-chosen
+# file into the repository's protected input storage. Asked in `emit_image`'s own
+# order: the write module's source-alias and new-destination rules and the
+# destination module's protected-input rule.
+#
+# `authored_image.refuse_canonical_destination`, the fourth predicate the sibling
+# artefact writer asks, is deliberately absent: it compares a SHA-256 against the
+# destination FILE's bytes, and this branch emits a PNG, so no PNG destination can
+# hold the canonical image's digest and the refusal could never fire.
+#
+# Only the read-only corpus load is stubbed, exactly as the CQA-01 block above
+# does: `capability.require` re-checks declared extents against the packaged
+# catalogue, so synthetic bytes can never authorise the real corpus walk. The
+# command, the identity parse, the guards and `indexed_png.encode` stay real.
+
+
+def test_export_refuses_to_overwrite_an_existing_destination(
+    tmp_path, capsys, monkeypatch
+):
+    rom, config = _synthetic_sprite_rom(tmp_path)
+    sprites, identity = _stub_corpus(SPRITE_PROFILE_ID)
+    _patch_corpus(monkeypatch, sprites)
+
+    out = tmp_path / "export" / "sprite_0000.png"
+    assert main(_export_argv(config, rom, str(identity), out)) == 0
+    before = hashlib.sha256(out.read_bytes()).hexdigest()
+
+    # Byte-identical to what the same command produces, so an overwrite would be
+    # invisible in the bytes: the digest being unchanged is not the assertion.
+    # The exit code and the write that never ran are.
+    exit_code = main(_export_argv(config, rom, str(identity), out))
+    captured = capsys.readouterr()
+
+    assert exit_code == 2, captured.out
+    assert "refusing to overwrite an existing output" in captured.err
+    assert hashlib.sha256(out.read_bytes()).hexdigest() == before
+    assert str(out) not in captured.out
+
+
+def test_export_refuses_a_destination_inside_a_protected_input_directory(
+    tmp_path, capsys, monkeypatch
+):
+    from tools.webfoot import destination as destination_sdk
+
+    rom, config = _synthetic_sprite_rom(tmp_path)
+    sprites, identity = _stub_corpus(SPRITE_PROFILE_ID)
+    _patch_corpus(monkeypatch, sprites)
+
+    checkout = tmp_path / "checkout"
+    (checkout / "roms").mkdir(parents=True)
+    (checkout / ".gitignore").write_text("roms/\nroms\n", encoding="utf-8")
+    monkeypatch.setattr(destination_sdk, "repository_root", lambda: checkout)
+    destination_sdk._PROTECTED_CACHE.clear()
+    out = checkout / "roms" / "exports" / "sprite_0000.png"
+
+    try:
+        exit_code = main(_export_argv(config, rom, str(identity), out))
+        captured = capsys.readouterr()
+
+        assert exit_code == 2, captured.out
+        assert "protected ROM input directory" in captured.err
+        assert not out.exists()
+        # The refusal precedes the `mkdir`, so not even the parent directory is
+        # created - a refused run leaves no file and no new directory.
+        assert not out.parent.exists()
+    finally:
+        shutil.rmtree(out.parent, ignore_errors=True)
+        destination_sdk._PROTECTED_CACHE.clear()
+
+
+def test_export_writes_a_fresh_destination_and_reports_only_its_path(
+    tmp_path, capsys, monkeypatch
+):
+    """The positive control: the guards must not refuse an ordinary destination.
+
+    The summary keys and values are the ones the unguarded branch printed; only
+    `path` differs from run to run, so the guard changed the destination policy
+    and not the document.
+    """
+    rom, config = _synthetic_sprite_rom(tmp_path)
+    sprites, identity = _stub_corpus(SPRITE_PROFILE_ID)
+    _patch_corpus(monkeypatch, sprites)
+
+    repository = Path(__file__).resolve().parents[2]
+    out = repository / "build" / f"cqa10-{uuid4().hex}" / "sprite_0000.png"
+    exit_code = main(_export_argv(config, rom, str(identity), out))
+    captured = capsys.readouterr()
+
+    try:
+        assert exit_code == 0, captured.err
+        blob = out.read_bytes()
+        assert json.loads(captured.out) == {
+            "id": str(identity),
+            "path": str(out),
+            "bytes": len(blob),
+        }
+        assert indexed_png.decode(blob)[1:3] == (2, 2)
+    finally:
+        shutil.rmtree(out.parent, ignore_errors=True)

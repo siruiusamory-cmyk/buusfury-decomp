@@ -15,7 +15,7 @@ The controls here are what make that claim mean something:
 4. a malformed, unsupported or incomplete bundle is refused with a non-zero
    exit whose message names the problem;
 5. the module source contains no process-launch call, and a real report run
-   leaves this machine's emulator process count unchanged.
+   attempts no process launch at all.
 
 The fixtures are synthetic throughout: fake paths, fake bytes, digests measured
 from those bytes. No canonical ROM and no real emulator is touched.
@@ -23,12 +23,15 @@ from those bytes. No canonical ROM and no real emulator is touched.
 
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+from typing import Iterator
+from unittest import mock
 
 import pytest
 
@@ -104,39 +107,39 @@ def _write(target: Path, document: object) -> None:
     target.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 
-def _emulator_processes() -> int:
-    """How many mGBA processes this machine has, read from the OS itself.
+@contextmanager
+def _no_launch_attempt() -> Iterator[list[str]]:
+    """Refuse every launch call the inspector could possibly make, and record it.
 
-    A missing process lister is not a failure and must not be read as "none":
-    ``ps`` is absent from some CI images, so Linux falls back to reading
-    ``/proc`` directly, which answers the same question without one.
+    The names are resolved to real callables first, so a fallback path this
+    platform does not build - ``os.startfile`` outside Windows - is never
+    patched into existence. A launch the inspector does resolve to, and makes,
+    raises here instead of starting anything, which is what makes the caller's
+    count of attempts meaningful. The spellings are ``LAUNCH_CALL_NAMES``, the
+    same list the source scan reads, so a new one is covered in both places at
+    once.
     """
-    if os.name == "nt":
-        listing = subprocess.run(
-            ["tasklist", "/NH"], capture_output=True, text=True, check=False
-        ).stdout
-        return sum("mgba" in line.lower() for line in listing.splitlines())
-    try:
-        listing = subprocess.run(
-            ["ps", "-A", "-o", "comm="], capture_output=True, text=True, check=False
-        ).stdout
-    except OSError:
-        listing = ""
-    if not listing.strip():
-        proc = Path("/proc")
-        names: list[str] = []
-        if proc.is_dir():
-            for entry in proc.iterdir():
-                if not entry.name.isdigit():
-                    continue
-                try:
-                    names.append(
-                        (entry / "comm").read_text(encoding="utf-8").strip()
-                    )
-                except OSError:
-                    continue
-        listing = "\n".join(names)
-    return sum("mgba" in line.lower() for line in listing.splitlines())
+    sites: list[tuple[object, str]] = []
+    for name in LAUNCH_CALL_NAMES:
+        owner_name, _, attribute = name.rpartition(".")
+        owner = {"subprocess": subprocess, "os": os}.get(owner_name)
+        if owner is not None and callable(getattr(owner, attribute, None)):
+            sites.append((owner, attribute))
+    attempts: list[str] = []
+
+    def _refuse(name: str):
+        def _forbidden(*args: object, **kwargs: object) -> None:
+            attempts.append(name)
+            raise AssertionError(
+                f"the offline inspector attempted a process launch: {name}"
+            )
+
+        return _forbidden
+
+    with ExitStack() as stack:
+        for owner, attribute in sites:
+            stack.enter_context(mock.patch.object(owner, attribute, _refuse(attribute)))
+        yield attempts
 
 
 def test_the_report_reads_every_recorded_field(tmp_path: Path):
@@ -305,14 +308,14 @@ def test_the_inspector_source_contains_no_launch_call():
 
 def test_a_report_run_creates_no_emulator_process(tmp_path: Path):
     bundle, _ = _bundle(tmp_path)
-    before = _emulator_processes()
 
-    exit_code = evidence_report.main([str(bundle)])
+    with _no_launch_attempt() as attempts:
+        exit_code = evidence_report.main([str(bundle)])
 
-    after = _emulator_processes()
     assert exit_code == 0
-    assert after == before, (
-        f"the emulator process count changed across a report run: {before} -> {after}"
+    assert attempts == [], (
+        "the offline inspector tried to start a process: "
+        f"{attempts}; it must read bytes and print"
     )
 
 

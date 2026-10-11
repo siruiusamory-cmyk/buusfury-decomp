@@ -77,18 +77,30 @@ canonical run's length. Twenty stream positions qualify, listed in the manifest:
 
 ## 3. Census before and after
 
-Counted over every live record, in byte coordinates (a run counts once per record
-whose span contains it):
+The load-bearing count is over the records a pool word actually names, in byte
+coordinates (a run counts once per record whose span contains it):
 
-| image | records with an interior 2+ space run | run occurrences |
+| image | in-pool records with an interior 2+ space run | run occurrences |
+| --- | --- | --- |
+| base, Release 4A | 202 | 220 |
+| this output | 18 | 21 |
+| canonical | 19 | 22 |
+
+The wider count, over every word the shape filter matches anywhere in the image,
+includes spans that are not records at all. It is kept for comparison, and the
+former revision of this document used it as if every span were a record:
+
+| image | all record-shaped spans with an interior 2+ space run | run occurrences |
 | --- | --- | --- |
 | base, Release 4A | 238 | 351 |
 | this output | 22 | 26 |
 | canonical | 24 | 30 |
 
-The tracker's A24 row quoted 349 occurrences; this count is 351. The difference is
-in the definition of a boundary run, and both figures are recorded rather than
-reconciled silently.
+Both counts reach the same conclusion, which is the one that matters: every run
+that survives in the output is a run the canonical image carries at the same
+offset. The tracker's A24 row quoted 349 occurrences by the wider definition;
+this document counts 351. That difference is in the treatment of a boundary run,
+and both figures are recorded rather than reconciled silently.
 
 ## 4. Verification
 
@@ -113,10 +125,12 @@ image and the built image with the toolkit's own readers:
 * **Containment preserved.** 65 pairs of in-pool records where one base span held
   another still hold in the output.
 * **Nothing else moved.** 187,388 bytes differ between the two images; every one
-  lies inside a dialogue container's stored extent or inside the event-resource
-  pool. The verifier's allowed set is the contract's pool range, deliberately NOT
-  the shape-filtered site list it also uses to read records, so sharing that filter
-  with the builder cannot hide a write.
+  lies inside a dialogue container's stored extent or inside a four-byte word at an
+  in-pool site. The allowed set was narrowed from the whole 127 KB pool to those
+  words after the review's non-blocking finding N1: a write anywhere else in the
+  pool (an event-record kind byte, script data) is now a failure rather than a
+  whitelisted byte. Measured on this output: all 4,590 changed pool bytes sit in
+  in-pool site words.
 * **Release 4A content.** 23 ranges from the 4A manifest (both stat selectors, the
   appearance records, the name slot, both definition copies and their entry
   pointers) are byte-identical.
@@ -146,26 +160,30 @@ save boots into is the save banner, so the box under test is that banner, and bo
 images render it the same way at every sample. The copier read the same text at
 both liveness hits. That is the paired comparison the reviewer asked for.
 
-It is NOT a text-rendering proof. The sampled box draws no visible glyphs in
-either image, which is why an earlier revision's "revealing" was wrong, and no
-sampled frame shows a dialogue line. Whether a real line's spacing looks right on
-screen stays the owner's visual acceptance, which is owner-reserved.
+It is not a text-rendering proof, but it is more than a boot check. From frame
+2400 the box visibly draws `Game Saved` in both images, and that text is the
+in-pool record `0:3702:20` (sites `0x77CDFC`, `0x77CE34`), which this pass moved to
+`0:3666:20`. So the pair shows one rewritten handle rendering identically, byte for
+byte, at every sample. An earlier revision of this section called the box empty and
+the drawing "revealing"; both readings were wrong. No sampled frame shows a
+dialogue line, and whether a real line's spacing looks right on screen stays the
+owner's visual acceptance, which is owner-reserved.
 
 ## 6. Limits
 
-* **One kept run is also read by a record that is not the retail holder.**
-  `0:47756` is retail spacing (`0:47718:144` carries it in the canonical image) and
-  it is also inside `0:47124:790`'s span, so that longer record still shows two
-  spaces there. Keeping it is right: the canonical image carries the same run at
-  the same offset, so removing it would change the retail holder's spacing. Four
-  further kept runs (`0:5428`, `3:8742`, `4:29318`, `4:49770`, `4:51474`) are each
-  read by two records as well; in each case both readers carry the run in the
-  canonical image.
-* **The output is not bit-identical to retail spacing.** 22 records carry 26 runs
-  against the canonical image's 24 records and 30 runs. The records themselves are
-  not the same shapes after five releases of edits, so the remainder is expected;
-  what is proven is that no run survives that retail does not carry at the same
-  offset.
+* **Five kept runs are read by one record and one coincidence word.** Of the six
+  kept positions that more than one word reads, only `0:5428` has two in-pool
+  readers (`0:5354:124` and `0:4152:2016`), and both carry the run in the canonical
+  image. At the other five (`0:47756`, `3:8742`, `4:29318`, `4:49770`, `4:51474`)
+  the second reader is a word outside the event-resource pool, which by this
+  ticket's own rule is not a record at all. `0:47756` is retail spacing
+  (`0:47718:144` carries it in the canonical image), and keeping it is right:
+  removing it would change the retail holder's spacing.
+* **The output is not bit-identical to retail spacing.** 18 in-pool records carry
+  21 runs against the canonical image's 19 records and 22 runs (22 and 26 by the
+  wider, non-record count). The records themselves are not the same shapes after
+  five releases of edits, so the remainder is expected; what is proven is that no
+  run survives that retail does not carry at the same offset.
 * **A record no pool word names is skipped by a rename and refused by an edit.**
   Eight of release 3.1's 34 renamed records are of that kind; they are listed in
   `plan.listed` and their text is still placed, matching the release's layout, but

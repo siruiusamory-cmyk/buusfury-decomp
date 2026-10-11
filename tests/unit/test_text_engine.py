@@ -14,6 +14,7 @@ of a whole retail image, and a fixture carries the records the rule needs.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -90,10 +91,16 @@ def open_image(image, directory, name: str = "fixture.gba", **kwargs):
     the image is validated. The model carries the pool, so a later `plan` call
     needs no patch. A word planted anywhere else in a test is outside the pool and
     must not be written.
+
+    The fixture's container table is also declared to sit at the RETAIL offset, so
+    every fixture behaves like an image whose table has not yet been moved aside.
+    That is the shape the table guard exists for.
     """
     path = Path(directory) / name
     path.write_bytes(image)
+    profile = replace(textedit.engine.PROFILES[0], retail_table=TABLE_AT)
     with mock.patch.object(textedit.engine, "MINIMUM_DIALOGUE_RECORDS", 1), \
+            mock.patch.object(textedit.engine, "PROFILES", (profile,)), \
             mock.patch.object(textedit.engine, "PROVEN_HANDLE_POOL",
                               (RECORD_AT, RECORD_AT + 0x1000)):
         return textedit.open_rom(path, **kwargs)
@@ -409,6 +416,48 @@ def test_a_targeted_edit_refuses_a_record_no_pool_word_names(tmp_path: Path) -> 
     assert "event-resource pool" in built.refusals[0].reason
     with pytest.raises(textedit.TextEditError, match="REFUSED"):
         textedit.apply(built, tmp_path / "unused.gba")
+
+
+def test_a_spacing_relocation_leaves_every_retail_table_word_alone(tmp_path: Path) -> None:
+    """A container that must move on a retail-table image may not write a retail word."""
+    base = build(payloads={1: line_payload("Hi  there")}, records=[(1, 0x20, 18)])
+    retail = open_image(build(payloads={1: line_payload("Hi there")},
+                              records=[(1, 0x20, 18)]), tmp_path, name="retail.gba")
+    model = open_image(base, tmp_path, name="base.gba", canonical=retail.path)
+    original = webfoot_lz.build_stored
+
+    def oversized(payload: bytes) -> bytes:
+        return original(bytes(payload) + bytes(64))
+
+    with mock.patch.object(webfoot_lz, "build_stored", oversized):
+        built = textedit.plan(model, [textedit.SpacingEdit()])
+    assert built.decisions[0].method == textedit.IN_PLACE
+    assert built.output[TABLE_AT:TABLE_AT + TABLE_BYTES] == base[TABLE_AT:TABLE_AT + TABLE_BYTES]
+    table = int.from_bytes(built.output[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert table >= len(base)
+    entry = int.from_bytes(built.output[table + 4:table + 8], "little")
+    assert entry >= ROM_BASE + len(base)
+    assert built.output[TABLE_AT + 4:TABLE_AT + 8] == base[TABLE_AT + 4:TABLE_AT + 8]
+    assert any("container table is copied" in warning for warning in built.warnings)
+
+
+def test_an_in_place_relocation_leaves_every_retail_table_word_alone(tmp_path: Path) -> None:
+    """F1: the in-place phase used to write the retail table before the table moved."""
+    base = build(payloads={1: line_payload("Say hello!")}, records=[(1, 0x20, 20)])
+    model = open_image(base, tmp_path)
+    original = webfoot_lz.build_stored
+
+    def oversized(payload: bytes) -> bytes:
+        return original(bytes(payload) + bytes(64))
+
+    with mock.patch.object(webfoot_lz, "build_stored", oversized):
+        built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 20, "hello", "hi")])
+    assert built.decisions[0].method == textedit.IN_PLACE
+    assert built.output[TABLE_AT:TABLE_AT + TABLE_BYTES] == base[TABLE_AT:TABLE_AT + TABLE_BYTES]
+    table = int.from_bytes(built.output[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert table >= len(base)
+    assert int.from_bytes(built.output[table + 4:table + 8], "little") >= ROM_BASE + len(base)
+    assert any("container table is copied" in warning for warning in built.warnings)
 
 
 # --- the per-occurrence decision ---------------------------------------------

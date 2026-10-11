@@ -357,6 +357,40 @@ one is now a rule above rather than a thing to remember:
    rule. Rule: an exit check claims only what its method can see, and the audit that
    reads rendered pixels is what covers what the grep cannot.
 
+### What the second audit round taught
+
+8. **A Qt override takes the arguments Qt passes, positionally.** The chip's
+   `intrinsicSize` and `drawObject` were declared without the position argument, so the
+   character format bound to an integer and both raised inside the override. The visible
+   consequence was not a missing chip: the failure happened part way through rebuilding
+   the editor's document, so the editor kept the previous row's text while the list had
+   moved on, and a commit from that state wrote the wrong text under the wrong key. Rule:
+   check a Qt virtual's signature against the binding, and make any rebuild of a widget's
+   contents transactional so a failure cannot leave it claiming text it does not hold.
+9. **A test that never shows the widget never runs its layout, so it never runs the
+   virtuals that layout calls.** The round-trip case passed for as long as the editor
+   could not open a line at all. Rule: a case about painting or measuring shows the
+   widget and reads the laid-out size, which is what forces those overrides to run.
+10. **A base64 data URI in a stylesheet paints nothing, silently.** Qt's parser accepts
+    `url(data:image/svg+xml;base64,...)` and then draws no image and logs no warning, so
+    the chip's check glyph, which is the channel a colour-blind reader uses, had never
+    appeared. Measured on one button: 40 ink pixels for its text alone, 40 with the data
+    URI, 100 with the same icon written to a file. Rule: an icon a stylesheet references
+    is a file on disk with the ink substituted, and the rule is proved by rendering and
+    counting pixels rather than by reading the stylesheet.
+11. **A speculative rule is a defect waiting for a zoom.** Styling `QScrollBar` with a
+    background, a handle and zero-sized add and sub lines left the sub-page area
+    unpainted, which renders as a 1 px checkerboard down a 16 px track. The palette was
+    already correct, so the rule was unnecessary and is removed rather than extended.
+    Rule: a control that the base style already draws in the theme's colours is left
+    alone, and every new rule is looked at on screen, not only in the stylesheet text.
+12. **A selection made during construction is a selection nobody hears.** The list
+    selects its first row while it is being built, before the window connects to its
+    signal, so the editor and the context pane opened empty beside a highlighted row and
+    clicking that row did nothing, because a table does not report a current-row change
+    for the row already current. Rule: a surface that selects something while building
+    replays that selection after the parts are connected.
+
 ## 8. Review protocol
 
 Per Make Interfaces Feel Better: walk every state of every interactive element

@@ -1,16 +1,16 @@
-# The enemy AI node language
+# The enemy behaviour node language
 
 Read from the canonical image, byte by byte. Every address below is a GBA address; the file offset is that
 address minus `0x08000000`. Canonical ROM sha256
 `940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E`.
 
-This document is the durable result of the AI research. Where an earlier note was wrong, the correction is
+This document is the durable result of the behaviour system research. Where an earlier note was wrong, the correction is
 stated rather than quietly folded in, because a wrong model of this language produces a boss that stands
 still.
 
 ## What the language is
 
-The AI is a TREE PER ROW. A stat record's `+0x08` is a selector; the dispatcher computes
+The behaviour is a TREE PER ROW. A stat record's `+0x08` is a selector; the dispatcher computes
 `row = 0x0870F514 + 8*selector` and reads two words. The table holds 828 rows, exactly two words in the image
 name it (`0x0800AB50`, `0x080192AC`), and there is no bounds check.
 
@@ -40,7 +40,7 @@ This is the part that was missing, and it explains why a node's `+0x04` is calle
 
 * **STATE path** `0x0800AB0C` (callers `0x0800FAF4`, `0x080391FA`): takes the controller's top state and runs
   the STATE's class slot `+0x04` over child STATES (count at `state+4`, children at `state+8+4i`).
-* **NODE path** `0x0800AB2E` (only caller `0x0800FC82`, the per-frame AI update reached from
+* **NODE path** `0x0800AB2E` (only caller `0x0800FC82`, the per-frame behaviour update reached from
   `actor+0x238`): reads the row pointer, takes that row's **secondary** node at `+0x04`, and calls THAT NODE's
   `+0x04` over child NODE pointers. It never reads `+0x00`, so a secondary node whose handler word is zero is
   safe.

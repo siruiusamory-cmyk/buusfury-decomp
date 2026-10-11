@@ -1,4 +1,4 @@
-"""Census and decoder for the enemy AI behaviour language, over an image supplied by the caller.
+"""Census and decoder for the enemy behaviour behaviour language, over an image supplied by the caller.
 
 The language was recovered by walking the row table and reading each node's four fields. This tool makes that
 walk repeatable and separates the parts that need an image from the parts that do not: every function here
@@ -57,7 +57,7 @@ CONDITION_HANDLERS = {
 
 #: Composite and leaf handlers whose semantics are established, with their param meaning.
 LEAF_HANDLERS = {
-    0x0801890A: "SET: param is a ROW index, switches the AI to that row",
+    0x0801890A: "SET: param is a ROW index, switches the behaviour system to that row",
     0x08019284: "AUX: param is a ROW index; activates the row PRIMARY and evaluates its SECONDARY",
     0x0801920E: "OR: param is the child count, children at +0x10+4i, first true child wins (priority order)",
     0x080191C6: "AND: param is the child count; ORs on the state path and ANDs on the node path",
@@ -215,7 +215,7 @@ def secondary_handler_census(image: bytes) -> dict:
 
 def main() -> int:
     import argparse
-    parser = argparse.ArgumentParser(description="Census the enemy AI node language, read-only")
+    parser = argparse.ArgumentParser(description="Census the enemy behaviour node language, read-only")
     parser.add_argument("--image", required=True, help="a GBA image to read")
     parser.add_argument("--row", type=int, default=None, help="print one row's node tree")
     parser.add_argument("--secondaries", action="store_true", help="census the secondary node handlers")

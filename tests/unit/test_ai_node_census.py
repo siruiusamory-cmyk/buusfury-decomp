@@ -1,4 +1,4 @@
-"""The AI node census reads its structures correctly, proven without a ROM.
+"""The behaviour node census reads its structures correctly, proven without a ROM.
 
 Every function in the tool takes bytes, so this test builds a small synthetic image that carries one row
 table entry and a handful of nodes, and asserts what the census makes of it. No ROM, no emulator, no

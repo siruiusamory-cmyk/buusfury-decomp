@@ -1,616 +1,478 @@
-"""The in-game dialogue preview: a real render, or a line that says it is waiting.
+"""The in-game dialogue preview: the record the engine draws, or one line saying why not.
 
-This pane shows the GAME, so it may not be approximated. Until the RE Lab's
-extracted data is present in full, the pane draws one line of text and nothing
-else: no box, no glyph, no invented palette, no stand-in font. When the data is
-present every glyph comes from the game's own tiles, every wrap from the game's
-declared column count, every page break from the game's declared rule, and every
-scale is an integer factor with nearest-neighbour sampling only.
+The pane shows the GAME, so it may not be approximated. Every part of it is decoded at
+RUN TIME from the image the reader opened: the font through its descriptor, the box art
+through its container, the ink through the object palette. Nothing derived from a game
+image is written down here or committed beside it.
 
-**The data contract** (design note section 9), read from `build/gamedata/dialogue/`:
+The rules, each of them measured from the image bytes or from native 240x160 captures:
 
-| Part | Shape this seam reads |
-| --- | --- |
-| `palette.json` | `{"palette": [<RGB555 int>, ...]}`, index 0 first |
-| `glyphs.png` or `glyphs.bin` | PNG: a tile sheet, `glyph_width` x `glyph_height` tiles, blank = absent. BIN: consecutive tiles, `glyph_height` bytes each, 1 bit per pixel, MSB leftmost |
-| `glyph_widths.json` | codepoint -> pixels the glyph advances, `0` or absent = no glyph |
-| `glyph_tiles.json` | codepoint -> tile index in the sheet or the bin. Absent: the codepoint is the tile index |
-| `box.png` or `box.bin` | the dialogue box art at its native size, indexed into `palette` |
-| `metrics.json` | `origin` [x, y] in box pixels, `line_stride`, `box_rect` [x, y, w, h], `columns`, `page_stride`, `page_count`, and for the BIN forms `glyph_width`, `glyph_height`, `box_width` |
-| `rules.md` | the wrap and page-break rules as the game implements them, with the addresses they were measured at |
-| `captures/` | reference mGBA screenshots: `<name>.png` beside `<name>.json` `{"line": ..., "portrait": ...}`, for the harness |
+* the font is reached through the 12-byte descriptor at file ``0x6EE6C``; the table it
+  names holds 256 code-to-record offsets in halfwords, and a record is a width then
+  width plus one columns, column k being pixel column k and bit r of a column being
+  pixel row r with row 0 at the top;
+* the advance is the stored width plus one; a code below ``0x20`` has no record and
+  advances one; a code at or above ``0xFF`` takes the fixed advance and draws nothing;
+* text origin ``(8, 3)`` in the surface's own coordinates, a 14-pixel line spacing, a
+  16-row glyph cell, four lines to the box;
+* the surface is the box-art container decoded by the image's own codec: 160 by 64,
+  one byte per pixel, stride ``0xA0``, indexed by the object palette at file ``0x5652C``;
+* the dialogue path paints index 2, and the ``0x0008`` unit sets the ink and consumes
+  its own operand;
+* the line fitter is a greedy word wrap against the LIMIT OF THE LAYOUT RECORD the
+  record selects (144 or 128), breaking at the last space it saw, so a trailing space
+  is never drawn, with ``0x0A`` ending the line and ``0x0B`` the record.
 
-`glyphs.bin` and `box.bin` are tile-major and palette-indexed. The per-glyph advance
-width and the tile index both come from JSON, because the sheet carries neither.
-`box_rect` is the box art's native size, so the art is blitted at that size.
+Two things this pane refuses to do. It does not guess a scroll window: a record whose
+wrapped text needs more lines than the box holds is drawn by the engine as a window
+into the record, the rule that advances that window is not established, and the case is
+reported instead. And it draws nothing at all while it cannot render this record - no
+box, no glyph, no stand-in font - only one line naming what is missing.
 """
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
 
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
-from tools.webfoot import textedit
+from tools.webfoot.formats import webfoot_lz
 
 from . import theme
 
-#: Where the RE Lab's extraction lands. Ignored by git, never committed.
-GAMEDATA = Path("build") / "gamedata" / "dialogue"
-#: The one line the pane shows while it cannot render for real.
-WAITING = "In-game preview: waiting on extracted game font"
-#: The parts whose absence keeps the pane in its waiting state, in read order.
-PARTS = ("palette.json", "glyphs.png or glyphs.bin", "box.png or box.bin",
-         "metrics.json", "rules.md")
-#: The one neutral mark for a control unit whose glyph the font does not carry.
-CHARACTER = "\ufffc"
+#: File offsets, not addresses: where the descriptor, the palette and the two layout
+#: records' art containers sit in the image.
+FONT_DESCRIPTOR = 0x6EE6C
+OBJ_PALETTE = 0x5652C
+ROM_BASE = 0x08000000
+
+#: The two layout records' own limit field, and the art container each one draws. The
+#: limit is a field of the record, never a constant of the renderer.
+LAYOUT_LIMITS = (144, 128)
+BOX_ART = {144: 0x71758, 128: 0x71A6C}
+
+#: The surface: 160 by 64 at one byte per pixel, and the length its decoder must yield.
+SURFACE_WIDTH = 160
+SURFACE_HEIGHT = 64
+SURFACE_BYTES = SURFACE_WIDTH * SURFACE_HEIGHT
+
+#: Measured placement and page size.
+TEXT_ORIGIN = (8, 3)
+LINE_HEIGHT = 14
+GLYPH_ROWS = 16
+LINES_PER_PAGE = 4
+
+#: Unit values on the dialogue path.
+NEWLINE = 0x0A
+SOFT_END = 0x0B
+TERMINATOR = 0x0000
+SPACE = 0x20
+INK_ESCAPE = 0x0008
+WIDE_CODE = 0xFF
+
+#: The index the dialogue path paints, and the palette's own entry count.
+DEFAULT_INK = 2
+PALETTE_ENTRIES = 256
+
+#: The one line each state shows, and the name of what keeps it there.
+WAITING_IMAGE = "In-game preview: no image is open, so there is nothing to render."
+NO_FONT = "In-game preview: the font will not decode from this image."
+NO_BOX = "In-game preview: the box art will not decode from this image."
+LIMITED = "In-game preview: "
+SCROLL_RULE = "the scroll-advance rule"
 
 _MARGIN = 8
 _MAX_SCALE = 4
-_NEWLINE = 0x0A
-#: RGB555: five bits per channel, blue in the low bits.
-_CHANNEL_BITS = 5
-_CHANNEL_MAX = 31
 
 
-# --- the loaded data ----------------------------------------------------------
+class DecodeError(ValueError):
+    """A refusal: this image does not hold the part the pane needs, and here is why."""
+
+
+# --- the font, read through its descriptor -----------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Glyph:
-    """One font tile: the pixels it draws and how far it advances."""
+    """One glyph record: its ink width and one column word per pixel column."""
 
-    code: int
     width: int
-    image: QImage
+    columns: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class Font:
-    """The game's font, as the extraction describes it."""
+    """The image's dialogue font, with the engine's own lookup rules."""
 
-    height: int
-    width: int
-    glyphs: dict[int, Glyph]
-    blank: int = 0
+    image: bytes
+    table: int
+    wide_advance: int
+    offsets: tuple[int, ...]
 
-
-@dataclass(frozen=True, slots=True)
-class Box:
-    """The dialogue box art, as the game draws it."""
-
-    art: QImage
-    palette: tuple[QColor, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class Metrics:
-    """Where the text lands, how it wraps and where the page breaks."""
-
-    origin: tuple[int, int]
-    line_stride: int
-    box_rect: tuple[int, int, int, int]
-    columns: int
-    page_stride: int
-    page_count: int
-
-
-@dataclass(frozen=True, slots=True)
-class DialogueData:
-    """Every part the renderer needs, or a tuple naming what is still absent."""
-
-    missing: tuple[str, ...]
-    palette: tuple[QColor, ...] = ()
-    font: Font | None = None
-    box: Box | None = None
-    metrics: Metrics | None = None
-    portraits: dict[int, QImage] = field(default_factory=dict)
-
-
-def dialogue_directory() -> Path:
-    """Where the extraction is read from, relative to the repository root."""
-    return Path(__file__).resolve().parents[2] / GAMEDATA
-
-
-def load_data(directory: Path | None = None) -> DialogueData:
-    """Load the extraction, naming every part that is absent or unreadable.
-
-    Every part is checked even when an earlier one has already failed, so the
-    `missing` tuple always names the whole story in one fixed order. Nothing is
-    invented: a part that cannot be read is a missing part, and a missing part
-    keeps the pane in its waiting state.
-    """
-    root = Path(directory) if directory is not None else dialogue_directory()
-    if not root.is_dir():
-        return DialogueData(missing=PARTS)
-    detail: list[str] = []
-    palette = _load_palette(root, detail)
-    metrics = _load_metrics(root, detail)
-    font = _load_font(root, palette, metrics, detail)
-    box = _load_box(root, palette, detail)
-    rules = root / "rules.md"
-    if not rules.is_file() or not rules.read_text(encoding="utf-8").strip():
-        detail.append("rules.md")
-    missing = tuple(part for part in PARTS if not _present(part, root))
-    if missing:
-        return DialogueData(missing=missing)
-    return DialogueData(missing=(), palette=palette, font=font, box=box, metrics=metrics,
-                        portraits=_load_portraits(root, palette))
-
-
-def _present(part: str, root: Path) -> bool:
-    """Whether one contract part is on disk. A part either form satisfies counts."""
-    if part == "glyphs.png or glyphs.bin":
-        return any((root / f"glyphs.{suffix}").is_file() for suffix in ("png", "bin"))
-    if part == "box.png or box.bin":
-        return any((root / f"box.{suffix}").is_file() for suffix in ("png", "bin"))
-    return (root / part).is_file()
-
-
-def _rgb555(value: int) -> QColor:
-    red = (value >> 2 * _CHANNEL_BITS) & _CHANNEL_MAX
-    green = (value >> _CHANNEL_BITS) & _CHANNEL_MAX
-    blue = value & _CHANNEL_MAX
-    return QColor(*((channel * 255 + _CHANNEL_MAX // 2) // _CHANNEL_MAX
-                    for channel in (red, green, blue)))
-
-
-def _load_palette(root: Path, missing: list[str]) -> tuple[QColor, ...]:
-    path = root / "palette.json"
-    try:
-        values = json.loads(path.read_text(encoding="utf-8"))["palette"]
-    except (OSError, ValueError, KeyError, TypeError):
-        missing.append("palette.json")
-        return ()
-    return tuple(_rgb555(int(value)) for value in values)
-
-
-def _load_metrics(root: Path, missing: list[str]) -> Metrics | None:
-    path = root / "metrics.json"
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        return Metrics(
-            origin=(int(raw["origin"][0]), int(raw["origin"][1])),
-            line_stride=int(raw["line_stride"]),
-            box_rect=tuple(int(part) for part in raw["box_rect"]),
-            columns=int(raw["columns"]),
-            page_stride=int(raw["page_stride"]),
-            page_count=int(raw["page_count"]),
+    def glyph(self, code: int) -> Glyph | None:
+        """The glyph for a code, or None where the engine draws nothing."""
+        if not 0 <= code < WIDE_CODE or not self.offsets[code]:
+            return None
+        record = self.table + 2 * self.offsets[code]
+        width = int.from_bytes(self.image[record:record + 2], "little")
+        columns = tuple(
+            int.from_bytes(self.image[record + 2 + 2 * column:record + 4 + 2 * column],
+                           "little")
+            for column in range(width + 1)
         )
-    except (OSError, ValueError, KeyError, TypeError):
-        missing.append("metrics.json")
-        return None
+        return Glyph(width, columns)
+
+    def advance(self, code: int) -> int:
+        """How far the cursor moves after this code, exactly as the engine computes it."""
+        if code >= WIDE_CODE:
+            return self.wide_advance + 1
+        glyph = self.glyph(code)
+        return 1 if glyph is None else glyph.width + 1
 
 
-def _load_font(root: Path, palette: tuple[QColor, ...], metrics: Metrics | None,
-               missing: list[str]) -> Font | None:
-    sheet = root / "glyphs.png"
-    raw = root / "glyphs.bin"
-    if sheet.is_file():
-        image = QImage(str(sheet))
-        if image.isNull():
-            missing.append("glyphs.png")
-            return None
-        return _sheet_font(image, root, missing)
-    if raw.is_file():
-        return _tile_font(raw, root, metrics, missing)
-    missing.append("glyphs.png or glyphs.bin")
-    return None
+def decode_font(image: bytes) -> Font:
+    """Read the font through its descriptor, or refuse the whole font.
+
+    Every record the map names is checked against the image here rather than while a
+    line is being drawn, so a malformed table is one stated missing part instead of a
+    surprise halfway through the record.
+    """
+    if len(image) < FONT_DESCRIPTOR + 12:
+        raise DecodeError("the descriptor is outside the image")
+    pointer = int.from_bytes(image[FONT_DESCRIPTOR:FONT_DESCRIPTOR + 4], "little")
+    wide_advance = int.from_bytes(image[FONT_DESCRIPTOR + 4:FONT_DESCRIPTOR + 6], "little")
+    if pointer < ROM_BASE:
+        raise DecodeError("the descriptor names no table")
+    table = pointer - ROM_BASE
+    if table + 2 * PALETTE_ENTRIES > len(image):
+        raise DecodeError("the table is outside the image")
+    offsets = tuple(int.from_bytes(image[table + 2 * code:table + 2 * code + 2], "little")
+                    for code in range(PALETTE_ENTRIES))
+    for offset in offsets:
+        if not offset:
+            continue
+        record = table + 2 * offset
+        if record + 2 > len(image):
+            raise DecodeError("a glyph record is outside the image")
+        width = int.from_bytes(image[record:record + 2], "little")
+        if record + 2 + 2 * (width + 1) > len(image):
+            raise DecodeError("a glyph record runs past the image")
+    return Font(image=image, table=table, wide_advance=wide_advance, offsets=offsets)
 
 
-def _widths(root: Path) -> dict[int, int] | None:
-    """codepoint -> advance width, or None when the table is absent or unreadable."""
+def decode_palette(image: bytes) -> tuple[tuple[int, int, int], ...]:
+    """The 256-entry object palette, as 8-bit channels, index 0 first."""
+    if len(image) < OBJ_PALETTE + 2 * PALETTE_ENTRIES:
+        raise DecodeError("the palette is outside the image")
+    return tuple(
+        _rgb555(int.from_bytes(image[OBJ_PALETTE + 2 * index:OBJ_PALETTE + 2 * index + 2],
+                               "little"))
+        for index in range(PALETTE_ENTRIES)
+    )
+
+
+def _rgb555(word: int) -> tuple[int, int, int]:
+    """One BGR555 word as 8-bit channels: red in the low five bits, replicated up."""
+    channels = []
+    for shift in (0, 5, 10):
+        channel = (word >> shift) & 0x1F
+        channels.append((channel << 3) | (channel >> 2))
+    return channels[0], channels[1], channels[2]
+
+
+# --- the box, chosen from the record's portrait ------------------------------
+
+
+def box_for(portrait: int | None) -> int:
+    """The layout limit this record's box uses; 144 with a portrait, 128 without.
+
+    The direction came to this tool as an INSTRUCTION and not from a measurement: the
+    two layout records and their limits are measured, but nothing yet says which one a
+    record selects. A reader has to be able to tell an instruction from a measurement,
+    so it is stated here and nowhere else.
+    """
+    return LAYOUT_LIMITS[0] if portrait is not None else LAYOUT_LIMITS[1]
+
+
+def decode_box(image: bytes, limit: int) -> bytes:
+    """The box surface: the art container's payload, 160 by 64 at one byte per pixel."""
+    offset = BOX_ART.get(limit)
+    if offset is None:
+        raise DecodeError(f"no container is known for the {limit}-pixel layout")
     try:
-        values = json.loads((root / "glyph_widths.json").read_text(encoding="utf-8"))
-        return {int(code): int(width) for code, width in values.items()}
-    except (OSError, ValueError, TypeError):
-        return None
+        payload = bytes(webfoot_lz.unpack(image, offset).data)
+    except (ValueError, IndexError) as error:
+        raise DecodeError(f"the container at 0x{offset:X} will not decode") from error
+    if len(payload) != SURFACE_BYTES:
+        raise DecodeError(f"the container at 0x{offset:X} decodes to {len(payload)} bytes, "
+                          f"not the {SURFACE_BYTES} the surface is")
+    return payload
 
 
-def _tile_of(code: int, tiles: dict[int, int]) -> int:
-    return tiles.get(code, code)
+# --- the fitter, the ink and the surface -------------------------------------
 
 
-def _tiles(root: Path) -> dict[int, int]:
-    """codepoint -> tile index. Absent, the codepoint is the tile index."""
-    try:
-        values = json.loads((root / "glyph_tiles.json").read_text(encoding="utf-8"))
-        return {int(code): int(tile) for code, tile in values.items()}
-    except (OSError, ValueError, TypeError):
-        return {}
+def units_of(text: str) -> tuple[int, ...]:
+    """The record's text as the engine's own 16-bit units.
 
-
-def _sheet_font(image: QImage, root: Path, missing: list[str]) -> Font | None:
-    widths = _widths(root)
-    tiles = _tiles(root)
-    try:
-        declared = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
-        width = int(declared["glyph_width"])
-        height = int(declared["glyph_height"])
-        columns = image.width() // width
-        rows = image.height() // height
-    except (OSError, ValueError, KeyError, TypeError, ZeroDivisionError):
-        missing.append("glyphs.png (glyph_width and glyph_height)")
-        return None
-    if widths is None or width <= 0 or height <= 0 or columns <= 0 or rows <= 0:
-        missing.append("glyph_widths.json")
-        return None
-    glyphs = {}
-    for code, advance in widths.items():
-        if not advance:
+    A character outside the basic plane is two units, because the engine reads UTF-16
+    and a code point passed through whole would be priced as one unit of the wrong class.
+    """
+    units: list[int] = []
+    for character in text:
+        code = ord(character)
+        if code < 0x10000:
+            units.append(code)
             continue
-        index = _tile_of(code, tiles)
-        column, row = index % columns, index // columns
-        if row >= rows:
+        code -= 0x10000
+        units.append(0xD800 + (code >> 10))
+        units.append(0xDC00 + (code & 0x3FF))
+    return tuple(units)
+
+
+def fit_line(font: Font, units: tuple[int, ...], cursor: int,
+             limit: int) -> tuple[int, int, bool]:
+    """One line, cut the way the engine's fitter cuts it.
+
+    Returns ``(start, stop, ended)``: the units the line draws, and whether the record
+    ended. Leading spaces and ``0x0A``/``0x0B`` are skipped; a space records the break
+    point BEFORE it; an overflow rewinds to the last space seen, or stops where it is
+    when no space was seen; ``0x0008`` skips its own operand.
+    """
+    end = len(units)
+    while cursor < end and units[cursor] in (SPACE, NEWLINE, SOFT_END):
+        cursor += 1
+    start = cursor
+    if cursor >= end or units[cursor] == TERMINATOR:
+        return start, cursor, True
+    width = 0
+    break_at = -1
+    break_width = 0
+    position = cursor
+    while position < end:
+        unit = units[position]
+        if unit == TERMINATOR:
+            return start, position, True
+        if unit == SPACE:
+            break_at, break_width = position, width
+        elif unit == NEWLINE:
+            return start, position, False
+        elif unit == SOFT_END:
+            return start, position, True
+        elif unit == INK_ESCAPE:
+            # The escape consumes its own operand. At the record's end there is none,
+            # so the line stops there rather than reading past the record.
+            position = min(position + 2, end)
             continue
-        glyphs[code] = Glyph(code, advance,
-                             image.copy(column * width, row * height, width, height))
-    if not glyphs:
-        missing.append("glyphs.png (every tile is blank)")
-        return None
-    return Font(height=height, width=width, glyphs=glyphs)
+        candidate = width + font.advance(unit)
+        if candidate > limit:
+            if break_at < 0:
+                return start, position, False
+            return start, break_at, False
+        position += 1
+        width = candidate
+    return start, position, True
 
 
-def _tile_font(raw: Path, root: Path, metrics: Metrics | None, missing: list[str]) -> Font | None:
-    widths = _widths(root)
-    tiles = _tiles(root)
-    try:
-        declared = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
-        width = int(declared["glyph_width"])
-        height = int(declared["glyph_height"])
-        data = raw.read_bytes()
-    except (OSError, ValueError, KeyError, TypeError):
-        missing.append("glyphs.bin (glyph_width and glyph_height)")
-        return None
-    if widths is None:
-        missing.append("glyph_widths.json")
-        return None
-    if width <= 0 or height <= 0 or len(data) < height:
-        missing.append("glyphs.bin")
-        return None
-    glyphs = {}
-    for code, advance in widths.items():
-        if not advance:
-            continue
-        index = _tile_of(code, tiles)
-        if (index + 1) * height > len(data):
-            continue
-        image = QImage(width, height, QImage.Format.Format_ARGB32)
-        image.fill(Qt.GlobalColor.transparent)
-        for row in range(height):
-            bits = data[index * height + row]
-            for column in range(min(8, width)):
-                if bits & (0x80 >> column):
-                    # A 1 bpp tile carries no colour of its own; it carries which
-                    # pixels the glyph sets, which the index covers.
-                    image.setPixelColor(column, row, QColor(Qt.GlobalColor.white))
-        glyphs[code] = Glyph(code, advance, image)
-    if not glyphs:
-        missing.append("glyphs.bin (every tile is blank)")
-        return None
-    return Font(height=height, width=width, glyphs=glyphs)
+def wrap(font: Font, units: tuple[int, ...], limit: int) -> tuple[tuple[int, int], ...]:
+    """Every line of the record, as spans of its units, in the order the box draws them."""
+    lines: list[tuple[int, int]] = []
+    cursor = 0
+    while True:
+        start, stop, ended = fit_line(font, units, cursor, limit)
+        lines.append((start, stop))
+        if ended or stop <= start:
+            # `stop <= start` is unreachable while every advance is under both limits;
+            # it is here so a table that says otherwise cannot spin this loop.
+            return tuple(lines)
+        cursor = stop
 
 
-def _load_box(root: Path, palette: tuple[QColor, ...], missing: list[str]) -> Box | None:
-    art = QImage(str(root / "box.png")) if (root / "box.png").is_file() else None
-    if art is None or art.isNull():
-        raw = root / "box.bin"
-        if not raw.is_file():
-            missing.append("box.png or box.bin")
-            return None
-        try:
-            declared = json.loads((root / "metrics.json").read_text(encoding="utf-8"))
-            width = int(declared["box_width"])
-        except (OSError, ValueError, KeyError, TypeError):
-            missing.append("box.bin (box_width)")
-            return None
-        art = _indexed(raw.read_bytes(), width, palette)
-        if art is None:
-            missing.append("box.bin")
-            return None
-    return Box(art=art, palette=palette)
-
-
-def _indexed(data: bytes, width: int, palette: tuple[QColor, ...]) -> QImage | None:
-    """Palette indices, row-major, resolved through the loaded palette."""
-    if width <= 0 or not palette or len(data) % width:
-        return None
-    image = QImage(width, len(data) // width, QImage.Format.Format_ARGB32)
-    for at, index in enumerate(data):
-        image.setPixelColor(at % width, at // width,
-                            palette[index] if index < len(palette)
-                            else QColor(Qt.GlobalColor.transparent))
-    return image
-
-
-def _load_portraits(root: Path, palette: tuple[QColor, ...]) -> dict[int, QImage]:
-    """Portrait art by operand, when the extraction carries it. Never invented."""
-    directory = root / "portraits"
-    if not directory.is_dir():
-        return {}
-    found: dict[int, QImage] = {}
-    for path in sorted(directory.iterdir()):
-        art = QImage(str(path)) if path.suffix.lower() == ".png" else None
-        if art is None or art.isNull():
-            continue
-        stem = path.stem.lower().removeprefix("portrait").removeprefix("_")
-        try:
-            found[int(stem, 16)] = art
-        except ValueError:
-            continue
-    return found
-
-
-# --- wrapping and pagination, pure -------------------------------------------
-
-
-@runtime_checkable
-class GlyphSource(Protocol):
-    """What `layout` needs from a font: the wrap width, the advance, the page size."""
-
-    @property
-    def columns(self) -> int: ...
-
-    @property
-    def page_lines(self) -> int: ...
-
-    def advance(self, character: str) -> int: ...
+def paint(font: Font, art: bytes, units: tuple[int, ...],
+          lines: tuple[tuple[int, int], ...], ink: int = DEFAULT_INK) -> bytes:
+    """The box surface with the record drawn on it, as palette indices."""
+    surface = bytearray(art)
+    current = ink
+    for row, (start, stop) in enumerate(lines):
+        x = TEXT_ORIGIN[0]
+        y = TEXT_ORIGIN[1] + row * LINE_HEIGHT
+        position = start
+        while position < stop:
+            unit = units[position]
+            if unit == INK_ESCAPE:
+                current = units[position + 1] & 0xFF if position + 1 < len(units) else current
+                position += 2
+                continue
+            glyph = font.glyph(unit)
+            if glyph is not None and y + GLYPH_ROWS <= SURFACE_HEIGHT:
+                for column in range(min(glyph.width, SURFACE_WIDTH - x)):
+                    bits = glyph.columns[column]
+                    for bit in range(GLYPH_ROWS):
+                        if (bits >> bit) & 1:
+                            surface[(y + bit) * SURFACE_WIDTH + x + column] = current
+            x += font.advance(unit)
+            position += 1
+    return bytes(surface)
 
 
 @dataclass(frozen=True, slots=True)
-class _StubSource:
-    """The game's own wrapping rule, read off the loaded font and metrics."""
+class Render:
+    """One record's surface, or the stated reason there is none."""
 
-    columns: int
-    page_lines: int
-    advances: dict[int, int]
-    fallback: int
-
-    def advance(self, character: str) -> int:
-        return self.advances.get(ord(character), self.fallback)
-
-
-def source_for(data: DialogueData) -> GlyphSource:
-    """The wrap rule the renderer and the harness both use."""
-    advances = {} if data.font is None else {
-        code: glyph.width for code, glyph in data.font.glyphs.items()}
-    fallback = 0 if data.font is None else data.font.width
-    columns = 1 if data.metrics is None else max(1, data.metrics.columns)
-    page_lines = 1 if data.metrics is None else max(1, data.metrics.page_count)
-    return _StubSource(columns, page_lines, advances, fallback)
-
-
-def layout(text: str, source: GlyphSource) -> tuple[tuple[str, ...], ...]:
-    """Pages of lines: wrap at the game's column count, break at its page count.
-
-    A line break is the game's own 0x0A unit; a column break happens only between
-    written units, so a word longer than the box is never clipped. A unit whose
-    glyph the font does not carry still advances and is drawn as one neutral mark.
-    """
-    pages: list[list[str]] = []
-    line = ""
-    column = 0
-    for unit in textedit.units(text):
-        if isinstance(unit, textedit.Control):
-            if unit.raw and ord(unit.raw[0]) == _NEWLINE:
-                _push(pages, line, source)
-                line, column = "", 0
-                continue
-            written = CHARACTER
-        else:
-            written = unit.value
-        for character in written:
-            if character == "\n":
-                _push(pages, line, source)
-                line, column = "", 0
-                continue
-            if column >= source.columns:
-                _push(pages, line, source)
-                line, column = "", 0
-            line += character
-            column += 1
-    _push(pages, line, source)
-    return tuple(tuple(page) for page in pages)
-
-
-def _push(pages: list[list[str]], line: str, source: GlyphSource) -> None:
-    """Append one wrapped line, starting a page when the page is full."""
-    page_lines = max(1, source.page_lines)
-    if not pages or len(pages[-1]) >= page_lines:
-        pages.append([])
-    pages[-1].append(line)
-
-
-# --- rendering ----------------------------------------------------------------
-
-
-def render_line(data: DialogueData, text: str, portrait: int | None = None,
-                scale: int = 1) -> QImage:
-    """One line, rendered at an integer scale with nearest-neighbour sampling."""
-    if data.metrics is None or data.box is None or data.font is None:
-        raise ValueError("no render is possible: the extracted data is incomplete")
-    metrics = data.metrics
-    left, top, width, height = metrics.box_rect
-    factor = max(1, int(scale))
-    image = QImage(width * factor, height * factor, QImage.Format.Format_ARGB32)
-    image.fill(QColor(theme.active_theme().preview_screen))
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-    _draw_page(painter, data, text, portrait, factor)
-    painter.end()
-    return image
-
-
-def _draw_page(painter: QPainter, data: DialogueData, text: str, portrait: int | None,
-               factor: int) -> None:
-    metrics = data.metrics
-    left, top, width, height = metrics.box_rect
-    painter.drawImage(QRect(left * factor, top * factor, width * factor, height * factor),
-                      data.box.art)
-    if portrait is not None and portrait in data.portraits:
-        art = data.portraits[portrait]
-        painter.drawImage(QRect(left * factor, top * factor,
-                                art.width() * factor, art.height() * factor), art)
-    source = source_for(data)
-    ox, oy = metrics.origin
-    for page_number, page in enumerate(layout(text, source)[:max(1, metrics.page_count)]):
-        for row, line in enumerate(page):
-            x = ox
-            y = oy + row * metrics.line_stride + page_number * metrics.page_stride
-            for character in line:
-                glyph = data.font.glyphs.get(ord(character))
-                if glyph is None:
-                    x += source.advance(character)
-                    continue
-                painter.drawImage(
-                    QRect((left + x) * factor, (top + y) * factor,
-                          glyph.image.width() * factor, glyph.image.height() * factor),
-                    glyph.image)
-                x += glyph.width
-
-
-# --- the validation harness ---------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class Comparison:
-    """One reference capture against the render for the same line."""
-
-    name: str
-    rendered: QImage
-    captured: QImage
-    differing: int
-    first: tuple[int, int] | None
+    surface: bytes = b""
+    lines: int = 0
+    limit: int = 0
+    problem: str = ""
 
     @property
-    def matches(self) -> bool:
-        return self.differing == 0 and self.rendered.size() == self.captured.size()
+    def drawn(self) -> bool:
+        """Whether this render may be painted at all."""
+        return not self.problem
 
 
-def compare(rendered: QImage, captured: QImage) -> tuple[int, tuple[int, int] | None]:
-    """Pixel by pixel: how many differ, and where the first one is."""
-    if rendered.size() != captured.size():
-        return (rendered.width() * rendered.height(), (0, 0))
-    differing = 0
-    first: tuple[int, int] | None = None
-    for y in range(rendered.height()):
-        for x in range(rendered.width()):
-            if rendered.pixel(x, y) != captured.pixel(x, y):
-                differing += 1
-                if first is None:
-                    first = (x, y)
-    return differing, first
+def render(font: Font, art: bytes, text: str, portrait: int | None = None) -> Render:
+    """Render one record the way the engine draws it, or say why there is none.
 
-
-def references(directory: Path | None = None) -> tuple[tuple[str, str, int | None], ...]:
-    """The declared line of every reference capture, from the capture sidecars."""
-    root = Path(directory) if directory is not None else dialogue_directory() / "captures"
-    if not root.is_dir():
-        return ()
-    found: list[tuple[str, str, int | None]] = []
-    for sidecar in sorted(root.glob("*.json")):
-        try:
-            raw = json.loads(sidecar.read_text(encoding="utf-8"))
-            found.append((sidecar.stem, str(raw["line"]), raw.get("portrait")))
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-    return tuple(found)
-
-
-def harness(directory: Path | None = None) -> tuple[Comparison, ...]:
-    """Render every reference capture's line and compare it pixel for pixel.
-
-    An empty result means the data or the captures are absent, which the caller
-    reports loudly rather than reading as a pass.
+    A record that needs more lines than the box holds is drawn by the engine as a
+    window into the record. No window is guessed here: the case is reported and the
+    surface is empty, so a caller cannot paint an approximation of it by accident.
     """
-    root = Path(directory) if directory is not None else dialogue_directory()
-    data = load_data(root)
-    captures = root / "captures"
-    if data.missing or not captures.is_dir():
-        return ()
-    done: list[Comparison] = []
-    for name, line, portrait in references(captures):
-        path = captures / f"{name}.png"
-        captured = QImage(str(path))
-        if captured.isNull():
-            continue
-        rendered = render_line(data, line, portrait)
-        differing, first = compare(rendered, captured)
-        done.append(Comparison(name, rendered, captured, differing, first))
-    return tuple(done)
+    limit = box_for(portrait)
+    units = units_of(text)
+    lines = wrap(font, units, limit)
+    if len(lines) > LINES_PER_PAGE:
+        return Render(lines=len(lines), limit=limit,
+                      problem=(f"this record needs {len(lines)} lines and the box holds "
+                               f"{LINES_PER_PAGE}"))
+    return Render(surface=paint(font, art, units, lines), lines=len(lines), limit=limit)
 
 
 # --- the widget ---------------------------------------------------------------
 
 
 class DialoguePreview(QWidget):
-    """The pane: the waiting line until the data lands, the real render after."""
+    """The pane: the engine's own render of the selected record, or why there is none."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._data: DialogueData | None = None
+        self._image: bytes | None = None
+        self._name = ""
         self._text = ""
         self._portrait: int | None = None
+        self._font: Font | None = None
+        self._palette: tuple[tuple[int, int, int], ...] = ()
+        self._arts: dict[int, bytes] = {}
+        self._problem = WAITING_IMAGE
+        self._missing: tuple[str, ...] = ("an open image",)
+        self._render: Render | None = None
         self.setObjectName("dialoguePreview")
         self.setProperty("role", "viewport")
-        self.set_source(None)
+
+    def set_image(self, image: bytes | None, name: str = "") -> None:
+        """The image the reader opened, read-only, and the name to show for it."""
+        if image is self._image and name == self._name:
+            return
+        self._image = image
+        self._name = name
+        self._font = None
+        self._palette = ()
+        self._arts = {}
+        self._refresh()
 
     def set_text(self, text: str) -> None:
+        """The selected record's text, as the editor currently holds it."""
+        if text == self._text:
+            return
         self._text = text
-        self.update()
+        self._refresh()
 
     def set_portrait(self, operand: int | None) -> None:
         """The portrait operand the record stores, or None when the record has none."""
+        if operand == self._portrait:
+            return
         self._portrait = operand
-        self.update()
+        self._refresh()
 
-    def set_source(self, source) -> None:
-        """A `DialogueData`, a directory to load it from, or None to discover it."""
-        if isinstance(source, DialogueData):
-            self._data = source
-        elif source is None:
-            self._data = load_data()
-        else:
-            self._data = load_data(Path(source))
-        self.update()
-
-    def source_name(self) -> str:
-        """What the render is drawn from, or the name of the state it waits in."""
-        if not self.ready():
-            return self.state()
-        return GAMEDATA.as_posix()
+    # --- what the window asks -------------------------------------------------
 
     def state(self) -> str:
-        """`waiting` with nothing extracted at all, `incomplete` with a part, else `ready`."""
-        if self._data is None or len(self._data.missing) == len(PARTS):
-            # Every part absent is the state that ships: no extraction has happened.
+        """`ready`, `limited` for a case the measurement leaves open, or `waiting`."""
+        if self._render is None:
             return "waiting"
-        if not self._data.missing:
-            return "ready"
-        return "incomplete"
+        return "ready" if self._render.drawn else "limited"
 
     def missing(self) -> tuple[str, ...]:
-        """Every part of the contract that is absent or unreadable."""
-        return PARTS if self._data is None else self._data.missing
+        """What keeps the pane out of its ready state, named for the reader."""
+        return self._missing
 
     def ready(self) -> bool:
         return self.state() == "ready"
 
+    def source_name(self) -> str:
+        """The image the render comes from, or the name of the state it waits in."""
+        return (self._name or "the open image") if self.ready() else self.state()
+
+    # --- decoding and rendering ----------------------------------------------
+
+    def _refresh(self) -> None:
+        """Decode what this image can give and render this record. It never raises."""
+        self._render = None
+        if self._image is None:
+            self._problem = WAITING_IMAGE
+            self._missing = ("an open image",)
+            self.update()
+            return
+        source = self._source()
+        if source is None:
+            self.update()
+            return
+        font, art = source
+        self._render = render(font, art, self._text, self._portrait)
+        if self._render.drawn:
+            self._problem, self._missing = "", ()
+        else:
+            self._problem = f"{LIMITED}{self._render.problem}."
+            self._missing = (SCROLL_RULE,)
+        self.update()
+
+    def _source(self) -> tuple[Font, bytes] | None:
+        """This image's font and its box art for the selected portrait, or None."""
+        if self._font is None:
+            try:
+                self._font = decode_font(self._image)
+                self._palette = decode_palette(self._image)
+            except DecodeError as error:
+                self._problem = NO_FONT
+                self._missing = (f"the font at 0x{FONT_DESCRIPTOR:X} ({error})",)
+                return None
+        limit = box_for(self._portrait)
+        if limit not in self._arts:
+            try:
+                self._arts[limit] = decode_box(self._image, limit)
+            except DecodeError as error:
+                self._problem = NO_BOX
+                self._missing = (f"the box art at 0x{BOX_ART[limit]:X} ({error})",)
+                return None
+        return self._font, self._arts[limit]
+
+    def _surface(self) -> QImage:
+        """The rendered surface as an indexed image through the image's own palette."""
+        image = QImage(self._render.surface, SURFACE_WIDTH, SURFACE_HEIGHT, SURFACE_WIDTH,
+                       QImage.Format.Format_Indexed8)
+        image.setColorTable([0xFF000000 | red << 16 | green << 8 | blue
+                             for red, green, blue in self._palette])
+        return image
+
+    # --- the widget's own size and paint -------------------------------------
+
     def sizeHint(self) -> QSize:  # noqa: N802
         if not self.ready():
-            # Room for the waiting line plus the wrapped list of what is absent. One
-            # line cut that list off at the pane's edge, which loses the one fact this
-            # state exists to give the reader.
+            # Room for the waiting line plus the wrapped list of what is absent.
             line = QFontMetrics(theme.type_scale().caption).height()
             return QSize(260, 3 * line + 2 * _MARGIN)
-        width, height = self._data.metrics.box_rect[2], self._data.metrics.box_rect[3]
-        return QSize(width + 2 * _MARGIN, height + 2 * _MARGIN)
+        return QSize(SURFACE_WIDTH + 2 * _MARGIN, SURFACE_HEIGHT + 2 * _MARGIN)
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         """Scale 1 is the floor wherever the box is drawn at all."""
@@ -623,27 +485,24 @@ class DialoguePreview(QWidget):
         active = theme.active_theme()
         painter.fillRect(self.rect(), QColor(active.preview_screen))
         if not self.ready():
-            # One wrapped line and nothing else. No box, no glyph, no placeholder: a
-            # drawn approximation is the failure this requirement exists to prevent.
+            # One line and nothing else: a drawn approximation is the failure this
+            # state exists to prevent.
             painter.setPen(QPen(QColor(active.preview_marker), 1))
             painter.setFont(theme.type_scale().caption)
             painter.drawText(self.rect().adjusted(_MARGIN, _MARGIN, -_MARGIN, -_MARGIN),
                              int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
                                  | Qt.TextFlag.TextWordWrap),
-                             f"{WAITING}. Missing: {', '.join(self.missing())}")
+                             f"{self._problem} Missing: {', '.join(self._missing)}")
             painter.end()
             return
-        factor = _integer_scale(self._data.metrics, self.width(), self.height())
-        painter.save()
+        factor = _integer_scale(self.width(), self.height())
+        painter.translate(_MARGIN, _MARGIN)
         painter.scale(factor, factor)
-        _draw_page(painter, self._data, self._text, self._portrait, 1)
-        painter.restore()
+        painter.drawImage(0, 0, self._surface())
         painter.end()
 
 
-def _integer_scale(metrics: Metrics, width: int, height: int) -> int:
+def _integer_scale(width: int, height: int) -> int:
     """Nearest-neighbour only: an integer factor, never a fractional stretch."""
-    if metrics.box_rect[2] <= 0 or metrics.box_rect[3] <= 0:
-        return 1
-    return max(1, min(_MAX_SCALE, (width - 2 * _MARGIN) // metrics.box_rect[2],
-                      (height - 2 * _MARGIN) // metrics.box_rect[3]))
+    return max(1, min(_MAX_SCALE, (width - 2 * _MARGIN) // SURFACE_WIDTH,
+                      (height - 2 * _MARGIN) // SURFACE_HEIGHT))

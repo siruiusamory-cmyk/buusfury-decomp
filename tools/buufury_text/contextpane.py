@@ -119,14 +119,21 @@ class ContextPane(QWidget):
             self.retail.setText(NO_LINE)
             self.contained.setRowCount(0)
             self.sites.setText(NO_LINE)
+            self.preview.set_image(None)
             return
-        self._show_speaker(session, line)
+        # The preview draws the image the window opened, so it is handed the image
+        # itself and the record's portrait operand, which is what picks the box.
+        model = session.model
+        self.preview.set_image(model.image, model.path.name)
+        operand = self._operand(session, line)
+        self.preview.set_portrait(operand)
+        self._show_speaker(line, operand)
         self._show_retail(session, line)
         self._show_covering(session, session.covering(line.key))
         self.sites.setText(site_line(session.sites(line.key)))
 
     def set_preview_state(self, text: str) -> None:
-        """The preview draws its own waiting state; the pane only forwards the text."""
+        """The preview draws its own states; the pane only forwards the record's text."""
         self.preview.set_text(text)
 
     def set_address(self, raw: str) -> None:
@@ -135,13 +142,15 @@ class ContextPane(QWidget):
 
     # --- sections ------------------------------------------------------------
 
-    def _show_speaker(self, session, line) -> None:
+    def _show_speaker(self, line, operand: int | None) -> None:
         self._speaker_label.setText(line.speaker_label)
-        found = session.portraits.get(line.target or line.key)
-        operand = getattr(found, "operand", None)
         self.portrait.setText("" if operand is None
                               else f"Portrait operand 0x{operand:02X}")
         self.portrait.setVisible(operand is not None)
+
+    def _operand(self, session, line) -> int | None:
+        """The record's portrait operand, or None when it has none."""
+        return getattr(session.portraits.get(line.target or line.key), "operand", None)
 
     def _show_retail(self, session, line) -> None:
         """The retail wording appears only where it differs, never as a repeat."""

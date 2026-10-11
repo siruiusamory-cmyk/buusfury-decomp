@@ -129,6 +129,7 @@ def main() -> int:
     log2, port = log2_path.read_bytes(), image_path.read_bytes()
     failures = []
     rendered: list[tuple[int, int, int, int, int, bytes]] = []
+    slot_frames: dict[int, list[bytes]] = {}
 
     definition_pointer = pointer(port, BF_TABLE + 4 * args.id)
     if definition_pointer is None:
@@ -184,6 +185,7 @@ def main() -> int:
                                 f"slot {slot} frame {frame} piece {piece}: {width}x{height} declares "
                                 f"{width * height} bytes but the container holds {len(payload)}")
                         rendered.append((x, y, width, height, attr, payload))
+                    slot_frames.setdefault(slot, []).append(payload)
 
     # A filled definition cycles the source's animations, so the port has MORE frames than the source has
     # records. The claim that must still hold: nothing in the port came from anywhere but the source, and
@@ -264,6 +266,18 @@ def main() -> int:
             break
     sizes = [len(block) for block in blocks]
     print(f"order: {blocks_matched} block(s) concatenated in slot order (source block sizes {sizes})")
+    # SLOT MAPPING. Every slot must play the animation this port's convention says it plays, so a swap or a
+    # slot made to repeat another's frames fails here even though the concatenated sequence still matches.
+    if blocks:
+        wrong = []
+        for slot, payloads in sorted(slot_frames.items()):
+            expected = blocks[slot % len(blocks)]
+            if payloads != expected:
+                wrong.append(slot)
+        print(f"slot mapping: {len(slot_frames)} slot(s) checked against the convention "
+              f"slot i -> animation i mod {len(blocks)}")
+        if wrong:
+            failures.append(f"slot(s) {wrong} do not play the animation the mapping requires")
 
     for failure in failures[:20]:
         print(f"FAIL: {failure}")

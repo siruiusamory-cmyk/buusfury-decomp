@@ -815,11 +815,28 @@ def lines(model: Model, *, cutters_from_pool: bool = True) -> tuple[SpokenLine, 
 def open_rom(rom_path: str | Path, canonical: str | Path | None = None) -> Model:
     """Open an image read-only, with the canonical image as the retail reference."""
     path = Path(rom_path)
-    image = path.read_bytes()
+    return load(path.read_bytes(), path, canonical=canonical)
+
+
+def load(image: bytes, path: str | Path, canonical: str | Path | None = None,
+         *, check_profile: bool = True) -> Model:
+    """A model over image bytes already in hand, which need not have been written down.
+
+    `open_rom` reads a file and hands the bytes here. A caller holding an image it BUILT,
+    which `plan` does, reads the result the same way without writing it out first, so a
+    derived view of an edited image goes through the same reader as the original instead of
+    reusing the original record table against edited bytes. Measured, that reuse was a real
+    defect: a record whose edit GREW it kept its original span, so the lines read from the
+    edited streams were cut at the old offsets and disagreed with the exported image.
+
+    `check_profile` is off for that caller. The record floor guards against opening the
+    WRONG image, and these bytes came from an image that already passed it.
+    """
+    path = Path(path)
     digest = hashlib.sha256(image).hexdigest()
     layout = detect(image)
     records = _read_records(image, layout)
-    if len(records) < MINIMUM_DIALOGUE_RECORDS:
+    if check_profile and len(records) < MINIMUM_DIALOGUE_RECORDS:
         raise TextEditError(
             f"REFUSED: {path} carries {len(records)} dialogue record(s), under the "
             f"{MINIMUM_DIALOGUE_RECORDS}-record floor this profile validates against")

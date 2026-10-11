@@ -609,7 +609,11 @@ class Shell(QMainWindow):
         if self.session is None or not self._key:
             return
         before = self.session.snapshot(self._key)
-        self.session.clear_edit(self._key)
+        try:
+            self.session.clear_edit(self._key)
+        except (textedit.TextEditError, KeyError) as error:
+            self.statusBar().showMessage(str(error))
+            return
         after = self.session.snapshot(self._key)
         if after != before:
             self.stack.push(_EditCommand(self, self._key, before, after,
@@ -632,7 +636,11 @@ class Shell(QMainWindow):
         self.stack.beginMacro(f"clear {len(carried)} edit(s)")
         for key in carried:
             before = self.session.snapshot(key)
-            self.session.clear_edit(key)
+            try:
+                self.session.clear_edit(key)
+            except (textedit.TextEditError, KeyError) as error:
+                self.statusBar().showMessage(str(error))
+                continue
             after = self.session.snapshot(key)
             if after != before:
                 self.stack.push(_EditCommand(self, key, before, after, f"clear {key}"))

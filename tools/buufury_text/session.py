@@ -409,17 +409,28 @@ class Session:
         if plan is None:
             self._restructured = set()
             return dict(self._original_rows)
-        # The engine's own reader over the bytes the plan BUILT, so the rows below are the
-        # rows of the exported image and not a second opinion about them.
-        model = replace(self.model, image=plan.output,
-                        layout=textedit.detect(plan.output))
+        # The engine's OWN reader over the bytes the plan built, records included. Reusing
+        # this model's record table against the edited streams was a real defect: a record
+        # whose edit GREW it kept its old span, so the rows were cut at the old offsets and
+        # disagreed with the exported image while the gate, which shared this route, agreed
+        # with the session rather than with the export.
+        model = textedit.load(plan.output, self.model.path, check_profile=False)
         grouped: dict[str, list[str]] = {}
         for row in textedit.lines(model, cutters_from_pool=self.cutters_from_pool):
             grouped.setdefault(row.target, []).append(row.text)
+        moved = self._output_keys(plan, model)
         derived: dict[str, str] = {}
         self._restructured = set()
         for target, keys in self._line_keys.items():
-            texts = grouped.get(target, [])
+            where = target if target not in self._text else moved.get(target)
+            if where is None:
+                # This record's edit moved it and the built image does not say where, so the
+                # rows are marked rather than left reading text that is no longer true.
+                self._restructured.add(target)
+                for key in keys:
+                    derived[key] = self._original_rows.get(key, "")
+                continue
+            texts = grouped.get(where, [])
             if len(texts) != len(keys):
                 self._restructured.add(target)
                 for key in keys:
@@ -428,6 +439,30 @@ class Session:
             for key, text in zip(keys, texts):
                 derived[key] = text
         return derived
+
+    def _output_keys(self, plan, model) -> dict[str, str]:
+        """Where each edited record lives in the plan's built image, keyed as it was here.
+
+        A record that MOVES gets a new key, because a key is its container, offset and
+        length. The plan says where each placement landed, and the record's own text
+        identifies it among the built image's records, so the rows can be read from the
+        image the export writes instead of from the offsets the original had.
+        """
+        by_span: dict[tuple[int, int], list] = {}
+        for record in model.records:
+            by_span.setdefault((record.start, record.length), []).append(record)
+        mapping: dict[str, str] = {}
+        for placement in plan.placements:
+            exact = [record for record in by_span.get((placement.new_start,
+                                                       placement.new_length), ())
+                     if record.text == placement.text]
+            if len(exact) == 1:
+                mapping[placement.key] = exact[0].key
+        for item in plan.in_place:
+            # An in-place edit keeps its own span, so its key does not move.
+            mapping[f"{item.selector}:{item.start}:{item.length}"] = \
+                f"{item.selector}:{item.start}:{item.length}"
+        return mapping
 
     def _refresh(self) -> None:
         """Bring every row's text up to what the export would write, once per edit list."""
@@ -598,11 +633,13 @@ class Session:
             return
         original = self._original_rows.get(row.key)
         if original is None:
-            return
-        try:
-            restored = self._replace(row, original, current)
-        except textedit.TextEditError:
-            return
+            raise textedit.TextEditError(
+                f"{row.key} is not a row this image carries, so there is nothing to "
+                "restore it to. Clear the whole record instead.")
+        # A refusal here is REPORTED and not swallowed. Measured: swallowing it made Clear a
+        # silent no-op on a row whose derived text no longer matched its record, while the
+        # edit went on being exported, which is the worst of both.
+        restored = self._replace(row, original, current)
         self._store(target, restored, current)
 
     def clear_all(self) -> None:
@@ -777,7 +814,11 @@ class Session:
             decision = self.decision(key)
             if decision is not None and decision.bytes_before:
                 return decision.bytes_before
-        return len(row.text.encode("utf-16le")) or None
+        # The row's span in the IMAGE. Reading it from the row's current text made the limit
+        # grow with the edit, so a line always reported itself exactly at its own limit and
+        # the meter said nothing.
+        original = self._original_rows.get(row.key, row.text)
+        return len(original.encode("utf-16le")) or None
 
     def meter(self, key: str) -> Meter | None:
         """The NEW text against the span that decides its fate, in both units.
@@ -798,7 +839,7 @@ class Session:
             limit = decision.bytes_before or None
             text = _new_of(edit)
         else:
-            limit = len(row.text.encode("utf-16le"))
+            limit = len(self._original_rows.get(row.key, row.text).encode("utf-16le"))
             text = self.pending_text(key)
         return Meter(chars=len(text), chars_limit=None if limit is None else limit // 2,
                      bytes=len(text.encode("utf-16le")), bytes_limit=limit)

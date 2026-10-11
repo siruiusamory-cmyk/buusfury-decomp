@@ -448,6 +448,38 @@ carries, reading that back through the engine as the export would. A second case
 derivation on purpose and requires the gate to notice, because a gate that cannot fail is
 how four rounds of arithmetic got past their own cases.
 
+### The fifth review, and the three it found in that model
+
+The model was accepted and the review then found one root bug in it and a gate that shared
+the bug. Both are closed, and the third finding was about the clear path.
+
+**The rows were read from the wrong record table.** The derivation replaced the model's
+bytes and its layout but kept its RECORD table, and the engine's line rule walks the records
+to cut the streams. So a record whose edit MOVED it kept its original span, and the rows
+were cut at the old offsets: measured on a two-line fixture, growing the second line to
+`TwoTwo` left the session saying `Two` while the exported image carried `TwoTwo`. The
+derivation now goes through the engine's own reader over the built bytes, records included.
+A moved record has a new key, so the records are matched to their placements by the plan's
+own record of where each one landed, with the record's text identifying it among the built
+image's records. The engine gained an in-memory loader for this, which is the one seam the
+model needed.
+
+**The gate shared the bug.** Its readback copied the session's route, so both were wrong in
+the same way and the gate agreed with the session rather than with the export. It now
+EXPORTS to a temporary file and reopens that file with the engine's reader, independent of
+the session, and it walks operations that grow, shrink and rename. A second case restores
+the original fault on purpose and requires the gate to catch it, which it does.
+
+**A clear that refused was silent.** Clearing a line whose derived text no longer appeared
+in its record swallowed the refusal, so the command did nothing, no undo step was pushed and
+no message was shown, while the edit went on being exported. It now reports the refusal, and
+the window shows it in the same status line as every other refusal.
+
+**A meter that followed the text.** Found while fixing those, and the same class: the meter's
+limit read the row's CURRENT text, so a line always reported itself exactly at its own limit
+and the meter said nothing. The limit is the row's span in the image, and it now stays put
+while the edit grows.
+
 **What it costs.** Measured on release 3.1: 37 ms to rebuild the plan per edit and 232 ms
 to re-derive the rows, cached per edit list, so a keystroke pays both once and a redraw
 that changes nothing pays neither. That is real lag on the largest image and it is the price

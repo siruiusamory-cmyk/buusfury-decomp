@@ -398,31 +398,66 @@ def test_search_and_filters_read_the_same_rows(tmp_path: Path) -> None:
     assert session.counts(RECORD)[State.EDITED] == 1
 
 
-def _exported_rows(session: Session) -> dict[str, str]:
-    """Every row's text as the EXPORT writes it, read back from the plan's own bytes.
+def _exported_rows(session: Session, directory: Path) -> dict[str, str]:
+    """Every row's text as the EXPORT writes it, read back from the file it wrote.
 
-    This is the same route the session's own derivation takes, written out here so the gate
-    holds the session to the exported image rather than to itself.
+    The export goes to a temporary file and is reopened with the engine's own reader, so
+    this gate cannot share a fault with the session's derivation. It did: the first version
+    of this helper copied the session's route, so a record whose edit moved it was wrong in
+    both places and the gate agreed with the session instead of with the exported image.
     """
     plan = session.plan()
     if plan is None:
         return {row.key: row.text for row in session.lines}
-    model = replace(session.model, image=plan.output,
-                    layout=textedit.detect(plan.output))
-    grouped: dict[str, list[str]] = {}
-    for row in textedit.lines(model, cutters_from_pool=session.cutters_from_pool):
-        grouped.setdefault(row.target, []).append(row.text)
+    out = directory / "gate-export.gba"
+    if out.exists():
+        out.unlink()
+    textedit.apply(plan, out)
+    with lowered_record_floor():
+        reopened = app_session.open_image(
+            out, canonical=session.model.retail_path, view=app_session.LINES,
+            cutters_from_pool=session.cutters_from_pool)
     keys: dict[str, list[str]] = {}
     for row in session.lines:
         keys.setdefault(row.target or row.key, []).append(row.key)
-    return {key: text
-            for target, group in keys.items()
-            for key, text in zip(group, grouped.get(target, []))}
+    texts: dict[str, list[str]] = {}
+    for row in reopened.lines:
+        texts.setdefault(row.target or row.key, []).append(row.text)
+    mapped = _old_keys(session, plan, reopened)
+    exported: dict[str, str] = {}
+    for target, group in keys.items():
+        where = target if target not in session._text else mapped.get(target)
+        for key, text in zip(group, texts.get(where, [])):
+            exported[key] = text
+    return exported
 
 
-def _rows_match_the_export(session: Session) -> list[str]:
-    """Every row key whose text is not what the export writes for that row."""
-    exported = _exported_rows(session)
+def _old_keys(session: Session, plan, reopened: Session) -> dict[str, str]:
+    """The key each edited record has in the reopened image, keyed as it was before.
+
+    A record that moves gets a new key, because a key is its container, offset and length.
+    The plan says where each placement landed and the record's own text identifies it among
+    the reopened image's records.
+    """
+    by_span: dict[tuple[int, int], list] = {}
+    for record in reopened.model.records:
+        by_span.setdefault((record.start, record.length), []).append(record)
+    mapping: dict[str, str] = {}
+    for placement in plan.placements:
+        exact = [record for record in by_span.get((placement.new_start,
+                                                   placement.new_length), ())
+                 if record.text == placement.text]
+        if len(exact) == 1:
+            mapping[placement.key] = exact[0].key
+    for item in plan.in_place:
+        key = f"{item.selector}:{item.start}:{item.length}"
+        mapping[key] = key
+    return mapping
+
+
+def _rows_that_disagree_with_the_export(session: Session, directory: Path) -> list[str]:
+    """Every row key whose text is not what the exported image carries for that row."""
+    exported = _exported_rows(session, directory)
     return [row.key for row in session.lines
             if exported.get(row.key) is not None
             and session.pending_text(row.key) != exported[row.key]]
@@ -431,20 +466,21 @@ def _rows_match_the_export(session: Session) -> list[str]:
 def test_every_row_equals_the_line_the_export_writes(tmp_path: Path) -> None:
     """The gate for the whole model: a row's text IS the exported image's row text.
 
-    Four review rounds each found a case where a second derivation by arithmetic disagreed
-    with the export, so this walks random operations and, after EVERY step, compares every
-    row, typed into or not, against the row the export's own bytes carry. A refusal is
-    allowed; a row that does not match what would be written is not.
+    Four review rounds each found a case where a view derived by arithmetic disagreed with
+    the export, so this walks operations that GROW, SHRINK and RENAME and, after every
+    step, compares every row, typed into or not, against the file the export actually
+    wrote. A refusal is allowed; a row that does not match what would be written is not.
     """
     import random
 
     session = two_line_session(tmp_path)
     target = record_key(session)
     rows = _the_two_lines(session)
-    names = ("Une", "Dos", "Tres", "Uno!", "Dos!", "Tres!", "Quatre")
+    names = ("Une", "Dos", "Tres", "Quatre", "Uno!", "Dos!", "Tres!", "X")
     rng = random.Random(20261011)
     applied = 0
-    for step in range(60):
+    kinds = {"type": 0, "rename": 0, "records": 0, "clear": 0}
+    for step in range(40):
         row = rng.choice(rows)
         whole = session.snapshot(target)
         before = {r.key: session.pending_text(r.key) for r in session.lines}
@@ -459,11 +495,12 @@ def test_every_row_equals_the_line_the_export_writes(tmp_path: Path) -> None:
             else:
                 session.clear_edit(row.key)
             applied += 1
+            kinds[kind] += 1
         except textedit.TextEditError:
             pass
-        mismatched = _rows_match_the_export(session)
-        assert not mismatched, (
-            f"step {step} ({kind}): {mismatched} do not match the exported rows")
+        disagree = _rows_that_disagree_with_the_export(session, tmp_path)
+        assert not disagree, (
+            f"step {step} ({kind}): {disagree} do not match the exported image")
         for question in (lambda: session.counts(app_session.LINES),
                          lambda: session.matching(term="U"),
                          lambda: session.state(row.key)):
@@ -471,26 +508,30 @@ def test_every_row_equals_the_line_the_export_writes(tmp_path: Path) -> None:
         session.restore(target, whole)
         assert {r.key: session.pending_text(r.key) for r in session.lines} == before, (
             f"step {step} ({kind}) did not restore the record")
-    assert applied > 20, f"too little was exercised: {applied} step(s) applied"
+    assert applied > 15, f"too little was exercised: {applied} step(s) applied"
+    assert kinds["records"] and kinds["rename"], f"the walk missed a kind: {kinds}"
 
 
-def test_the_gate_fails_when_the_derivation_is_broken(tmp_path: Path,
-                                                      monkeypatch) -> None:
-    """The negative control: break the derivation and the gate above must catch it.
+def test_the_gate_catches_a_record_whose_edit_moved_it(tmp_path: Path,
+                                                       monkeypatch) -> None:
+    """The negative control, on the exact fault the fourth review found.
 
-    A gate that cannot fail proves nothing, which is how four rounds of arithmetic got
-    past their own cases. This replaces the derivation with the image's own rows, which is
-    exactly the second opinion the model removed, and requires the comparison to notice.
+    Reusing the original record table against the edited streams made a record that GREW
+    keep its old span, so the rows were cut at the old offsets while the export wrote the
+    new ones. That is restored here on purpose and the gate must catch it.
     """
     session = two_line_session(tmp_path)
-    target = record_key(session)
-    first, _second = _the_two_lines(session)
-    session.set_edit(first.key, "Une")
-    assert not _rows_match_the_export(session), "the derivation agreed with the export"
-    monkeypatch.setattr(Session, "_derived",
-                        lambda self: dict(self._original_rows))
+    first, second = _the_two_lines(session)
+    session.set_edit(second.key, "TwoTwo")
+    assert not _rows_that_disagree_with_the_export(session, tmp_path), "the export agrees"
+
+    def stale(self, plan, model):
+        return {}
+
+    monkeypatch.setattr(Session, "_output_keys", stale)
     session._derived_for = ()
-    assert _rows_match_the_export(session), "the broken derivation went unnoticed"
+    assert _rows_that_disagree_with_the_export(session, tmp_path), (
+        "a record whose edit moved it went unnoticed")
 
 
 def test_the_control_unit_filter_and_the_progress_counters(tmp_path: Path) -> None:

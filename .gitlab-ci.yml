@@ -7,10 +7,17 @@ stages:
 # ROM-gated integration tests are not collected here at all.
 #
 # This job is the `fast` gate of docs/testing.md (`python -m pytest -m fast`).
-# It is the whole portable suite and finishes in a couple of minutes, so it is
-# deliberately not split into parallel jobs: the fan-out would cost more in
-# runner setup than it saves, and more jobs would make one failing gate harder
-# to read, not easier.
+# It is the whole portable suite, and it runs that suite across pytest-xdist
+# worker processes inside this one job. Parallel *workers* are not parallel
+# *jobs*, which is what the earlier argument here was against: splitting this
+# gate into several jobs would cost more in runner setup than it saves and would
+# split one gate across several logs and several JUnit reports, making a failure
+# harder to read rather than easier. Worker processes inside the job repeat
+# neither the runner setup nor the install, and pytest still emits one merged
+# `report.xml` for the merge request, so the same reasoning now supports the
+# fan-out instead of forbidding it. `--dist loadfile` keeps a module on one
+# worker, because the modules that dominate this suite are dominated by
+# per-module decode setup rather than by the tests themselves.
 #
 # The shipping GUI dependency set is installed in *this* job rather than in a
 # second, PySide6-only job, for the same reason: the portable suite is one job,
@@ -95,9 +102,22 @@ test-sdk:
     # them fifteen modules under tests/unit skip as a whole.
     - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
+    # Size the worker count from what THIS runner actually has, because the
+    # shared small runner reports 2 cores and four workers on two cores bought
+    # nothing: measured 2026-10-11, the job took 237s and 252s under `-n 4`
+    # against 216s to 287s for the serial master baseline, which is inside the
+    # noise. `-n auto` is pytest-xdist's own reading of the core count, so the
+    # sizing cannot drift from this comment, and the count it chose is printed in
+    # the pytest header below. The counting commands above stay as evidence: the
+    # interpreter is used because `nproc` is not guaranteed on this slim image
+    # and printed nothing when it was tried, and `/proc/meminfo` is read because
+    # `free` does not exist here at all.
+    - python -c "import os; print('cores:', os.cpu_count())"
+    - grep -E '^(MemTotal|MemAvailable)' /proc/meminfo
     # The JUnit report is what makes a failure legible in the merge request
-    # without downloading the raw job log.
-    - python -m pytest tests/unit -q --junitxml=report.xml
+    # without downloading the raw job log, and xdist merges every worker's
+    # results into this one file.
+    - python -m pytest tests/unit -q -n auto --dist loadfile --junitxml=report.xml
     # The gates a reviewer is told to run, run here as well. The unit suite does
     # exercise the public-surface and purity checks through their tests, but the
     # readability gate is only asserted over the shipping package there, so the

@@ -16,6 +16,7 @@ dependency-guarded GUI module.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -70,6 +71,38 @@ def unsupported(path: Path = OTHER_ROM) -> RomVerification:
         expected_sha256="94" * 32,
         problem="This version currently supports the verified US Buu's Fury ROM only.",
     )
+
+
+def settled(predicate, qapp, timeout_ms: int = 5_000) -> bool:
+    """Pump events until ``predicate`` holds, or the deadline passes.
+
+    A fixed number of ``processEvents`` calls is not a synchronization point:
+    under ``QT_QPA_PLATFORM=offscreen`` on a contended CI runner, key delivery
+    and focus activation are not guaranteed inside any fixed count, so a test
+    that pumps twenty times and then asserts can fail on a slow worker while
+    passing on a fast one. Waiting on the condition is what makes the assertion
+    about behaviour instead of about scheduling. Returns the last reading so a
+    caller can assert on it and still get the counterexample.
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        result = predicate()
+        if result or time.monotonic() >= deadline:
+            return result
+        QtTest.QTest.qWait(5)
+        qapp.processEvents()
+
+
+def quiet(qapp, ms: int = 250) -> None:
+    """Let the event queue drain for a bounded moment before reading a negative.
+
+    The counterpart to ``settled``: a test that asserts nothing happened has
+    nothing to wait for, so it waits a bounded interval instead. 250 ms is long
+    enough for a spurious activation to arrive and short enough not to matter;
+    the bounded wait cannot hang a job, unlike an unbounded pump.
+    """
+    QtTest.QTest.qWait(ms)
+    qapp.processEvents()
 
 
 def outcome(**overrides) -> RandomizerResult:
@@ -349,8 +382,9 @@ def test_the_success_block_names_the_seed_the_output_the_manifest_and_the_spoile
     worker = window.start_randomization()
     assert worker is not None
     assert worker.wait(30_000)
-    for _ in range(50):
-        qapp.processEvents()
+    assert settled(lambda: "Seed:" in window.status_text(), qapp), (
+        "the success block never reached the window"
+    )
 
     status = window.status_text()
     assert "Seed: StreamBlind-0001" in status
@@ -373,8 +407,7 @@ def test_a_core_refusal_is_a_message_not_a_traceback(window, qapp, boundary):
     worker = window.start_randomization()
     assert worker is not None
     assert worker.wait(30_000)
-    for _ in range(50):
-        qapp.processEvents()
+    assert settled(lambda: bool(shown), qapp), "the refusal never reached the window"
 
     assert shown and "refused this run" in shown[-1]
     assert "Cannot randomize" in window.status_text()
@@ -429,34 +462,40 @@ def test_enter_performs_the_primary_action(window, qapp, boundary):
     window.set_rom_path(VALID_ROM)
     window.set_output_path("C:/games/out.gba")
     assert window.randomize_button.isEnabled()
+    window.activateWindow()
     window.rom_edit.setFocus()
-    for _ in range(5):
-        qapp.processEvents()
+    assert settled(lambda: window.rom_edit.hasFocus(), qapp), "the field never took focus"
 
     QtTest.QTest.keyClick(window.rom_edit, QtCore.Qt.Key.Key_Return)
-    for _ in range(20):
-        qapp.processEvents()
 
-    assert boundary.randomize_calls, "Enter did not reach the boundary"
+    assert settled(lambda: bool(boundary.randomize_calls), qapp), (
+        "Enter did not reach the boundary"
+    )
     worker = window.active_worker
     if worker is not None:
         assert worker.wait(30_000)
 
 
 def test_enter_does_not_start_a_run_that_the_button_would_refuse(window, qapp, boundary):
-    """The disabled state is the guard, so Enter cannot slip past it."""
+    """The disabled state is the guard, so Enter cannot slip past it.
+
+    A negative needs a bounded wait rather than a condition: there is nothing to
+    wait for, so the test drains the queue for 250 ms and only then reads the
+    empty boundary. Focusing and activating first makes the key delivery real,
+    so a later regression that quietly stops delivering the key at all would be
+    caught by the positive test above rather than hidden here.
+    """
     window.set_rom_path(VALID_ROM)
     window.set_output_path("C:/games/out.gba")
     for check in window.module_checks.values():
         check.setChecked(False)
     assert not window.randomize_button.isEnabled()
+    window.activateWindow()
     window.rom_edit.setFocus()
-    for _ in range(5):
-        qapp.processEvents()
+    assert settled(lambda: window.rom_edit.hasFocus(), qapp), "the field never took focus"
 
     QtTest.QTest.keyClick(window.rom_edit, QtCore.Qt.Key.Key_Return)
-    for _ in range(20):
-        qapp.processEvents()
+    quiet(qapp)
 
     assert boundary.randomize_calls == []
     assert window.active_worker is None

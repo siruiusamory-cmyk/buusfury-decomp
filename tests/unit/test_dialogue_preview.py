@@ -123,6 +123,30 @@ def test_chip_edit_round_trips_the_canonical_string() -> None:
     assert editor.atom_count() == 0
 
 
+def test_a_document_with_a_control_unit_lays_out_and_round_trips() -> None:
+    """The atom's size and paint stubs must match the binding's own argument order.
+
+    Measured, and this is why the case lays the document out: Qt calls
+    `intrinsicSize(self, doc, posInDocument, format)` and `drawObject(self, painter,
+    rect, doc, posInDocument, format)`, positionally. A stub declared without the
+    position argument binds the format to an integer and raises inside the Qt
+    override, but ONLY once the document actually lays out, which a widget that is
+    never shown never does. The round-trip case beside this one passed while the
+    editor could not open a line carrying a control unit at all, and a commit from
+    that state wrote the previous row's text under the new row's key.
+    """
+    editor = chips.ChipTextEdit()
+    editor.resize(280, 90)
+    editor.show()
+    editor.set_text(CURRENT)
+    assert editor.serialized() == CURRENT
+    assert editor.atom_count() == len(ATOMS)
+    # Reading the laid-out size is what forces the two overrides to run.
+    assert editor.document().size().width() > 0
+    assert editor.document().size().height() > 0
+    editor.close()
+
+
 def test_chip_edit_refuses_a_backspace_at_an_atom_edge() -> None:
     editor = chips.ChipTextEdit()
     editor.set_text(CURRENT)

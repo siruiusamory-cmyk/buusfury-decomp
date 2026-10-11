@@ -15,6 +15,7 @@ from __future__ import annotations
 from PySide6.QtCore import QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QFontMetrics,
     QPyTextObject,
     QTextCharFormat,
     QTextCursor,
@@ -129,14 +130,25 @@ class ChipObject(QPyTextObject):
     against both the editor surface and the selection without a second fill token.
     """
 
-    def intrinsicSize(self, doc, fmt, _=None) -> QSizeF:  # noqa: N802
+    def intrinsicSize(self, doc, position, fmt) -> QSizeF:  # noqa: N802
+        """The atom's size: its label in the data face, plus the chip's own padding.
+
+        The position argument is not optional. The binding calls this with
+        `(doc, posInDocument, format)` and Qt does not pass it by keyword, so a stub
+        that omits it binds the format to the position integer and every call raises,
+        which leaves the editor holding the previous row's text. Measured: opening a
+        line that carries a control unit raised `'int' object has no attribute
+        'property'` inside the Qt override.
+        """
         label = control_label(str(fmt.property(_CHAR_PROPERTY)))
         metrics = theme.active_metrics()
-        device = doc.documentLayout().paintDevice()
-        width = device.fontMetrics().horizontalAdvance(label) if device is not None else 0
+        # The chip paints in the data face, so it measures in the data face. The
+        # document layout's paint device is a QPaintDevice and carries no font, which
+        # raised as soon as the argument order was fixed and this line was reached.
+        width = QFontMetrics(theme.type_scale().data).horizontalAdvance(label)
         return QSizeF(width + 2 * metrics.pad_sm, metrics.chip_height)
 
-    def drawObject(self, painter, rect, doc, fmt):  # noqa: N802
+    def drawObject(self, painter, rect, doc, position, fmt) -> None:  # noqa: N802
         label = control_label(str(fmt.property(_CHAR_PROPERTY)))
         active = theme.active_theme()
         metrics = theme.active_metrics()
@@ -174,10 +186,15 @@ class ChipTextEdit(QTextEdit):
     # --- the canonical value -------------------------------------------------
 
     def set_text(self, text: str) -> None:
-        """Rebuild the document from the canonical string. Read-only shows reference text."""
+        """Rebuild the document from the canonical string, and only then claim it.
+
+        The canonical string is assigned after the document is built, not before. Where
+        it was assigned first, a build that raised left the widget reporting text its
+        own document did not hold, and the next commit wrote that text under the key of
+        the row the user had just selected.
+        """
         self._rebuilding = True
         try:
-            self._serialized = text
             self.document().clear()
             cursor = QTextCursor(self.document())
             cursor.beginEditBlock()
@@ -187,6 +204,7 @@ class ChipTextEdit(QTextEdit):
                                   _format_for(unit.raw) if is_atom else QTextCharFormat())
             cursor.endEditBlock()
             self.setTextCursor(QTextCursor(self.document()))
+            self._serialized = text
         finally:
             self._rebuilding = False
 

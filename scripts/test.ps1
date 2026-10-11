@@ -6,7 +6,7 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw 'Missing .venv. Run scripts\setup.ps1 first.'
 }
 
-& $Python -m pytest
+& $Python -m pytest -m fast @args
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $Python -m tools.webfoot --help | Out-Null

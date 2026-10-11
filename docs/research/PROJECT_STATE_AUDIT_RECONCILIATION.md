@@ -193,10 +193,10 @@ are labelled that way so they cannot be mistaken for original audit findings.
 
 | Disposition | Count |
 | --- | --- |
-| CLOSED | 25 |
+| CLOSED | 26 |
 | SUPERSEDED | 1 |
 | RELEASE-BLOCKING | 4 |
-| DEFERRED | 43 |
+| DEFERRED | 42 |
 
 ### B.2 Findings
 
@@ -247,7 +247,7 @@ drifted, the citation is to the line read in the baseline tree.
 | 39 | `CQA-39` | LOW: docstring claims a caller cannot get a plausible offset out of an opaque slot, but `source_file_offset` is unconditional | `formats/map_slots.py:167`, `:171` | DEFERRED | Documentation overclaim only. |
 | 40 | `CQA-40` | LOW: a data table with documented-UNKNOWN extent is indexed as production truth for relocation anchors and Thumb fetches | UNVERIFIED: the cited UNKNOWN-extent assertion was not located at its current line | DEFERRED | Carried without a closure claim. The finding is not refuted and not confirmed this pass. |
 | 41 | `CQA-41` | LOW: the `writer` gate is a filename heuristic, so write-path tests with unrelated names carry only `-m fast` | `tests/gates.py:51-109` still fnmatch on filename; `tests/unit/test_asset_export_strict_lz.py` matches no writer pattern | DEFERRED | `fast` is all of `tests/unit` and CI runs `tests/unit`, so nothing escapes the pipeline; only a developer's blast-radius run is affected. |
-| 42 | `CQA-42` | LOW: `scripts/test.ps1` runs the bare ~90-minute full suite with no gate selection | `scripts/test.ps1:9` `& $Python -m pytest`; `docs/testing.md:3-5` states the policy it contradicts | DEFERRED | Developer wall clock, not a shipped property. |
+| 42 | `CQA-42` | LOW: `scripts/test.ps1` runs the bare ~90-minute full suite with no gate selection | `scripts/test.ps1:9` `& $Python -m pytest`; `docs/testing.md:3-5` states the policy it contradicts. Closed by `TEST-SPEED-001`: the line now reads `& $Python -m pytest -m fast @args`, so the entry point runs the portable gate by default and passes extra arguments through; `README.md:213-216` and `docs/testing.md:57-63` state the new default | CLOSED | Developer wall clock, not a shipped property, and now no longer run by reflex through the single entry point. |
 | 43 | `CQA-43` | LOW: a test asserted exact English phrases in the policy files and counted as passing | File absent from the baseline tree; merge `3dc606b` is an ancestor | CLOSED | Closed by removing the file, exactly as the finding records. |
 | 44 | `CQA-44` | LOW: the property sweep is derandomized at a fixed 50 examples and nothing raises `WEBFOOT_PROPERTY_EXAMPLES` | `test_write_invariants_property.py:48-60` default `"50"`, `derandomize=True`; no test sets the variable | DEFERRED | Frozen discovery power with no shipping path. |
 | 45 | `CQA-45` | LOW: View then Detailed Editor follows an editor switch but not the Maps mode change it depends on | `app.py:616-617` `_sync_scene_action`, called at `:481`; `_maps.modeChanged` `:168` is wired only to `_refresh_undo_actions()` | DEFERRED | The mode-change dependency is still not the trigger. |

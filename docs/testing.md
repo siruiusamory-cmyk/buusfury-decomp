@@ -54,6 +54,14 @@ Add the directory when you already know which one it is: `pytest -m` still
 collects the whole tree first (a few seconds here) before deselecting, so
 `python -m pytest tests/unit -m "fast and writer"` finishes sooner.
 
+`.\scripts\test.ps1` (the repository's single test entry point) runs the portable
+gate, `-m fast`, by default and passes every extra argument through to pytest
+after that selection. So `.\scripts\test.ps1 tests/unit/test_relocation.py` runs
+that file inside the default gate, and a narrower `-k`, `--maxfail` or path
+argument composes with it. A second `-m` replaces the default rather than
+composing with it, because pytest keeps the last one: the full suite needs
+`.\scripts\test.ps1 -m ""`.
+
 A gate is a *selection*, not a promise: `-m rom` on a machine with no ROM
 reports skips, and `-m fast` includes members that need the canonical image or a
 local artifact and skip without them. Measured 2026-10-08, six of the portable

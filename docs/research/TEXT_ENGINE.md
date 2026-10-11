@@ -286,6 +286,24 @@ any ROM.
 - **The 0x0008 operand has no catalogue.** It appears 470 times inside release
   3.1's record text; its meaning is censused but not named, and the engine treats
   each pair as one locked atom.
+- **The record inventory is a per-entry field test, which P-046 names as the wrong
+  discovery method.** `dialogue_record_inventory` accepts a record word because its
+  own bytes look like one: a handler byte at +0x02 and a word at +0x04 that decodes
+  as a handle. Measured, that finds 2,805 records on the canonical image, while the
+  RE Lab's structural census (a record counts only as an entry of a pointer array,
+  toolbelt K-017) finds 2,221 handler-5 dialogue records over the same image, and
+  18 of this engine's records carry a portrait operand above the array's 162, which
+  no appearance record can own. The engine's record set is the population the
+  released builds were reproved against and the goldens reproduce it byte for byte,
+  so it is NOT changed here; a later ticket that walks the stream's own chain
+  (`+0x00` of a record word is the next index) would replace the field test with
+  the structure. Until then a row derived from a coincidence record can be shown,
+  and the line list's carrier-disagreement bucket is partly its symptom: 416 of
+  release 3.1's lines fall to no attribution because their carriers disagree.
+- **A spoken-line rule cannot be a page model.** There is no page-break unit in the
+  data: 0x000B ends the text run, and the box redraws per strip with no measured
+  page step. `lines` therefore cuts only at the two proven break units and leaves
+  wrapping to the preview.
 - **No CLI.** Ticket 1 is the engine; the desktop surface is ticket 2, in
   `tools/buufury_text/`, and it consumes this module and nothing else.
 

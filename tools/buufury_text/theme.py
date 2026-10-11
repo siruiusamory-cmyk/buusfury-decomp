@@ -16,8 +16,19 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QFontMetrics, QIcon, QPalette, QPen
+from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QIcon,
+    QImage,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QStyleFactory
 
 from . import status
@@ -45,6 +56,13 @@ TOKENS: dict[str, tuple[str, str]] = {
     "state_move": ("#8A5A00", "#F1BE5C"),
     "state_refused": ("#7A2E8A", "#E59AEF"),
     "state_base_changed": ("#5A4FB5", "#B7A9FF"),
+    # The dialogue preview is the one surface that shows the GAME rather than the
+    # application, so its four tokens are the same in both modes: a dark viewport
+    # and the light box the game draws in it.
+    "preview_screen": ("#0B0F14", "#0B0F14"),
+    "preview_box": ("#F8F8F8", "#F8F8F8"),
+    "preview_ink": ("#101418", "#101418"),
+    "preview_marker": ("#8A8F96", "#8A8F96"),
 }
 
 #: Badge fill and ink, light then dark. The table names four of the five states.
@@ -100,6 +118,10 @@ class Theme:
     state_move: str
     state_refused: str
     state_base_changed: str
+    preview_screen: str
+    preview_box: str
+    preview_ink: str
+    preview_marker: str
 
 
 _FALLBACK = Theme(
@@ -108,6 +130,8 @@ _FALLBACK = Theme(
     splitter="#6F7883", accent="#7DB0FF", selection="#243B5A", focus="#8BB9FF",
     state_unchanged="#9AA3AE", state_edited="#83B8FF", state_move="#F1BE5C",
     state_refused="#E59AEF", state_base_changed="#B7A9FF",
+    preview_screen="#0B0F14", preview_box="#F8F8F8", preview_ink="#101418",
+    preview_marker="#8A8F96",
 )
 
 _ACTIVE = _FALLBACK
@@ -303,12 +327,49 @@ def state_marker(theme: Theme, state: State) -> QPen:
     return pen
 
 
-def icon(name: str) -> QIcon:
-    """A bundled Tabler outline icon, or a null QIcon so the glyph channel stands in."""
-    if name not in _ICON_CACHE:
+#: The two pixel sizes one icon is rendered at, so a 2x display gets a real 2x
+#: pixmap rather than a scaled 1x one.
+_ICON_PIXEL_SIZES = (16, 32)
+
+
+def icon(name: str, ink: str | None = None) -> QIcon:
+    """A bundled Tabler outline icon, recoloured, or a null QIcon.
+
+    The bundled SVGs carry `stroke="currentColor"`, and Qt's SVG renderer does not
+    resolve that: loaded straight from the file, every icon paints BLACK, which is
+    invisible on the dark theme and the wrong ink on the light one. The stroke is
+    substituted here and the icon is rendered at both pixel sizes. Pass `ink` to
+    match the surface the icon lands on; the default is the active theme's primary
+    text. A missing icon is a null QIcon, so the glyph channel carries the state.
+    """
+    chosen = ink or active_theme().text_primary
+    key = f"{name}@{chosen}"
+    if key not in _ICON_CACHE:
         path = _icon_directory() / f"{name}.svg"
-        _ICON_CACHE[name] = QIcon(str(path)) if path.is_file() else QIcon()
-    return _ICON_CACHE[name]
+        _ICON_CACHE[key] = _render_icon(path, chosen) if path.is_file() else QIcon()
+    return _ICON_CACHE[key]
+
+
+def _render_icon(path: Path, ink: str) -> QIcon:
+    svg = path.read_text(encoding="utf-8").replace("currentColor", ink).encode("utf-8")
+    try:
+        from PySide6.QtSvg import QSvgRenderer
+    except ImportError:
+        # Without the SVG plugin this still paints, in the wrong ink; the packaging
+        # gate is what proves the plugin travels with a frozen build.
+        return QIcon(str(path))
+    renderer = QSvgRenderer(QByteArray(svg))
+    result = QIcon()
+    base = _ICON_PIXEL_SIZES[0]
+    for size in _ICON_PIXEL_SIZES:
+        image = QImage(size, size, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        renderer.render(painter)
+        painter.end()
+        image.setDevicePixelRatio(size / base)
+        result.addPixmap(QPixmap.fromImage(image))
+    return result
 
 
 def mono_font(delta: int = -1) -> QFont:

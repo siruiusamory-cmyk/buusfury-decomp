@@ -1,4 +1,4 @@
-"""What the dialogue box will look like, approximately, at integer scale.
+﻿"""What the dialogue box will look like, approximately, at integer scale.
 
 This is the one surface the interface is allowed to look like a Game Boy Advance.
 The glyph source is the seam the RE Lab's extracted font implements; until it
@@ -19,11 +19,9 @@ from tools.webfoot import textedit
 
 from . import theme
 
-#: The dialogue box's own colours. The one screen whose look is not the app's.
-SCREEN = "#0B0F14"
-BOX = "#F8F8F8"
-INK = "#101418"
-MARKER = "#8A8F96"
+#: The dialogue box's own colours live in the theme's token table, because a second
+#: place carrying a colour would be a second theme. They are the same in both modes
+#: on purpose: this surface shows the game, not the application.
 CAPTION = "Approximate preview"
 #: One neutral marker stands in for every control unit whose glyph is not available.
 CHARACTER = "\ufffc"
@@ -31,6 +29,11 @@ CHARACTER = "\ufffc"
 _MARGIN = 8
 _BOX_PAD = 4
 _NEWLINE = 0x0A
+
+
+def box_color(role: str) -> QColor:
+    """One of the preview's four tokens, resolved against the active theme."""
+    return theme.color(theme.active_theme(), role)
 
 
 @runtime_checkable
@@ -80,7 +83,7 @@ class ApproximateGlyphs:
     def draw(self, painter: QPainter, character: str, x: int, y: int) -> None:
         """One cell, drawn on the integer grid so nearest-neighbour stays sharp."""
         painter.setFont(self._font)
-        painter.setPen(QColor(MARKER if character == CHARACTER else INK))
+        painter.setPen(box_color("preview_marker") if character == CHARACTER else box_color("preview_ink"))
         painter.drawText(QRect(x, y, self._cell, self._cell),
                          Qt.AlignmentFlag.AlignCenter, character)
 
@@ -153,13 +156,13 @@ class DialoguePreview(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
-        painter.fillRect(self.rect(), QColor(SCREEN))
+        painter.fillRect(self.rect(), box_color("preview_screen"))
         painter.save()
         painter.scale(scale, scale)
         box = QSize(source.box_width + 2 * _BOX_PAD,
                     source.lines_per_page * source.line_height + 2 * _BOX_PAD)
         for page in layout(self._text, source):
-            painter.fillRect(QRect(0, 0, box.width(), box.height()), QColor(BOX))
+            painter.fillRect(QRect(0, 0, box.width(), box.height()), box_color("preview_box"))
             for row, line in enumerate(page):
                 x = _BOX_PAD
                 for character in line:

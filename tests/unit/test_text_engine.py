@@ -589,3 +589,48 @@ def test_the_release31_rename_replays_byte_identically(tmp_path: Path) -> None:
     assert len(built.slot_moves) == 3
     assert built.output_sha256 == RELEASE31
     textedit.apply(built, tmp_path / "release31.gba")
+
+
+# --- the map table ----------------------------------------------------------
+
+
+def test_a_fixture_too_small_for_the_map_table_places_nothing(tmp_path: Path) -> None:
+    """The table lies past the fixture's end, so every map join refuses to guess."""
+    image, model = simple(tmp_path)
+    assert model.profile.maps is not None
+    assert model.profile.maps.table > len(model.image)
+    assert textedit.maps(model) == ()
+    assert textedit.record_maps(model) == {}
+    assert textedit.line_maps(model) == {}
+
+
+def test_the_map_table_names_its_maps_and_falls_back_to_the_index() -> None:
+    """The three names K-018 checked, the shape of the table, and the fallback."""
+    model = textedit.open_rom(canonical())
+    rows = textedit.maps(model)
+    assert len(rows) == 452
+    assert rows[138].label == "World Tournament Stadium"
+    assert rows[207].label == "Demon World"
+    assert rows[390].label == "Volcano Summit"
+    assert rows[451].label == "Heaven"
+    assert sum(1 for row in rows if row.name.strip()) == 429
+    # A row the table leaves unnamed is labelled by its index, never by a guess.
+    assert rows[11].name.strip() == ""
+    assert rows[11].label == "Map 11"
+
+
+def test_the_placement_route_places_a_minority_and_never_a_second_owner() -> None:
+    """The route is inferred, so it must under-claim rather than over-claim."""
+    model = textedit.open_rom(canonical())
+    owners = textedit.record_maps(model)
+    assert len(owners) == 486
+    assert len(owners) < len(model.records)
+    assert all(0 <= index < 452 for index in owners.values())
+    placed = textedit.line_maps(model)
+    assert placed
+    assert set(placed) <= {row.key for row in textedit.lines(model)}
+    assert set(placed.values()) <= set(owners.values())
+    # A line's map is its own target record's map, and nothing else's.
+    by_key = {row.key: row for row in textedit.lines(model)}
+    for key, index in placed.items():
+        assert owners[by_key[key].target] == index

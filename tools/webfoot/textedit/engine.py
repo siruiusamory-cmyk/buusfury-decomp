@@ -94,6 +94,26 @@ class TextEditError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class MapTable:
+    """One title's map table, and the placement route that reaches dialogue.
+
+    Every address is a file offset, like the rest of `TitleProfile`.
+    """
+
+    table: int
+    count: int
+    stride: int
+    name_slot_at: int
+    array_at: int
+    count_at: int
+    placement_family: int
+    descriptor_at: int
+    resource_handler: int
+    event_table: int
+    event_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class TitleProfile:
     """One Webfoot title's measured candidate addresses.
 
@@ -119,6 +139,9 @@ class TitleProfile:
     #: a proven dialogue reference; a site outside it is counted and not linked.
     #: None means "not measured for this title".
     event_pool: tuple[int, int] | None = None
+    #: The map table and the route from a map to the dialogue its placements
+    #: reference. None means the title has none and no line can be placed.
+    maps: MapTable | None = None
 
 
 #: Game code bytes 0xAC..0xB0 of the GBA header, measured on the canonical image.
@@ -136,6 +159,19 @@ PROFILES: tuple[TitleProfile, ...] = (
         # The event-resource pool the SDK's placement contracts declare at ROM
         # address 0x0877C5A4..0x0879B704, as file offsets.
         event_pool=(0x77C5A4, 0x79B704),
+        maps=MapTable(
+            table=0x8E2E0,
+            count=452,
+            stride=0x38,
+            name_slot_at=0x0C,
+            array_at=0x14,
+            count_at=0x04,
+            placement_family=0x0800FD55,
+            descriptor_at=0x14,
+            resource_handler=0x0800424F,
+            event_table=0x79B704,
+            event_count=522,
+        ),
     ),
 )
 
@@ -591,6 +627,136 @@ def _split_runs(stream: bytes, start: int, end: int) -> tuple[tuple[int, int], .
 def shown_text(text: str) -> str:
     """Only the displayed characters of `text`, with every control unit dropped."""
     return "".join(item.value for item in units(text) if isinstance(item, Text))
+
+
+@dataclass(frozen=True, slots=True)
+class MapRow:
+    """One row of the map table: where it sits, and what the table calls it."""
+
+    index: int
+    name: str
+
+    @property
+    def label(self) -> str:
+        """The name, or the index alone when the table leaves the name slot empty."""
+        return self.name.strip() or f"Map {self.index}"
+
+
+def _event_extents(model: Model) -> dict[int, tuple[int, int]]:
+    """Event resource start -> its extent, from the table's own sorted pointers."""
+    table = model.profile.maps
+    if table is None or table.event_table + table.event_count * 4 > len(model.image):
+        return {}
+    starts = sorted(
+        int.from_bytes(model.image[table.event_table + 4 * index:
+                                    table.event_table + 4 * index + 4], "little") - ROM_BASE
+        for index in range(table.event_count))
+    extents = {}
+    for position, start in enumerate(starts):
+        if start < 0:
+            continue
+        nxt = starts[position + 1] if position + 1 < len(starts) else table.event_table
+        extents[start] = (start, nxt)
+    return extents
+
+
+def maps(model: Model) -> tuple[MapRow, ...]:
+    """Every row of the map table, in map-table order.
+
+    The name comes from the row's own name slot in the LOADED image's text table,
+    so an image that renamed a map reports the name that image shows. 429 of the
+    452 rows carry a name on the canonical image.
+    """
+    table = model.profile.maps
+    if table is None or table.table + table.count * table.stride > len(model.image):
+        return ()
+    rows = []
+    for index in range(table.count):
+        at = table.table + index * table.stride
+        slot = int.from_bytes(model.image[at + table.name_slot_at:
+                                         at + table.name_slot_at + 4], "little")
+        name = model.slots[slot].text if 0 <= slot < len(model.slots) else ""
+        rows.append(MapRow(index=index, name=name))
+    return tuple(rows)
+
+
+def record_maps(model: Model) -> dict[str, int]:
+    """Record key -> the map whose placements reach an event resource it sits in.
+
+    THE CHAIN, every step measured on the canonical image: a map row's `+0x14`
+    array holds placement pointers, a placement's `+0x14` names a descriptor, and a
+    descriptor whose handler is `0x0800424F` carries a payload that is the start of
+    an event resource. A record belongs to that map when one of its own handle sites
+    falls inside that resource's extent. Measured: 28 maps reference 63 resources
+    and reach 487 of the image's 2,805 records through 489 of its 2,993 sites, which
+    reproduces the independent research probe exactly.
+
+    THE LIMIT, stated rather than hidden: the payload's semantics are INFERRED. The
+    handler is known to load and branch, and the payload is known to be a resource
+    start, but no runtime observation yet shows that this handler is what reads that
+    resource's dialogue. The route is therefore evidence-linked, not proven, and a
+    caller that shows a map must say which map came from here.
+
+    A record that two maps reach is given NO map, because a row shown under one of
+    two owners would be a guess. Measured: one record of the 488 is shared.
+    """
+    table = model.profile.maps
+    if table is None:
+        return {}
+    extents = _event_extents(model)
+    if not extents:
+        return {}
+    ranges: list[tuple[int, int, int]] = []
+    for index in range(table.count):
+        at = table.table + index * table.stride
+        if at + table.stride > len(model.image):
+            break
+        array = int.from_bytes(model.image[at + table.array_at:at + table.array_at + 4],
+                               "little")
+        count = model.image[at + table.count_at]
+        if not ROM_BASE <= array < ROM_BASE + len(model.image):
+            continue
+        for position in range(count):
+            word_at = array - ROM_BASE + 4 * position
+            if word_at + 4 > len(model.image):
+                break
+            word = int.from_bytes(model.image[word_at:word_at + 4], "little")
+            if not ROM_BASE <= word < ROM_BASE + len(model.image):
+                continue
+            placement = word - ROM_BASE
+            if placement + 4 > len(model.image):
+                continue
+            if int.from_bytes(model.image[placement:placement + 4], "little") != \
+                    table.placement_family:
+                continue
+            descriptor = int.from_bytes(
+                model.image[placement + table.descriptor_at:
+                            placement + table.descriptor_at + 4], "little") - ROM_BASE
+            if not 0 <= descriptor <= len(model.image) - 8:
+                continue
+            handler = int.from_bytes(model.image[descriptor:descriptor + 4], "little")
+            payload = int.from_bytes(model.image[descriptor + 4:descriptor + 8], "little")
+            origin = payload - ROM_BASE
+            if handler == table.resource_handler and origin in extents:
+                low, high = extents[origin]
+                ranges.append((low, high, index))
+    reached: dict[str, set[int]] = {}
+    for record in model.records:
+        for site in record.sites:
+            for low, high, index in ranges:
+                if low <= site < high:
+                    reached.setdefault(record.key, set()).add(index)
+    return {key: next(iter(found)) for key, found in reached.items() if len(found) == 1}
+
+
+def line_maps(model: Model, *, cutters_from_pool: bool = True) -> dict[str, int]:
+    """Spoken-line key -> the map of the record an edit of that line would address."""
+    owners = record_maps(model)
+    if not owners:
+        return {}
+    return {row.key: owners[row.target]
+            for row in lines(model, cutters_from_pool=cutters_from_pool)
+            if row.target in owners}
 
 
 def lines(model: Model, *, cutters_from_pool: bool = True) -> tuple[SpokenLine, ...]:

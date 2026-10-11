@@ -69,9 +69,14 @@ PORTRAIT_WORDS: dict[str, str] = {
     textedit.AMBIGUOUS_PORTRAIT: UNKNOWN_SPEAKER,
 }
 
-#: The group a line falls in when no proven map or chapter link reaches it, which
-#: on every image measured so far is every line.
+#: The group a line falls in when no proven map or chapter link reaches it.
 UNPLACED = "Unplaced"
+
+#: What the place grouping rests on. It is an INFERENCE: the placement route links
+#: a map to the event resources its placements name, and no runtime observation yet
+#: shows that handler reading their dialogue. A surface that groups by place must
+#: state the coverage, because most lines have no map.
+PLACE_EVIDENCE = "the placement route, inferred rather than proven at runtime"
 
 
 class State(Enum):
@@ -106,6 +111,11 @@ class Line:
     #: longer records covering a whole record.
     covering: tuple[str, ...] = ()
     sites: int = 0
+    #: The map the placement route reaches, as a label, or empty when nothing
+    #: places this row. `place_index` is the map table's own row, so a grouping can
+    #: order by the table rather than by a name.
+    place: str = ""
+    place_index: int = -1
     position: tuple[int, int] = (0, 0)
     first_site: int = -1
 
@@ -167,10 +177,13 @@ class Session:
         self._plan: textedit.Plan | None = None
         self._by_record: dict[str, textedit.Decision] = {}
         self._stale = True
-        # The portrait join is read once, before the rows, because every row's
-        # speaker comes from it.
+        # The portrait join and the map join are read once, before the rows,
+        # because every row's speaker and place come from them.
         self.portraits = textedit.portraits(model)
         self.speakers = textedit.speakers(model)
+        self.map_labels = {row.index: row.label for row in textedit.maps(model)}
+        self.record_places = textedit.record_maps(model)
+        self.places = textedit.line_maps(model, cutters_from_pool=cutters_from_pool)
         self._edited_row: dict[str, str] = {}
         self._rows: dict[str, dict[str, Line]] = self._read_rows()
         if project is not None:
@@ -197,12 +210,14 @@ class Session:
             position = (record.selector, record.start)
             first = min(record.sites) if record.sites else -1
             portrait = self.portraits.get(record.key)
+            place_index = self.record_places.get(record.key, -1)
             records[record.key] = Line(
                 key=record.key, kind=RECORD, view=RECORDS, text=record.text, retail=retail,
                 target=record.key, proven=True,
                 speaker=None if portrait is None else portrait.resolved,
                 portrait="" if portrait is None else PORTRAIT_WORDS.get(portrait.kind, ""),
                 covering=record.covering, sites=len(record.sites),
+                place=self.map_labels.get(place_index, ""), place_index=place_index,
                 position=position, first_site=first)
         for row in textedit.lines(self.model, cutters_from_pool=self.cutters_from_pool):
             target = row.target
@@ -210,6 +225,7 @@ class Session:
             offset = (row.start - holder.position[1]) // 2 if holder is not None else 0
             length = row.length // 2
             speaker, portrait_word = self._line_evidence(row.records)
+            place_index = self.places.get(row.key, -1)
             spoken[row.key] = Line(
                 key=row.key, kind=RECORD, view=LINES, text=row.text,
                 retail=None if holder is None or holder.retail is None
@@ -217,6 +233,7 @@ class Session:
                 target=target, proven=row.target_is_proven,
                 speaker=speaker, portrait=portrait_word,
                 covering=row.records, sites=len(row.sites),
+                place=self.map_labels.get(place_index, ""), place_index=place_index,
                 position=(row.selector, row.start),
                 first_site=min(row.sites) if row.sites else -1)
         return {SLOT: slots, RECORDS: records, LINES: spoken}
@@ -538,10 +555,16 @@ class Session:
         if by == UNGROUPED:
             return (Group(label="", rows=selected),)
         if by == BY_PLACE:
-            # No proven link from a dialogue record to a map or a chapter exists in
-            # this image, so every line falls in one honestly named group rather
-            # than into a chapter nobody measured.
-            return (Group(label=UNPLACED, rows=selected),)
+            # Map-table order, then one honest group for everything the placement
+            # route does not reach. No chapter is invented, because none exists.
+            buckets: dict[int, list[Line]] = {}
+            for row in selected:
+                buckets.setdefault(row.place_index, []).append(row)
+            groups = [Group(label=self.map_labels[index], rows=tuple(buckets[index]))
+                      for index in sorted(index for index in buckets if index >= 0)]
+            if -1 in buckets:
+                groups.append(Group(label=UNPLACED, rows=tuple(buckets[-1])))
+            return tuple(groups)
         if by != BY_SPEAKER:
             raise ValueError(f"{by!r} is not a grouping")
         buckets: dict[str, list[Line]] = {}
@@ -565,6 +588,14 @@ class Session:
         rows = self._rows.get(LINES, {}).values()
         total = len(self._rows.get(LINES, {}))
         return sum(1 for row in rows if row.speaker), total
+
+    def place_coverage(self) -> tuple[int, int]:
+        """The placed and total rows of the current view, for the honest caption."""
+        return (sum(1 for row in self.lines if row.place_index >= 0), len(self.lines))
+
+    def map_order(self) -> tuple[str, ...]:
+        """Every map label in map-table order, so a surface can show the order."""
+        return tuple(self.map_labels[index] for index in sorted(self.map_labels))
 
     def matching(self, term: str = "", kind: str | None = None,
                  states: frozenset[State] = frozenset(),

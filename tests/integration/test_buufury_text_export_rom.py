@@ -1,4 +1,4 @@
-﻿"""The app's export path on release 3.1: a name swap and a grown line.
+"""The app's export path on release 3.1: a name swap and a grown line.
 
 ROM-gated. It drives the same `Session` the window drives, so what it proves is the
 path a user takes and not a private route: open the release, find a name swap the
@@ -39,12 +39,16 @@ def a_retail_matching_word(session) -> tuple[str, str, int] | None:
 
     That is exactly the condition the per-occurrence rule tests, so the swap this
     finds is one the retail reference attributes to the actor rather than one this
-    test guessed at.
+    test guessed at. The line has to read as prose, or the swap lands on one of the
+    short fragments these containers also carry and proves the mechanics without
+    proving the workflow.
     """
     for line in session.lines:
         if line.kind != "record" or line.retail is None:
             continue
-        if len(line.text) != len(line.retail):
+        if len(line.text) != len(line.retail) or len(line.text) < 30:
+            continue
+        if line.text.count(" ") < 3:
             continue
         for match in re.finditer(r"[A-Za-z]{4,}", line.text):
             at, end = match.span()
@@ -72,7 +76,11 @@ def test_a_name_swap_and_a_grown_line_export_and_read_back(tmp_path: Path) -> No
     hit = next(item for item in session.rename_hits(old)
                if item.key == key and item.at == at)
     assert hit.decision == textedit.RENAME
-    renamed = session.rename_text(key, old, "Kakarot", frozenset({at}))
+    # A name strictly longer than the one it replaces, which is the shape of the
+    # release-3.1 rename: the line no longer fits its span and has to move.
+    swapped = "Kakarotto" if len(old) < 9 else old + "!"
+    assert len(swapped) > len(old)
+    renamed = session.rename_text(key, old, swapped, frozenset({at}))
     assert renamed != session.line(key).text
     session.set_edit(key, renamed)
 

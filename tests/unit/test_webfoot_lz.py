@@ -273,9 +273,9 @@ def test_gamma_cannot_encode_below_two() -> None:
 # `_gamma` is a `while True` loop that shifts its accumulator left once per
 # iteration, so a malformed stream's cost is quadratic in the bits it consumes,
 # and those bits come from the whole image rather than from the container. Two
-# bounds close it: `_gamma` itself refuses an accumulator past `_GAMMA_LIMIT`,
-# and the decode loop now applies its input-consumption limit in both modes
-# instead of only under `require_end_marker`.
+# bounds close it: `_gamma` itself refuses an accumulator past the ceiling its
+# caller derives from the output bound it declared, and the decode loop now applies
+# its input-consumption limit in both modes instead of only under `require_end_marker`.
 
 #: Packed input the unbounded-gamma reproduction carries. Before the fix, a
 #: quarter of this (256 KiB) was directly measured on this machine at 19.9 s and
@@ -334,14 +334,15 @@ def test_a_malformed_gamma_cannot_walk_the_whole_image() -> None:
 def test_the_gamma_bound_cannot_fire_on_a_valid_corpus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The bound is above every value a legitimate stream carries, measured.
+    """The ceiling is above every value a default-bounded stream carries, measured.
 
     The corpus is the one this file already round-trips
     (:func:`_termination_corpus`), replayed here with every gamma value the decode
     actually produces recorded, so the ceiling is checked against measurement
-    rather than against the derivation alone. If the derivation were wrong - if a
-    valid stream could carry a larger value than `_GAMMA_LIMIT` - this fails
-    before the decoder ever refuses one.
+    rather than against the derivation alone. Every payload here declares a size
+    within the default bound, whose derived ceiling is `_GAMMA_LIMIT`, so a corpus
+    value above it fails here before the decoder ever refuses one; the per-call
+    derivation itself is pinned by the tests that follow.
     """
     largest = 0
     real_gamma = wl._gamma
@@ -360,6 +361,88 @@ def test_the_gamma_bound_cannot_fire_on_a_valid_corpus(
         assert wl.unpack(encoded, 0).data == payload, f"A: {name}"
         assert wl.validate_retail_termination(encoded).data == payload, f"B: {name}"
     assert 0 < largest < wl._GAMMA_LIMIT, f"largest corpus gamma value: {largest}"
+
+
+# --- the ceiling follows the call's own bound ---------------------------------
+#
+# `_GAMMA_LIMIT` is derived from the 64 KiB default output bound and the 16-bit
+# distance window, but `maximum_output` is a parameter of the decode entry points.
+# A caller that declares a larger output can carry a legitimately larger gamma
+# field, and one that declares a smaller output deserves a ceiling no looser than
+# its own bound, so the ceiling is derived per call from the bound that call
+# declared. CQA-19-GAMMA-CEILING-DERIVATION-001.
+
+
+def test_a_match_length_above_the_default_ceiling_decodes_when_the_call_declares_it() -> None:
+    """The correctness half: a larger declared bound admits a larger field.
+
+    One literal, then a match of ``2**17`` bytes at the decoder's initial
+    previous-distance of 1, declared as the ``2**17 + 1`` bytes it really produces
+    and decoded with ``maximum_output`` raised to that. ``2**17`` was the fixed
+    ceiling, and this match is legitimate for a caller whose own limit is above the
+    64 KiB default, so a decode that judges the field against that fixed value
+    refuses a valid stream. This is the test that fails on the pre-derivation module.
+    """
+    length = 1 << 17
+
+    def build(writer: "wl._WordBitWriter") -> None:
+        _widen_to_eight_bit_literals(writer)
+        _literal(writer, 0x00)
+        _previous_distance_match(writer, length)
+
+    expected = 1 + length
+    blob = _container(1, expected, build)
+    assert wl.unpack(blob, 0, maximum_output=expected).data == b"\x00" * expected
+
+
+def test_the_gamma_ceiling_is_derived_from_the_declared_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tie half: the ceiling handed to `_gamma` moves with the caller's bound.
+
+    One container is decoded twice under two different `maximum_output` declarations,
+    with every ceiling the decode passes recorded. A ceiling that does not track the
+    call's own bound is the same number for both, which the final assertion refuses;
+    a ceiling derived from something other than that bound - or a fixed constant -
+    leaves the declared limit behind, which the per-call bounds refuse. Each ceiling
+    must clear the bound, because a distance code carries its distance plus three and
+    a distance can be the whole output produced so far, and must stay within a few
+    bytes of it, because the derivation adds that token's own offset rather than a
+    separate scale.
+    """
+    seen: list[int] = []
+    real_gamma = wl._gamma
+
+    def recording_gamma(reader, minimum):
+        seen.append(minimum)
+        return real_gamma(reader, minimum)
+
+    monkeypatch.setattr(wl, "_gamma", recording_gamma)
+
+    def ceilings(maximum_output: int) -> tuple[int, list[int]]:
+        def build(writer: "wl._WordBitWriter") -> None:
+            _widen_to_eight_bit_literals(writer)
+            _literal(writer, 0x00)
+            _previous_distance_match(writer, 4)
+
+        seen.clear()
+        assert wl.unpack(
+            _container(1, 5, build), 0, maximum_output=maximum_output
+        ).declared_size == 5
+        return maximum_output, list(seen)
+
+    small_bound, small = ceilings(64)
+    large_bound, large = ceilings(4096)
+    assert small and large, "both decodes must gamma-read at least one field"
+    for bound, minima in ((small_bound, small), (large_bound, large)):
+        for minimum in minima:
+            assert bound < minimum <= bound + 8, (
+                f"a call bounded at {bound} bytes passed the ceiling {minimum}"
+            )
+    assert small != large, (
+        f"the ceiling did not move with the declared bound: {small} for "
+        f"{small_bound}, {large} for {large_bound}"
+    )
 
 
 # --- strict success: exact declared size, no clipping -------------------------

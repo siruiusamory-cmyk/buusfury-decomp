@@ -189,7 +189,8 @@ is genuinely warranted.
   deleting each other's temporary directories. A `--basetemp` inside the
   repository is honoured, with a warning.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
-  skip cleanly rather than erroring; install `.[workbench]` to run them. CI
+  skip cleanly rather than erroring; `.\scripts\setup.ps1` installs it, and
+  `uv sync --locked --extra workbench` adds it to an existing environment. CI
   installs `.[dev,workbench,research]` and sets `QT_QPA_PLATFORM=offscreen`,
   because the runner has no display while several of those modules construct a
   real `QApplication` and real widgets.
@@ -197,7 +198,16 @@ is genuinely warranted.
   decoder with it (`test_thumb_caller_census.py`,
   `test_thumb_disasm_field_extraction.py`, `test_ui_graphics_probe.py`); without
   it they skip as a whole file. It is research tooling rather than a shipping
-  dependency, so it is the separate `research` extra: install `.[research]`.
+  dependency, so it is the separate `research` extra: `.\scripts\setup.ps1`
+  installs it, and `uv sync --locked --extra research` adds it to an existing
+  environment.
+- **`scripts/setup.ps1` installs `dev`, `workbench` and `research`**, the same
+  three extras CI installs, so the one command the project tells a contributor
+  to run produces an environment that runs every portable gate instead of one
+  that skips the workbench and research halves. Its `-Extra` parameter replaces
+  the set, for example `-Extra dev` for a deliberately minimal environment.
+  `packaging` (PyInstaller) is not installed: cutting a release is an owner-run
+  step and `.\scripts\build-*.ps1` documents how to get it.
 - **A required GUI module must not collapse to a whole-file skip in CI.** The
   shipping Workbench modules are named in `REQUIRED_GUI_MODULES` in
   `tests/gates.py`. When a run collects one of them and it contributes no test,

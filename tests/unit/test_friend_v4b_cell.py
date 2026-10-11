@@ -101,7 +101,9 @@ def test_the_independent_verifier_passes(built) -> None:
         cwd=ROOT, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "verdict: PASS" in result.stdout
-    assert "payloads: port 24 frame(s) against source 24" in result.stdout
+    assert "every source payload present: True" in result.stdout
+    assert "block(s) concatenated in slot order" in result.stdout, (
+        "the verifier must state that the order was checked, not only the membership")
     assert "entries whose colour differs from the source title" in result.stdout, (
         "the palette difference must be reported: the port renders, but not in the source colors")
 
@@ -129,5 +131,5 @@ def test_the_builder_refuses_to_write_over_an_input(tmp_path) -> None:
 
 def test_the_verifier_checks_frame_order_not_just_membership() -> None:
     text = (ROOT / "tools/research/verify_friend_v4b_cell.py").read_text(encoding="utf-8")
-    assert "not in the source's order" in text, (
+    assert "not the source's blocks in order" in text, (
         "a reordered port would pass a set comparison, so the order must be checked")

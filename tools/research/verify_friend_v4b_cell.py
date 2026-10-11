@@ -149,17 +149,26 @@ def main() -> int:
                                 f"{width * height} bytes but the container holds {len(payload)}")
                         rendered.append((x, y, width, height, attr, payload))
 
-    # The port's payload set must equal the source's: a port that redrew or dropped a frame fails here.
+    # A filled definition cycles the source's animations, so the port has MORE frames than the source has
+    # records. The claim that must still hold: nothing in the port came from anywhere but the source, and
+    # none of the source's art is missing.
     source = log2_frames(log2)
-    if sorted(item[5] for item in rendered) != sorted(item[5] for item in source):
-        failures.append(f"payload multiset differs: port {len(rendered)} frame(s), "
-                        f"source {len(source)} frame(s)")
-    if sorted((item[0], item[1], item[2], item[3], item[4]) for item in rendered) != \
-            sorted((item[0], item[1], item[2], item[3], item[4]) for item in source):
-        failures.append("geometry/attribute multiset differs from the source title")
-    print(f"payloads: port {len(rendered)} frame(s) against source {len(source)}; "
-          f"distinct payloads port {len({item[5] for item in rendered})}, "
-          f"source {len({item[5] for item in source})}")
+    source_payloads = {item[5] for item in source}
+    port_payloads = {item[5] for item in rendered}
+    invented = port_payloads - source_payloads
+    missing = source_payloads - port_payloads
+    if invented:
+        failures.append(f"{len(invented)} ported payload(s) do not appear in the source title")
+    if missing:
+        failures.append(f"{len(missing)} source payload(s) are absent from the port")
+    source_geometry = {(item[0], item[1], item[2], item[3], item[4]) for item in source}
+    port_geometry = {(item[0], item[1], item[2], item[3], item[4]) for item in rendered}
+    if port_geometry - source_geometry:
+        failures.append(f"{len(port_geometry - source_geometry)} ported geometry/attribute set(s) do not "
+                        f"appear in the source title")
+    print(f"payloads: port {len(rendered)} frame(s) over {len(port_payloads)} distinct payload(s); "
+          f"source {len(source)} record(s) over {len(source_payloads)} distinct payload(s); "
+          f"every source payload present: {not missing}")
 
     # Palette: can THIS image show the colours the source art asks for? Comparing the two palettes entry
     # for entry is the question that matters; asking whether an entry is zero is a different one.

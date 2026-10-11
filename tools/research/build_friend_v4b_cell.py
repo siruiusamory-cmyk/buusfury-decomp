@@ -147,8 +147,12 @@ def read_log2_cell(image: bytes) -> tuple[list[list[tuple[int, int, int, int, in
     return slots, payloads
 
 
-def build_port(slots, payloads, image: bytes) -> tuple[bytes, dict]:
-    """Append the payloads, frames, animations and definition to the image, and return them with a report."""
+def build_port(slots, payloads, image: bytes, slot_count: int | None = None) -> tuple[bytes, dict]:
+    """Append payloads, frames, animations and the definition; fill `slot_count` slots if given.
+
+    `slot_count` mirrors the definition being replaced: Spopovich announces 20 slots, so a two-animation
+    replacement cycles its animations across all 20 and no selectable index is left empty.
+    """
     out = bytearray(image)
     container_at: dict[int, int] = {}
     for index, payload in enumerate(payloads):
@@ -157,8 +161,12 @@ def build_port(slots, payloads, image: bytes) -> tuple[bytes, dict]:
         out += payload
 
     animations = len(slots) // 4
+    total_slots = slot_count or animations
     animation_addresses = []
-    for animation in range(animations):
+    slot_sources = []
+    for slot in range(total_slots):
+        animation = slot % animations
+        slot_sources.append(animation)
         directions = [slots[4 * animation + direction] for direction in range(4)]
         frame_count = max(len(records) for records in directions)
         for records in directions:
@@ -187,7 +195,7 @@ def build_port(slots, payloads, image: bytes) -> tuple[bytes, dict]:
 
     definition_address = len(out)
     out += b"\x00" * BF_DEFINITION_HEADER
-    struct.pack_into("<I", out, definition_address + BF_SLOT_COUNT_OFFSET, animations)
+    struct.pack_into("<I", out, definition_address + BF_SLOT_COUNT_OFFSET, total_slots)
     struct.pack_into("<I", out, definition_address + BF_SECONDARY_ARRAY_OFFSET, 0)
     for animation, record_address in enumerate(animation_addresses):
         out += struct.pack("<I", ROM_BASE + record_address)
@@ -195,6 +203,8 @@ def build_port(slots, payloads, image: bytes) -> tuple[bytes, dict]:
     report = {
         "payloads": len(payloads),
         "animations": animations,
+        "slots": total_slots,
+        "slot_sources": ",".join(str(source) for source in slot_sources),
         "definition": ROM_BASE + definition_address,
         "animation_records": [ROM_BASE + address for address in animation_addresses],
         "appended_bytes": len(out) - len(image),
@@ -208,6 +218,9 @@ def main() -> int:
     parser.add_argument("--image", required=True, help="the Buu's Fury derivative image to extend")
     parser.add_argument("--expect-sha256", required=True)
     parser.add_argument("--id", type=int, required=True, help="definition id to repoint at the port")
+    parser.add_argument("--slots", type=int, default=0,
+                        help="fill this many animation slots, cycling Cell's animations; the definition "
+                             "being replaced announces 20, so an empty index cannot be selected")
     parser.add_argument("--out", required=True)
     parser.add_argument("--manifest", required=True)
     args = parser.parse_args()
@@ -231,7 +244,7 @@ def main() -> int:
     print(f"LoG II Cell: {len(slots)} slot(s), {sum(len(s) for s in slots)} record(s), "
           f"{len(payloads)} distinct container(s), payload bytes {sum(len(p) for p in payloads)}")
 
-    out, report = build_port(slots, payloads, image)
+    out, report = build_port(slots, payloads, image, args.slots)
     out = bytearray(out)          # the table word is repointed below
     table_word = BF_DEFINITION_TABLE + 4 * args.id
     struct.pack_into("<I", out, table_word, report["definition"])

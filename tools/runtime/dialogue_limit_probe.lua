@@ -134,4 +134,29 @@ frame_id = callbacks:add("frame", function()
   end
 end)
 
+-- The operand and the layout index, which the coordinator asked to tie on the machine. 0x080122A6 is the
+-- box constructor reading the dialogue record's operand byte (record+3); 0x0800B29E is the text-object
+-- builder storing the layout pointer it computed from the index. Logging both with the frame number gives
+-- the pair: the index is r0 at the store, and 0x08071720 + 0x10 + index*0x14 is the layout.
+arm(0x080122A6, "box-operand", function()
+  local record = reg("r1")
+  local operand = reg("r6")
+  if operand == nil then return end
+  log(string.format("OPERAND frame=%d operand=%d record=%s", frames, operand,
+                    record and string.format("0x%08X", record) or "nil"))
+end)
+
+arm(0x0800B29E, "layout-store", function()
+  local layout = reg("r0")
+  local text_object = reg("r4")
+  if layout == nil then return end
+  local index = nil
+  if layout and layout >= 0x08071720 and layout < 0x0807177C then
+    index = (layout - (0x08071720 + 0x10)) // 0x14
+  end
+  log(string.format("LAYOUT frame=%d layout=0x%08X index=%s text_object=%s",
+                    frames, layout, tostring(index),
+                    text_object and string.format("0x%08X", text_object) or "nil"))
+end)
+
 log("PROBE armed")

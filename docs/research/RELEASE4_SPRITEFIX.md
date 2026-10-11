@@ -51,8 +51,11 @@ attribution (`build/atlas/graphics_extents.jsonl`, produced by
 `tools/webfoot/graphics.py`). Two cautions, both from the review that passed this
 ticket:
 
-* the atlas's container index numbers (0584, 1016, ...) are that atlas's current
-  numbering and change with it, so they are NOT used as names here; an offset is.
+* the atlas's container index numbers (0584, 1016, ...) are a snapshot and can lag
+  the code that produced them, so they are NOT used as names here; an offset is.
+  The code's own numbering is a position in ascending file offset and is pinned by
+  `tests/unit/test_graphic_identity_numbering.py` (N6, SPRITEFIX-N6-001); see
+  `ROM_ATLAS_REGENERATION.md`.
 * naming one character per frame is the atlas's first reachability path, not the
   only one. The review's own walk also reaches `0x4565CC` and `0x46C29C` from
   character 043, and `0x5C6FB4` from characters 177 and 220, so every character

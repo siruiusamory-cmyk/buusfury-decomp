@@ -1,15 +1,19 @@
-"""The window: one header row, three panes, one status bar, one edit path.
+"""The window: one header row, one splitter, one status bar, one edit path.
 
-Editors never connect to each other. Every surface that can change a line calls
-`Shell.apply_edit`, so undo, the lists, the meter and the context pane all move
-from one place.
+The shell is the only place the surfaces are connected to each other. Editors
+never talk to each other: `line_chosen` drives the editor and the context pane,
+`committed` comes back through `apply_edit`, and one undo stack carries the list.
+
+This package is not `tools.dragonbyte`, so a QUndoStack is the right undo here:
+one user action, one step, and the step is the edit list's own history.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping
 
-from PySide6.QtCore import QTime, Qt, QUrl
+from PySide6.QtCore import Qt, QTime, QUrl
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -22,9 +26,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QDockWidget,
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -33,15 +35,14 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
-    QStackedWidget,
-    QUndoView,
     QVBoxLayout,
     QWidget,
 )
 
 from tools.webfoot import textedit
 
-from . import contextpane, exportdialog, lineview, renamedialog, settings, theme
+from . import contextpane, exportdialog, lineview, renamedialog, settings, status, theme
+from . import project as project_file
 from .chipedit import EditorSections
 from .identity import PACKAGE, PRODUCT_NAME, PRODUCT_VERSION
 from .session import (
@@ -49,55 +50,101 @@ from .session import (
     BY_PLACE,
     BY_SPEAKER,
     LINES,
-    RECORDS,
     RECORD,
+    RECORDS,
     SLOT,
     STORAGE,
     UNGROUPED,
     Session,
+    State,
+    open_image,
 )
 
-#: The adopted spec starts the panes at 330 / flexible / 350. The speaker column is
-#: a later requirement and costs the list about 96 px, which at 330 leaves the text
-#: column about 24 px wide once the state badge has its own 116. The spec's own rule
-#: is that TEXT is the column which consumes the remainder, so the start moves by
-#: the width of the column that was added rather than by taste. The range is
-#: unchanged, so a reader who wants the old proportions can drag the splitter.
-LEFT_START, CENTRE_START, RIGHT_START = 434, 540, 350
-LEFT_RANGE = (260, 470)
-RIGHT_RANGE = (300, 480)
-WINDOW_START = (1200, 760)
+#: The panes start here, and no side pane may collapse into an unreadable column.
+DEFAULT_SPLIT = (420, 560, 340)
+LEFT_MIN, RIGHT_MIN = 300, 280
+WINDOW_START = (1240, 780)
 
-NO_IMAGE = f"No image open. Start with: python -m {PACKAGE} <image.gba>"
+#: The three panes the View menu shows and hides.
+PANE_LABELS = (("list", "&List pane"), ("editor", "&Editor pane"),
+               ("context", "&Context pane"))
+
+NO_IMAGE = (
+    "No image open.\n\n"
+    "Open the image you want to edit: File > Open image (Ctrl+O), or start with\n"
+    f"    python -m {PACKAGE} <image.gba>"
+)
+NO_IMAGE_TIP = "Open an image first."
+EXPORT_TIP = "Write every pending edit to a new image."
+EXPORT_EMPTY = "There is nothing to export: the edit list is empty."
 
 
-def pending_text(session: Session, key: str) -> str:
-    """What the row will say, from the session's own answer for that row."""
-    if session is None or session.line(key) is None:
+def project_state(session: Session | None) -> State:
+    """The header's word for the whole edit list, from the session's own row states."""
+    if session is None:
+        return State.UNCHANGED
+    if session.base_changed:
+        return State.BASE_CHANGED
+    states = {session.state(key) for key in session.edited_keys()}
+    for worst in (State.REFUSED, State.BASE_CHANGED, State.WILL_MOVE, State.EDITED):
+        if worst in states:
+            return worst
+    return State.UNCHANGED
+
+
+def project_text(session: Session | None) -> str:
+    """The project state as a word and a glyph, plus the counts that qualify it."""
+    if session is None:
         return ""
-    return session.pending_text(key)
+    mark = status.presentation(project_state(session))
+    text = f"{mark.glyph} {mark.word}"
+    edits = len(session.edited_keys())
+    if edits:
+        text += f" \u00b7 {edits} edit" + ("" if edits == 1 else "s")
+    if session.unmatched:
+        text += f", {len(session.unmatched)} unmatched"
+    return text
+
+
+def export_reason(session: Session | None, key: str = "") -> str:
+    """Why Export cannot run, in the engine's own words, or "" when it can.
+
+    The selected row's own refusal is the most useful sentence, so it wins; the
+    plan's refusal list answers for every other row.
+    """
+    if session is None:
+        return NO_IMAGE_TIP
+    if key:
+        reason = session.refusal_reason(key)
+        if reason:
+            return f"{key}: {reason}"
+    refusals = session.refusals()
+    if refusals:
+        first = refusals[0]
+        more = "" if len(refusals) == 1 else f" (and {len(refusals) - 1} more)"
+        return (f"Export is impossible while a refusal stands: {first.target}: "
+                f"{first.reason}{more}")
+    if not session.edited_keys():
+        return EXPORT_EMPTY
+    return ""
 
 
 def span_detail(session: Session, key: str) -> str:
-    """Where the line's span sits in the image, from the engine's own numbers.
+    """Where the row sits in the image, from the engine's own numbers.
 
-    A record's own offset inside its container is the engine's arithmetic, so the
-    status bar names the container's file offset and the record's start in it.
+    A record's offset inside its container is the engine's arithmetic, so the
+    status bar names the container's file offset and the row's own span in bytes.
     """
     line = session.line(key)
     if line is None:
         return ""
     if line.kind == SLOT:
-        try:
-            slot = session.model.slots[int(key.split(":", 1)[1])]
-        except (IndexError, ValueError):
-            return key
-        return f"{key}   string file offset 0x{slot.offset:06X}"
-    selector, start, length = (int(part) for part in key.split(":"))
+        slot = next((item for item in session.model.slots if item.key == key), None)
+        return key if slot is None else f"{key}   string file offset 0x{slot.offset:06X}"
+    selector, _start, length = (int(part) for part in key.split(":"))
     container = session.model.layout.offsets.get(selector)
-    where = "container offset unknown" if container is None else \
-        f"container file offset 0x{container:06X}"
-    return f"{key}   {where}   start {start} length {length} bytes"
+    where = "container offset unknown" if container is None else f"container 0x{container:06X}"
+    return f"{key}   {where}   span {length} bytes"
 
 
 class _EditCommand(QUndoCommand):
@@ -108,270 +155,231 @@ class _EditCommand(QUndoCommand):
         self._shell, self._key, self._before, self._after = shell, key, before, after
 
     def redo(self) -> None:
-        self._shell.write(self._key, self._after, keep_editor=True)
+        self._shell.write(self._key, self._after)
 
     def undo(self) -> None:
-        self._shell.write(self._key, self._before, keep_editor=False)
-
-
-class _BatchCommand(QUndoCommand):
-    """A whole rename batch as one step."""
-
-    def __init__(self, shell: Shell, moves: list[tuple[str, str, str]]) -> None:
-        super().__init__(f"rename {len(moves)} record(s)")
-        self._shell, self._moves = shell, tuple(moves)
-
-    def redo(self) -> None:
-        for key, _before, after in self._moves:
-            self._shell.write(key, after, keep_editor=False)
-
-    def undo(self) -> None:
-        for key, before, _after in self._moves:
-            self._shell.write(key, before, keep_editor=False)
+        self._shell.write(self._key, self._before)
 
 
 class Shell(QMainWindow):
     """The single wiring point, and the only place an edit is pushed."""
 
-    def __init__(self, session: Session | None, theme_=None,
-                 parent: QWidget | None = None) -> None:
+    def __init__(self, session: Session | None = None, applied_theme=None,
+                 mode: str = theme.MODE_SYSTEM, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        application = QApplication.instance()
-        self.session = session
-        self.theme = theme_ if theme_ is not None else theme.active_theme()
-        self.metrics = theme.metrics(application)
+        self.theme = applied_theme if applied_theme is not None else theme.active_theme()
+        self.metrics = theme.metrics(QApplication.instance())
+        self.mode = mode
+        self.session: Session | None = None
         self.stack = QUndoStack(self)
-        self._key = ""
-        self._exported_path: Path | None = None
         self.last_export: exportdialog.ExportDialog | None = None
+        self._key = ""
+        self._editor_key = ""
+        self._exported: Path | None = None
+        self._canonical: Path | None = None
+        self._shown = dict.fromkeys((name for name, _label in PANE_LABELS), True)
+        # A closed window's own undo stack still emits as it is torn down, and no
+        # widget is left to answer it.
+        self._closing = False
         self.resize(*WINDOW_START)
         self._build_header()
-        self._build_panes()
         self._build_status()
         self._build_menu()
-        self._connect()
-        self._update_header()
-        if session is not None and self.pane.selected():
-            self.show_line(self.pane.selected())
+        central = QWidget()
+        self.column = QVBoxLayout(central)
+        self.column.setContentsMargins(0, 0, 0, 0)
+        self.column.setSpacing(0)
+        self.column.addWidget(self.header)
+        self.body: QWidget = QWidget()
+        self.column.addWidget(self.body, 1)
+        self.setCentralWidget(central)
+        self._install(session)
 
     # --- construction --------------------------------------------------------
 
     def _build_header(self) -> None:
-        self.rom_label = QLabel()
-        self.layout_label = QLabel()
-        self.layout_label.setFont(theme.mono_font())
-        self.project_label = QLabel()
-        self.unsaved_label = QLabel("unsaved changes")
+        """One line: the product, the image, the profile, the state, the search."""
+        self.product_label = QLabel(PRODUCT_NAME)
+        self.product_label.setProperty("role", "heading")
+        self.image_label = QLabel()
+        self.profile_label = QLabel()
+        self.profile_label.setFont(theme.mono_font())
+        self.state_label = QLabel()
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search lines")
-        self.search.setMaximumWidth(320)
-        self.search.setMinimumHeight(self.metrics.field_height)
+        self.search.setFixedHeight(self.metrics.field_height)
         self.search.addAction(theme.icon("search"), QLineEdit.ActionPosition.LeadingPosition)
-        row = QHBoxLayout()
-        row.setContentsMargins(self.metrics.pad, self.metrics.pad, self.metrics.pad, 0)
-        row.setSpacing(self.metrics.gap)
-        for widget in (self.rom_label, self.layout_label, self.project_label,
-                       self.unsaved_label):
-            row.addWidget(widget)
-        row.addStretch(1)
-        row.addWidget(self.search)
+        line = QHBoxLayout()
+        line.setContentsMargins(self.metrics.pad_md, self.metrics.pad_sm,
+                                self.metrics.pad_md, self.metrics.pad_sm)
+        line.setSpacing(self.metrics.gap)
+        for widget in (self.product_label, self.image_label, self.profile_label,
+                       self.state_label):
+            line.addWidget(widget)
+        line.addWidget(self.search, 1)
         self.header = QWidget()
-        header_column = QVBoxLayout(self.header)
-        header_column.setContentsMargins(0, 0, 0, 0)
-        header_column.setSpacing(self.metrics.gap)
-        header_column.addLayout(row)
-        rule = QFrame()
-        rule.setFrameShape(QFrame.Shape.HLine)
-        rule.setFrameShadow(QFrame.Shadow.Plain)
-        header_column.addWidget(rule)
-
-    def _build_panes(self) -> None:
-        self.pane = lineview.LinePane(self.session, self.metrics, self.theme, self)
-        self.pane.setMinimumWidth(LEFT_RANGE[0])
-        self.pane.setMaximumWidth(LEFT_RANGE[1])
-        self.editor = EditorSections(self.theme, self.metrics, self)
-        self.empty = QLabel(NO_IMAGE if self.session is None else "")
-        self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.empty.setWordWrap(True)
-        self.centre = QStackedWidget()
-        self.centre.addWidget(self.editor)
-        self.centre.addWidget(self.empty)
-        self.centre.setCurrentWidget(self.editor if self.session is not None else self.empty)
-        self.context = contextpane.ContextPane(self.theme, self.metrics, self)
-        self.context.setMinimumWidth(RIGHT_RANGE[0])
-        self.context.setMaximumWidth(RIGHT_RANGE[1])
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        for widget in (self.pane, self.centre, self.context):
-            self.splitter.addWidget(widget)
-        self.splitter.setStretchFactor(1, 1)
-        self.splitter.setSizes(self._stored_sizes())
-        central = QWidget()
-        column = QVBoxLayout(central)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        column.addWidget(self.header)
-        column.addWidget(self.splitter, 1)
-        self.setCentralWidget(central)
-
-    def _stored_sizes(self) -> list[int]:
-        stored = settings.load().get("splitter")
-        if isinstance(stored, list) and len(stored) == 3 and all(
-                isinstance(size, int) and size > 0 for size in stored):
-            return list(stored)
-        return [LEFT_START, CENTRE_START, RIGHT_START]
+        self.header.setLayout(line)
+        self.search.textChanged.connect(self._set_term)
+        self.escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.search)
+        self.escape.setContext(Qt.ShortcutContext.WidgetShortcut)
+        self.escape.activated.connect(self.clear_search)
 
     def _build_status(self) -> None:
+        """The selected row's identity and span, the last export, and Export."""
         status_bar = self.statusBar()
         status_bar.setMinimumHeight(self.metrics.status_height)
-        self.offset_label = QLabel()
-        self.offset_label.setFont(theme.mono_font())
-        self.export_label = QLabel()
+        self.detail_label = QLabel()
+        self.detail_label.setFont(theme.mono_font())
+        self.export_label = QLabel("no export yet")
         self.export_label.setFont(theme.mono_font())
-        palette = self.export_label.palette()
-        palette.setColor(QPalette.ColorRole.WindowText,
-                         theme.color(self.theme, "text_secondary"))
-        self.export_label.setPalette(palette)
+        ink = self.export_label.palette()
+        ink.setColor(QPalette.ColorRole.WindowText, theme.color(self.theme, "text_secondary"))
+        self.export_label.setPalette(ink)
         self.export_button = QPushButton("Export")
         self.export_button.setMinimumHeight(self.metrics.field_height)
-        button_palette = self.export_button.palette()
-        button_palette.setColor(QPalette.ColorRole.Button, theme.color(self.theme, "accent"))
-        button_palette.setColor(QPalette.ColorRole.ButtonText,
-                                theme.color(self.theme, "surface"))
-        self.export_button.setPalette(button_palette)
+        palette = self.export_button.palette()
+        palette.setColor(QPalette.ColorRole.Button, theme.color(self.theme, "accent"))
+        palette.setColor(QPalette.ColorRole.ButtonText, theme.color(self.theme, "accent_ink"))
+        self.export_button.setPalette(palette)
         self.export_button.setAutoFillBackground(True)
-        for widget in (self.offset_label, self.export_label, self.export_button):
-            status_bar.addPermanentWidget(widget)
+        self.export_button.clicked.connect(self.prompt_export)
+        status_bar.addWidget(self.detail_label)
+        status_bar.addPermanentWidget(self.export_label)
+        status_bar.addPermanentWidget(self.export_button)
 
     def _build_menu(self) -> None:
+        """File, Edit, View and Help, every item with the shortcut it really has."""
         file_menu = self.menuBar().addMenu("&File")
-        self.export_action = QAction("&Export image...", self)
-        self.export_action.setShortcut(QKeySequence("Ctrl+E"))
-        self.export_action.triggered.connect(self.prompt_export)
-        self.emulator_action = QAction("Open in &emulator", self)
-        self.emulator_action.setEnabled(False)
-        self.emulator_action.triggered.connect(self.open_in_emulator)
-        close_action = QAction("&Close", self)
-        close_action.setShortcut(QKeySequence("Ctrl+W"))
-        close_action.triggered.connect(self.close)
-        file_menu.addAction(self.export_action)
-        file_menu.addAction(self.emulator_action)
+        self.open_action = self._add(file_menu, "&Open image...", "Ctrl+O", self.prompt_open)
+        self.open_project_action = self._add(file_menu, "Open edit &list...", "",
+                                             self.prompt_open_project)
+        self.save_action = self._add(file_menu, "&Save edit list...", "Ctrl+S",
+                                     self.prompt_save_project)
+        self.export_action = self._add(file_menu, "&Export image...", "Ctrl+E",
+                                       self.prompt_export)
         file_menu.addSeparator()
-        file_menu.addAction(close_action)
+        self._add(file_menu, "&Quit", "", self.close)
 
         edit_menu = self.menuBar().addMenu("&Edit")
         self.undo_action = self.stack.createUndoAction(self, "&Undo")
-        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.setShortcut(QKeySequence("Ctrl+Z"))
         self.redo_action = self.stack.createRedoAction(self, "&Redo")
-        self.redo_action.setShortcut(QKeySequence.StandardKey.Redo)
-        self.rename_action = QAction("&Rename occurrences...", self)
-        self.rename_action.triggered.connect(self.prompt_rename)
+        self.redo_action.setShortcut(QKeySequence("Ctrl+Y"))
         edit_menu.addAction(self.undo_action)
         edit_menu.addAction(self.redo_action)
         edit_menu.addSeparator()
-        edit_menu.addAction(self.rename_action)
+        self.clear_action = self._add(edit_menu, "Clear this &edit", "", self.clear_edit)
+        self.clear_all_action = self._add(edit_menu, "Clear &all edits", "",
+                                          self.clear_all_edits)
 
         view_menu = self.menuBar().addMenu("&View")
-        self.dialogue_action = QAction("&Dialogue list", self)
-        self.dialogue_action.triggered.connect(lambda: self.pane.set_kind(RECORD))
-        self.names_action = QAction("&Names and bios", self)
-        self.names_action.triggered.connect(lambda: self.pane.set_kind(SLOT))
-        self.search_action = QAction("&Find line", self)
-        self.search_action.setShortcut(QKeySequence("Ctrl+F"))
-        self.search_action.triggered.connect(self.focus_search)
-        self.next_list_action = QAction("&Next list", self)
-        self.next_list_action.setShortcut(QKeySequence("Ctrl+Tab"))
-        self.next_list_action.triggered.connect(self.pane.next_tab)
-        self.next_pane_action = QAction("Next &pane", self)
-        self.next_pane_action.setShortcut(QKeySequence("F6"))
-        self.next_pane_action.triggered.connect(self.cycle_focus)
-        self.history = QUndoView(self.stack)
-        self.history_dock = QDockWidget("Undo history", self)
-        self.history_dock.setWidget(self.history)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.history_dock)
-        self.history_dock.hide()
-        for action in (self.dialogue_action, self.names_action):
-            view_menu.addAction(action)
+        self.find_action = self._add(view_menu, "&Find line", "Ctrl+F", self.focus_search)
+        self.next_pane_action = self._add(view_menu, "Next &pane", "F6", self.cycle_focus)
         view_menu.addSeparator()
-        # The same three controls the pane carries, so the keyboard reaches them.
-        self.shape_actions = self._choice_actions(view_menu, (
-            (LINES, "&Lines", lineview.VIEW_TOOLTIP),
-            (RECORDS, "&Records", lineview.VIEW_TOOLTIP)), self.pane.set_view)
-        self.order_actions = self._choice_actions(view_menu, (
-            (APPEARANCE, "&Appearance", lineview.ORDER_TOOLTIPS[APPEARANCE]),
-            (STORAGE, "&Storage", lineview.ORDER_TOOLTIPS[STORAGE])), self.pane.set_order)
-        self.group_actions = self._choice_actions(view_menu, (
-            (UNGROUPED, "&No grouping", lineview.GROUP_TOOLTIPS[UNGROUPED]),
-            (BY_SPEAKER, "Group by &speaker", lineview.GROUP_TOOLTIPS[BY_SPEAKER]),
-            (BY_PLACE, "Group by &place", lineview.GROUP_TOOLTIPS[BY_PLACE])),
-            self.pane.set_group)
-        for actions, value in ((self.shape_actions, self.pane.view()),
-                               (self.order_actions, self.pane.order()),
-                               (self.group_actions, self.pane.group())):
-            self._sync_choices(actions, value)
+        self.view_actions = self._choice_actions(
+            view_menu, ((LINES, "&Lines"), (RECORDS, "&Records")), "view")
+        self.order_actions = self._choice_actions(
+            view_menu, ((APPEARANCE, "&Appearance"), (STORAGE, "&Storage")), "order")
+        self.group_actions = self._choice_actions(
+            view_menu, ((UNGROUPED, "&No grouping"), (BY_SPEAKER, "Group by &speaker"),
+                        (BY_PLACE, "Group by &place")), "group")
         view_menu.addSeparator()
-        for action in (self.search_action, self.next_list_action, self.next_pane_action):
-            view_menu.addAction(action)
-        view_menu.addAction(self.history_dock.toggleViewAction())
+        self.pane_actions: dict[str, QAction] = {}
+        for name, label in PANE_LABELS:
+            action = view_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(True)
+            action.triggered.connect(lambda shown, pane=name: self.show_pane(pane, shown))
+            self.pane_actions[name] = action
 
         help_menu = self.menuBar().addMenu("&Help")
-        about_action = QAction(f"&About {PRODUCT_NAME}", self)
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
+        self._add(help_menu, f"&About {PRODUCT_NAME}", "", self.show_about)
 
-    def _choice_actions(self, menu, pairs, setter) -> QActionGroup:
-        """One checkable single-choice group in the View menu."""
+        self._needs_image = (
+            self.open_project_action, self.save_action, self.export_action,
+            self.clear_action, self.clear_all_action, self.find_action,
+            *self.view_actions.actions(), *self.order_actions.actions(),
+            *self.group_actions.actions(), *self.pane_actions.values(),
+        )
+        self.stack.cleanChanged.connect(lambda _clean: self._update())
+
+    def _add(self, menu, label: str, shortcut: str, slot) -> QAction:
+        """One menu item, with its real shortcut written beside it."""
+        action = QAction(label, self)
+        if shortcut:
+            action.setShortcut(QKeySequence(shortcut))
+        action.triggered.connect(slot)
+        menu.addAction(action)
+        return action
+
+    def _choice_actions(self, menu, pairs, shape: str) -> QActionGroup:
+        """One checkable single-choice group, wired to the pane's own control."""
         group = QActionGroup(self)
-        for value, label, tip in pairs:
+        for value, label in pairs:
             action = menu.addAction(label)
             action.setCheckable(True)
             action.setActionGroup(group)
             action.setData(value)
-            action.setToolTip(tip)
-            action.triggered.connect(lambda _checked=False, v=value: setter(v))
+            action.triggered.connect(
+                lambda _checked=False, v=value, s=shape: self.set_shape(s, v))
         return group
 
-    def _sync_choices(self, group: QActionGroup, value: object) -> None:
-        """Check the action whose value the control now holds."""
-        for action in group.actions():
-            if action.data() == value:
-                action.setChecked(True)
-                return
+    # --- the session, the panes and their wiring ------------------------------
 
-    def _connect(self) -> None:
+    def _install(self, session: Session | None) -> None:
+        """The panes over `session`, or the empty state when there is no image."""
+        shape = self.shape() or self._stored_shape()
+        self.session = session
+        self._key = ""
+        self._editor_key = ""
+        self._exported = None
+        self.stack.clear()
+        if session is not None and self._canonical is None:
+            self._canonical = session.model.retail_path
+        previous = self.body
+        self.body = self._build_body()
+        self.column.replaceWidget(previous, self.body)
+        previous.deleteLater()
+        if session is not None:
+            self._apply_shape(shape)
+        self._update()
+
+    def _build_body(self) -> QWidget:
+        if self.session is None:
+            self.empty = QLabel(NO_IMAGE)
+            self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.empty.setWordWrap(True)
+            self.empty.setProperty("role", "hint")
+            return self.empty
+        self.pane = lineview.LinePane(self.session, self.metrics, self.theme, self)
+        self.pane.setMinimumWidth(LEFT_MIN)
+        self.editor = EditorSections(self.theme, self.metrics, self)
+        self.context = contextpane.ContextPane(self.theme, self.metrics, self)
+        self.context.setMinimumWidth(RIGHT_MIN)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        for widget in (self.pane, self.editor, self.context):
+            self.splitter.addWidget(widget)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setSizes(self._stored_sizes())
         self.pane.line_chosen.connect(self.show_line)
         self.pane.line_entered.connect(self.focus_new)
-        self.editor.edited.connect(self._editor_edited)
-        self.editor.notice.records_requested.connect(self.select_records)
-        self.search.textChanged.connect(self.pane.set_term)
-        self.search.returnPressed.connect(self.focus_list)
-        self.pane.search_cleared.connect(self.search.clear)
-        self.pane.view_box.currentIndexChanged.connect(
-            lambda: self._sync_choices(self.shape_actions, self.pane.view()))
-        self.pane.order_box.currentIndexChanged.connect(
-            lambda: self._sync_choices(self.order_actions, self.pane.order()))
-        self.pane.group_box.currentIndexChanged.connect(
-            lambda: self._sync_choices(self.group_actions, self.pane.group()))
-        self.export_button.clicked.connect(self.prompt_export)
-        self.stack.cleanChanged.connect(self._clean_changed)
-        self.escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.search)
-        self.escape.setContext(Qt.ShortcutContext.WidgetShortcut)
-        self.escape.activated.connect(self._escape_search)
-
-    # --- what a line looks like ---------------------------------------------
-
-    def show_line(self, key: str, keep_editor: bool = False) -> None:
-        """Show one line everywhere it appears, from the session's own answers."""
-        if self.session is None or self.session.line(key) is None:
-            return
-        self._key = key
-        detail = span_detail(self.session, key)
-        text = pending_text(self.session, key)
-        self.editor.show_line(self.session, key, text, keep_editor)
-        self.context.show_line(self.session, key, text, detail)
-        self.offset_label.setText(detail)
+        self.editor.committed.connect(self.apply_edit)
+        # The move notice's one action selects the records that carry the row, so a
+        # reader can act on what it just said without hunting in the list.
+        self.editor.notice.records_requested.connect(self.show_records)
+        for box, name in ((self.pane.shape_box, "view"), (self.pane.order_box, "order"),
+                          (self.pane.group_box, "group")):
+            box.currentIndexChanged.connect(
+                lambda _index, s=name: self._sync(self._group_for(s), s))
+        for name, widget in self.panes():
+            widget.setVisible(self._shown.get(name, True))
+        return self.splitter
 
     def panes(self) -> tuple[tuple[str, QWidget], ...]:
-        return (("list", self.pane), ("editor", self.centre), ("context", self.context))
+        """The three panes, or the one empty state when no image is open."""
+        if self.session is None:
+            return (("empty", self.empty),)
+        return (("list", self.pane), ("editor", self.editor), ("context", self.context))
 
     def walk_panes(self) -> tuple[str, ...]:
         """Touch every pane, so a smoke run proves each one built and answers."""
@@ -380,71 +388,242 @@ class Shell(QMainWindow):
             pane.sizeHint()
             pane.isVisibleTo(self)
             touched.append(name)
-        self.pane.table.model().rowCount()
-        self.editor.new.serialized()
-        self.context.preview.is_approximate()
+        if self.session is not None:
+            rows = self.pane.rows()
+            self.pane.selected()
+            self.pane.kind()
+            self.pane.filters()
+            self.shape()
+            self.editor.new_text()
+            self.editor.has_focus()
+            if rows:
+                self.pane.select_key(rows[0].key)
+                self.show_line(rows[0].key)
         return tuple(touched)
+
+    # --- what a row shows ----------------------------------------------------
+
+    def show_records(self, keys: tuple[str, ...]) -> None:
+        """Select the records a row is carried by, in the list, and say how many.
+
+        This is the move notice's only action. A carrying record is a dialogue
+        record, so the list is put on that tab and on the shape that lists records:
+        a button that silently did nothing would be worse than no button.
+        """
+        if self.session is None or not keys:
+            return
+        if self.pane.kind() != RECORD:
+            self.pane.set_kind(RECORD)
+        if self.pane.view() != RECORDS:
+            self.pane.set_view(RECORDS)
+        found = self.pane.select_rows(keys)
+        self.statusBar().showMessage(f"selected {found} of {len(keys)} carrying record(s)")
+
+    def show_line(self, key: str) -> None:
+        """Show one row everywhere it appears, from the session's own answers."""
+        if self.session is None:
+            return
+        line = self.session.line(key)
+        if line is None:
+            return
+        self._key = key
+        text = self.session.pending_text(key)
+        state = self.session.state(key)
+        meter = self.session.meter(key)
+        differs = self.session.differs_from_retail(key)
+        reason = self.session.refusal_reason(key)
+        name = span_detail(self.session, key)
+        self.detail_label.setText(name)
+        self.context.set_line(self.session, line)
+        self.context.set_address(name)
+        self.context.set_preview_state(text)
+        if self._editor_key != key:
+            self._editor_key = key
+            self.editor.set_line(line, state, meter, differs, reason,
+                                 self.session.covering(key), self.session.sites(key),
+                                 line.proven)
+        else:
+            self.editor.set_state(state, meter, differs, reason)
+        # `set_pending` is what decides whether the caret in NEW wins, so it is
+        # asked on every refresh rather than the shell deciding for it.
+        self.editor.set_pending(text)
+        self._update()
+
+    def shape(self) -> dict[str, str]:
+        """The list's shape, which is the part of the settings that lives in the pane."""
+        if self.session is None:
+            return {}
+        return {"view": self.pane.view(), "order": self.pane.order(),
+                "group": self.pane.group()}
+
+    def set_shape(self, name: str, value: str) -> None:
+        """One shape control, from the menu or from the pane's own combo."""
+        if self.session is not None:
+            getattr(self.pane, f"set_{name}")(value)
+
+    def _group_for(self, name: str) -> QActionGroup:
+        return {"view": self.view_actions, "order": self.order_actions,
+                "group": self.group_actions}[name]
+
+    def _sync(self, group: QActionGroup, name: str) -> None:
+        """Check the menu action whose value the pane's own control now holds."""
+        current = self.shape().get(name)
+        for action in group.actions():
+            if action.data() == current:
+                action.setChecked(True)
+                return
+
+    def _apply_shape(self, values: Mapping[str, object]) -> None:
+        """Put one shape on the pane, ignoring a value this build does not know."""
+        view, order, group = (values.get("view"), values.get("order"), values.get("group"))
+        if view in (LINES, RECORDS):
+            self.pane.set_view(view)
+        if order in (APPEARANCE, STORAGE):
+            self.pane.set_order(order)
+        if group in (UNGROUPED, BY_SPEAKER, BY_PLACE):
+            self.pane.set_group(group)
+        for name in ("view", "order", "group"):
+            self._sync(self._group_for(name), name)
+
+    def _stored_shape(self) -> dict[str, object]:
+        """What the last session left, as the three keys this window owns."""
+        stored = settings.load()
+        return {key: stored.get(key) for key in ("view", "order", "group")}
+
+    def _stored_sizes(self) -> list[int]:
+        stored = settings.load().get("splitter")
+        if isinstance(stored, list) and len(stored) == 3 and all(
+                isinstance(size, int) and size > 0 for size in stored):
+            return list(stored)
+        return list(DEFAULT_SPLIT)
 
     # --- the one edit path ---------------------------------------------------
 
     def apply_edit(self, key: str, new: str) -> None:
         """The one way a line changes: one user action, one undo step."""
-        if self.session is None or self.session.line(key) is None:
+        if self.session is None:
             return
-        before = pending_text(self.session, key)
+        line = self.session.line(key)
+        if line is None or not line.text:
+            self.statusBar().showMessage(f"{key} has no text for an edit to replace.")
+            return
+        before = self.session.pending_text(key)
         if new == before:
             return
         self.stack.push(_EditCommand(self, key, before, new))
 
-    def write(self, key: str, text: str, keep_editor: bool = True) -> None:
-        """Write one line's pending text and redraw. It never pushes a command."""
-        line = self.session.line(key)
-        if line is None:
+    def write(self, key: str, text: str) -> None:
+        """Write one row's pending text and redraw. It never pushes a command."""
+        if self.session is None:
             return
         try:
-            if text == line.text:
-                self.session.clear_edit(key)
-            else:
-                self.session.set_edit(key, text)
-        except textedit.TextEditError as error:
+            self.session.set_edit(key, text)
+        except (textedit.TextEditError, KeyError) as error:
             self.statusBar().showMessage(str(error))
             return
-        self.pane.refresh(self._key)
         if self._key:
-            self.show_line(self._key, keep_editor)
-        self._update_header()
+            self.pane.refresh(self._key)
+            self.show_line(self._key)
+        self._update()
 
-    def apply_rename(self, old: str, new: str, renamed: dict[str, frozenset[int]]) -> None:
-        """One undo step for a whole rename batch."""
+    def clear_edit(self) -> None:
+        """Clear the selected row's own edit, as one step."""
+        if self.session is None or not self._key:
+            return
+        line = self.session.line(self._key)
+        if line is not None:
+            self.apply_edit(self._key, line.text)
+
+    def clear_all_edits(self) -> None:
+        """Every pending edit, as one step.
+
+        An edit no row of this image carries has no text to restore, so it is
+        dropped outright rather than restored by an undo step.
+        """
+        if self.session is None or not self.session.edited_keys():
+            return
+        carried = [key for key in self.session.edited_keys()
+                   if self.session.line(key) is not None]
+        self.stack.beginMacro(f"clear {len(carried)} edit(s)")
+        for key in carried:
+            self.apply_edit(key, self.session.line(key).text)
+        self.stack.endMacro()
+        if len(carried) != len(self.session.edited_keys()):
+            self.session.clear_all()
+        self._update()
+
+    def apply_rename(self, old: str, new: str,
+                     chosen: tuple[tuple[str, frozenset[int]], ...]) -> int:
+        """One undo step for a whole rename batch, through the same edit path."""
         if self.session is None:
-            return
-        moves = []
-        for key, offsets in sorted(renamed.items()):
-            line = self.session.line(key)
-            if line is None:
-                continue
-            after = self.session.rename_text(key, old, new, offsets)
-            if after != line.text:
-                moves.append((key, line.text, after))
+            return 0
+        moves = [(key, self.session.rename_text(key, old, new, offsets))
+                 for key, offsets in chosen if self.session.line(key) is not None]
+        moves = [(key, text) for key, text in moves
+                 if text != self.session.pending_text(key)]
         if not moves:
+            return 0
+        self.stack.beginMacro(f"rename {len(moves)} record(s)")
+        for key, text in moves:
+            self.apply_edit(key, text)
+        self.stack.endMacro()
+        return len(moves)
+
+    # --- open, save and export -----------------------------------------------
+
+    def prompt_open(self) -> None:
+        if not self._may_discard():
             return
-        self.stack.push(_BatchCommand(self, moves))
+        chosen, _filters = QFileDialog.getOpenFileName(self, "Open image", "",
+                                                      "GBA image (*.gba)")
+        if chosen:
+            self.load_image(chosen)
 
-    def _editor_edited(self, text: str) -> None:
-        if self._key:
-            self.apply_edit(self._key, text)
+    def load_image(self, path: str | Path, project=None) -> bool:
+        """Open an image read-only. A refusal is the engine's own sentence."""
+        try:
+            session = open_image(path, canonical=self._canonical, project=project)
+        except (textedit.TextEditError, OSError) as error:
+            QMessageBox.critical(self, PRODUCT_NAME, str(error))
+            return False
+        self._install(session)
+        return True
 
-    # --- export and the emulator --------------------------------------------
+    def prompt_open_project(self) -> None:
+        if not self._need_image() or not self._may_discard():
+            return
+        chosen, _filters = QFileDialog.getOpenFileName(
+            self, "Open edit list", "", f"Edit list (*{project_file.SUFFIX})")
+        if not chosen:
+            return
+        try:
+            saved = project_file.load(chosen)
+        except (project_file.ProjectFileError, OSError) as error:
+            QMessageBox.critical(self, PRODUCT_NAME, str(error))
+            return
+        self.load_image(self.session.model.path, project=saved)
+
+    def prompt_save_project(self) -> None:
+        """Save the edit list. The image itself is never written here."""
+        if not self._need_image():
+            return
+        source = Path(self.session.model.path)
+        chosen, _filters = QFileDialog.getSaveFileName(
+            self, "Save edit list", str(source.with_suffix(project_file.SUFFIX)),
+            f"Edit list (*{project_file.SUFFIX})")
+        if not chosen:
+            return
+        try:
+            project_file.save(self.session.project(), chosen)
+        except (project_file.ProjectFileError, OSError) as error:
+            QMessageBox.critical(self, PRODUCT_NAME, str(error))
 
     def prompt_export(self) -> None:
-        if self.session is None:
+        if not self._need_image():
             return
-        note = self._refusal_note()
-        if note:
-            self.statusBar().showMessage(note)
-            return
-        if self.session.plan() is None:
-            self.statusBar().showMessage("There is nothing to export: the edit list is empty.")
+        reason = export_reason(self.session, self._key)
+        if reason:
+            self.statusBar().showMessage(reason)
             return
         source = Path(self.session.model.path)
         chosen, _filters = QFileDialog.getSaveFileName(
@@ -453,126 +632,190 @@ class Shell(QMainWindow):
         if chosen:
             self.export_to(chosen)
 
-    def export_to(self, path) -> dict | None:
-        """Run the engine's own export, and surface its refusal message verbatim."""
-        if self.session is None:
+    def export_to(self, path: str | Path) -> dict | None:
+        """Always a new file, through the engine, with its refusal shown verbatim."""
+        if not self._need_image():
             return None
-        dialog = exportdialog.ExportDialog(self)
-        self.last_export = dialog
         try:
             report = self.session.export(path)
-        except textedit.TextEditError as error:
-            dialog.show_error(str(error))
-            dialog.show()
+        except (textedit.TextEditError, OSError) as error:
+            self.surface_error(str(error))
             return None
-        dialog.show_report(report, Path(path))
-        dialog.show()
-        self._exported_path = Path(path)
-        self.emulator_action.setEnabled(True)
-        self.stack.setClean()
+        self._exported = Path(path)
+        digest = str(report.get("output_sha256", ""))
         self.export_label.setText(
-            f"Last export {QTime.currentTime().toString('HH:mm:ss')}"
-            f"   SHA-256 {str(report.get('output_sha256', ''))[:12]}")
+            f"exported {QTime.currentTime().toString('HH:mm:ss')}   {digest[:12]}")
+        self.stack.setClean()
+        dialog = exportdialog.ExportDialog(report, self._exported, self)
+        self.last_export = dialog
+        dialog.finished.connect(lambda _code: self.offer_open())
+        dialog.show()
+        self._update()
         return report
 
-    def _refusal_note(self) -> str:
-        """Why an export cannot happen, in the engine's own words, or nothing."""
-        if self.session is None:
-            return ""
-        refusals = self.session.refusals()
-        if not refusals:
-            return ""
-        first = refusals[0]
-        more = "" if len(refusals) == 1 else f" (and {len(refusals) - 1} more)"
-        return (f"Export is impossible while a refusal stands: {first.target}: "
-                f"{first.reason}{more}")
+    def surface_error(self, message: str) -> None:
+        """The engine writes these sentences for a user, so show one verbatim."""
+        QMessageBox.warning(self, PRODUCT_NAME, message)
+        self.statusBar().showMessage(message)
 
-    def open_in_emulator(self) -> None:
-        """Hand the exported image to whatever the system has registered."""
-        if self._exported_path is None:
+    def offer_open(self) -> None:
+        """Offer the exported image once its summary is closed."""
+        if self._exported is None:
             return
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._exported_path))):
-            self.statusBar().showMessage("No emulator is registered for .gba on this machine.")
+        answer = QMessageBox.question(self, PRODUCT_NAME, f"Open {self._exported.name} now?")
+        if answer == QMessageBox.StandardButton.Yes:
+            self.open_exported()
 
-    # --- rename ---------------------------------------------------------------
+    def open_exported(self) -> bool:
+        """Hand the exported file to whatever the system registered for it."""
+        if self._exported is None:
+            return False
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._exported))):
+            return True
+        suffix = self._exported.suffix.lstrip(".")
+        self.statusBar().showMessage(
+            f"No application is registered to open .{suffix} on this machine.")
+        return False
+
+    # --- rename --------------------------------------------------------------
 
     def prompt_rename(self) -> None:
-        if self.session is None:
+        if not self._need_image():
             return
         old, accepted = QInputDialog.getText(self, "Rename occurrences", "Text to replace:")
         if not accepted or not old:
             return
-        new, accepted = QInputDialog.getText(self, "Rename occurrences",
-                                            f"Replace {old} with:")
+        new, accepted = QInputDialog.getText(self, "Rename occurrences", f"Replace {old} with:")
         if not accepted or not new:
             return
-        dialog = renamedialog.RenameDialog(self.session, old, new, self.metrics, self.theme, self)
+        dialog = renamedialog.RenameDialog(self.session, old, new, self)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            self.apply_rename(old, new, dialog.renamed())
+            self.apply_rename(old, new, dialog.chosen())
 
-    def select_records(self, covering) -> None:
-        """Show the records that contain the selected line."""
-        self.pane.set_kind(RECORD)
-        self.search.clear()
-        self.pane.clear_filters()
-        self.pane.refresh()
-        if not self.pane.select_first(covering):
-            self.statusBar().showMessage(
-                "The records that contain this line are not in the loaded image.")
-
-    # --- focus and the small print -------------------------------------------
+    # --- focus, and the small print ------------------------------------------
 
     def focus_search(self) -> None:
         self.search.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self.search.selectAll()
 
-    def focus_list(self) -> None:
-        self.pane.table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+    def _set_term(self, term: str) -> None:
+        if self.session is not None:
+            self.pane.set_term(term)
 
-    def focus_new(self, _key: str = "") -> None:
-        self.editor.new.setFocus(Qt.FocusReason.ShortcutFocusReason)
-
-    def _escape_search(self) -> None:
+    def clear_search(self) -> None:
+        """Esc in the search field: an empty field hands the focus to the list."""
         if self.search.text():
             self.search.clear()
-        else:
-            self.focus_list()
+        elif self.session is not None:
+            self.pane.table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def focus_new(self, _key: str = "") -> None:
+        self.editor.focus_new()
 
     def cycle_focus(self) -> None:
-        """F6 walks the lists, the editor, the context pane and the status bar."""
-        order = [self.pane.table, self.editor.new, self.context, self.statusBar()]
+        """F6 walks the list, the editor and the context pane."""
+        if self.session is None:
+            return
         current = QApplication.focusWidget()
-        index = order.index(current) if current in order else len(order) - 1
-        order[(index + 1) % len(order)].setFocus(Qt.FocusReason.TabFocusReason)
+        if current is self.pane.table:
+            self.editor.focus_new()
+        elif current is self.editor or self.editor.has_focus():
+            self.context.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        else:
+            self.pane.table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def show_pane(self, name: str, shown: bool) -> None:
+        """Show or hide one pane. The choice survives a new image."""
+        self._shown[name] = shown
+        for pane_name, widget in self.panes():
+            if pane_name == name:
+                widget.setVisible(shown)
 
     def show_about(self) -> None:
         QMessageBox.about(self, PRODUCT_NAME, f"{PRODUCT_NAME} {PRODUCT_VERSION}")
 
-    def _clean_changed(self, clean: bool) -> None:
-        self.unsaved_label.setVisible(not clean)
-        name = "no image" if self.session is None else Path(self.session.model.path).name
-        self.setWindowTitle(f"{'* ' if not clean else ''}{name} - {PRODUCT_NAME}")
+    # --- the header, the title and what is enabled ---------------------------
+
+    def _need_image(self) -> bool:
+        if self.session is None:
+            self.statusBar().showMessage(NO_IMAGE_TIP)
+            return False
+        return True
+
+    def _may_discard(self) -> bool:
+        """Ask before an action that would drop pending edits. True to go on."""
+        if self.session is None or self.stack.isClean():
+            return True
+        edits = len(self.session.edited_keys())
+        answer = QMessageBox.question(
+            self, PRODUCT_NAME,
+            f"Discard {edits} pending edit" + ("" if edits == 1 else "s")
+            + " without exporting?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel)
+        return answer == QMessageBox.StandardButton.Discard
+
+    def _update(self) -> None:
+        if self._closing:
+            return
+        self._update_header()
+        self._update_actions()
+        self._update_title()
 
     def _update_header(self) -> None:
-        session = self.session
-        if session is None:
-            self.rom_label.setText("No image open")
-            self.layout_label.setText("")
-            self.project_label.setText("")
-        else:
-            self.rom_label.setText(Path(session.model.path).name)
-            self.layout_label.setText(session.model.layout.profile.key)
-            edits = len(session.edits)
-            state = f"{edits} edit" if edits == 1 else f"{edits} edits"
-            if session.unmatched:
-                state += f", {len(session.unmatched)} unmatched"
-            if session.base_changed:
-                state = f"base changed, {state}"
-            self.project_label.setText(f"project: {state}")
-        note = self._refusal_note()
-        self.export_button.setToolTip(note)
-        self._clean_changed(self.stack.isClean())
+        """The header's pairs. A self-describing value drops its label."""
+        if self.session is None:
+            self.image_label.setText("no image")
+            self.image_label.setToolTip(NO_IMAGE)
+            self.profile_label.setText("")
+            self.profile_label.setToolTip("")
+            self.state_label.setText(status.label(State.UNCHANGED))
+            return
+        path = Path(self.session.model.path)
+        self.image_label.setText(path.name)
+        self.image_label.setToolTip(str(path))
+        self.profile_label.setText(self.session.model.layout.profile.key)
+        self.profile_label.setToolTip("Detected profile")
+        self.state_label.setText(project_text(self.session))
+
+    def _update_actions(self) -> None:
+        """Enable what the session can do now, and say why when it cannot."""
+        loaded = self.session is not None
+        for action in self._needs_image:
+            action.setEnabled(loaded)
+            action.setToolTip("" if loaded else NO_IMAGE_TIP)
+        self.export_button.setEnabled(loaded)
+        self.export_button.setToolTip("" if loaded else NO_IMAGE_TIP)
+        if not loaded:
+            return
+        reason = export_reason(self.session, self._key)
+        for target in (self.export_action, self.export_button):
+            target.setEnabled(not reason)
+            target.setToolTip(reason or EXPORT_TIP)
+        edits = bool(self.session.edited_keys())
+        self.clear_all_action.setEnabled(edits)
+        self.clear_all_action.setToolTip("" if edits else "There are no pending edits.")
+        pending = edits and bool(self._key) and \
+            self.session.state(self._key) is not State.UNCHANGED
+        self.clear_action.setEnabled(bool(pending))
+        self.clear_action.setToolTip(
+            "" if pending else "Select a line that has a pending edit.")
+
+    def _update_title(self) -> None:
+        name = "no image" if self.session is None else Path(self.session.model.path).name
+        self.setWindowTitle(f"{'' if self.stack.isClean() else '* '}{name} - {PRODUCT_NAME}")
+
+    # --- the settings --------------------------------------------------------
+
+    def _save_settings(self) -> None:
+        """One write: the theme it ran under, the splitter, and the list's shape."""
+        values: dict[str, object] = {"theme": self.mode}
+        if self.session is not None:
+            values["splitter"] = list(self.splitter.sizes())
+        values.update(self.shape())
+        settings.save(values)
 
     def closeEvent(self, event) -> None:
-        settings.save({"splitter": list(self.splitter.sizes())})
+        self._save_settings()
+        self._closing = True
         super().closeEvent(event)

@@ -61,7 +61,8 @@ LEAF_HANDLERS = {
     0x08019284: "AUX: param is a ROW index; activates the row PRIMARY and evaluates its SECONDARY",
     0x0801920E: "OR: param is the child count, children at +0x10+4i, first true child wins (priority order)",
     0x080191C6: "AND: param is the child count; ORs on the state path and ANDs on the node path",
-    0x08018F90: "SEQ: param is the child count, children at +0xC+4i, position at +4, count at +8",
+    0x08018F90: "SEQ: param is the child count, node children at +0x10+4i (the STATE carries position +4, "
+                "count +8, child states +0xC+4i)",
     0x080188A8: "RAND: param is a 16-bit threshold",
     0x08029FE6: "SPAWN: param is a node pointer, requires the player to be acting",
     0x0802968C: "POSE: param reaches class 0x0804BDD0 and is parked at actor+0x1E4",
@@ -196,8 +197,9 @@ def census(image: bytes, limit: int = 4096) -> dict:
 def secondary_handler_census(image: bytes) -> dict:
     """A row's +0x04 word is the node the per-frame NODE path evaluates.
 
-    A LITERAL ZERO secondary word (12 rows in retail) is reported on its own key, because it means the row
-    has no secondary tree at all, which is not the same as a secondary whose handler word happens to be zero.
+    No row in retail has a LITERAL ZERO secondary word: the twelve rows that look like an exception point at a
+    real node whose HANDLER word is zero, which the census reports under the `0` key. The `-1` key exists only
+    for an image that genuinely carries a zero word, and it is empty for the canonical one.
     """
     counts: dict = {}
     for selector in range(ROW_COUNT):
@@ -231,8 +233,12 @@ def main() -> int:
         return 0
     if args.secondaries:
         for handler, count in secondary_handler_census(image).items():
-            label = { -1: "LITERAL ZERO secondary word", -2: "not a code pointer" }.get(handler)
-            label = label or LEAF_HANDLERS.get(handler, "unreadable")
+            label = { -1: "literal zero secondary word (no retail row has one)",
+                      -2: "not a node pointer" }.get(handler)
+            label = label or LEAF_HANDLERS.get(handler)
+            label = label or CONDITION_HANDLERS.get(handler, (None, None, None))[2]
+            label = label or ("node whose HANDLER word is zero, so it holds no handler"
+                              if handler == 0 else "unreadable")
             print(f"  {count:>4} row(s)  secondary handler 0x{handler:08X}  {label}")
         return 0
 

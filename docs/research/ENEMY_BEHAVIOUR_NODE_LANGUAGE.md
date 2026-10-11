@@ -107,9 +107,10 @@ A class table is self-relative from the class word itself: `method = class + s32
 resolved value keeps the Thumb bit. The common veneers are `0x08046AA4` = `bx r2` and `0x08046AA6` = `bx r3`.
 
 SEQ's activate `0x08018F90` stores class **`0x0804AAF4`** (pool `0x0801906C`) and writes position `+4` = 0,
-count `+8` = node param, child states at `+0xC+4i`. Class method `+0x00` (`0x08018EF6`) walks position against
-count and indexes `+0xC`; method `+0x08` (`0x08018F74`) reads `{position, count}` from `+4`. The same rule
-reproduces SET's class `0x0804BC98` from pool `0x0801894C`.
+count `+8` = node param, child states at `+0xC+4i`. Its NODE children follow the composite convention, at
+`+0x10+4i`, read by the same loop the OR and AND handlers use. Class method `+0x00` (`0x08018EF6`) walks
+position against count and indexes the STATE's child array at `+0xC`; method `+0x08` (`0x08018F74`) reads
+`{position, count}` from `+4`. The same rule reproduces SET's class `0x0804BC98` from pool `0x0801894C`.
 
 SET's param is a ROW INDEX. `SET` activate `0x0801890A` stores `{class, param}`; its evaluator `0x08018920`
 takes `actor+0x00` (class `0x0804C484`), resolves slot `+0x68` to `0x0804ECB0`, adds `0x238` to reach the
@@ -198,11 +199,20 @@ python -m tools.research.ai_node_census --image <image> --row 204       # one ro
 python -m tools.research.ai_node_census --image <image> --secondaries   # the secondary handler census
 ```
 
-Every function in it takes bytes, so `tests/unit/test_ai_node_census.py` drives the decoder with a synthetic
-image and needs **no ROM**. Run over the canonical image it reports the same **201 distinct handlers** the
-research lane measured. Its node total is policy-dependent: it follows every composite child, so it reports
-more nodes than a single-child walk, and `null_handler_nodes` counts the slots that walk reaches which are not
-nodes. Read those two numbers as the walk's own bookkeeping, not as a claim about the language.
+The decoder's functions take bytes, so `tests/unit/test_ai_node_census.py` exercises them against a synthetic
+image and needs **no ROM**. It covers the two node forms, the composite child array, the null-handler report,
+the out-of-range selector refusal and the secondary census; it does not exercise the CLI.
+
+Run over the canonical image the tool reports the same **201 distinct handlers** the research lane measured.
+Its node total is policy-dependent: it follows every composite child, so it reports more nodes than a
+single-child walk, and `null_handler_nodes` counts the slots that walk reaches which are not nodes. Read those
+two numbers as the walk's own bookkeeping, not as a claim about the language.
+
+Two numbers in this document come from the research lanes and are **NOT reproduced by the tool**: the
+**34 distinct condition tests over 35 handlers** (the tool counts placements per predicate, not distinct tests,
+and the "34" needs the callees of the partially decoded predicates) and the **62 state classes** (the tool
+tabulates class words only for the handlers whose classes were decoded). Reproducing either means resolving
+every handler's class word, which is the same pass that would finish the ten partial predicates.
 
 ## Not established
 

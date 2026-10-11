@@ -317,11 +317,15 @@ class Session:
         """Why this raw write would be refused, or an empty string. Commits nothing.
 
         A caller that has to decide whether to ask a person uses this first, so an
-        owned range is refused without a confirmation the user cannot act on.
+        owned range is refused without a confirmation the user cannot act on. A
+        request that cannot even be built is a refusal of the same kind, so
+        `SessionError` is reported here too: the ROM page asks this before it opens
+        a dialog, and a range past the image must not leave the Qt slot as an
+        exception (finding N1 of the DRAGONBYTE-Z-RAW-BYTE-AUTHORITY-001 review).
         """
         try:
             request = self._raw_request(offset, new, confirmed=True, atlas=atlas)
-        except _EDIT_ERRORS as exc:
+        except (*_EDIT_ERRORS, SessionError) as exc:
             return str(exc)
         refusal = self.journal.raw_refusal(request)
         return "" if refusal is None else str(refusal)

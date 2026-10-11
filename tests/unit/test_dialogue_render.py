@@ -91,11 +91,41 @@ def _advance_positions(font, text: str, wrap: int) -> list[list[tuple[int, int]]
     return per_character
 
 
-def reference_surface(art: bytes, per_character: list[list[tuple[int, int]]]) -> bytes:
-    """The box art with the reference's ink pixels painted, as a whole surface."""
+def _a_word_wider_than_the_limit(font, text: str, limit: int) -> bool:
+    """Whether one run of non-space characters is wider than the engine's own limit.
+
+    The copied reference guards its break with `if current and ...`, so a run wider than
+    the limit goes on a line by itself and overruns. The engine does not do that: its
+    fitter returns WITHOUT advancing when it overflows and has seen no space, read from
+    the image's own code at `0x0803DE6A`:
+
+        if (param_3 < iVar4) {          // the width so far exceeds the limit
+            if (puVar5 == 0) return;    // no space was seen: stop where it is
+            param_4[1] = puVar5;        // otherwise rewind to the last space
+            param_4[2] = uVar6;
+            return;
+        }
+
+    So a run wider than the limit is broken INSIDE the run, and the reference is not a
+    model of that branch. The two are not compared there, and the records are counted.
+    """
+    return any(sum(font.advance(ord(character)) for character in word) > limit
+               for word in text.split(" "))
+
+
+def reference_surface(art: bytes, per_character: list[list[tuple[int, int]]]) -> bytes | None:
+    """The box art with the reference's ink pixels painted, as a whole surface.
+
+    None when the reference puts a pixel outside the box. The two models wrap text
+    differently above the box's own page: the reference keeps going and the engine's
+    fitter stops at four lines, so a record the renderer refuses to draw is a case the
+    reference cannot be compared against rather than a disagreement about pixels.
+    """
     surface = bytearray(art)
     for pixels in per_character:
         for x, y in pixels:
+            if not (0 <= x < preview.SURFACE_WIDTH and 0 <= y < preview.SURFACE_HEIGHT):
+                return None
             surface[y * preview.SURFACE_WIDTH + x] = preview.DEFAULT_INK
     return bytes(surface)
 
@@ -339,6 +369,8 @@ def test_the_renderer_matches_the_validator_over_the_whole_corpus() -> None:
     exact = 0
     limited = 0
     controls = 0
+    oversized = 0
+    unbroken = 0
     failures: list[str] = []
     for text in texts:
         units = preview.units_of(text)
@@ -348,7 +380,13 @@ def test_the_renderer_matches_the_validator_over_the_whole_corpus() -> None:
                 limited += 1
                 continue
             mine = preview.paint(font, arts[limit], units, lines)
+            if _a_word_wider_than_the_limit(font, text, limit):
+                unbroken += 1
+                continue
             expected = reference_surface(arts[limit], _advance_positions(font, text, limit))
+            if expected is None:
+                oversized += 1
+                continue
             if mine == expected:
                 exact += 1
                 continue
@@ -358,7 +396,9 @@ def test_the_renderer_matches_the_validator_over_the_whole_corpus() -> None:
             differing = sum(1 for left, right in zip(mine, expected) if left != right)
             failures.append(f"limit {limit}: {differing} pixel(s) differ for {text[:48]!r}")
     summary = (f"{len(texts)} record(s): {exact} compared and exact, {limited} too long for the "
-               f"box, {controls} carrying a unit the reference prices differently")
+               f"box, {oversized} that the reference runs past the box, {unbroken} carrying a "
+               f"run wider than the limit, {controls} carrying a unit the reference prices "
+               f"differently")
     assert not failures, (f"{summary}; the renderer and the reference disagree:\n"
                           + "\n".join(failures[:10]))
     assert exact >= 50, f"too little was compared: {summary}"

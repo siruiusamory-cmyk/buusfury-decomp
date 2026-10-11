@@ -106,3 +106,35 @@ is drawn. Operands 1..6 (party) and 8 and above (array) all take index 0.
 Both confirm the runtime probe, which logged `limit=144 layout=0x08071730` for an ordinary box and
 `limit=128 layout=0x08071744` for the other. A preview must apply the limit AND the art of the layout the
 record's operand selects, not one of them.
+
+### Runtime evidence for the rule
+
+Logged from the owner's own savestate, which is a dialogue section with a box already on screen. The probe
+records the operand site and the layout store, and the launcher now marks the moment the savestate loads, so
+every line below is attributable to the loaded scene rather than to an instrument that never got there.
+
+```
+NOTE frame=0 STATE loaded
+OPERAND frame=345 record=0x0202BB0C
+LAYOUT  frame=346 layout=0x08071730 index=0 text_object=0x0203D750
+FIT     frame=354 limit=144 layout=0x08071730 layout_limit=144 flag=0
+OPERAND frame=641 record=0x0202BB0C
+LAYOUT  frame=642 layout=0x08071730 index=0
+OPERAND frame=885 record=0x0202BB0C
+LAYOUT  frame=886 layout=0x08071730 index=0
+OPERAND frame=1130 record=0x0202B274
+LAYOUT  frame=1131 layout=0x08071730 index=0
+OPERAND frame=1244 record=0x0202B274
+LAYOUT  frame=1245 layout=0x08071730 index=0
+OPERAND frame=1334 record=0x0202B274
+LAYOUT  frame=1335 layout=0x08071730 index=0
+```
+
+**Settled:** six box events, two different records, every one took **index 0 → layout `0x08071730` → limit
+**144**. The default branch of the rule is therefore observed at runtime, and the two limits the fitter
+received match what the layout records hold.
+
+**Not settled:** the `index 1` branch. No box whose portrait operand is 7 appeared in that scene, so
+`operand 7 → limit 128 + art 0x08071A6C` still rests on the code alone. The operand byte the channels
+logged came from an EWRAM copy of the record whose `+3` is not the operand, so the log carries the LAYOUT
+per box rather than the operand; capturing the operand is the parked owner tap (one box of that kind).

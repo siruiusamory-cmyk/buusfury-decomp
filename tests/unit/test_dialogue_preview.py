@@ -1,16 +1,16 @@
 """The chip atoms and the in-game preview.
 
-Everything here runs offscreen over plain strings and synthetic data: no ROM, no
-window, and no game art committed. The renderer's own cases build a fake extraction
-in `tmp_path` so the wrapping, the paging and the pixel comparison are exercised
-without any real game data, and the capture harness is asserted to SKIP LOUDLY when
-the real data or the real captures are absent.
+The chip cases run off plain strings. The preview cases run over a SYNTHETIC image
+built by `tests.unit.test_dialogue_render`, so the decode, the layout, the pane's
+states and the pane's live repaint are all exercised without a ROM and without one
+byte of game data committed. The one case that needs the real image is in
+`test_dialogue_render.py`, which skips loudly without it.
 """
 
 from __future__ import annotations
 
-import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -19,18 +19,26 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtCore import QMimeData, Qt  # noqa: E402
-from PySide6.QtGui import QColor, QImage, QKeyEvent, QPainter, QTextCursor  # noqa: E402
+from PySide6.QtGui import QColor, QImage, QKeyEvent, QTextCursor  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTextEdit  # noqa: E402
 
-from tools.buufury_text import chips, preview, theme  # noqa: E402
+from tests.text_fixture import appearances, open_image, simple, speaking_image  # noqa: E402
+from tests.unit.test_dialogue_render import (  # noqa: E402
+    BOX_FILLS,
+    GLYPH_ADVANCE,
+    synthetic_image,
+)
+from tools.buufury_text import chips, contextpane, preview, theme  # noqa: E402
+from tools.buufury_text import session as app_session  # noqa: E402
+from tools.webfoot.formats import webfoot_lz  # noqa: E402
 
 QAPP = QApplication.instance() or QApplication([])
 
 #: Two prose runs around an interior 0x0A, then a 0x08 unit with an operand.
 CURRENT = "AB\nCD\x08\x03EF"
 ATOMS = ((2, 3), (5, 7))
-#: The game code, as the fixture builder and the engine both spell it.
-GAME_CODE = "BG3E"
+#: The pane's own margin around the surface, which is where the box's first pixel is.
+MARGIN = 8
 
 
 def _key(widget, key: Qt.Key.Key) -> None:
@@ -264,319 +272,196 @@ def test_chip_edit_reports_every_accepted_edit() -> None:
     assert seen == ["helloX"]
 
 
-# --- layout, pure -------------------------------------------------------------
+# --- the in-game preview ------------------------------------------------------
 
 
-class Blank:
-    """A stub source: one column per character, `page_lines` lines to a page."""
-
-    def __init__(self, columns: int = 5, page_lines: int = 2) -> None:
-        self.columns = columns
-        self.page_lines = page_lines
-
-    def advance(self, character: str) -> int:
-        return 1
-
-
-def test_layout_wraps_at_the_game_column_count() -> None:
-    assert preview.layout("abcdefghij", Blank(columns=5)) == (("abcde", "fghij"),)
-
-
-def test_layout_breaks_a_page_at_the_game_page_rule() -> None:
-    pages = preview.layout("abcdefghijklmno", Blank(columns=5, page_lines=2))
-    assert pages == (("abcde", "fghij"), ("klmno",))
-
-
-def test_layout_honours_the_games_own_line_break() -> None:
-    assert preview.layout("ab\ncd", Blank(columns=5, page_lines=3)) == (("ab", "cd"),)
-    assert preview.layout("\x0a", Blank(columns=5)) == (("", ""),)
-
-
-def test_layout_keeps_a_control_unit_as_one_column() -> None:
-    pages = preview.layout("\x08\x03AB", Blank(columns=2))
-    assert pages == ((f"{preview.CHARACTER}A", "B"),)
-
-
-def test_layout_of_nothing_is_one_empty_line() -> None:
-    assert preview.layout("", Blank()) == (("",),)
-
-
-# --- a synthetic extraction, built in the test -------------------------------
-
-#: Tile i of the fake font draws a solid block of INKS[i]; None means blank.
-#: The tile index and the codepoint are deliberately different, so a loader that
-#: confuses them fails here rather than in the preview.
-INKS = (None, "#FF0000", "#00FF00", "#0000FF")
-CODEPOINTS = (0x41, 0x42, 0x43, 0x44)  # A B C D
-GLYPH = 8
-
-
-def build_font(directory: Path, inks=INKS) -> None:
-    sheet = QImage(GLYPH * len(inks), GLYPH, QImage.Format.Format_ARGB32)
-    sheet.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(sheet)
-    for index, ink in enumerate(inks):
-        if ink is not None:
-            painter.fillRect(index * GLYPH, 0, GLYPH, GLYPH, QColor(ink))
-    painter.end()
-    sheet.save(str(directory / "glyphs.png"))
-    (directory / "glyph_widths.json").write_text(
-        json.dumps({str(code): GLYPH for code in CODEPOINTS}), encoding="utf-8")
-    (directory / "glyph_tiles.json").write_text(
-        json.dumps({str(code): index for index, code in enumerate(CODEPOINTS)}),
-        encoding="utf-8")
-
-
-def build_metrics(directory: Path, origin=(0, 0), stride: int = 8, columns: int = 4,
-                  pages: int = 2) -> None:
-    (directory / "metrics.json").write_text(json.dumps({
-        "origin": list(origin), "line_stride": stride, "box_rect": [0, 0, 32, 24],
-        "columns": columns, "page_stride": stride, "page_count": pages,
-        "glyph_width": GLYPH, "glyph_height": GLYPH, "box_width": 32,
-    }), encoding="utf-8")
-
-
-def build_extraction(root: Path, **kwargs) -> Path:
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "palette.json").write_text(json.dumps({"palette": [0, 0x7C00, 0x03E0, 0x001F]}),
-                                       encoding="utf-8")
-    build_font(root, **kwargs)
-    box = QImage(32, 24, QImage.Format.Format_ARGB32)
-    box.fill(QColor("#112233"))
-    box.save(str(root / "box.png"))
-    build_metrics(root)
-    (root / "rules.md").write_text("Wrap at the column count; a page holds two lines.\n",
-                                   encoding="utf-8")
-    return root
-
-
-def test_load_data_names_every_part_of_the_contract(tmp_path: Path) -> None:
-    empty = tmp_path / "nothing"
-    assert preview.load_data(empty).missing == preview.PARTS
-    empty.mkdir()
-    assert set(preview.load_data(empty).missing) == set(preview.PARTS)
-    full = build_extraction(tmp_path / "dialogue")
-    data = preview.load_data(full)
-    assert data.missing == ()
-    assert data.font is not None and data.metrics is not None and data.box is not None
-    assert len(data.palette) == 4
-
-
-def test_load_data_nominates_a_single_absent_part(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    (full / "rules.md").unlink()
-    assert preview.load_data(full).missing == ("rules.md",)
-    (full / "rules.md").write_text("rules\n", encoding="utf-8")
-    (full / "glyphs.png").unlink()
-    assert preview.load_data(full).missing == ("glyphs.png or glyphs.bin",)
-
-
-def test_the_palette_is_read_as_rgb555(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    (full / "palette.json").write_text(json.dumps({"palette": [0x7C00, 0x03E0, 0x001F]}),
-                                       encoding="utf-8")
-    palette = preview.load_data(full).palette
-    assert [color.name() for color in palette] == ["#ff0000", "#00ff00", "#0000ff"]
-
-
-# --- the renderer -------------------------------------------------------------
-
-
-def test_the_waiting_state_draws_the_line_and_nothing_else() -> None:
+def pane(image: bytes | None = None, name: str = "", text: str = "") -> preview.DialoguePreview:
+    """A pane over one image, sized so its own paint path runs at scale 1."""
     widget = preview.DialoguePreview()
-    widget.resize(240, 60)
-    # An extraction under way: the named parts are absent, so the pane is not ready.
-    widget.set_source(preview.DialogueData(missing=("metrics.json", "rules.md")))
-    assert widget.state() == "incomplete"
-    assert widget.missing() == ("metrics.json", "rules.md")
+    widget.resize(preview.SURFACE_WIDTH + 2 * MARGIN, preview.SURFACE_HEIGHT + 2 * MARGIN)
+    widget.set_image(image, name)
+    widget.set_text(text)
+    return widget
+
+
+def shot(widget) -> QImage:
+    """The pane's own canvas, painted through the widget's paintEvent."""
+    image = QImage(widget.size(), QImage.Format.Format_ARGB32)
+    image.fill(QColor("#000000"))
+    widget.render(image)
+    return image
+
+
+def pixels(widget) -> bytes:
+    """The pane's canvas as bytes, for an equality that does not depend on QImage."""
+    return bytes(shot(widget).constBits())
+
+
+def canvas_colours(widget) -> set[str]:
+    image = shot(widget)
+    return {image.pixelColor(x, y).name() for y in range(image.height())
+            for x in range(image.width())}
+
+
+def engine_colours() -> set[str]:
+    """Every colour the engine's own render can put on the canvas in these cases."""
+    palette = preview.decode_palette(bytes(synthetic_image()))
+    return {QColor(*palette[index]).name()
+            for index in (preview.DEFAULT_INK, *BOX_FILLS.values())}
+
+
+def test_the_waiting_state_draws_no_box_and_no_glyph() -> None:
+    widget = pane()
+    assert widget.state() == "waiting"
+    assert widget.missing() == ("an open image",)
     assert widget.ready() is False
-    widget.set_text("hello")
-    image = QImage(widget.size(), QImage.Format.Format_ARGB32)
-    image.fill(QColor("#000000"))
-    widget.render(image)
-    # Every colour on the canvas is the preview screen or the marker that writes
-    # the line: no box fill, no box border, no glyph.
-    seen = {image.pixelColor(x, y).name() for y in range(image.height())
-            for x in range(image.width())}
-    box = QColor(theme.active_theme().preview_box).name()
-    ink = QColor(theme.active_theme().preview_ink).name()
-    assert box not in seen, "the waiting state drew a box"
-    assert ink not in seen, "the waiting state drew glyph ink"
-
-
-def test_the_waiting_state_draws_nothing_when_nothing_is_extracted() -> None:
-    widget = preview.DialoguePreview()
-    widget.resize(240, 60)
-    widget.set_source(preview.DialogueData(missing=preview.PARTS))
-    assert widget.state() == "waiting"
-    image = QImage(widget.size(), QImage.Format.Format_ARGB32)
-    image.fill(QColor("#000000"))
-    widget.render(image)
-    seen = {image.pixelColor(x, y).name() for y in range(image.height())
-            for x in range(image.width())}
-    box = QColor(theme.active_theme().preview_box).name()
-    ink = QColor(theme.active_theme().preview_ink).name()
-    assert box not in seen, "the waiting state drew a box"
-    assert ink not in seen, "the waiting state drew glyph ink"
-
-
-def test_an_absent_directory_is_waiting(tmp_path: Path) -> None:
-    # Nothing extracted at all: this is the state the pane ships in.
-    widget = preview.DialoguePreview()
-    widget.set_source(tmp_path / "no-extraction")
-    assert widget.state() == "waiting"
-    assert widget.missing() == preview.PARTS
     assert widget.source_name() == "waiting"
-    assert widget.ready() is False
+    # Room for the waiting line plus the wrapped list of what is absent.
+    assert widget.sizeHint().width() == 260
+    assert not (canvas_colours(widget) & engine_colours()), \
+        "the waiting state drew part of the engine's own surface"
 
 
-def test_a_widget_that_was_never_given_a_source_discovers_one(
-        tmp_path: Path, monkeypatch) -> None:
-    # Discovery points somewhere with nothing in it, so this does not depend on
-    # what is (or is not) in this machine's build/gamedata/dialogue.
-    monkeypatch.setattr(preview, "dialogue_directory", lambda: tmp_path / "absent")
-    widget = preview.DialoguePreview()
+def test_an_image_whose_font_will_not_decode_is_waiting_and_names_the_font() -> None:
+    widget = pane(b"not an image at all")
     assert widget.state() == "waiting"
-    assert widget.missing() == preview.PARTS
+    assert widget.missing() == ("the font at 0x6EE6C (the descriptor is outside the image)",)
+    assert not (canvas_colours(widget) & engine_colours())
 
 
-def test_an_empty_directory_is_waiting_too(tmp_path: Path) -> None:
-    # A directory with nothing in it is nothing extracted, not a partial one.
-    existing = tmp_path / "dialogue"
-    existing.mkdir()
-    widget = preview.DialoguePreview()
-    widget.set_source(existing)
+def test_an_image_whose_box_will_not_decode_is_waiting_and_names_the_box() -> None:
+    image = synthetic_image()
+    # A stored container of the wrong length where the 128 box's container lives.
+    blob = webfoot_lz.build_stored(bytes(preview.SURFACE_BYTES // 10))
+    offset = preview.BOX_ART[128]
+    image[offset:offset + len(blob)] = blob
+    widget = pane(bytes(image), "shot.gba", "A")
     assert widget.state() == "waiting"
-    assert widget.missing() == preview.PARTS
+    assert widget.missing()[0].startswith("the box art at 0x71A6C")
+    assert not (canvas_colours(widget) & engine_colours()), \
+        "a failed box decode drew something anyway"
 
 
-def test_a_partly_filled_directory_is_incomplete_and_names_the_absent_parts(
-        tmp_path: Path) -> None:
-    partial = build_extraction(tmp_path / "dialogue")
-    (partial / "rules.md").unlink()
-    (partial / "box.png").unlink()
-    widget = preview.DialoguePreview()
-    widget.set_source(partial)
-    assert widget.state() == "incomplete"
-    assert set(widget.missing()) == {"rules.md", "box.png or box.bin"}
-    assert widget.source_name() == "incomplete"
-
-
-def test_a_ready_widget_names_its_source(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    widget = preview.DialoguePreview()
-    widget.set_source(full)
-    assert widget.state() == "ready"
+def test_a_ready_pane_paints_the_engines_own_surface() -> None:
+    image = bytes(synthetic_image())
+    widget = pane(image, "shot.gba", "A")
+    assert widget.state() == "ready", widget.missing()
     assert widget.missing() == ()
-    assert widget.source_name() == preview.GAMEDATA.as_posix()
+    assert widget.source_name() == "shot.gba"
+    assert widget.sizeHint().width() == preview.SURFACE_WIDTH + 2 * MARGIN
+    palette = preview.decode_palette(image)
+    canvas = shot(widget)
+    x, y = preview.TEXT_ORIGIN
+    assert canvas.pixelColor(MARGIN + x, MARGIN + y).name() == \
+        QColor(*palette[preview.DEFAULT_INK]).name()
+    assert canvas.pixelColor(MARGIN + x + GLYPH_ADVANCE, MARGIN + y).name() == \
+        QColor(*palette[BOX_FILLS[128]]).name()
 
 
-def test_the_renderer_draws_the_box_and_the_glyphs(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    data = preview.load_data(full)
-    image = preview.render_line(data, "BC")
-    assert (image.width(), image.height()) == (32, 24)
-    # 'B' is codepoint 0x42 and tile 1 (red); 'C' is 0x43 and tile 2 (green). The
-    # render resolves the codepoint through the width table, not the tile index.
-    assert image.pixelColor(3, 3).name() == QColor("#FF0000").name()
-    assert image.pixelColor(GLYPH + 3, 3).name() == QColor("#00FF00").name()
-    # 'A' is codepoint 0x41 with width 8 and tile 0, which this sheet leaves blank:
-    # a codepoint with a width and no art advances and paints nothing.
-    blank = preview.render_line(data, "A")
-    assert blank.pixelColor(3, 3).name() == QColor("#112233").name()
-    # The box art is under everything the glyphs did not cover.
-    assert image.pixelColor(31, 23).name() == QColor("#112233").name()
+def test_the_portrait_operand_selects_which_box_is_drawn() -> None:
+    image = bytes(synthetic_image())
+    widget = pane(image, "shot.gba", "A")
+    palette = preview.decode_palette(image)
+    assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[128]]).name()
+    widget.set_portrait(0x3F)
+    assert shot(widget).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[144]]).name()
 
 
-def test_the_second_line_follows_the_line_stride(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    build_metrics(full, origin=(2, 1), stride=10, columns=2)
-    data = preview.load_data(full)
-    image = preview.render_line(data, "BCD")
-    # Two columns, so 'BCD' wraps to 'BC' and 'D'. 'D' is codepoint 0x44 and tile
-    # 3 (blue), and it draws on the second line: one stride below the origin.
-    assert image.pixelColor(2 + 3, 1 + 10 + 3).name() == QColor("#0000FF").name()
+def test_a_record_the_box_cannot_hold_is_limited_and_draws_nothing() -> None:
+    widget = pane(bytes(synthetic_image()), "shot.gba", "A" * 200)
+    assert widget.state() == "limited"
+    assert widget.missing() == (preview.SCROLL_RULE,)
+    assert widget.ready() is False
+    assert not (canvas_colours(widget) & engine_colours()), \
+        "the limited state drew part of a window it refuses to guess"
 
 
-def test_scaling_is_integer_and_nearest_neighbour_only(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    data = preview.load_data(full)
-    one = preview.render_line(data, "\x01", scale=1)
-    two = preview.render_line(data, "\x01", scale=2)
-    assert two.size() == one.size() * 2
-    # Every 2x2 block of the scaled image is one pixel of the 1x image: that is
-    # what nearest-neighbour means, and a fractional stretch would break it.
-    for y in range(one.height()):
-        for x in range(one.width()):
-            source = one.pixelColor(x, y).name()
+def test_the_pane_scales_by_whole_pixels_and_never_in_between() -> None:
+    image = bytes(synthetic_image())
+    small = pane(image, "shot.gba", "A" * 120)
+    large = preview.DialoguePreview()
+    large.resize(2 * preview.SURFACE_WIDTH + 2 * MARGIN,
+                 2 * preview.SURFACE_HEIGHT + 2 * MARGIN)
+    large.set_image(image, "shot.gba")
+    large.set_text("A" * 120)
+    one, two = shot(small), shot(large)
+    # Every 2x2 block is one pixel of the 1x render: a fractional stretch breaks this.
+    for y in range(preview.SURFACE_HEIGHT):
+        for x in range(preview.SURFACE_WIDTH):
+            source = one.pixel(MARGIN + x, MARGIN + y)
             for dy in range(2):
                 for dx in range(2):
-                    assert two.pixelColor(2 * x + dx, 2 * y + dy).name() == source
+                    assert two.pixel(MARGIN + 2 * x + dx, MARGIN + 2 * y + dy) == source
 
 
-def test_render_refuses_without_the_data() -> None:
-    with pytest.raises(ValueError):
-        preview.render_line(preview.DialogueData(missing=preview.PARTS), "hello")
+def test_the_pane_repaints_as_the_text_changes_and_only_then() -> None:
+    widget = pane(bytes(synthetic_image()), "shot.gba", "A")
+    first = pixels(widget)
+    assert pixels(widget) == first
+    widget.set_text("AA")
+    assert pixels(widget) != first
+    # A trailing space advances the cursor and draws nothing, which is the engine's
+    # own rule for a space: the surface is the one for the text without it.
+    widget.set_text("A ")
+    assert pixels(widget) == first
 
 
-# --- the validation harness ---------------------------------------------------
+# --- the pane the window actually builds --------------------------------------
 
 
-def test_compare_reports_the_count_and_the_first_difference() -> None:
-    left = QImage(4, 2, QImage.Format.Format_ARGB32)
-    left.fill(QColor("#000000"))
-    right = QImage(left)
-    assert preview.compare(left, right) == (0, None)
-    right.setPixelColor(2, 1, QColor("#FFFFFF"))
-    assert preview.compare(left, right) == (1, (2, 1))
-    smaller = QImage(2, 2, QImage.Format.Format_ARGB32)
-    count, first = preview.compare(left, smaller)
-    assert count == left.width() * left.height()
-    assert first == (0, 0)
+def lined(model) -> app_session.Session:
+    """A real session in the LINES view over one fixture's own records.
+
+    Only the image BYTES are the preview's synthetic ones: a text fixture carries no
+    font descriptor and no box art, so the pane would have nothing to decode.
+    """
+    return app_session.Session(replace(model, image=bytes(synthetic_image())),
+                               cutters_from_pool=False)
 
 
-def test_the_harness_is_empty_and_says_so_when_the_data_is_absent(tmp_path: Path) -> None:
-    absent = tmp_path / "no-gamedata"
-    assert preview.harness(absent) == ()
-    assert preview.references(absent) == ()
+def test_the_context_pane_hands_the_preview_the_image_it_opened(tmp_path: Path) -> None:
+    """The wiring the preview cannot test on its own: the image in, the portrait in."""
+    _bytes, model = simple(tmp_path)
+    session = lined(model)
+    panel = contextpane.ContextPane(theme.active_theme(), theme.metrics(QAPP))
+    row = session.rows_of(app_session.LINES)[0]
+    panel.set_line(session, row)
+    panel.set_preview_state(row.text)
+    assert panel.preview.state() == "ready", panel.preview.missing()
+    assert panel.preview.source_name() == model.path.name
+    palette = preview.decode_palette(session.model.image)
+    # The box on screen is the one this record's own portrait selects, which is what
+    # says the operand reached the preview rather than being dropped on the way.
+    portrait = session.portraits.get(row.target or row.key)
+    operand = None if portrait is None else portrait.operand
+    assert shot(panel.preview).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[preview.box_for(operand)]]).name()
 
 
-def test_the_harness_compares_every_declared_capture(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    captures = full / "captures"
-    captures.mkdir()
-    (captures / "line-1.json").write_text(json.dumps({"line": "\x01"}), encoding="utf-8")
-    data = preview.load_data(full)
-    preview.render_line(data, "\x01").save(str(captures / "line-1.png"))
-    results = preview.harness(full)
-    assert len(results) == 1
-    assert results[0].name == "line-1"
-    assert results[0].matches
-    assert (results[0].differing, results[0].first) == (0, None)
+def test_the_context_pane_passes_the_records_portrait_operand_to_the_preview(
+        tmp_path: Path) -> None:
+    with appearances():
+        model = open_image(speaking_image("A"), tmp_path)
+    session = lined(model)
+    panel = contextpane.ContextPane(theme.active_theme(), theme.metrics(QAPP))
+    row = session.rows_of(app_session.LINES)[0]
+    operand = session.portraits.get(row.target or row.key)
+    assert operand is not None, "the fixture carries no portrait, so this proves nothing"
+    panel.set_line(session, row)
+    assert panel.preview.state() == "ready", panel.preview.missing()
+    palette = preview.decode_palette(session.model.image)
+    assert shot(panel.preview).pixelColor(MARGIN, MARGIN).name() == \
+        QColor(*palette[BOX_FILLS[144]]).name()
 
 
-def test_the_harness_reports_a_mismatch_rather_than_passing_it(tmp_path: Path) -> None:
-    full = build_extraction(tmp_path / "dialogue")
-    captures = full / "captures"
-    captures.mkdir()
-    (captures / "line-1.json").write_text(json.dumps({"line": "\x01"}), encoding="utf-8")
-    wrong = QImage(32, 24, QImage.Format.Format_ARGB32)
-    wrong.fill(QColor("#123456"))
-    wrong.save(str(captures / "line-1.png"))
-    results = preview.harness(full)
-    assert len(results) == 1
-    assert not results[0].matches
-    assert results[0].differing > 0
-    assert results[0].first is not None
-
-
-@pytest.mark.skipif(preview.harness() == () and not preview.dialogue_directory().is_dir(),
-                    reason=("no extracted dialogue data and no captures in "
-                            f"{preview.GAMEDATA.as_posix()}; the harness needs both the "
-                            "RE Lab's extraction and its reference mGBA captures, which "
-                            "are ignored build/ paths and are never committed"))
-def test_the_real_captures_match_the_real_render() -> None:
-    results = preview.harness()
-    assert results, "the data and the captures were both present, so nothing should be empty"
-    for result in results:
-        assert result.matches, (result.name, result.differing, result.first)
+def test_the_context_pane_clears_the_preview_when_no_line_is_selected(tmp_path: Path) -> None:
+    _bytes, model = simple(tmp_path)
+    session = lined(model)
+    panel = contextpane.ContextPane(theme.active_theme(), theme.metrics(QAPP))
+    panel.set_line(session, session.rows_of(app_session.LINES)[0])
+    assert panel.preview.ready()
+    panel.set_line(None, None)
+    assert panel.preview.state() == "waiting"
+    assert panel.preview.missing() == ("an open image",)

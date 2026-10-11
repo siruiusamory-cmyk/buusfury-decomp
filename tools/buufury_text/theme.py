@@ -75,10 +75,10 @@ TOKENS: dict[str, tuple[str, str]] = {
     "state_refused": ("#7A2E8A", "#E59AEF"),
     "state_base_changed": ("#5A4FB5", "#B7A9FF"),
     # The dialogue preview is the one surface that shows the GAME rather than the
-    # application, so its four tokens are the same in both modes.
+    # application, so its own tokens are the same in both modes. The box art and the
+    # ink index come from the image the reader opened, so they are not tokens: the
+    # screen behind the box and the marker around it are the application's.
     "preview_screen": ("#0B0F14", "#0B0F14"),
-    "preview_box": ("#F8F8F8", "#F8F8F8"),
-    "preview_ink": ("#101418", "#101418"),
     "preview_marker": ("#8A8F96", "#8A8F96"),
 }
 
@@ -140,8 +140,6 @@ class Theme:
     state_refused: str
     state_base_changed: str
     preview_screen: str
-    preview_box: str
-    preview_ink: str
     preview_marker: str
 
 

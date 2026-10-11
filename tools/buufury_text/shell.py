@@ -472,7 +472,12 @@ class Shell(QMainWindow):
         self.detail_label.setText(name)
         self.context.set_line(self.session, line)
         self.context.set_address(name)
-        self.context.set_preview_state(text)
+        # The preview draws the RECORD, not the row, because that is what the box holds:
+        # a record split by the game's own line break is one page of up to four lines,
+        # and showing one row of it would show a fraction of what the reader will see.
+        # The record's pending text carries every row's edit in it.
+        self.context.set_preview_state(
+            self.session.pending_text(line.target) if line.target else "")
         if self._editor_key != key:
             self._editor_key = key
             self.editor.set_line(line, state, meter, differs, reason,

@@ -5,8 +5,8 @@ Three kinds of case, and the difference between them matters:
 * a SYNTHETIC image, built here at test time, drives the renderer's own rules - the
   column order, the fitter, the ink escape, the surface size, the refusal to guess a
   scroll window - with no ROM and with no game data committed;
-* the CANONICAL corpus is rendered and compared PIXEL FOR PIXEL against the RE Lab
-  validator's ink model, which is vendored below rather than imported, so the
+* the CANONICAL corpus is rendered and compared INK PIXEL FOR INK PIXEL against the RE
+  Lab validator's ink model, which is vendored below rather than imported, so the
   comparison is one measured layout rule written twice by two sessions;
 * the native 240x160 captures found under a sibling tree's build directory are located,
   their ink read off the frame, and compared with the render for the same record.
@@ -35,8 +35,9 @@ from tools.webfoot.formats import rgb_png, webfoot_lz
 CAPTURE_WIDTH = 240
 CAPTURE_HEIGHT = 160
 BOX_FILLS = {144: 0x11, 128: 0x22}
-#: A portrait operand either exists or it does not, and that is what picks the box.
-PORTRAIT_FOR = {144: 1, 128: None}
+#: The portrait operand that selects each layout limit, so a case can ask for either box:
+#: measured, the operand 7 takes the second layout and every other operand the first.
+PORTRAIT_FOR = {144: 1, 128: 7}
 #: The reference's own tolerance on an ink count, from `dialogue_validate.py`.
 INK_TOLERANCE = 3
 #: Every advance in the synthetic font, so 16 pixels hold four glyphs.
@@ -47,35 +48,70 @@ FONT_TABLE = 0x100
 # --- the reference: the validator's ink model, vendored -----------------------
 #
 # Copied from `tools/research/dialogue_validate.py` (`_advance_positions` and the word
-# wrap it performs) on `origin/ticket/dialogue-preview-validation-2`, commit
-# 44a2093037a81deb4340bae3395d390586c28223, read 2026-10-11. That tool reproduced 12 of
+# wrap it performs) at commit f9a4117d4c3727eff75e6347bbb68947972c9bb8, read 2026-10-11:
+#
+#     git show f9a4117d4c3727eff75e6347bbb68947972c9bb8:tools/research/dialogue_validate.py
+#
+# That commit is on `origin/master` and on `origin/ticket/dialogue-preview-validation-2`,
+# so either remote ref fetches it. The branch tip has since moved to
+# 3bf6a2f9cd8686c4a661cc40e6d638169995c51f, whose change to that file is in other
+# functions and leaves this one byte for byte as copied here. That tool reproduced 12 of
 # the 13 native captures pixel-exactly. Nothing below is adapted except the three
 # placement constants, which are read from `preview` so that both implementations are
-# held to the same measurement, and the `font` annotation, which is this tool's own
-# reader. Copying rather than importing is the point: the layout rule is then written
-# twice, once per session, against the same engine.
+# held to the same measurement, the `font` annotation, which is this tool's own reader,
+# and the control units, which the engine gives a meaning the copied word wrap does not.
+# Copying rather than importing is the point: the layout rule is then written twice, once
+# per session, against the same engine.
+
+
+def _reference_paragraphs(text: str) -> list[str]:
+    """The record's text as the reference reads it, one element per line's worth of text.
+
+    The copied word wrap treats `0x08`, `0x0A` and `0x0B` as ordinary characters, so the
+    engine's meaning for them is applied first: `0x08` consumes its own operand and draws
+    nothing, `0x0B` ends the record and `0x0A` starts a new line.
+    """
+    paragraphs = [""]
+    position = 0
+    while position < len(text):
+        if text[position] == "\x08":
+            position += 2
+            continue
+        if text[position] == "\x0b":
+            break
+        if text[position] == "\x0a":
+            paragraphs.append("")
+        else:
+            paragraphs[-1] += text[position]
+        position += 1
+    return paragraphs
+
+
+def _reference_lines(font, text: str, wrap: int) -> list[str]:
+    """The reference's own lines: its word wrap, applied to each paragraph in turn."""
+    lines: list[str] = []
+    for paragraph in _reference_paragraphs(text):
+        current = ""
+        current_width = 0
+        for word in paragraph.split(" "):
+            word_width = sum(font.advance(ord(character)) for character in word)
+            space = font.advance(ord(" "))
+            if current and current_width + space + word_width > wrap:
+                lines.append(current)
+                current, current_width = word, word_width
+            else:
+                current += (" " if current else "") + word
+                current_width += (space if len(current) > len(word) else 0) + word_width
+        if current:
+            lines.append(current)
+    return lines
 
 
 def _advance_positions(font, text: str, wrap: int) -> list[list[tuple[int, int]]]:
     """The ink pixels each character contributes, in drawing order, wrapped as the engine wraps."""
-    lines: list[str] = []
-    current = ""
-    current_width = 0
-    for word in text.split(" "):
-        word_width = sum(font.advance(ord(character)) for character in word)
-        space = font.advance(ord(" "))
-        if current and current_width + space + word_width > wrap:
-            lines.append(current)
-            current, current_width = word, word_width
-        else:
-            current += (" " if current else "") + word
-            current_width += (space if len(current) > len(word) else 0) + word_width
-    if current:
-        lines.append(current)
-
     per_character: list[list[tuple[int, int]]] = []
     y = preview.TEXT_ORIGIN[1]
-    for line in lines:
+    for line in _reference_lines(font, text, wrap):
         x = preview.TEXT_ORIGIN[0]
         for character in line:
             glyph = font.glyph(ord(character))
@@ -95,22 +131,17 @@ def _a_word_wider_than_the_limit(font, text: str, limit: int) -> bool:
     """Whether one run of non-space characters is wider than the engine's own limit.
 
     The copied reference guards its break with `if current and ...`, so a run wider than
-    the limit goes on a line by itself and overruns. The engine does not do that: its
-    fitter returns WITHOUT advancing when it overflows and has seen no space, read from
-    the image's own code at `0x0803DE6A`:
-
-        if (param_3 < iVar4) {          // the width so far exceeds the limit
-            if (puVar5 == 0) return;    // no space was seen: stop where it is
-            param_4[1] = puVar5;        // otherwise rewind to the last space
-            param_4[2] = uVar6;
-            return;
-        }
-
-    So a run wider than the limit is broken INSIDE the run, and the reference is not a
-    model of that branch. The two are not compared there, and the records are counted.
+    the limit goes on a line by itself and overruns. The engine does not do that: the
+    fitter at `0x0803DE6A` returns WITHOUT advancing when it overflows and has seen no
+    space, the `break_cursor is None` branch transcribed in
+    `tools/research/dialogue_wrap_sim.py` (`fit_line`) and stated in the wrap policy of
+    `docs/research/DIALOGUE_EXPANSION_TOKEN_DESIGN.md`, section 6. So a run wider than the
+    limit is broken INSIDE the run, and the reference is not a model of that branch. The
+    two are not compared there, and the pairs are counted.
     """
     return any(sum(font.advance(ord(character)) for character in word) > limit
-               for word in text.split(" "))
+               for paragraph in _reference_paragraphs(text)
+               for word in paragraph.split(" "))
 
 
 def reference_surface(art: bytes, per_character: list[list[tuple[int, int]]]) -> bytes | None:
@@ -128,6 +159,20 @@ def reference_surface(art: bytes, per_character: list[list[tuple[int, int]]]) ->
                 return None
             surface[y * preview.SURFACE_WIDTH + x] = preview.DEFAULT_INK
     return bytes(surface)
+
+
+#: A surface with no art on it, so an ink pixel is visible whatever index painted it.
+BLANK = bytes(preview.SURFACE_BYTES)
+
+
+def ink_positions(surface: bytes) -> set[int]:
+    """The flat positions a drawn surface holds ink at, whatever index that ink is."""
+    return {position for position, value in enumerate(surface) if value}
+
+
+def reference_positions(per_character: list[list[tuple[int, int]]]) -> set[int]:
+    """The flat positions the reference's own ink pixels land at."""
+    return {y * preview.SURFACE_WIDTH + x for pixels in per_character for x, y in pixels}
 
 
 # --- a synthetic image, built here --------------------------------------------
@@ -213,7 +258,9 @@ def test_the_box_is_an_engine_surface_at_the_engines_own_size() -> None:
 
 
 def test_the_box_is_chosen_from_the_record_portrait() -> None:
-    assert preview.box_for(None) == 128
+    # Measured: only the operand 7 takes the second layout, and every other the first.
+    assert preview.box_for(7) == 128
+    assert preview.box_for(None) == 144
     assert preview.box_for(0x3F) == 144
 
 
@@ -288,14 +335,14 @@ def test_a_record_wider_than_the_box_is_reported_and_never_windowed() -> None:
     image = bytes(synthetic_image())
     font, art = preview.decode_font(image), preview.decode_box(image, 128)
     # 128 pixels hold 32 glyphs, so 200 glyphs need seven lines and the box holds four.
-    result = preview.render(font, art, "A" * 200)
+    result = preview.render(font, art, "A" * 200, PORTRAIT_FOR[128])
     assert result.problem, "a record the box cannot hold was rendered anyway"
     assert result.surface == b""
     assert result.drawn is False
     assert result.lines == 7
     assert result.limit == 128
     # Four lines exactly is still rendered: the refusal is only about the window.
-    fits = preview.render(font, art, "A" * 128)
+    fits = preview.render(font, art, "A" * 128, PORTRAIT_FOR[128])
     assert fits.drawn is True
     assert fits.lines == 4
 
@@ -353,52 +400,66 @@ def corpus() -> tuple[str, ...]:
 
 
 def test_the_renderer_matches_the_validator_over_the_whole_corpus() -> None:
-    """Every record the box can hold, at both layout limits, pixel for pixel.
+    """Every record the box can hold, at both layout limits, ink pixel for ink pixel.
 
-    A record the box cannot hold is the scroll case and is counted, not compared: the
-    rule that moves the window is not established, and comparing a guessed window with a
-    measurement would prove nothing. A record carrying a unit below 0x20 is counted
-    separately: the reference prices that unit as one advance and the engine does
-    something else with it, so the two models are not expected to agree there.
+    The reference is adapted to the engine's own control units here, so a record carrying
+    one is compared rather than counted. A record the renderer itself refuses is counted
+    with the reason it states. A record whose run of non-space characters is wider than
+    the limit is counted too: the reference does not model the branch the engine takes
+    there. Two surfaces that differ only in the ink INDEX a `0x08` escape selected are
+    held to their ink positions, which is the part of the layout the reference models.
     """
     image = canonical_rom_bytes()
     font = preview.decode_font(image)
     arts = {limit: preview.decode_box(image, limit) for limit in preview.LAYOUT_LIMITS}
     texts = corpus()
     assert texts, "the canonical image holds no dialogue records"
+    total = len(texts) * len(preview.LAYOUT_LIMITS)
     exact = 0
-    limited = 0
-    controls = 0
-    oversized = 0
+    inked = 0
     unbroken = 0
+    oversized = 0
+    limited = 0
+    refused: Counter[str] = Counter()
     failures: list[str] = []
     for text in texts:
         units = preview.units_of(text)
         for limit in preview.LAYOUT_LIMITS:
-            lines = preview.wrap(font, units, limit)
-            if len(lines) > preview.LINES_PER_PAGE:
-                limited += 1
+            drawn = preview.render(font, arts[limit], text, PORTRAIT_FOR[limit])
+            if not drawn.drawn:
+                # The scroll case by the count this test can take itself, anything else the
+                # renderer refuses by the reason it states.
+                if len(preview.wrap(font, units, limit)) > preview.LINES_PER_PAGE:
+                    limited += 1
+                else:
+                    refused[drawn.problem] += 1
                 continue
-            mine = preview.paint(font, arts[limit], units, lines)
             if _a_word_wider_than_the_limit(font, text, limit):
                 unbroken += 1
                 continue
-            expected = reference_surface(arts[limit], _advance_positions(font, text, limit))
+            per_character = _advance_positions(font, text, limit)
+            expected = reference_surface(arts[limit], per_character)
             if expected is None:
                 oversized += 1
                 continue
-            if mine == expected:
+            if drawn.surface == expected:
                 exact += 1
                 continue
-            if any(unit < 0x20 for unit in units):
-                controls += 1
+            lines = preview.wrap(font, units, limit)
+            if ink_positions(preview.paint(font, BLANK, units, lines)) \
+                    == reference_positions(per_character):
+                inked += 1
                 continue
-            differing = sum(1 for left, right in zip(mine, expected) if left != right)
+            differing = sum(1 for left, right in zip(drawn.surface, expected)
+                            if left != right)
             failures.append(f"limit {limit}: {differing} pixel(s) differ for {text[:48]!r}")
-    summary = (f"{len(texts)} record(s): {exact} compared and exact, {limited} too long for the "
-               f"box, {oversized} that the reference runs past the box, {unbroken} carrying a "
-               f"run wider than the limit, {controls} carrying a unit the reference prices "
-               f"differently")
+    summary = (f"{len(texts)} record(s), {total} (record, limit) pair(s): {exact} compared and "
+               f"exact pixel for pixel, {inked} compared and exact at their ink positions with "
+               f"another ink index selected, {unbroken} counted for a run of non-space "
+               f"characters wider than the limit, {oversized} counted for the reference "
+               f"running past the box, {limited} counted for needing more lines than the box "
+               f"holds, {sum(refused.values())} refused by the renderer itself: "
+               + ", ".join(f"{count} {reason}" for reason, count in sorted(refused.items())))
     assert not failures, (f"{summary}; the renderer and the reference disagree:\n"
                           + "\n".join(failures[:10]))
     assert exact >= 50, f"too little was compared: {summary}"
@@ -514,6 +575,27 @@ def cumulative_ink(font, text: str) -> list[int]:
     return counts
 
 
+def revealed_lines(font, text: str, limit: int,
+                   prefix: int) -> tuple[tuple[int, int], ...]:
+    """The engine's own line spans, cut where the reference's reveal prefix falls.
+
+    The reference prices one advance per character it keeps and drops the space it wrapped
+    on, so `prefix` counts characters, not units, and cutting the engine's spans at that
+    number instead cuts a multi-line reveal short. The reference's characters are the
+    source's own, in order, with some dropped, so one walk over both maps the prefix onto
+    the unit it ends at.
+    """
+    units = preview.units_of(text)
+    cut = 0
+    for character in "".join(_reference_lines(font, text, limit))[:prefix]:
+        while cut < len(units) and units[cut] != ord(character):
+            cut += 1
+        assert cut < len(units), (text, prefix, character)
+        cut += 1
+    return tuple((start, min(stop, cut))
+                 for start, stop in preview.wrap(font, units, limit) if start < cut)
+
+
 def identify(font, counts: list[tuple[str, list[int]]], engine: frozenset[tuple[int, int]],
              art: bytes, limit: int) -> tuple[str, int, bytes] | None:
     """The record, reveal prefix and expected surface that explain the engine's ink.
@@ -597,19 +679,27 @@ def test_the_native_captures_match_the_render() -> None:
     assert texts, "the canonical image holds no dialogue records"
     reproduced: list[str] = []
     reported: list[str] = []
+    disagreed: list[str] = []
+    examined = 0
+    located = 0
+    multiline = 0
     for directory in directories:
         for path in sorted(directory.glob("shot-*.png")):
+            examined += 1
             frame, width, height, _alpha = rgb_png.decode_truecolour(path.read_bytes())
             if (width, height) != (CAPTURE_WIDTH, CAPTURE_HEIGHT):
                 reported.append(f"{path.name}: {width}x{height}, not a native frame")
                 continue
             hit = None
+            argued = None
+            boxed = False
             for limit in preview.LAYOUT_LIMITS:
                 x, y, matches = locate_box(frame, rgbs[limit])
                 if matches < preview.SURFACE_BYTES * 0.8:
                     reported.append(f"{path.name}: no box at limit {limit} "
                                     f"(best art match {matches})")
                     continue
+                boxed = True
                 engine = engine_ink(frame, rgbs[limit], x, y)
                 found = identify(font, counts, engine, arts[limit], limit)
                 if found is None:
@@ -625,20 +715,31 @@ def test_the_native_captures_match_the_render() -> None:
                                     f"limit {limit}, and the box holds "
                                     f"{preview.LINES_PER_PAGE}")
                     continue
-                shown = tuple((start, min(stop, prefix))
-                              for start, stop in lines if start < prefix)
+                shown = revealed_lines(font, text, limit, prefix)
                 mine = preview.paint(font, arts[limit], units, shown)
                 if mine == expected:
-                    hit = (limit, x, y, matches, len(engine), prefix)
+                    hit = (limit, x, y, matches, len(engine), prefix, len(shown))
                     break
                 differing = sum(1 for left, right in zip(mine, expected) if left != right)
-                reported.append(f"{path.name}: limit {limit}, {differing} pixel(s) differ "
-                                f"between the render and the engine's own ink")
+                argued = (f"{path.name}: limit {limit}, {differing} pixel(s) differ between "
+                          f"the render and the engine's own ink, over a {prefix}-character "
+                          f"prefix in {len(shown)} line(s)")
+            if boxed:
+                located += 1
             if hit is None:
+                if argued is not None:
+                    disagreed.append(argued)
                 continue
+            if hit[6] > 1:
+                multiline += 1
             reproduced.append(f"{path.name}: limit {hit[0]}, box at {hit[1]},{hit[2]} "
                               f"({hit[3]} art pixels), {hit[4]} ink pixels over a "
-                              f"{hit[5]}-character prefix, reproduced pixel for pixel")
+                              f"{hit[5]}-character prefix in {hit[6]} line(s), reproduced "
+                              f"pixel for pixel")
+    print(f"{examined} frame(s) examined, {located} with a located box, {len(reproduced)} "
+          f"reproduced pixel for pixel, {multiline} of those over more than one line")
     print("\n".join(reproduced + reported))
+    assert not disagreed, ("a record in the corpus was identified from the frame's own ink "
+                           "and the render does not reproduce it:\n" + "\n".join(disagreed))
     assert reproduced, ("no capture on this machine was located and held to the render; "
                         "report:\n" + "\n".join(reported[:10]))

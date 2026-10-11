@@ -118,14 +118,17 @@ reviewer can tell whether a file was replaced:
 | `preview-render-light.png` | `7fe29feedb5d8aace46c4e9139ce91132a4690ec9605c0ba669bf7467f3cf113` |
 | `preview-render-dark-150.png` | `ba5bcd945bb2e30e34e4a46162f30339a1fc57b4d9e3d1fb2f9cb026541174c5` |
 | `preview-limited-dark.png` | `8348fe49ed38a124d746ad4dd513405b3475904b6d380bd6450ed43c894c6040` |
+| `preview-slot-dark.png` | `78aafb640604844edbd5cac7de4ca2e7e43eec8de74dcdd13572fe94a6f7df0a` |
 
 The first three preview captures are the game's own box drawn in the pane, with the
 record's text in the game's own font over the game's own art, at 100 percent in dark and
 light and at 150 percent. The fourth is the honest refusal: a record the box cannot hold,
 saying how many lines it needs, how many the box holds, and which rule is missing, with no
-box drawn at all.
+box drawn at all. The fifth is the other refusal, reached from the Names and bios tab: a
+string slot, which the engine never draws in a dialogue box, says
+`no box is drawn, because this row is a string slot`.
 
-Twenty-seven colour-vision conversions accompany them: each capture through deuteranopia,
+Thirty colour-vision conversions accompany them: each capture through deuteranopia,
 protanopia and tritanopia.
 
 **The conversions are a scripted simulator, not Color Oracle.** Color Oracle 1.3 is
@@ -449,19 +452,29 @@ RE Lab's copied model does not.
 
 **What it is proved against.** Two cases, both from the canonical image at test time. The
 counts are (record, limit) PAIRS, not records: 2,805 records at two limits is 5,610 pairs,
-and the first review of this section found the earlier wording calling them records.
+and the first review of this section found the earlier wording calling them records. Both
+cases were made stronger after that review, and both numbers below are the ones the tests
+themselves print.
 
 | Case | What it compared | Result |
 | --- | --- | --- |
-| The RE Lab's own model, whole corpus | 5,610 (record, limit) pairs | 3,899 exact, no disagreement, and the comparable remainder compared by adapting the reference rather than counted |
-| Native 240x160 captures | the box located in each frame, its ink pixels against the render | every frame whose box was located and whose record the corpus carries is reproduced pixel for pixel, asserted rather than assumed |
+| The RE Lab's own model, whole corpus | 5,610 pairs, with the vendored reference adapted to the engine's control units: the `0x08` escape and its operand stripped, each `0x0A` a new line, `0x0B` the record's end | 3,964 exact pixel for pixel, 150 exact at their ink positions where a `0x08` escape selects another ink index the reference does not model, 14 carrying a run wider than the limit, 0 running past the box, 1,097 needing more lines than the box holds, 385 refused for keeping text after their own `0x0B`. No compared pair disagrees |
+| Native 240x160 captures | the box located in each frame, its ink pixels against the render | 68 frames examined, 34 with a located box, 11 reproduced pixel for pixel, 0 located-and-identified frames disagreeing, one of the 11 over more than one line |
 
-Counted rather than compared, because the two models are not models of the same thing
-there, and each is stated rather than hidden: 1,097 pairs whose record the box cannot hold
-(the scroll case, refused), 335 the reference runs past the box, 26 carrying a run wider
-than the limit (the branch the code above settles), and the pairs carrying a control unit,
-which the test now compares by adapting the reference to the engine's own unit handling
-instead of counting.
+The capture case had an instrument bug of its own, which the review caught. It applied the
+reference's reveal prefix, which counts the characters it kept and drops the space it
+wrapped on, to UNIT positions, which cut every multi-line reveal short.
+`shot-3000.png` in `log1-remake-fv4/build/friendv3-coldboot/friendv4a-box2` was reported as
+3 pixels different; with the prefix mapped onto the unit it lands on, the frame reproduces
+over a 93-character prefix in 4 lines, 1,194 ink pixels, exactly the reviewer's own
+measurement. The case now asserts the outcome rather than that something was reproduced,
+and that assertion was checked by re-patching the old cut in and requiring the case to
+fail: it does, naming the frame and the 3 pixels.
+
+The 600 pairs the old predicates counted on this tree (253 carrying a control unit, 347 the
+unadapted reference ran past the box) are now compared rather than counted where they can
+be: 65 exact pixel for pixel, 150 exact at their ink positions, 385 refused for the soft
+end, 0 differing.
 
 **The two documents disagree about the 20 px reduction.** `DIALOGUE_EXPANSION_TOKEN_DESIGN.md`
 states that a reduction to 124 and 108 is handed in on the canonical image; the seam

@@ -177,9 +177,11 @@ function Start-MgbaSession {
         $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
         if (-not $extraScript) { $extraScript = $null }
     }
+    $extraScriptMissing = $false
     if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
         Write-Host "extra script SKIPPED: LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
         $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+        $extraScriptMissing = $true
         $extraScript = $null
     }
     $extraScriptSha = $null
@@ -187,7 +189,9 @@ function Start-MgbaSession {
     if ($extraScriptDisabled) {
         $extraScriptNote = 'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
     }
-    else {
+    elseif (-not $extraScriptMissing) {
+        # Only a genuinely unset variable says "not set": a set-but-missing path keeps its own note, which
+        # the earlier version overwrote two lines later (the review's finding).
         $extraScriptNote = 'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
     }
     if ($extraScriptDisabled) {

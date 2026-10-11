@@ -47,6 +47,48 @@ def atom_ranges(text: str) -> tuple[tuple[int, int], ...]:
     return tuple(ranges)
 
 
+def document_length(text: str) -> int:
+    """How many characters the document holds for `text`: one per control unit."""
+    return len(text) - len(atom_ranges(text))
+
+
+def document_positions(text: str) -> tuple[int, ...]:
+    """For every document position, the canonical index it stands for.
+
+    A control unit is two characters in the canonical string and one in the document,
+    so a document position is not a string position. Measured on a line carrying one
+    unit: typing at the end of `Line one .. end` produced `Line one .. enXYZd`, one
+    character early per unit before the caret, and a unit at the very end refused the
+    keystroke and said nothing at all. This mapping is what both directions use.
+    """
+    starts = {start for start, _end in atom_ranges(text)}
+    positions = []
+    canonical = 0
+    for _ in range(document_length(text) + 1):
+        positions.append(canonical)
+        if canonical < len(text):
+            canonical += 2 if canonical in starts else 1
+    return tuple(positions)
+
+
+def canonical_span(text: str, position: int, removed: int) -> tuple[int, int]:
+    """A document position and document length as a canonical index and length."""
+    positions = document_positions(text)
+    last = len(positions) - 1
+    start = positions[max(0, min(position, last))]
+    end = positions[max(0, min(position + removed, last))]
+    return start, end - start
+
+
+def document_index(text: str, canonical: int) -> int:
+    """The document position a canonical index stands for, so a caret lands right."""
+    best = 0
+    for index, value in enumerate(document_positions(text)):
+        if value <= canonical:
+            best = index
+    return best
+
+
 #: What a refusal says, in the user's own words. One place, so every edit route
 #: reports the same sentence for the same refusal.
 CONTROL_CODE = "that paste carries a control code, which cannot be typed"
@@ -266,22 +308,24 @@ class ChipTextEdit(QTextEdit):
         position, removed = cursor.selectionStart(), len(cursor.selectedText())
         if removed == 0:
             position, removed = cursor.position(), 1
-        return refusal_reason(self._serialized, position, removed, "")
+        start, length = canonical_span(self._serialized, position, removed)
+        return refusal_reason(self._serialized, start, length, "")
 
     def _apply(self, position: int, removed: int, inserted: str) -> None:
-        result = protected_edit(self._serialized, position, removed, inserted)
+        start, length = canonical_span(self._serialized, position, removed)
+        result = protected_edit(self._serialized, start, length, inserted)
         if result == self._serialized:
-            reason = refusal_reason(self._serialized, position, removed, inserted)
+            reason = refusal_reason(self._serialized, start, length, inserted)
             if reason:
                 self.refused.emit(reason)
             return
-        self._reload(result, min(len(result), position + len(inserted)))
+        self._reload(result, min(len(result), start + len(inserted)))
         self.edited.emit(result)
 
     def _reload(self, text: str, caret: int) -> None:
         self.set_text(text)
         cursor = QTextCursor(self.document())
-        cursor.setPosition(min(caret, len(text)))
+        cursor.setPosition(min(document_index(text, caret), document_length(text)))
         self.setTextCursor(cursor)
 
     def _on_contents_change(self, position: int, removed: int, added: int) -> None:
@@ -289,24 +333,26 @@ class ChipTextEdit(QTextEdit):
 
         Qt has already changed the document by the time this arrives, so the
         allowed value is recomputed from the canonical string and the document is
-        left alone when it already reads that way.
+        left alone when it already reads that way. Its positions are the document's,
+        so they are converted before they reach the string functions.
         """
         if self.isReadOnly() or self._rebuilding:
             return
         inserted = _paragraphs(self._inserted(added))
-        result = protected_edit(self._serialized, position, removed, inserted)
+        start, length = canonical_span(self._serialized, position, removed)
+        result = protected_edit(self._serialized, start, length, inserted)
         if result == self._serialized:
             # The reason is emitted whenever there is one, not only when Qt reports a
             # change: measured, a refusal Qt reports with `added == 0` said nothing.
-            reason = refusal_reason(self._serialized, position, removed, inserted)
+            reason = refusal_reason(self._serialized, start, length, inserted)
             if added or removed:
-                self._reload(self._serialized, position + len(inserted))
+                self._reload(self._serialized, start + len(inserted))
             if reason:
                 self.refused.emit(reason)
             return
         self._serialized = result
         if self.document().toPlainText() != _presentation(result):
-            self._reload(result, position + len(inserted))
+            self._reload(result, start + len(inserted))
         self.edited.emit(result)
 
     def _inserted(self, added: int) -> str:

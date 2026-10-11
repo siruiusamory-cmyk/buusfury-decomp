@@ -19,7 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
 from PySide6.QtCore import QMimeData, Qt  # noqa: E402
-from PySide6.QtGui import QColor, QImage, QKeyEvent, QPainter  # noqa: E402
+from PySide6.QtGui import QColor, QImage, QKeyEvent, QPainter, QTextCursor  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTextEdit  # noqa: E402
 
 from tools.buufury_text import chips, preview, theme  # noqa: E402
@@ -144,6 +144,47 @@ def test_a_document_with_a_control_unit_lays_out_and_round_trips() -> None:
     # Reading the laid-out size is what forces the two overrides to run.
     assert editor.document().size().width() > 0
     assert editor.document().size().height() > 0
+    editor.close()
+
+
+@pytest.mark.parametrize("text", [
+    "Line one end",
+    "Line one \x08\x0B end",
+    "\x08\x0BLine one end",
+    "\x08\x0Bmid\x08\x0Btail",
+    "Line one end\x08\x0B",
+])
+def test_typing_at_the_end_of_a_line_with_a_control_unit_lands_at_the_end(text) -> None:
+    """A document position is not a string position, and the difference is one each.
+
+    A control unit is two characters in the canonical string and one character in the
+    document, so handing a document position to a string function puts the edit one
+    character early for every unit before the caret. Measured on the shipping widget
+    before this case existed: typing at the end of `Line one <unit> end` produced
+    `Line one <unit> enXYZd`, the two-unit line landed two characters early, and a line
+    ENDING in a unit refused the keystroke and said nothing at all.
+    """
+    editor = chips.ChipTextEdit()
+    editor.resize(300, 90)
+    editor.show()
+    editor.set_text(text)
+    cursor = editor.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    editor.setTextCursor(cursor)
+    said: list[str] = []
+    editor.refused.connect(said.append)
+    editor.insertPlainText("XYZ")
+    assert editor.serialized() == text + "XYZ"
+    assert said == []
+    # The same line still refuses an insertion INTO an atom, and says why.
+    if chips.atom_ranges(text):
+        start, _end = chips.atom_ranges(text)[0]
+        caret = editor.textCursor()
+        caret.setPosition(chips.document_index(text + "XYZ", start + 1))
+        editor.setTextCursor(caret)
+        editor.insertPlainText("!")
+        assert editor.serialized() == text + "XYZ"
+        assert said == [chips.BREAKS_LOCK]
     editor.close()
 
 

@@ -8,6 +8,8 @@ real one.
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,7 +22,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from tests.text_fixture import SPACES, build, lowered_record_floor  # noqa: E402
 from tools.buufury_text import app as app_module  # noqa: E402
-from tools.buufury_text import chips, settings, theme  # noqa: E402
+from tools.buufury_text import chips, renamedialog, settings, theme  # noqa: E402
 from tools.buufury_text import shell as shell_module  # noqa: E402
 from tools.buufury_text import session as text_session  # noqa: E402
 from tools.buufury_text.session import (  # noqa: E402
@@ -151,6 +153,20 @@ def shrink(window) -> str:
     return key
 
 
+def accent_share(button, applied) -> float:
+    """The share of a button's own pixels the theme's accent fills.
+
+    A property can be set and a stylesheet can still paint over it, so this reads
+    the pixels the widget actually drew rather than the property it was given.
+    """
+    shot = button.grab().toImage()
+    accent = theme.color(applied, "accent")
+    total = shot.width() * shot.height()
+    filled = sum(1 for y in range(shot.height()) for x in range(shot.width())
+                 if shot.pixelColor(x, y) == accent)
+    return filled / total if total else 0.0
+
+
 def test_the_move_notice_action_selects_the_records_that_carry_the_row(window) -> None:
     """The notice's one action has to land somewhere, and it lands in the list.
 
@@ -210,6 +226,32 @@ def test_the_window_builds_and_every_pane_is_reachable(window) -> None:
     assert window.export_action.toolTip() == shell_module.EXPORT_EMPTY
 
 
+def test_a_status_message_hands_the_row_identity_back_on_the_next_selection(window) -> None:
+    """A message is transient; the row's identity, offset and span are not.
+
+    Measured: eight `showMessage` call sites and no `clearMessage` in the package,
+    so the last message, up to a whole `export_reason` sentence, took the status
+    bar's left region and kept the selected row's own numbers hidden until the
+    window closed.
+    """
+    first = select_first(window)
+    assert window.detail_label.isVisible() is True
+
+    window.prompt_export()  # nothing to export, so the reason takes the region
+
+    assert window.statusBar().currentMessage() == shell_module.EXPORT_EMPTY
+    assert window.detail_label.isVisible() is False
+
+    second = next(row.key for row in window.pane.rows() if row.key != first)
+    assert window.pane.select_key(second)
+
+    assert window.statusBar().currentMessage() == ""
+    assert window.detail_label.isVisible() is True
+    assert window.detail_label.text().startswith(second)
+    assert "container 0x" in window.detail_label.text()
+    assert "span " in window.detail_label.text()
+
+
 def test_one_edit_is_one_undo_step_and_undo_empties_the_edit_list(window) -> None:
     key = select_first(window)
     loaded = window.session.line(key).text
@@ -241,6 +283,44 @@ def test_a_two_record_rename_batch_is_one_undo_step(window) -> None:
     assert window.stack.redoText() == "rename 2 record(s)"
     window.stack.redo()
     assert all("Lazuli" in window.session.pending_text(hit.key) for hit in hits)
+
+
+def test_the_edit_menu_opens_the_rename_dialog_and_the_batch_is_one_undo_step(
+        window, monkeypatch) -> None:
+    """The per-occurrence flow is reachable, and it is one action.
+
+    An audit measured `prompt_rename` with no caller in the package or the tests,
+    and the dialog itself instantiated only by tests, so the default control, the
+    per-hit answers and the Apply count were all unreachable. The two names are
+    collected by the dialog that already asks for them.
+    """
+    opened: list = []
+    original = shell_module.renamedialog.RenameDialog
+
+    class Recording(original):
+        def exec(self) -> int:
+            opened.append(self)
+            self.old_edit.setText("Inner")
+            self.new_edit.setText("Lazuli")
+            return self.DialogCode.Accepted
+
+    monkeypatch.setattr(shell_module.renamedialog, "RenameDialog", Recording)
+    assert window.rename_action.isEnabled() is True
+
+    window.rename_action.trigger()
+
+    assert len(opened) == 1, "the Edit menu's own item opens the rename dialog"
+    dialog = opened[0]
+    assert dialog.session is window.session
+    assert (dialog.old_edit.text(), dialog.new_edit.text()) == ("Inner", "Lazuli")
+    assert not hasattr(shell_module, "QInputDialog"), "both names come from the dialog"
+    hits = window.session.rename_hits("Inner")
+    assert hits, "the fixture's two occurrences reach the dialog"
+    assert window.stack.undoText() == f"rename {len(hits)} record(s)"
+    assert all("Lazuli" in window.session.pending_text(hit.key) for hit in hits)
+    window.stack.undo()
+    assert window.session.edited_keys() == ()
+    assert all("Inner" in window.session.line(hit.key).text for hit in hits)
 
 
 def test_clear_this_edit_is_one_undo_step(window) -> None:
@@ -298,6 +378,40 @@ def test_an_export_clears_the_unsaved_marker_and_reports_its_digest(window, tmp_
     assert window.windowTitle().startswith("* ") is False
     assert str(report["output_sha256"])[:12] in window.export_label.text()
     assert dialogs.warnings == []
+
+
+def test_a_primary_button_paints_the_accent_fill(window, tmp_path, monkeypatch) -> None:
+    """Each primary action is the accent-filled control, measured on the paint.
+
+    An audit measured the Export button's palette write retargeted by the widget's
+    own stylesheet: all 2,128 interior pixels were the raised surface with no accent
+    anywhere in the region, `setAutoFillBackground` read False at runtime, and
+    nothing in the package ever set the role that the theme's own rule fills.
+    """
+    dialogs = _Dialogs()
+    monkeypatch.setattr(shell_module, "QMessageBox", dialogs)
+    shrink(window)
+    applied = window.theme
+
+    assert window.export_button.isEnabled() is True
+    assert accent_share(window.export_button, applied) > 0.5
+
+    out = tmp_path / "edited.gba"
+    assert window.export_to(out) is not None
+    summary = window.last_export
+    assert accent_share(summary.close_button, applied) > 0.5
+
+    rename = renamedialog.RenameDialog(window.session, parent=window)
+    rename.old_edit.setText("Inner")
+    rename.new_edit.setText("Lazuli")
+    rename.show()
+    try:
+        assert rename.apply_button.isEnabled() is True
+        assert accent_share(rename.apply_button, applied) > 0.5
+        # The measurement separates a filled control from a plain one.
+        assert accent_share(rename.cancel_button, applied) < 0.5
+    finally:
+        rename.close()
 
 
 def test_open_exported_says_when_no_handler_is_registered(window, tmp_path,
@@ -413,6 +527,8 @@ def test_the_window_without_an_image_shows_what_to_do(qapp, tmp_path, monkeypatc
         assert empty.windowTitle() == "no image - Buu's Fury Text Editor"
         assert empty.export_action.isEnabled() is False
         assert empty.open_project_action.toolTip() == shell_module.NO_IMAGE_TIP
+        assert empty.rename_action.isEnabled() is False
+        assert empty.rename_action.toolTip() == shell_module.NO_IMAGE_TIP
     finally:
         empty.close()
 
@@ -481,6 +597,67 @@ def test_a_corrupt_settings_file_answers_the_defaults(qapp, working, tmp_path,
 
 
 # --- start-up ----------------------------------------------------------------
+
+
+#: A whole session in a child process, because the defect appears when the window
+#: outlives the event loop: teardown deletes the QActions and the stack still
+#: emits. In-process the shell is collected before shutdown, which hides it.
+_EXIT_PROBE = '''
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, sys.argv[1])
+
+from PySide6.QtWidgets import QApplication
+
+from tests.text_fixture import SPACES, build, lowered_record_floor
+from tools.buufury_text import settings, theme
+from tools.buufury_text import shell as shell_module
+from tools.buufury_text import session as text_session
+
+payload = bytearray(SPACES)
+encoded = "Circle\\x08\\x03 here".encode("utf-16le")
+payload[0x20:0x20 + len(encoded)] = encoded
+image = build(payloads={1: bytes(payload)}, records=[(1, 0x20, len(encoded))])
+folder = Path(tempfile.mkdtemp())
+(folder / "working.gba").write_bytes(image)
+app = QApplication.instance() or QApplication([])
+applied = theme.apply_theme(app, theme.MODE_DARK)
+settings.directory = lambda: folder / "config"
+with lowered_record_floor():
+    session = text_session.open_image(folder / "working.gba",
+                                      canonical=folder / "working.gba",
+                                      cutters_from_pool=False)
+shell = shell_module.Shell(session, applied, theme.MODE_DARK)
+shell.show()
+key = shell.pane.rows()[0].key
+shell.pane.select_key(key)
+shell.show_line(key)
+shell.editor.new.editor.setText("typed words")
+print("typed into", key, "stack", shell.stack.count())
+'''
+
+
+def test_the_exit_is_clean_after_typing_into_a_row_carrying_a_control_unit(
+        tmp_path) -> None:
+    """The window survives into interpreter shutdown without a stray traceback.
+
+    Measured 3 runs out of 3: stderr carried `RuntimeError: libshiboken: Internal
+    C++ object (PySide6.QtGui.QAction) already deleted` from the stack's
+    `cleanChanged`, connected through a context-free lambda that nothing
+    disconnects when the actions die.
+    """
+    script = tmp_path / "exit_probe.py"
+    script.write_text(_EXIT_PROBE, encoding="utf-8")
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run([sys.executable, str(script), str(root)],
+                            capture_output=True, text=True, cwd=root, timeout=300)
+    assert result.returncode == 0, result.stderr
+    assert "typed into" in result.stdout and "stack 1" in result.stdout
+    assert "already deleted" not in result.stderr, result.stderr
 
 
 def test_smoke_exits_zero(qapp, tmp_path, monkeypatch) -> None:

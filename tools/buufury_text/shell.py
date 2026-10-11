@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -247,11 +246,8 @@ class Shell(QMainWindow):
         self.export_label.setPalette(ink)
         self.export_button = QPushButton("Export")
         self.export_button.setMinimumHeight(self.metrics.field_height)
-        palette = self.export_button.palette()
-        palette.setColor(QPalette.ColorRole.Button, theme.color(self.theme, "accent"))
-        palette.setColor(QPalette.ColorRole.ButtonText, theme.color(self.theme, "accent_ink"))
-        self.export_button.setPalette(palette)
-        self.export_button.setAutoFillBackground(True)
+        # The one accent-filled control in the window, from the theme's own rule.
+        self.export_button.setProperty("role", "primary")
         self.export_button.clicked.connect(self.prompt_export)
         status_bar.addWidget(self.detail_label)
         status_bar.addPermanentWidget(self.export_label)
@@ -277,6 +273,9 @@ class Shell(QMainWindow):
         self.redo_action.setShortcut(QKeySequence("Ctrl+Y"))
         edit_menu.addAction(self.undo_action)
         edit_menu.addAction(self.redo_action)
+        edit_menu.addSeparator()
+        self.rename_action = self._add(edit_menu, "&Rename occurrences...", "",
+                                       self.prompt_rename)
         edit_menu.addSeparator()
         self.clear_action = self._add(edit_menu, "Clear this &edit", "", self.clear_edit)
         self.clear_all_action = self._add(edit_menu, "Clear &all edits", "",
@@ -307,11 +306,14 @@ class Shell(QMainWindow):
 
         self._needs_image = (
             self.open_project_action, self.save_action, self.export_action,
-            self.clear_action, self.clear_all_action, self.find_action,
+            self.rename_action, self.clear_action, self.clear_all_action,
+            self.find_action,
             *self.view_actions.actions(), *self.order_actions.actions(),
             *self.group_actions.actions(), *self.pane_actions.values(),
         )
-        self.stack.cleanChanged.connect(lambda _clean: self._update())
+        # A bound method, so Qt drops the connection with this window instead of
+        # leaving a context-free lambda to fire at a QAction that is already gone.
+        self.stack.cleanChanged.connect(self._update)
 
     def _add(self, menu, label: str, shortcut: str, slot) -> QAction:
         """One menu item, with its real shortcut written beside it."""
@@ -452,6 +454,9 @@ class Shell(QMainWindow):
         line = self.session.line(key)
         if line is None:
             return
+        # A message belongs to the action that raised it and hides the row's own
+        # identity while it stands, so landing on another row releases it.
+        self.statusBar().clearMessage()
         self._key = key
         text = self.session.pending_text(key)
         state = self.session.state(key)
@@ -717,17 +722,18 @@ class Shell(QMainWindow):
     # --- rename --------------------------------------------------------------
 
     def prompt_rename(self) -> None:
+        """The rename surface, from the Edit menu: the dialog collects both names.
+
+        A rename is one action, so the two names are typed in the dialog that also
+        answers every occurrence; asking for half of it in a modal prompt first
+        would be a second action.
+        """
         if not self._need_image():
             return
-        old, accepted = QInputDialog.getText(self, "Rename occurrences", "Text to replace:")
-        if not accepted or not old:
-            return
-        new, accepted = QInputDialog.getText(self, "Rename occurrences", f"Replace {old} with:")
-        if not accepted or not new:
-            return
-        dialog = renamedialog.RenameDialog(self.session, old, new, self)
+        dialog = renamedialog.RenameDialog(self.session, parent=self)
         if dialog.exec() == dialog.DialogCode.Accepted:
-            self.apply_rename(old, new, dialog.chosen())
+            self.apply_rename(dialog.old_edit.text(), dialog.new_edit.text(),
+                              dialog.chosen())
 
     # --- focus, and the small print ------------------------------------------
 

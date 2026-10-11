@@ -282,6 +282,7 @@ class RenameDialog(QDialog):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.apply_button = QPushButton()
         self.apply_button.setDefault(True)
+        self.apply_button.setProperty("role", "primary")
         self.apply_button.clicked.connect(self.accept)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.reject)

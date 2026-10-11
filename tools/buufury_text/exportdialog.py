@@ -68,6 +68,7 @@ class ExportDialog(QDialog):
         form.addRow(QLabel("SHA-256"), digest_row)
         self.close_button = QPushButton("Close")
         self.close_button.setDefault(True)
+        self.close_button.setProperty("role", "primary")
         self.close_button.clicked.connect(self.accept)
         buttons = QHBoxLayout()
         buttons.addStretch(1)

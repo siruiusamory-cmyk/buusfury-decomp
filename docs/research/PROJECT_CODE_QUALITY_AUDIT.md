@@ -836,6 +836,20 @@ attributed to a separate probe.
 > helpers in `tools/export/`, **atlas atomic publication** (CQA-13),
 > `.gitignore` coverage for stray exported artefacts, and the remaining
 > unguarded write sites across the wider repository. Details:
+
+> **RE-MEASURED 2026-10-11 (CQA-10-UNGUARDED-OCCURRENCES-001 closeout).** The
+> unguarded-writers half was re-verified against head rather than trusted, and this finding's line
+> numbers have drifted completely: the overwrite refusal it cites at `write.py:513-516` now lives in
+> `write.ensure_new_destination`, and the quoted address is `ChunkProvenance.to_json`. Two writers
+> were still unguarded. The first, `tools/webfoot/cli.py`, `_write_occurrences` (the
+> `tileset census --occurrences` destination), created its parent directory and wrote its file with
+> no destination predicate at all; it now applies the project's four existing policies in
+> `emit_image`'s order and before anything is created, fixed and merged in
+> CQA-10-UNGUARDED-OCCURRENCES-001. The second, the `graphics export` branch of the same module,
+> enforced only the source-alias rule from CQA-01 and could still overwrite an existing artefact or
+> write inside a protected input directory; it is CQA-10-UNGUARDED-GRAPHICS-EXPORT-001. The
+> repository/raw-input-root policy and the eight copied helpers in `tools/export/` are unchanged and
+> remain open, as is `.gitignore` coverage for the provenance manifests and a stray exported PNG.
 > The text below is the finding **as originally recorded** and is not restated.
 
 - **Location:** `write.py:508-516` (file equality + existence);
@@ -901,6 +915,20 @@ attributed to a separate probe.
   before removing the previous output.
 - **Before ROM-capacity/allocation work?** unknown - yes if capacity artefacts
   reuse `save_authored_image`.
+
+> **RE-MEASURED 2026-10-11 (CQA-10-UNGUARDED-OCCURRENCES-001 closeout).** Two of this finding's
+> three policies are now reconciled and the third is a stated decision rather than a defect. The
+> Build tab no longer deletes before it rebuilds: `build_panel.py` moves the occupied artefacts
+> aside with `os.replace`, restores them if the rebuild fails, and removes the backups only after
+> success, and `test_build_panel_overwrite.py` pins that a failed rebuild keeps the previous output.
+> `authored_image` no longer replaces blindly: it refuses a destination that is a protected input or
+> a copy of the canonical image, and the policy is stated in `save_authored_image`'s own docstring,
+> "An existing output is replaced, but only when it is not itself a copy of the canonical image".
+> The remaining divergence is therefore the remediation's own suggestion, an explicit `overwrite`
+> argument refusing by default, which was not adopted: replacing an ordinary existing artefact is
+> deliberate and documented, and the two dangerous cases are refused by content and by path.
+> Treated as reconciled, not open. Every line number in this finding has drifted; the citations
+> point at `write.py`'s emit path, which no longer holds the refusal at the quoted address.
 
 #### CQA-12 [MEDIUM] The Build path emits no provenance document, although the recorded delivery journey describes manifest publication as part of the shared contract
 
@@ -1545,7 +1573,7 @@ must-fix set above; a finding's text is never edited, only annotated in place.
 | CQA-08 | HIGH | **CLOSED** - CQA-07-08-WORKBENCH-PERF-AND-CI-001. CI installed only the `dev` extra, so whole PySide6 and capstone test modules collapsed to one skip line each while the job stayed green. Measured baseline: **14 PySide6 modules** (superseding the earlier estimate of 13 carried by an earlier narrative and the CQA-05/06 record) plus 3 capstone modules, holding 215 and 88 collected tests, so 303 portable tests never executed. The existing `test-sdk` job now installs `-e ".[dev,workbench,research]"`, carries a declared `research = ["capstone>=5"]` extra, sets `QT_QPA_PLATFORM=offscreen` at job level and installs the Qt runtime package list derived from the PySide6 wheels' own ELF dependencies. The guard is `REQUIRED_GUI_MODULES` in `tests/gates.py` plus the `tests/conftest.py` session guard that fails CI when a required module contributes no test, warning rather than failing outside CI, with `tests/unit/test_ci_gui_surface.py` as an independent second net. Result: invalid environment skips 17 to 0, 0 stale skips, 12 legitimate conditional skips remaining, and final CI 2549 passed / 12 skipped / 0 failed / 0 errors with zero whole-module collapses, against a 2227/27 baseline; the CQA-05/06 and CQA-07 regressions execute at 38 and 15 tests with none skipped. Mutations M3/M4 PASS.   |
 | CQA-09 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was "the canonical-EOF straddle guard is load-bearing and has zero test coverage", whose remediation was one synthetic case: 10-byte base, 16-byte generated output, a 1-byte allocator span, and a 2-byte change at offset 9 expecting `ChangeValidationError` matching `straddles canonical EOF`. That case is in `tests/unit/test_rom_expansion.py` verbatim, with its positive control (the same authorized span accepts a non-straddling change) and mutation M4 (deleting the guard fails that case and leaves the other eleven tests passing, reproducing the invisibility the finding measured). The finding contains no other requirement, so it is **CLOSED**, not partial. |
 | CQA-12 | HIGH | **CLOSED** - ROM-CAPACITY-AND-ALLOCATION-001 Checkpoint B, re-read against the original finding at the milestone closeout. The finding was that the Build path emits no provenance document; its remediation was two parts: "have `_run_build` write the manifest beside the image by default (or have `build_project` do so unless told otherwise), **and add a reopen/`identify` assertion for the produced file**". Part one is Checkpoint B (default sibling publication through `authored_image.manifest_path_for`, CLI default with explicit `--manifest`/`--no-manifest`, Workbench inheritance, `*.dragonbyte.json` gitignore coverage, mutation M6). Part two is satisfied by the assertions that read the produced document back and check `base.sha256`, `base.profile_id` and `output.sha256`, and by Checkpoint D's reopen proof. The finding's own owner correction excluded "the Workbench cannot reopen its own output" as documented accepted behaviour, and that is not reopened. **CLOSED**. |
-| CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: OPEN**. Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
+| CQA-10 | MEDIUM | **PARTIAL** - **ALLOCATION-RELEVANT PORTION: CLOSED**; **REMAINDER: PARTLY CLOSED 2026-10-11**. The `_write_occurrences` writer is guarded and merged (CQA-10-UNGUARDED-OCCURRENCES-001); the `graphics export` writer is CQA-10-UNGUARDED-GRAPHICS-EXPORT-001; the exporter output policy and the eight copied helpers in `tools/export/`, and `.gitignore` coverage for the provenance manifests and a stray exported PNG, remain open. **See the re-measurement note under C.3 CQA-10, which also records that this finding's line numbers have drifted.** Confirmed rather than extended at Checkpoint B: a default build publishes through the shared `emit_image` transaction, so it inherits the source-alias refusal, the new-destination refusal, staged publication, rollback and manifest association, and a pre-existing sibling manifest is refused before anything is written. Confirmed again at Checkpoint D, whose derivative was emitted through that transaction. The remainder - the overwrite-policy divergence, the repository/raw-input-root output policy and the eight copied helpers in `tools/export/`, atlas atomic publication, and the remaining unguarded write sites - is exporter/output-policy hygiene and does not block the milestone. **No code change was made for this item.** |
 | CQA-42 | LOW | **CLOSED** - TEST-SPEED-001. `scripts/test.ps1:28` now reads `& $Python -m pytest -m fast @args`, so the repository's single test entry point runs the portable gate by default and passes every extra argument through to pytest; the missing-venv guard, the `$ErrorActionPreference` setting and the trailing `& $Python -m tools.webfoot --help` smoke are unchanged. `README.md:213-216` and `docs/testing.md:57-78` state the new default and the pass-through, and the finding is annotated in place at `:1338`. Added to this table beyond the original must-fix set, with its recorded LOW severity; it closes a developer wall-clock defect, not a shipped property. |
 
 Remaining pre-capacity blockers, in the dependency-aware groups above:
@@ -1572,6 +1600,8 @@ Remaining pre-capacity blockers, in the dependency-aware groups above:
 > CQA-01, CQA-02, CQA-03, CQA-04, CQA-09, CQA-12 and CQA-15 remain closed and are
 > not reopened. Every statement above that CQA-05 or CQA-06 is active, deferred or
 > still to be done describes an earlier moment and is not restated.
+> **BACKLOG STATE RE-MEASURED 2026-10-11.** The must-fix set is empty and every CRITICAL and HIGH row above is closed. CQA-11 was re-measured and found reconciled: the Build tab no longer deletes before it rebuilds, `authored_image` refuses a canonical copy and a protected path, and the overwrite policy is stated in that function's docstring, so the only unadopted part is the remediation's suggested `overwrite` argument. Two unguarded writers were found in `tools/webfoot/cli.py` and are being closed one ticket at a time. The items in `SHOULD FIX BEFORE MAJOR NEW AUTHORING FEATURES` have NOT been re-measured yet except CQA-13's neighbours; treat their citations as pointers to re-verify rather than as current state, because CQA-10's and CQA-11's addresses had drifted completely.
+
 
 > **ANNOTATED at the CQA-07-08-WORKBENCH-PERF-AND-CI-001 closeout
 > (2026-09-25).** CQA-07 and CQA-08 are now **CLOSED**; see their rows above and

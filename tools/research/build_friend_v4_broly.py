@@ -59,7 +59,20 @@ BROLY_STAT_RECORD = 10          # map 390 slot 0 carries stat selector 10: Broly
 
 #: (label, file offset, expected word, new word). The expected word is what the canonical ROM holds,
 #: so a base image that disagrees refuses instead of writing over something else.
+#:
+#: THE LAST TWO ARE THE ONES THAT COVER THE WHOLE GAME. Every path that names a sprite id - the three
+#: map-object families, the event-resource scripts of both types (a type-4 payload is a packed
+#: bitstream, and three of them spawn sprite 73 in cutscenes), the attached-actor native, and any
+#: constant passed from code - reaches the definition through the character table word at
+#: `0x086B6BB4 + 4*id`, which is then dereferenced. Repointing ids 73 and 98 at Broly's own definition
+#: therefore covers every draw site by construction, including any site a census did not enumerate,
+#: which is why a script payload never has to be re-packed at all.
+BROLY_DEFINITION = 0x086A9B78
 SITES = (
+    ("character table id 73 -> Broly definition (covers every 73 draw site)", 0x6B6CD8,
+     0x086AB24C, BROLY_DEFINITION),
+    ("character table id 98 -> Broly definition (covers every 98 draw site)", 0x6B6D3C,
+     0x086AC6A4, BROLY_DEFINITION),
     ("map207 slot4 sprite (ship fight, sprite 73 -> 38)", 0x7F09C, 73, 38),
     ("map207 slot4 stat selector (Dabura 18 -> Broly 10)", 0x7F094, 18, BROLY_STAT_RECORD),
     ("map32 slot42 sprite (other Dabura fight, 73 -> 38)", 0x74AE0, 73, 38),
@@ -204,6 +217,15 @@ def main() -> int:
     if len(broly_now) != 6:
         problems += 1
         print(f"FAIL after the swap {len(broly_now)} slot(s) carry sprite 38, expected 6")
+    # The character-table entries are what make the claim corpus-complete: every id that anything
+    # still names must resolve to Broly own definition, or a cutscene or spawn the census did not
+    # enumerate would still draw the old actor.
+    import struct as _struct
+    for sprite_id in (38, 73, 98):
+        resolved = _struct.unpack_from("<I", out, 0x6B6BB4 + 4 * sprite_id)[0]
+        if resolved != BROLY_DEFINITION:
+            problems += 1
+            print(f"FAIL sprite id {sprite_id} resolves to 0x{resolved:08X}, not Broly definition")
     for entry in after:
         if entry["family"] == 0x0800FD55 and entry["stat"] != BROLY_STAT_RECORD:
             problems += 1

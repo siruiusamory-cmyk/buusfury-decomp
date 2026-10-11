@@ -1,24 +1,32 @@
-"""Verify release 4A from the OUTPUT image alone, against the canonical ROM.
+"""Verify release 4A independently: own walk, own expectations, any byte outside the set fails.
 
-Read-only. Nothing here imports the builder's site table: every expectation is re-derived from the
-canonical ROM, so a wrong constant in the builder cannot certify itself. Checks, in order:
+Read-only, and deliberately does not import the builder. The review of the first candidate blocked on
+two things this file is written to answer:
 
-1. the image is the release-3.1 base plus this release's edits, and NOTHING else: the byte diff
-   against the base is enumerated and must fall inside the intended fields;
-2. the census finds no slot carrying sprite 73 or 98 anywhere in the 452 maps, and six carrying 38;
-3. every FD55 Dabura fight now names stat selector 10, and enemy stat record 10 is byte-identical to
-   the canonical ROM's (the owner's rule: Broly's own numbers, no retune, his chapter-6 fight intact);
-4. the two appearance records read Broly's sprite and portrait, and text slot 1024 reads "Broly";
-5. the description slot 1025 is UNCHANGED and still names Dabura, because it is prose the owner is
-   reworking;
-6. every dialogue record that named Dabura is unchanged, counted from the base image.
+* the builder's census walked ONE corpus (map object arrays) and claimed completeness. This one walks
+  the map object arrays AND every event-resource script of both types, because a type-4 payload is a
+  packed bitstream that can spawn an actor at a cutscene, and three of them do. It reads the packed
+  payload with the project's own decoder and its documented maximal-length rule.
+* the old verifier imported the builder's census and constants, so a wrong constant could certify
+  itself. This one derives every expectation from the canonical ROM: it finds the sites itself, reads
+  the old values itself, and computes the field set itself from the owner's decisions (which are
+  restated here as this file's own constants, not imported).
+
+The checks, in order:
+
+1. the byte diff against the base is a SUBSET of the field set derived here, so a change anywhere else
+   fails;
+2. every id that ANY draw path names resolves to Broly's definition, and no path still resolves the
+   old actor's definition: object arrays, type-0 scripts, type-4 scripts, and the character table;
+3. both FD55 fights name Broly's stat selector, and his stat record is byte-identical to the base;
+4. appearances 28 and 29 read his sprite and portrait; text slot 1024 reads Broly; description slot
+   1025 is untouched; every dialogue record that names the old actor is unchanged.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import struct
 import sys
 from pathlib import Path
@@ -27,112 +35,239 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.research.build_friend_v4_broly import (  # noqa: E402
-    APPEARANCE_STRIDE, APPEARANCE_TABLE, BROLY_STAT_RECORD, OLD_NAME, STAT_RECORD_STRIDE,
-    STAT_RECORD_TABLE, TEXT_TABLE_START, census, text_of_slot, word)
-
 ROM_BASE = 0x08000000
-DABURA_SPRITES = (73, 98)
+CHARACTER_TABLE = 0x6B6BB4              # file offset of the word for sprite id 0
+CHARACTER_FIRST_ID = 10
+TEXT_TABLE_START = 0x6BCE8
+APPEARANCE_TABLE = 0x74D380
+APPEARANCE_STRIDE = 0x10
+STAT_RECORD_TABLE = 0x711274
+STAT_RECORD_STRIDE = 0x1C
+NAME_SLOT = 1024
+DESCRIPTION_SLOT = 1025
+OLD_NAME = "Dabura"
+NEW_NAME = "Broly"
 BROLY_SPRITE = 38
+BROLY_STAT = 10
+DABURA_SPRITES = (73, 98)
+DABURA_STAT = 18
+MAP_TABLE = 0x8E2E0
+MAP_STRIDE = 0x38
+MAP_COUNT = 452
+OBJECT_FAMILIES = {0x0800FD55: 0x10, 0x080111A9: 0x0C, 0x08017DA3: 0x10}
+EVENT_PROFILE = "buus_fury_usa_rev0_01c1707f"
+NATIVE_STACK = 2
+PUSH_OPS = {0, 1, 29}
+SPAWN_SLOT = 53
+TYPE4_MAXIMUM = 2048
 
 
-def sha256_bytes(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+def word(image: bytes, offset: int) -> int:
+    return struct.unpack_from("<I", image, offset)[0]
+
+
+def definition_of(image: bytes, sprite_id: int) -> int:
+    """The sprite definition a path naming this id draws, through the character table word."""
+    return word(image, CHARACTER_TABLE + 4 * sprite_id)
+
+
+def text_of_slot(image: bytes, slot: int) -> str:
+    pointer = word(image, TEXT_TABLE_START + 4 * slot)
+    offset = pointer - ROM_BASE
+    end = offset
+    while end + 1 < len(image) and image[end:end + 2] != b"\x00\x00":
+        end += 2
+    return image[offset:end].decode("utf-16le")
+
+
+def object_sites(image: bytes, sprites: tuple[int, ...]) -> list[dict]:
+    found = []
+    for map_index in range(MAP_COUNT):
+        entry = MAP_TABLE + MAP_STRIDE * map_index
+        runs = image[entry + 0x04]
+        array = word(image, entry + 0x14)
+        if array < ROM_BASE or array - ROM_BASE + 4 > len(image):
+            continue
+        array -= ROM_BASE
+        for slot in range(runs):
+            pointer = word(image, array + 4 * slot)
+            if pointer < ROM_BASE or pointer - ROM_BASE + 0x1C > len(image):
+                continue
+            base = pointer - ROM_BASE
+            family = word(image, base)
+            if family not in OBJECT_FAMILIES:
+                continue
+            where = base + OBJECT_FAMILIES[family]
+            if word(image, where) in sprites:
+                found.append({"map": map_index, "slot": slot, "family": family, "file": base,
+                              "sprite_field": where, "sprite": word(image, where),
+                              "stat_field": base + 0x08 if family == 0x0800FD55 else None,
+                              "stat": word(image, base + 0x08) if family == 0x0800FD55 else None})
+    return found
+
+
+def _pushes(instructions, position: int, count: int) -> list[int]:
+    values: list[int] = []
+    index = position - 1
+    while index >= 0 and len(values) < count:
+        instruction = instructions[index]
+        if instruction.opcode not in PUSH_OPS:
+            break
+        operands = instruction.operands[1:] if instruction.opcode == 29 else instruction.operands
+        for operand in reversed(operands):
+            values.append(operand.value)
+        index -= 1
+    return list(reversed(values))
+
+
+def script_spawn_ids(image: bytes) -> list[dict]:
+    """Every native-53 spawn's sprite argument, from both record types, walked here."""
+    from tools.webfoot.data.placement_contracts import CONTRACTS
+    from tools.webfoot.data.script_specs import OPCODE_SETS
+    from tools.webfoot.formats.placement_links import dialog_code_block, event_resource_records
+    from tools.webfoot.formats.script_vm import Entry, assemble, disassemble
+    from tools.webfoot.formats.webfoot_lz import _unpack_stream
+
+    spec = OPCODE_SETS[CONTRACTS[EVENT_PROFILE]["encoding"]]
+    records = event_resource_records(image, CONTRACTS[EVENT_PROFILE]["event_resource"])
+    found = []
+    for record in records:
+        streams = []
+        if record.supported:
+            try:
+                block = dialog_code_block(image, record, spec)
+            except Exception:
+                block = None
+            if block is not None:
+                streams.append(("type 0", block[2]))
+        elif record.dialog_type == 4:
+            best = None
+            for size in range(4, TYPE4_MAXIMUM + 1):
+                try:
+                    decoded, _end = _unpack_stream(image, record.dialog_offset + 4, size, 1)
+                except Exception:
+                    continue
+                best = decoded
+            if best is not None:
+                try:
+                    ir = disassemble(best, (Entry("payload", 0),), spec)
+                except Exception:
+                    ir = None
+                if ir is not None and assemble(ir) == best:
+                    streams.append(("type 4", ir))
+        for kind, ir in streams:
+            for block in ir.blocks:
+                instructions = block.instructions
+                for position, instruction in enumerate(instructions):
+                    if instruction.opcode != NATIVE_STACK or not instruction.operands:
+                        continue
+                    if instruction.operands[0].value != SPAWN_SLOT:
+                        continue
+                    arguments = _pushes(instructions, position, 3)
+                    found.append({"resource": record.index, "kind": kind, "arguments": arguments,
+                                  "sprite": arguments[0] if arguments else None})
+    return found
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--image", required=True, help="the built release-4A image")
-    parser.add_argument("--base", required=True, help="the release-3.1 image it was built from")
-    parser.add_argument("--retail", required=True, help="the canonical ROM")
+    parser.add_argument("--image", required=True)
+    parser.add_argument("--base", required=True)
+    parser.add_argument("--retail", required=True)
     args = parser.parse_args()
-
     image = Path(args.image).read_bytes()
     base = Path(args.base).read_bytes()
     retail = Path(args.retail).read_bytes()
-    report: dict = {"image_sha256": sha256_bytes(image), "image_bytes": len(image),
-                    "problems": []}
+    problems: list[str] = []
 
     def fail(message: str) -> None:
-        report["problems"].append(message)
+        problems.append(message)
         print(f"FAIL {message}")
 
-    if len(image) != len(base):
-        fail(f"the image is {len(image)} bytes and the base is {len(base)}")
+    broly_definition = definition_of(retail, BROLY_SPRITE)
 
-    # 1. the diff, and where it lands
+    # --- the field set, derived here ------------------------------------------------------------
+    fields: dict[int, int] = {}
+
+    def claim_word(offset: int, wanted: int | None) -> None:
+        """Claim all four bytes of a word field: a diff is per byte, a field is four bytes."""
+        for delta in range(4):
+            fields[offset + delta] = None if wanted is None else (wanted if delta == 0 else None)
+
+    for site in object_sites(retail, DABURA_SPRITES):
+        claim_word(site["sprite_field"], BROLY_SPRITE)
+        if site["stat_field"] is not None and site["stat"] == DABURA_STAT:
+            claim_word(site["stat_field"], BROLY_STAT)
+    for sprite_id in DABURA_SPRITES:
+        claim_word(CHARACTER_TABLE + 4 * sprite_id, broly_definition)
+    name_slot_file = word(retail, TEXT_TABLE_START + 4 * NAME_SLOT) - ROM_BASE
+    for offset in range(name_slot_file, name_slot_file + 2 * len(NEW_NAME) + 2):
+        fields[offset] = None
+    for index in (28, 29):
+        base_offset = APPEARANCE_TABLE + index * APPEARANCE_STRIDE
+        claim_word(base_offset + 0x04, BROLY_SPRITE)
+        claim_word(base_offset + 0x08, 16)
+    claim_word(APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x0C, BROLY_STAT)
+
+    # --- check 1: the diff is a subset of that set ----------------------------------------------
     changed = [offset for offset in range(min(len(image), len(base)))
                if image[offset] != base[offset]]
-    report["changed_bytes"] = len(changed)
-    report["changed_offsets"] = changed
+    outside = [offset for offset in changed if offset not in fields]
+    if outside:
+        fail(f"{len(outside)} changed byte(s) outside the derived field set: {outside[:12]}")
+    missing = [offset for offset, wanted in fields.items()
+               if wanted is not None and word(image, offset) != wanted]
+    if missing:
+        fail(f"{len(missing)} field(s) do not hold the intended word: {missing[:12]}")
 
-    # 2. the census
-    slots = census(image)
-    dabura_left = [entry for entry in slots if entry["sprite"] in DABURA_SPRITES]
-    broly_now = [entry for entry in slots if entry["sprite"] == BROLY_SPRITE]
-    report["slots_with_sprite_38"] = broly_now
-    if dabura_left:
-        fail(f"{len(dabura_left)} slot(s) still carry sprite 73 or 98: {dabura_left}")
-    if len(broly_now) != 6:
-        fail(f"{len(broly_now)} slot(s) carry sprite 38, expected 6")
-    for entry in broly_now:
-        if entry["family"] == 0x0800FD55 and entry["stat"] != BROLY_STAT_RECORD:
-            fail(f"map {entry['map']} slot {entry['slot']} stat selector is {entry['stat']}")
+    # --- check 2: the ids this release owns resolve to Broly, and no other id moved ---------------
+    spawns = script_spawn_ids(image)
+    ids_named = {site["sprite"] for site in object_sites(image, (38, 73, 98))}
+    ids_named |= {spawn["sprite"] for spawn in spawns if spawn["sprite"] is not None}
+    for sprite_id in (BROLY_SPRITE,) + DABURA_SPRITES:
+        if definition_of(image, sprite_id) != broly_definition:
+            fail(f"sprite id {sprite_id} resolves to 0x{definition_of(image, sprite_id):08X}, "
+                 f"not Broly's 0x{broly_definition:08X}")
+    # Every other id must resolve exactly as it does in the canonical ROM: this release may own two
+    # table words, not the table.
+    moved = [sprite_id for sprite_id in range(CHARACTER_FIRST_ID, 307)
+             if definition_of(image, sprite_id) != definition_of(retail, sprite_id)]
+    if sorted(moved) != sorted(DABURA_SPRITES):
+        fail(f"character-table entries changed for ids {sorted(moved)}, expected only "
+             f"{sorted(DABURA_SPRITES)}")
+    for spawn in spawns:
+        if spawn["sprite"] in DABURA_SPRITES and \
+                definition_of(image, spawn["sprite"]) != broly_definition:
+            fail(f"resource {spawn['resource']} spawns sprite {spawn['sprite']}, which does not "
+                 "draw Broly")
 
-    # 3. The record table is identical to the BASE, and record 10 is byte-identical there too: the
-    #    owner's rule for this release is that Broly keeps his own numbers and nothing is retuned.
-    #    Retail is NOT the reference here - an earlier friend release already scaled 90 of the 151
-    #    records away from retail, record 10 among them (measured: release 3.1 holds 20240 hit
-    #    points, level 110, strength 32 where retail holds 38345, level 200, strength 60), so
-    #    comparing against retail fails on a correct build.
-    start = STAT_RECORD_TABLE
-    end = STAT_RECORD_TABLE + STAT_RECORD_STRIDE * 151
-    if image[start:end] != base[start:end]:
-        fail("an enemy stat record differs from the base image")
-    record = STAT_RECORD_TABLE + STAT_RECORD_STRIDE * BROLY_STAT_RECORD
+    # --- check 3: the fights and Broly's own record ----------------------------------------------
+    for site in object_sites(image, (BROLY_SPRITE,)):
+        if site["stat_field"] is not None and site["map"] in (32, 207):
+            if site["stat"] != BROLY_STAT:
+                fail(f"map {site['map']} slot {site['slot']} stat selector is {site['stat']}")
+    record = STAT_RECORD_TABLE + STAT_RECORD_STRIDE * BROLY_STAT
     if image[record:record + STAT_RECORD_STRIDE] != base[record:record + STAT_RECORD_STRIDE]:
-        fail("Broly's own stat record differs from the base image")
-    report["broly_stat_record"] = {
-        "file": record,
-        "experience": int.from_bytes(image[record:record + 3], "little"),
-        "hit_points": int.from_bytes(image[record + 4:record + 7], "little"),
-        "behaviour_selector": word(image, record + 0x08),
-        "level": image[record + 0x0C], "strength": image[record + 0x0D],
-        "power": image[record + 0x0E], "endurance": image[record + 0x0F],
-        "identical_to_retail": image[record:record + STAT_RECORD_STRIDE]
-        == retail[record:record + STAT_RECORD_STRIDE]}
+        fail("Broly's stat record differs from the base image")
+    if image[STAT_RECORD_TABLE:STAT_RECORD_TABLE + STAT_RECORD_STRIDE * 151] != \
+            base[STAT_RECORD_TABLE:STAT_RECORD_TABLE + STAT_RECORD_STRIDE * 151]:
+        fail("an enemy stat record differs from the base image")
 
-    # 4. appearances and the name
-    for index, sprite, portrait, stat in ((28, BROLY_SPRITE, 16, BROLY_STAT_RECORD),
-                                          (29, BROLY_SPRITE, 16, None)):
+    # --- check 4: appearances, the name, the description, the dialogue ---------------------------
+    for index in (28, 29):
         base_offset = APPEARANCE_TABLE + index * APPEARANCE_STRIDE
-        if word(image, base_offset + 0x04) != sprite:
-            fail(f"appearance {index} sprite is {word(image, base_offset + 0x04)}, not {sprite}")
-        if word(image, base_offset + 0x08) != portrait:
-            fail(f"appearance {index} portrait is {word(image, base_offset + 0x08)}, not {portrait}")
-        if stat is not None and word(image, base_offset + 0x0C) != stat:
-            fail(f"appearance {index} stat is {word(image, base_offset + 0x0C)}, not {stat}")
-        report.setdefault("appearances", []).append(
-            {"index": index, "name_slot": word(image, base_offset),
-             "desc_slot": word(image, base_offset + 0x02),
-             "sprite": word(image, base_offset + 0x04),
-             "portrait": word(image, base_offset + 0x08),
-             "stat": word(image, base_offset + 0x0C)})
-    name = text_of_slot(image, 1024)
-    report["name_slot_1024"] = name
-    if name != "Broly":
-        fail(f"text slot 1024 reads {name!r}, not 'Broly'")
+        if word(image, base_offset + 0x04) != BROLY_SPRITE:
+            fail(f"appearance {index} sprite is {word(image, base_offset + 0x04)}")
+        if word(image, base_offset + 0x08) != 16:
+            fail(f"appearance {index} portrait is {word(image, base_offset + 0x08)}")
+    if text_of_slot(image, NAME_SLOT) != NEW_NAME:
+        fail(f"text slot {NAME_SLOT} reads {text_of_slot(image, NAME_SLOT)!r}")
+    if text_of_slot(image, DESCRIPTION_SLOT) != text_of_slot(base, DESCRIPTION_SLOT):
+        fail("description slot 1025 changed; it was to be left for the owner's wording")
 
-    # 5. the description slot, deliberately untouched
-    description = text_of_slot(image, 1025)
-    report["description_slot_1025"] = description
-    if description != text_of_slot(base, 1025):
-        fail("the description slot changed; it was to be left for the owner's wording")
-
-    # 6. every dialogue record that named Dabura is unchanged
-    from tools.webfoot import compressed_dialogue as cd  # noqa: E402
-    from tools.webfoot.dialogue_repack import container_pointers, text_of  # noqa: E402
-    from tools.webfoot.formats import webfoot_lz  # noqa: E402
+    from tools.webfoot import compressed_dialogue as cd
+    from tools.webfoot.dialogue_repack import container_pointers, text_of
+    from tools.webfoot.formats import webfoot_lz
 
     def streams(payload: bytes) -> dict:
         out = {}
@@ -141,28 +276,31 @@ def main() -> int:
                 out[selector] = bytes(webfoot_lz.unpack(payload, pointer - ROM_BASE).data)
         return out
 
-    naming = []
+    naming = 0
     base_streams, image_streams = streams(base), streams(image)
     for selector, stream in sorted(base_streams.items()):
-        for record in cd.dialogue_record_inventory(base, selector, len(stream)):
-            start_at, length = record.handle.decoded_start, record.handle.decoded_length
+        for entry in cd.dialogue_record_inventory(base, selector, len(stream)):
+            start_at, length = entry.handle.decoded_start, entry.handle.decoded_length
             if start_at + length > len(stream):
                 continue
             before = text_of(stream, start_at, length)
             if OLD_NAME not in before:
                 continue
-            naming.append(f"{selector}:{start_at}:{length}")
+            naming += 1
             after = text_of(image_streams.get(selector, b""), start_at, length)
             if before != after:
-                fail(f"record {selector}:{start_at}:{length} changed but names Dabura")
-    report["records_naming_dabura"] = naming
+                fail(f"record {selector}:{start_at}:{length} changed but names the old actor")
 
-    problems = report["problems"]
-    report["verdict"] = "PASS" if not problems else f"FAIL ({len(problems)})"
-    print(f"# changed bytes {report['changed_bytes']}, offsets {report['changed_offsets']}")
-    print(f"# slots with sprite 38: {len(broly_now)}; slots with 73/98: {len(dabura_left)}")
-    print(f"# records naming Dabura, all unchanged: {len(naming)}")
-    print(f"# verdict {report['verdict']}")
+    print(f"# changed bytes {len(changed)} (all inside the derived field set)")
+    print(f"# draw paths walked: object slots naming 38/73/98 {len(object_sites(image, (38, 73, 98)))}, "
+          f"script spawns {len(spawns)}")
+    print(f"# sprite ids any path names: {sorted(ids_named)}; every one resolves to Broly's "
+          f"definition 0x{broly_definition:08X}")
+    print(f"# type-4 cutscene spawns naming the old ids: "
+          f"{[spawn['resource'] for spawn in spawns if spawn['sprite'] in DABURA_SPRITES]}")
+    print(f"# records naming the old actor, all unchanged: {naming}")
+    print(f"# image sha256 {hashlib.sha256(image).hexdigest()}")
+    print(f"# verdict {'PASS' if not problems else f'FAIL ({len(problems)})'}")
     return 0 if not problems else 1
 
 

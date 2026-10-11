@@ -13,6 +13,19 @@ from tools.research.build_friend_v4_broly import (
 from tools.research.friend_v3_text_approvals import APPROVED_RELEASES
 
 
+def test_the_character_table_is_what_covers_the_whole_corpus() -> None:
+    """The two ids are repointed in the character table, which is the mechanism that covers cutscenes
+    and every spawn the census cannot enumerate; without them the three type-4 cutscene spawns that
+    push sprite 73 would still draw the old actor."""
+    labels = {label for label, _offset, _was, _now in SITES}
+    assert any("character table id 73" in label for label in labels)
+    assert any("character table id 98" in label for label in labels)
+    for label, _offset, was, now in SITES:
+        if "character table" in label:
+            assert was in (0x086AB24C, 0x086AC6A4), "does not start from the old actor definition"
+            assert now == 0x086A9B78, "must resolve to Broly own definition"
+
+
 def test_every_draw_site_moves_from_a_dabura_sprite_to_broly() -> None:
     """The census found five Dabura sites (sprite 73 four times, 98 once). Every one must be here,
     or the 'Broly everywhere' claim is false, and no site may keep a Dabura sprite."""
@@ -58,5 +71,5 @@ def test_the_name_edit_is_a_shrink_so_it_fits_in_place() -> None:
 def test_the_release_identity_is_the_approved_one() -> None:
     release = next(record for record in APPROVED_RELEASES if record.name == "release-4a")
     assert release.base_sha256 == "f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201"
-    assert release.output_sha256 == "e5d47f616114ef124ca618ea0b1961ab9751e8630862b9ee47631b08a32fcc10"
+    assert release.output_sha256 == "569f39345e14c154a7d8bd3ebc30fa436db49db393942975cd70208b8ee386b4"
     assert release.output_bytes == release.base_bytes == 10169982

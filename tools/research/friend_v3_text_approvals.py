@@ -311,18 +311,21 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         name="release-4a",
         base_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
         base_bytes=10169982,
-        output_sha256="e5d47f616114ef124ca618ea0b1961ab9751e8630862b9ee47631b08a32fcc10",
+        output_sha256="569f39345e14c154a7d8bd3ebc30fa436db49db393942975cd70208b8ee386b4",
         output_bytes=10169982,
         stages=("dabura-broly-swap",),
         notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form included. "
-              "Five draw sites take sprite 38 through the one resolver that all three map-object "
-              "families and the script operands use, so the scripts follow with no edit of their own; "
-              "the two FD55 fights take stat selector 10, Broly's own chapter-6 record, proven by map "
-              "390 slot 0; appearances 28 and 29 take Broly's sprite and portrait; text slot 1024 "
-              "reads Broly, written in place because the wording is shorter. 18 bytes change in all. "
-              "No enemy stat record, behaviour table, placement descriptor or dialogue record is "
-              "touched, and description slot 1025 still names Dabura until the owner supplies "
-              "wording.",
+              "The mechanism that makes that true rather than merely sampled is the character table: "
+              "ids 73 and 98 are repointed at Broly's own sprite definition, and every path that "
+              "names a sprite id - both map-object families, the event-resource scripts of BOTH "
+              "types including the three type-4 cutscene spawns, the attached-actor native and any "
+              "code constant - reaches the definition through that table word, so the whole corpus "
+              "follows by construction and no script payload is re-packed. The five map-object sites "
+              "additionally name 38 outright and the two FD55 fights take Broly's own stat selector "
+              "10, proven by map 390 slot 0; appearances 28 and 29 take his sprite and portrait, and "
+              "text slot 1024 reads Broly. No enemy stat record, behaviour table, placement "
+              "descriptor or dialogue record is touched; description slot 1025 still names Dabura "
+              "until the owner supplies wording.",
     ),
 )
 

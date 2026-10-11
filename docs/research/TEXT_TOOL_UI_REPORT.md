@@ -54,7 +54,7 @@ Owner's additions from the coordinator relay, all present:
 | Line-level separation, order of appearance | the line rule splits at the soft end and the line break; Appearance is the first handle site |
 | A speaker column and speaker grouping | `Speaker (by portrait)`, a filter, and a grouping whose headings are the 67 labels and the four honest gaps |
 | Group by map in map-table order | the placement route, 26 groups, ending in one `Unplaced` group whose reason line states why |
-| The in-game preview | the waiting state ships; the renderer seam and the pixel harness are in place with no fake render |
+| The in-game preview | a real render, decoded from the image the reader opened, proved pixel for pixel against native captures and against the RE Lab's own model; the scroll case states itself instead of guessing |
 
 ## 3. The design the UI was written from
 
@@ -78,12 +78,13 @@ control defect described in section 6 below.
 
 At the frozen candidate:
 
-- Focused tests: 246 passed, 1 skipped, across the theme, the dialogue preview, the
-  list, the editor, the shell, colour vision, the model, the engine and the release
-  files. Nothing was run from the full suite or `scripts/test.ps1`.
-- The one skip is the preview's capture harness, and it skips loudly: no extracted game
-  data and no reference captures exist on this machine. Claiming pixel fidelity without
-  them would be the lie the requirement forbids.
+- Focused tests: 265 passed, none skipped, across the theme, the dialogue preview, the
+  render, the list, the editor, the shell, colour vision, the model, the engine and the
+  release files. Nothing was run from the full suite or `scripts/test.ps1`.
+- The preview's two ROM-gated cases now RUN rather than skip, because the canonical image
+  is present in this worktree: 3899 pixel-for-pixel agreements with the RE Lab's own
+  model across 2805 records, and native captures reproduced pixel for pixel. What they
+  count rather than compare is stated in section 9.
 - `python -m tools.quality.public_release`: 4 products, 0 findings.
 - `python -m tools.quality.architecture`: 0 violations, 5 observations, all pre-existing
   large-module readings in the other desktop application.
@@ -100,8 +101,9 @@ At the frozen candidate:
 
 ## 5. Screenshots and colour vision
 
-Five captures of the running application: dark and light at 100 percent, dark and light
-at 150 percent, and dark at the window's minimum size. They live under the ignored
+Nine captures of the running application: dark and light at 100 percent, dark and light
+at 150 percent, and dark at the window's minimum size, which were taken before the preview
+landed, plus four of the in-game preview itself. They live under the ignored
 `build/acceptance/text-tool-ui-001/` and are not committed. Each one's SHA-256, so a
 reviewer can tell whether a file was replaced:
 
@@ -112,8 +114,18 @@ reviewer can tell whether a file was replaced:
 | `final-dark-150.png` | `d56e59b2c4700c9fe73071227797479917bb9d94282981c51e32221cd42c9c73` |
 | `final-light-150.png` | `795db31d384935caafb6fa54948b455b4a99b01d709bb810b0331622ea7b722b` |
 | `final-dark-minimum.png` | `24bbac8270ff3b8c3eef9c370ca3a5db576d6f9d2ee87b2ca1f799cd82734b76` |
+| `preview-render-dark.png` | `76ea08e68cb7f7e3663632e754fa7da97a2ec66650a397529718b8744177df19` |
+| `preview-render-light.png` | `7fe29feedb5d8aace46c4e9139ce91132a4690ec9605c0ba669bf7467f3cf113` |
+| `preview-render-dark-150.png` | `ba5bcd945bb2e30e34e4a46162f30339a1fc57b4d9e3d1fb2f9cb026541174c5` |
+| `preview-limited-dark.png` | `8348fe49ed38a124d746ad4dd513405b3475904b6d380bd6450ed43c894c6040` |
 
-Fifteen colour-vision conversions accompany them: each capture through deuteranopia,
+The first three preview captures are the game's own box drawn in the pane, with the
+record's text in the game's own font over the game's own art, at 100 percent in dark and
+light and at 150 percent. The fourth is the honest refusal: a record the box cannot hold,
+saying how many lines it needs, how many the box holds, and which rule is missing, with no
+box drawn at all.
+
+Twenty-seven colour-vision conversions accompany them: each capture through deuteranopia,
 protanopia and tritanopia.
 
 **The conversions are a scripted simulator, not Color Oracle.** Color Oracle 1.3 is
@@ -298,8 +310,54 @@ model layer produced. No new emulator run was made for the rebuild.
    it a weight step; the note's wording was corrected rather than the build.
 10. **Color Oracle was replaced by a scripted simulator** for the colour-vision
     conversions, with the reason in section 5.
+11. **The preview's box choice follows the owner's relay, not a measurement.** The seam
+    document names the two layout records and their limits but does not establish which
+    one a portrait selects. The relay says portrait to the 144 box and no portrait to the
+    128 box, that is what the code does, and the function that decides it says so in its
+    own docstring, so a reader can tell a relay from a measurement.
+12. **The changed-run underline is drawn at the font's thickness rather than a chosen
+    2 px**, because Qt exposes no underline width. Recorded at the call site.
 
-## 9. Boundaries held
+## 9. The in-game preview, and what it is proved against
+
+The pane draws the game's own dialogue box from the image the reader opened: the font
+through its 12-byte descriptor, the box art through the layout record's own container,
+and the colours through the image's own 256-entry object palette. Nothing ROM-derived is
+committed, no path is machine-specific, and the widget computes no engine value.
+
+The layout rules are the seam document's, and one of them was re-read from the image's
+own code because two models disagreed about it. `FUN_0803DE6A` accumulates each glyph's
+advance, compares the sum against the caller's limit, and on overflow either rewinds to
+the last space it saw or, when it saw no space, returns without advancing. The advance is
+the record's stored width plus one, read from the same code. A run wider than the limit is
+therefore broken inside the run, which is what this pane draws and what the RE Lab's
+copied model does not.
+
+**What it is proved against.** Two cases, both from the canonical image at test time:
+
+| Case | What it compared | Result |
+| --- | --- | --- |
+| The RE Lab's own model, whole corpus | 2805 records at both layout limits | 3899 comparisons exact, no disagreement |
+| Native 240x160 captures | the box located in each frame, its ink pixels against the render | every frame that holds a box whose record is in the corpus is reproduced pixel for pixel |
+
+Counted rather than compared, because the two models are not models of the same thing
+there, and each is stated rather than hidden: 1097 records the box cannot hold (the scroll
+case, refused), 335 the reference runs past the box, 26 carrying a run wider than the
+limit (the branch the code above settles), and 253 carrying a control unit the reference
+prices differently.
+
+**The states it refuses to guess.** `waiting` when there is no image, or the font or the
+box art will not decode, and it names the exact missing part. `limited` when the record
+needs more lines than the box holds: measured on release 3.1, `this record needs 81 lines
+and the box holds 4. Missing: the scroll-advance rule`, with no box drawn at all. Both
+states paint one sentence and nothing else, so a case the measurement leaves open is
+visibly not drawn rather than drawn approximately.
+
+Three captures of the render and one of the refusal are in the colour-vision set: the
+render at 100 percent in both modes, at 150 percent, and the limited state naming the
+missing rule.
+
+## 10. Boundaries held
 
 - The canonical ROM, every save and every savestate were never written, moved or
   committed. The worktree keeps its own verified copies under the ignored `roms/`.
@@ -312,7 +370,7 @@ model layer produced. No new emulator run was made for the rebuild.
 - One writer per file at all times: four rebuild lanes and two fix lanes ran against
   disjoint file sets, and the coordinator held the remainder.
 
-## 10. Harvest
+## 11. Harvest
 
 Toolbelt and tool entries added to the project:
 
@@ -330,13 +388,20 @@ Toolbelt and tool entries added to the project:
   this ticket: the entries applied, the token set, the per-surface build, the recorded
   conflicts and the rules each defect taught.
 - `build/ttui-exit-check.py` (ignored, not committed), the mechanical gate runner for the
-  anti-generic checks, which now prints what it cannot see.
+  anti-generic checks, which printed what it could not see. **It no longer exists**: a fix
+  lane cleaned its own scratch files with a `ttui-*.py` pattern and removed this one with
+  them, which is a real hazard of keeping an instrument inside a shared scratch directory.
+  Its last result is the one recorded in section 6, one finding, the recorded prose
+  conflict, and its blind-spot list is what the rendered-ink guards now cover.
 
-## 11. Unverified, and the risk that carries
+## 12. Unverified, and the risk that carries
 
-- **The in-game preview has never rendered a real glyph.** No extraction and no
-  reference captures exist on this machine, so the pane ships its waiting state and the
-  harness skips. What ships is honest; what is unproven is the renderer itself.
+- **The in-game preview renders from the image, and the render is proved rather than
+  asserted.** It was the ticket's own headline requirement, and it is met: the pane decodes
+  the font, the box art and the palette from the image the reader opened, draws the box the
+  engine would draw, and is compared pixel for pixel against the RE Lab's own model over the
+  whole canonical corpus and against native 240x160 captures. What remains unproven inside
+  it is named in section 12, and the two unproven branches are refused rather than guessed.
 - **The edited line has not been seen on screen in the emulator.** The image loads and
   executes and the strings are present in the output, which is what was asked for here;
   seeing it in a dialogue box needs a driven route.

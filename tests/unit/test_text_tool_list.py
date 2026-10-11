@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QHeaderView,
     QInputDialog,
+    QLabel,
     QPushButton,
     QToolButton,
 )
@@ -117,6 +118,35 @@ def entry_row(model, key: str) -> int:
         if isinstance(entry, lineview.Line) and entry.key == key:
             return row
     raise AssertionError(f"{key} is not in the list")
+
+
+def ink_columns(widget) -> str:
+    """One character per column: whether that column paints anything at all."""
+    background = theme.color(theme.active_theme(), "window").name()
+    image = widget.grab().toImage()
+    return "".join("1" if any(image.pixelColor(x, y).name() != background
+                              for y in range(image.height())) else "0"
+                   for x in range(widget.width()))
+
+
+def painted_columns(label, text: str, width: int) -> str:
+    """The columns a plain label paints for `text` at `width`, as the reference.
+
+    A plain label paints the string it is handed, so it is what tells whether the ink
+    on screen is the whole line, a prefix of it, or the eliding one.
+    """
+    reference = QLabel(text, label.parentWidget())
+    reference.setProperty("role", "caption")
+    reference.setFont(label.font())
+    reference.move(label.pos())
+    reference.resize(width, label.height())
+    reference.show()
+    QApplication.processEvents()
+    try:
+        return ink_columns(reference)
+    finally:
+        reference.close()
+        reference.deleteLater()
 
 
 @pytest.fixture()
@@ -466,26 +496,40 @@ def test_the_fit_leaves_the_text_its_floor_when_the_scrollbar_takes_its_breadth(
     assert table.columnWidth(lineview.COLUMN_TEXT) >= lineview.TEXT_FLOOR
 
 
-def test_the_counters_line_keeps_a_gutter_and_elides_instead_of_clipping(
+def test_the_counters_line_paints_its_whole_line_and_elides_only_when_it_is_short(
         shape_pane, qapp) -> None:
-    """FINDING 3: one 12 px gutter from the tabs, and a visible ellipsis when squeezed.
+    """FINDING 5: the counters line painted nothing at all, at every window size.
 
-    Measured offscreen before the fix: a plain QLabel resized to 60 px painted from
-    x=157 to 212 with no ellipsis, the words simply gone. Measured on the capture the
-    second tab ended at x=305 and `0 edited` began at 310.
+    Measured on the real platform (windows, Segoe UI) in the shell at 1240x780, at
+    1500x780 and at the window minimum: width 0, sizeHint 0 and no ink anywhere in the
+    label's region, while the text was set and correct. After: width 168, sizeHint 168
+    and ink over columns 0..167 of `0 edited   0 will move   0 refused`. The columns
+    below are read on whatever platform the run is on, so the offscreen font's wider
+    advance is measured rather than assumed.
     """
-    assert shape_pane.counters.minimumSizeHint().width() == 0
-    assert shape_pane.tabs.geometry().right() + 12 <= shape_pane.counters.geometry().left()
-    text = shape_pane.counters.text()
-    assert text and shape_pane.counters.fontMetrics().horizontalAdvance(text) \
-        > shape_pane.counters.width()
-    shape_pane.counters.setFixedWidth(90)
+    counters = shape_pane.counters
     qapp.processEvents()
-    image = shape_pane.counters.grab().toImage()
-    y = shape_pane.counters.height() // 2
-    ink = [x for x in range(90)
-           if image.pixelColor(x, y).name() != theme.color(theme.active_theme(), "window").name()]
-    assert ink and ink[-1] <= 89
+    text = counters.text()
+    assert text
+    advance = counters.fontMetrics().horizontalAdvance(text)
+    # One gutter from the tabs, and the room its own words ask for.
+    assert shape_pane.tabs.geometry().right() + 12 <= counters.geometry().left()
+    assert counters.width() >= advance
+    # With that room it paints every word: the ink is the whole line, which is what a
+    # label holding the whole line paints, and not a prefix of it.
+    assert ink_columns(counters) == painted_columns(counters, text, counters.width())
+
+    # Given less than it needs it still paints, and it paints an ellipsis rather than
+    # dropping the trailing counts in silence. Measured before the fix at 60 px: the
+    # first word and a half, with nothing saying the rest was there.
+    short = max(24, advance * 2 // 5)
+    counters.setFixedWidth(short)
+    qapp.processEvents()
+    assert counters.width() > 0
+    elided = counters.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, short)
+    assert elided != text and elided.endswith("\u2026")
+    assert ink_columns(counters) == painted_columns(counters, elided, short)
+    assert ink_columns(counters) != painted_columns(counters, text, short)
 
 
 def test_a_chip_can_never_be_squeezed_below_the_width_that_paints_its_word(

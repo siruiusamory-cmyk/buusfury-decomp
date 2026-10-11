@@ -142,6 +142,14 @@ def show(editor, session, key: str = "") -> str:
     return key
 
 
+def accent_columns(editor) -> list[int]:
+    """The viewport columns carrying the accent ink, which is the changed-run mark."""
+    accent = theme.color(theme.active_theme(), "accent").name()
+    image = editor.viewport().grab().toImage()
+    return [x for x in range(image.width())
+            if any(image.pixelColor(x, y).name() == accent for y in range(image.height()))]
+
+
 # --- the three sections ------------------------------------------------------
 
 
@@ -189,6 +197,66 @@ def test_set_line_fills_all_three_sections_from_the_session(window, session) -> 
     editor.set_pending(session.pending_text(key))
     assert editor.new_text() == "Say goodbye!"
     assert editor.current.editor.serialized() == INNER
+
+
+# --- the changed run ----------------------------------------------------------
+
+
+def test_the_changed_run_in_new_is_underlined_where_it_differs(window, session, qapp) -> None:
+    """FINDING 6: the changed run carried the section word and no second channel.
+
+    The design note gives the changed run an underline plus the section word, so the
+    mark is never colour alone. Measured here in pixels: NEW holds no accent ink while
+    it agrees with CURRENT, and the run that differs is underlined in the accent ink
+    and nothing else is. Measured on the real platform (windows, Segoe UI) for
+    `Say hello!` becoming `Say goodbye!`: the accent columns ran 28..80 under
+    `goodbye`, the changed run at document positions 4..11, with the unchanged `Say `
+    and `!` clear of them.
+
+    A control unit is one atom already carrying its own chip, so the mark stops at it
+    and is asserted on the ranges the widget holds. Measured on the real platform for
+    `Say hello!` becoming `AB` plus one control unit plus `CD`: two accent runs, 4..18
+    and 76..92, with the 57 column chip's own width clear between them. This runner
+    (offscreen) paints no extra-selection underline in a document carrying an inline
+    object, so the pixel claim is the plain run above and the atom is the ranges.
+    """
+    editor, _pane = window
+    editor.resize(600, 560)
+    editor.show()
+    qapp.processEvents()
+    key = show(editor, session)
+    qapp.processEvents()
+    # The arithmetic the mark is drawn from, on plain strings and with no window.
+    assert chipedit.changed_run(INNER, "Say goodbye!") == (4, 7)
+    assert chipedit.changed_run(INNER, INNER) is None
+    assert chipedit.changed_run(INNER, GROWN) == (len(INNER), 1)
+    assert editor.new_text() == INNER
+    assert accent_columns(editor.new.editor) == []
+    assert editor.new.editor.extraSelections() == []
+
+    pending = "Say goodbye!"
+    session.set_edit(key, pending)
+    editor.set_pending(session.pending_text(key))
+    qapp.processEvents()
+    assert editor.new_text() == pending
+    first, length = chipedit.changed_run(INNER, pending)
+    metrics = editor.new.editor.fontMetrics()
+    columns = accent_columns(editor.new.editor)
+    assert columns
+    assert min(columns) >= metrics.horizontalAdvance(pending[:first]) - 8
+    assert max(columns) <= metrics.horizontalAdvance(pending[:first + length]) + 8
+
+    # The atom's own character is left out of the mark, and the runs either side of it
+    # are the two changed words.
+    with_atom = "AB\x08\x03CD"
+    session.set_edit(key, with_atom)
+    editor.set_pending(session.pending_text(key))
+    qapp.processEvents()
+    assert editor.new_text() == with_atom
+    assert chipedit.marked_ranges(with_atom, chipedit.changed_run(INNER, with_atom)) == \
+        ((0, 2), (3, 5))
+    assert [(mark.cursor.selectionStart(), mark.cursor.selectionEnd())
+            for mark in editor.new.editor.extraSelections()] == [(0, 2), (3, 5)]
 
 
 # --- committing an edit ------------------------------------------------------

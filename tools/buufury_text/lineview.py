@@ -143,17 +143,17 @@ class ElidedLabel(QLabel):
 
     Measured: a plain QLabel asks the layout for its whole text and draws from x=0
     when it gets less, so at 60 px `0 edited   0 will move   0 refused` painted the
-    first word and a half with nothing to say the rest was there. Its minimum size
-    hint is the full text, which is also what stopped a row from giving it any less.
-    A zero minimum and an ignored width let it take the room that is left, and the
-    ellipsis is what makes the loss visible.
+    first word and a half with nothing to say the rest was there. Measured again with
+    a zero hint and an ignored width: the row gave it 0 px at 1240x780, at 1500x780
+    and at the window minimum, and it painted zero pixels at every one of them. So the
+    hint is the width its own words ask for, which the layout gives it when there is
+    room, and the minimum stays zero so it can still be squeezed. It paints all of its
+    words with the room and an ellipsis without it, and the ellipsis is what makes the
+    loss visible.
     """
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802
         return QSize(0, super().minimumSizeHint().height())
-
-    def sizeHint(self) -> QSize:
-        return QSize(0, super().sizeHint().height())
 
     def paintEvent(self, _event) -> None:  # noqa: N802
         painter = QPainter(self)
@@ -539,9 +539,9 @@ class LinePane(QWidget):
         self.counters.setProperty("role", "caption")
         # The counts are the last thing with anywhere else to be: each list's total is
         # on its tab tooltip, and a state that reaches zero reads from the chip. So the
-        # line gives ground to the tabs, and says so with an ellipsis instead of
-        # dropping the trailing counts in silence.
-        self.counters.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        # line takes its own hint and gives way only when the row is shorter than that,
+        # where it elides rather than dropping the trailing counts in silence.
+        self.counters.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.shape_box = self._combo(((LINES, "Lines"), (RECORDS, "Records")), VIEW_TOOLTIP)
         self.order_box = self._combo(((APPEARANCE, "Appearance"), (STORAGE, "Storage")),
                                      ORDER_TOOLTIPS[APPEARANCE], ORDER_TOOLTIPS)

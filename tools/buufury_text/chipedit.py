@@ -13,12 +13,13 @@ site count and the refusal reason. This module computes no ROM value.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt, Signal
-from PySide6.QtGui import QFontMetrics, QPainter
+from PySide6.QtGui import QFontMetrics, QPainter, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -108,6 +109,49 @@ def read_only_cap(editor, pane_height: int | None = None) -> int:
     return read_only_lines(editor, pane_height) * line + _chrome(editor)
 
 
+def changed_run(held: str, pending: str) -> tuple[int, int] | None:
+    """The run of `pending` that `held` does not already say, or None when they agree.
+
+    A common prefix and a common suffix leave the changed run between them, which is
+    all the mark needs: the reader sees where the wording moved.
+    """
+    if held == pending:
+        return None
+    start = 0
+    shared = min(len(held), len(pending))
+    while start < shared and held[start] == pending[start]:
+        start += 1
+    tail_held, tail_pending = len(held), len(pending)
+    while tail_held > start and tail_pending > start \
+            and held[tail_held - 1] == pending[tail_pending - 1]:
+        tail_held -= 1
+        tail_pending -= 1
+    return start, tail_pending - start
+
+
+def marked_ranges(text: str, run: tuple[int, int] | None) -> tuple[tuple[int, int], ...]:
+    """The document ranges a canonical run covers, with every control atom left out.
+
+    A control unit already carries its own chip, and its two canonical characters are
+    one document character, so a run that reaches one is split around it rather than
+    underlined.
+    """
+    if run is None:
+        return ()
+    start, length = run
+    atoms = {chips.document_index(text, at) for at, _end in chips.atom_ranges(text)}
+    runs: list[list[int]] = []
+    for at in range(chips.document_index(text, start),
+                    chips.document_index(text, start + length)):
+        if at in atoms:
+            continue
+        if runs and runs[-1][1] == at:
+            runs[-1][1] = at + 1
+        else:
+            runs.append([at, at + 1])
+    return tuple((first, last) for first, last in runs)
+
+
 class Section:
     """One editor section: its label, its explanation, its frame and its text."""
 
@@ -132,6 +176,12 @@ class Section:
         self.word.setVisible(False)
         self.editor = chips.ChipTextEdit(self.frame, editable=editable)
         self.editor.setFont(theme_module.type_scale().prose)
+        # The changed run's own channel: the accent underline. Qt draws an underline at
+        # the font's own thickness and exposes no width, so this is thinner than the
+        # design note's 2 px. Painting the text by hand is the upgrade if that matters.
+        self.changed_ink = QTextCharFormat()
+        self.changed_ink.setFontUnderline(True)
+        self.changed_ink.setUnderlineColor(theme_module.color(theme, "accent"))
         self._cap: int | None = None
         if not editable:
             # Selectable by mouse and by keyboard, never editable. A keyboard-only
@@ -160,6 +210,26 @@ class Section:
 
     def set_text(self, text: str) -> None:
         self.editor.set_text(text)
+
+    def mark_changed(self, held: str) -> None:
+        """Underline the run of this section's text that `held` does not already say.
+
+        An extra selection paints over the document and never edits it, so the
+        canonical text the editor reports stays exactly what the writer typed. The
+        design note gives the changed run two channels, this and the section word,
+        so the mark is never colour alone.
+        """
+        text = self.editor.serialized()
+        marks = []
+        for first, last in marked_ranges(text, changed_run(held, text)):
+            cursor = QTextCursor(self.editor.document())
+            cursor.setPosition(first)
+            cursor.setPosition(last, QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            selection.format = self.changed_ink
+            marks.append(selection)
+        self.editor.setExtraSelections(marks)
 
     def cap_text_height(self, height: int) -> None:
         """At most `height` px of text here, whatever the column offers.
@@ -461,6 +531,7 @@ class EditorSections(QWidget):
         self.new.word.setVisible(bool(line is not None and differs))
         self.set_state(state, meter, differs, decision_reason)
         self.notice.show_notice(tuple(covering), sites, bool(covering), proven)
+        self._mark_changed()
 
     def set_state(self, state: State, meter=None, differs: bool = False,
                   decision_reason: str = "") -> None:
@@ -474,6 +545,7 @@ class EditorSections(QWidget):
         """Show what the project will make this row say, without stealing typing."""
         if self.new.editor.serialized() != text and not self.has_focus():
             self.new.set_text(text)
+        self._mark_changed()
 
     def focus_new(self) -> None:
         self.new.editor.setFocus(Qt.FocusReason.ShortcutFocusReason)
@@ -498,8 +570,17 @@ class EditorSections(QWidget):
     # --- internals -----------------------------------------------------------
 
     def _edited(self, text: str) -> None:
+        self._mark_changed()
         if self._key:
             self.committed.emit(self._key, text)
+
+    def _mark_changed(self) -> None:
+        """Mark NEW's changed run against what CURRENT holds, which is the image.
+
+        The mark follows the three ways NEW's text arrives: the row the shell shows,
+        the pending text it refreshes with, and what the writer types here.
+        """
+        self.new.mark_changed(self.current.editor.serialized())
 
     @staticmethod
     def _state_word(state: State, meter) -> str:

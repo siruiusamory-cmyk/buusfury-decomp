@@ -11,11 +11,15 @@ and asserts that the property the ticket promises actually fails.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
+from tests.helpers import make_synthetic_rom, profile_for, write_catalog
 from tools.webfoot import map_view
 from tools.webfoot import tileset_compositor as tc
 from tools.webfoot.formats import bg_tilemap as bg
@@ -624,6 +628,183 @@ def test_cli_refuses_a_missing_rom_and_writes_nothing(tmp_path, capsys):
     assert code == 2
     assert "error:" in capsys.readouterr().err
     assert not out.exists()
+
+
+# --- CQA-10: the occurrence file destination is answered by the shared policy --
+#
+# The defect: `_write_occurrences` created the parent directory and wrote the
+# JSONL with no destination guard at all, so `tileset census --occurrences` could
+# replace a protected input or an existing artefact and report success. These
+# drive the real argument vector, not the guard in isolation, because a correct
+# guard no command calls is exactly the defect being closed.
+#
+# Only the two read-only loads that no synthetic image can satisfy are stubbed:
+# `load_canonical_rom` re-checks the SHA-256 of the *packaged* catalogue against
+# the image, and the census walk needs a real map corpus. Every other line,
+# including the CLI's own writer and every guard below it, is the production one.
+
+
+def _census_with_one_occurrence() -> tc.Census:
+    occurrence = tc.Occurrence(
+        map_index=0,
+        layer_slot=0,
+        layer_kind=tc.LAYER_KIND_DOMINANT,
+        layer_address=0x08001000,
+        plane_x=3,
+        plane_y=4,
+        chunk_index=0,
+        chunk_address=BLANK_CHUNK,
+        raw_word=entry(2),
+        ordinal=2,
+        display=tc.DisplayIdentity(bank=3, tile=2, palette_bank=0,
+                                   hflip=False, vflip=False),
+    )
+    return tc.Census(
+        profile_id="synthetic_exact",
+        map_count=1,
+        bank_table_address=0x08000000,
+        parameters=tc.CensusParameters(),
+        banks={spec.bank: tc.BankUsage(
+                   bank=spec.bank,
+                   container_address=spec.container_address,
+                   declared_size=spec.declared_size,
+                   tile_count=spec.tile_count,
+               )
+               for spec in bank_specs(4, 4, 4, 4)},
+        adjacency={},
+        motifs_2x2={},
+        motifs_3x3={},
+        failures=(),
+        occurrences={3: (occurrence,)},
+        skipped={},
+    )
+
+
+def _synthetic_census_command(tmp_path, monkeypatch):
+    """A catalogued synthetic ROM plus the stubbed read-only loads."""
+    from tools.webfoot import map_render
+    from tools.webfoot import tileset_compositor as compositor
+
+    data = make_synthetic_rom(game_code="BG3E", size=0x100)
+    rom = tmp_path / "synthetic.gba"
+    rom.write_bytes(data)
+    config = tmp_path / "roms.yaml"
+    write_catalog(config, [profile_for(data)])
+    monkeypatch.setattr(
+        map_render, "load_canonical_rom", lambda path, catalog: data
+    )
+    monkeypatch.setattr(
+        compositor, "census_image",
+        lambda reader, **kwargs: _census_with_one_occurrence(),
+    )
+    return rom, config
+
+
+def _occurrences_argv(config, rom, destination) -> list[str]:
+    return [
+        "--profiles", str(config), "tileset", "census", str(rom),
+        "--bank", "3", "--occurrences", str(destination),
+    ]
+
+
+def test_occurrences_refuse_a_destination_inside_a_protected_input_directory(
+    tmp_path, capsys, monkeypatch
+):
+    from tools.webfoot import destination as destination_sdk
+    from tools.webfoot.cli import main
+
+    rom, config = _synthetic_census_command(tmp_path, monkeypatch)
+    checkout = tmp_path / "checkout"
+    (checkout / "roms").mkdir(parents=True)
+    (checkout / ".gitignore").write_text("roms/\nroms\n", encoding="utf-8")
+    monkeypatch.setattr(destination_sdk, "repository_root", lambda: checkout)
+    destination_sdk._PROTECTED_CACHE.clear()
+    destination = checkout / "roms" / "dumps" / "occurrences.jsonl"
+
+    try:
+        exit_code = main(_occurrences_argv(config, rom, destination))
+
+        assert exit_code == 2
+        assert "protected ROM input directory" in capsys.readouterr().err
+        assert not destination.exists()
+        assert not destination.parent.exists()
+    finally:
+        shutil.rmtree(destination.parent, ignore_errors=True)
+        destination_sdk._PROTECTED_CACHE.clear()
+
+
+def test_occurrences_refuse_a_destination_holding_a_copy_of_the_image(
+    tmp_path, capsys, monkeypatch
+):
+    from tools.webfoot.cli import main
+
+    rom, config = _synthetic_census_command(tmp_path, monkeypatch)
+    destination = tmp_path / "export" / "occurrences.jsonl"
+    exit_code = main(_occurrences_argv(config, rom, destination))
+
+    assert exit_code == 0, capsys.readouterr().err
+    destination.write_bytes(rom.read_bytes())
+    before = hashlib.sha256(destination.read_bytes()).hexdigest()
+
+    exit_code = main(_occurrences_argv(config, rom, destination))
+
+    assert exit_code == 2
+    assert "copy of the canonical" in capsys.readouterr().err
+    assert hashlib.sha256(destination.read_bytes()).hexdigest() == before
+
+
+def test_occurrences_refuse_an_existing_destination(tmp_path, capsys, monkeypatch):
+    from tools.webfoot.cli import main
+
+    rom, config = _synthetic_census_command(tmp_path, monkeypatch)
+    destination = tmp_path / "export" / "occurrences.jsonl"
+    exit_code = main(_occurrences_argv(config, rom, destination))
+
+    assert exit_code == 0, capsys.readouterr().err
+    before = destination.read_bytes()
+
+    exit_code = main(_occurrences_argv(config, rom, destination))
+
+    assert exit_code == 2
+    assert "refusing to overwrite an existing output" in capsys.readouterr().err
+    assert destination.read_bytes() == before
+
+
+def test_occurrences_still_write_a_fresh_destination_under_build(
+    tmp_path, capsys, monkeypatch
+):
+    """The positive control: the guard must not refuse an ordinary destination."""
+    from tools.webfoot.cli import main
+
+    rom, config = _synthetic_census_command(tmp_path, monkeypatch)
+    repository = Path(tc.__file__).resolve().parents[2]
+    destination = repository / "build" / f"cqa10-{uuid4().hex}" / "occurrences.jsonl"
+
+    exit_code = main(_occurrences_argv(config, rom, destination))
+    captured = capsys.readouterr()
+
+    try:
+        assert exit_code == 0, captured.err
+        document = json.loads(captured.out)
+        summary = document.pop("occurrences")
+        assert set(document) == {
+            "profile", "maps", "maps_censused", "cells_censused", "bank_table_address",
+            "banks", "skipped", "failures", "parameters",
+        }
+        blob = destination.read_bytes()
+        assert set(summary) == {"path", "records", "bytes", "sha256"}
+        assert (summary["path"], summary["records"], summary["bytes"]) == (
+            str(destination), 1, len(blob)
+        )
+        assert summary["sha256"] == hashlib.sha256(blob).hexdigest()
+        record = json.loads(blob.decode("utf-8"))
+        assert record["map"] == "map:0000"
+        assert record["ordinal"] == 2
+        assert record["display"] == {
+            "bank": 3, "tile": 2, "palette_bank": 0, "hflip": False, "vflip": False,
+        }
+    finally:
+        shutil.rmtree(destination.parent, ignore_errors=True)
 
 
 # --- mutation tests -----------------------------------------------------------

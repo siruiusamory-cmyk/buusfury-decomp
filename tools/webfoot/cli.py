@@ -56,7 +56,12 @@ from .maps import (
     PlacementIdentity,
     load_maps,
 )
-from .write import WriteError, emit_image, ensure_not_source_alias
+from .write import (
+    WriteError,
+    emit_image,
+    ensure_new_destination,
+    ensure_not_source_alias,
+)
 # RELEASE-ARTEFACT-001. The patch service is the one authority for the
 # distributable artefact; this command parses arguments and prints the result.
 from .patch import (
@@ -1912,7 +1917,9 @@ def _run_tileset(args) -> int:
                     raise ValueError(
                         "--occurrences needs at least one --bank to retain"
                     )
-                written = _write_occurrences(args.occurrences, census, retained)
+                written = _write_occurrences(
+                    args.rom, args.occurrences, census, retained, image
+                )
                 document["occurrences"] = written
             print(json.dumps(document, sort_keys=True, indent=2))
             return 0
@@ -1979,6 +1986,7 @@ def _run_tileset(args) -> int:
         MapGraphicsError,
         ProfileConfigError,
         RomReadError,
+        WriteError,
         OSError,
         ValueError,
     ) as exc:
@@ -1986,8 +1994,25 @@ def _run_tileset(args) -> int:
         return 2
 
 
-def _write_occurrences(path: Path, census, banks) -> dict:
-    """Write the complete per-occurrence record for the retained banks."""
+def _write_occurrences(
+    rom: Path, path: Path, census, banks, image: bytes
+) -> dict:
+    """Write the complete per-occurrence record for the retained banks.
+
+    The destination is answered by the policies every ROM writer already asks, in
+    `emit_image`'s own order and before the parent directory is created or the
+    file is opened: the write module's source-alias and new-destination rules,
+    the destination module's protected-input rule, and the content rule a
+    destination holding a copy of the image is refused by. A refusal leaves no
+    partial file and no new directory behind.
+    """
+    from .destination import refuse_rom_destination
+    from .authored_image import refuse_canonical_destination
+
+    ensure_not_source_alias(rom, path)
+    refuse_rom_destination(rom, path)
+    refuse_canonical_destination(path, hashlib.sha256(image).hexdigest())
+    ensure_new_destination(path)
     lines = []
     for bank in sorted(set(banks)):
         for occurrence in census.occurrences.get(bank, ()):

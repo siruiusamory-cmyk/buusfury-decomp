@@ -77,6 +77,11 @@ IDENTITY_FLOOR = 64
 #: The room a name needs before the whole column stops being worth showing. It
 #: elides, so this is small on purpose: the full label is the cell's tooltip.
 SPEAKER_FLOOR = 88
+#: Below this the speaker column is hidden rather than squeezed, because a column
+#: narrower than a name draws an ellipsis where a name should be. Measured: at the
+#: left pane's 368 px floor the column gets 87, and a first attempt to hide below 88
+#: hid the owner's own feature by one pixel.
+SPEAKER_HIDE_BELOW = 56
 #: The status column's own floor: the marker, the badge and a word that reads.
 STATUS_FLOOR = 96
 #: The room the text column keeps before any other column takes any. Below this the
@@ -285,11 +290,17 @@ class LineModel(QAbstractTableModel):
         """A heading's label, its row count and the reason an Unplaced row is there.
 
         The heading answers on every column, because the table skips a hidden column
-        when it measures a row, and the first column is hidden in the line list.
+        when it measures a row, and the first column is hidden in the line list. It
+        carries its own tooltip because a long map label is elided in the band and a
+        heading is not selectable, so the band is the only place it appears.
         """
         if role == ROLE_HEADING:
             note = NO_PLACE_LINK if group.label == UNPLACED else ""
             return (f"{group.label} ({len(group.rows)})", note)
+        if role == Qt.ItemDataRole.ToolTipRole:
+            note = NO_PLACE_LINK if group.label == UNPLACED else ""
+            return f"{group.label} ({len(group.rows)})\n{note}" if note \
+                else f"{group.label} ({len(group.rows)})"
         return None
 
 
@@ -528,11 +539,21 @@ class LinePane(QWidget):
         return pairs
 
     def _chip(self, name: str) -> QToolButton:
+        """One filter chip: its word always painted, and always nameable.
+
+        Measured: a QToolButton with no icon defaults to an icon-only style, so a chip
+        squeezed below its hint width draws nothing rather than an elided label, and
+        both `toolTip` and `accessibleName` were empty, which left a keyboard or
+        screen-reader reader no way to learn what the four filters mean.
+        """
         chip = QToolButton()
         chip.setText(name)
         chip.setCheckable(True)
         chip.setProperty("filterChip", True)
+        chip.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         chip.setMinimumHeight(self._metrics.chip_height)
+        chip.setToolTip(name)
+        chip.setAccessibleName(name)
         chip.toggled.connect(self.refresh)
         return chip
 
@@ -628,10 +649,15 @@ class LinePane(QWidget):
             else self.table.columnWidth(COLUMN_ID)
         status = min(self.status_width, max(STATUS_FLOOR, width - TEXT_FLOOR))
         room = width - identity - status
-        speaker = 0 if self.table.isColumnHidden(COLUMN_SPEAKER) \
-            else min(self._speaker_width(), max(SPEAKER_FLOOR, room - TEXT_FLOOR))
+        # The text floor binds, and the speaker yields to it. It is hidden rather than
+        # squeezed below its own floor, because a column narrower than a name shows an
+        # ellipsis where a name should be and its label is already in the context pane.
+        wanted = 0 if self._kind != RECORD \
+            else min(self._speaker_width(), max(0, room - TEXT_FLOOR))
+        speaker = wanted if wanted >= SPEAKER_HIDE_BELOW else 0
         self.table.setColumnWidth(COLUMN_STATUS, status)
-        if not self.table.isColumnHidden(COLUMN_SPEAKER):
+        self.table.setColumnHidden(COLUMN_SPEAKER, speaker == 0)
+        if speaker:
             self.table.setColumnWidth(COLUMN_SPEAKER, speaker)
 
     def _id_by_view(self) -> bool:
@@ -731,9 +757,9 @@ class LinePane(QWidget):
             if isinstance(entry, Group):
                 # One heading spans the row, so its label and its reason read as one line.
                 self.table.setSpan(entry_row, 0, 1, self._model.columnCount())
-        # Which columns show, and how wide, is one decision: `_fit_columns` owns the
-        # identity column, because it is a diagnostic that goes before the text does.
-        self.table.setColumnHidden(COLUMN_SPEAKER, self._kind != RECORD)
+        # Which columns show, and how wide, is one decision, and `_fit_columns` owns it:
+        # both the identity column and the speaker column are shown or hidden there,
+        # because each one gives ground before the text does.
         self._fit_columns()
         if any(isinstance(entry, Group) for entry in entries):
             self.table.resizeRowsToContents()

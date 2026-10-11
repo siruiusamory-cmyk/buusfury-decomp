@@ -626,7 +626,82 @@ def app_stylesheet(theme: Theme) -> str:
         f"border-right: 1px solid {theme.divider}; "
         f"border-bottom: 1px solid {theme.divider}; padding: 0 {shape.pad_md}px; }}",
     ]
+    rules += _control_rules(theme, shape)
     return "\n".join(rules)
+
+
+def _control_rules(theme: Theme, shape) -> list[str]:
+    """Every class Qt draws with its own fallback ink, named and given a token.
+
+    Measured, and the reason this function exists: with a stylesheet installed but no
+    rule naming it, an unstyled QComboBox or QMenuBar is painted with ink that is not
+    the theme's. In the light theme the menu bar, the four combo boxes and the address
+    disclosure rendered as white on a `#F3F4F6` window, which measures about 1.1 to 1,
+    and the same widgets in the dark theme rendered correctly, so the defect is
+    invisible in a dark pass. Naming each class and giving it a token removes the
+    dependency on that fallback entirely, which is what the design note already
+    requires of every surface: the theme decides, not Qt's default.
+    """
+    field = (f"background: {theme.surface}; color: {theme.text_primary}; "
+             f"border: 1px solid {theme.border}; border-radius: {shape.radius}px; "
+             f"padding: 0 {shape.pad_md}px; min-height: {shape.field_height - 2}px;")
+    item = (f"background: {theme.surface_raised}; color: {theme.text_primary}; "
+            f"padding: {shape.pad_sm}px {shape.pad_lg}px;")
+    button = (f"color: {theme.text_primary}; background: {theme.surface_raised}; "
+              f"border: 1px solid {theme.border}; border-radius: {shape.radius}px; "
+              f"padding: 0 {shape.pad_lg}px; min-height: {shape.field_height - 2}px;")
+    return [
+        # Text entry, including the search field and the rename dialog's two fields.
+        f"QLineEdit {{ {field} }}",
+        f"QLineEdit:focus {{ border-color: {theme.focus}; }}",
+        f"QLineEdit:disabled {{ color: {theme.text_disabled}; }}",
+        # The combo boxes that reshape the list, and the speaker filter.
+        f"QComboBox {{ {field} }}",
+        f"QComboBox:focus {{ border-color: {theme.focus}; }}",
+        f"QComboBox:disabled {{ color: {theme.text_disabled}; }}",
+        f"QComboBox::drop-down {{ border: none; width: {shape.pad_xl + shape.pad_md}px; }}",
+        f"QComboBox QAbstractItemView {{ background: {theme.surface_raised}; "
+        f"color: {theme.text_primary}; border: 1px solid {theme.border}; "
+        f"selection-background-color: {theme.selection}; "
+        f"selection-color: {theme.text_primary}; }}",
+        # The menu bar and its menus.
+        f"QMenuBar {{ background: {theme.window}; color: {theme.text_primary}; }}",
+        f"QMenuBar::item {{ background: transparent; color: {theme.text_primary}; "
+        f"padding: {shape.pad_xs}px {shape.pad_md}px; }}",
+        f"QMenuBar::item:selected {{ background: {theme.selection}; }}",
+        f"QMenu {{ background: {theme.surface_raised}; color: {theme.text_primary}; "
+        f"border: 1px solid {theme.border}; }}",
+        f"QMenu::item {{ {item} }}",
+        f"QMenu::item:selected {{ background: {theme.selection}; }}",
+        f"QMenu::item:disabled {{ color: {theme.text_disabled}; }}",
+        f"QMenu::separator {{ height: 1px; background: {theme.divider}; "
+        f"margin: {shape.pad_sm}px 0; }}",
+        # A plain tool button: the address disclosure, and the notice's two buttons.
+        # Transparent, so an inline disclosure reads as text rather than as another box.
+        f"QToolButton {{ color: {theme.text_primary}; background: transparent; "
+        f"border: 1px solid transparent; border-radius: {shape.radius}px; "
+        f"padding: 0 {shape.pad_md}px; min-height: {shape.field_height - 2}px; }}",
+        f"QToolButton:hover {{ border-color: {theme.accent}; }}",
+        f"QToolButton:disabled {{ color: {theme.text_disabled}; }}",
+        # A plain push button: the dialogs, and any action without its own role.
+        f"QPushButton {{ {button} }}",
+        f"QPushButton:hover {{ border-color: {theme.accent}; }}",
+        f"QPushButton:disabled {{ color: {theme.text_disabled}; }}",
+        f'QPushButton[role="primary"] {{ background: {theme.accent}; '
+        f"color: {theme.accent_ink}; border-color: {theme.accent}; }}",
+        # Dialog surfaces and the tab strip's own fills, which Qt otherwise invents.
+        f"QDialog {{ background: {theme.window}; }}",
+        f"QTabBar::tab {{ background: transparent; }}",
+        f"QTabBar::tab:selected {{ background: {theme.surface_raised}; "
+        f"border-bottom: 2px solid {theme.accent}; }}",
+        f"QToolTip {{ background: {theme.surface_raised}; color: {theme.text_primary}; "
+        f"border: 1px solid {theme.divider}; }}",
+        f"QScrollBar:vertical, QScrollBar:horizontal {{ background: {theme.window}; "
+        f"border: none; }}",
+        f"QScrollBar::handle {{ background: {theme.border}; "
+        f"border-radius: {shape.pad_xs}px; }}",
+        "QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }",
+    ]
 
 
 #: role name -> the token it resolves to, for the five state hues.

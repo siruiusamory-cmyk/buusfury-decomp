@@ -102,19 +102,22 @@ test-sdk:
     # them fifteen modules under tests/unit skip as a whole.
     - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
-    # Size the worker count from what this runner actually has rather than
-    # copying a local default. The count is read with the interpreter, because
-    # `nproc` is not guaranteed on this slim image and printed nothing when it
-    # was tried, and the memory reading comes from `/proc/meminfo` because `free`
-    # does not exist here at all. The reading is in the log, so the number stays
-    # checkable rather than assumed; raise it only for a larger runner, because
-    # each worker repeats its module's own fixture setup.
+    # Size the worker count from what THIS runner actually has, because the
+    # shared small runner reports 2 cores and four workers on two cores bought
+    # nothing: measured 2026-10-11, the job took 237s and 252s under `-n 4`
+    # against 216s to 287s for the serial master baseline, which is inside the
+    # noise. `-n auto` is pytest-xdist's own reading of the core count, so the
+    # sizing cannot drift from this comment, and the count it chose is printed in
+    # the pytest header below. The counting commands above stay as evidence: the
+    # interpreter is used because `nproc` is not guaranteed on this slim image
+    # and printed nothing when it was tried, and `/proc/meminfo` is read because
+    # `free` does not exist here at all.
     - python -c "import os; print('cores:', os.cpu_count())"
     - grep -E '^(MemTotal|MemAvailable)' /proc/meminfo
     # The JUnit report is what makes a failure legible in the merge request
     # without downloading the raw job log, and xdist merges every worker's
     # results into this one file.
-    - python -m pytest tests/unit -q -n 4 --dist loadfile --junitxml=report.xml
+    - python -m pytest tests/unit -q -n auto --dist loadfile --junitxml=report.xml
     # The gates a reviewer is told to run, run here as well. The unit suite does
     # exercise the public-surface and purity checks through their tests, but the
     # readability gate is only asserted over the shipping package there, so the

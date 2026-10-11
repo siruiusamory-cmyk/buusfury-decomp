@@ -1,7 +1,12 @@
-"""The right pane: what retail said, what contains the line, its sites, the preview.
+"""The right pane: who is drawn, what retail said, what contains the line, its sites,
+the in-game preview, and the addresses behind one disclosure.
 
-Sections are separated by spacing and one-pixel rules, never by cards. Raw
-addresses, offsets and sizes stay behind one disclosure and are copyable there.
+Sections are separated by 1 px dividers and spacing, never by cards. Raw addresses,
+offsets and sizes are copyable and stay behind one disclosure, because they are
+diagnostics rather than the primary label.
+
+Every answer here comes from `session.py`, including each carrier's own speaker
+label, so the table and the list cannot disagree.
 """
 
 from __future__ import annotations
@@ -19,120 +24,152 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import preview, theme
+from . import preview
+from . import theme as theme_module
 from .session import UNKNOWN_SPEAKER
 
 NO_RETAIL = "No retail reference is loaded, so there is nothing to compare with."
 NO_LINE = "No line is selected."
-PREVIEW_CAPTION = "Approximate preview"
-#: A line no proven handle site reaches stays editable and says what its target is worth.
-NO_PROOF = ("This line is drawn from bytes no proven handle site reaches, so its edit "
-            "target is unproven.")
+AGREES = "Retail and this image say the same words."
+PREVIEW_CAPTION = "In-game preview"
+ADDRESS_LABEL = "Address, offset and size"
+#: The heading says what the label means: the record stores a portrait operand and
+#: never a speaker field.
+SPEAKER_HEADING = "Speaker (by portrait)"
+SITE_LINE = "{count} handle site(s) name this line in the image."
+
+RULE = "border-top: 1px solid %s;"
+INK = "color: %s;"
 
 
-def rule() -> QFrame:
-    """One pixel between two sections."""
+def rule(theme) -> QFrame:
+    """One full-width pixel between two sections, never a card."""
     line = QFrame()
-    line.setFrameShape(QFrame.Shape.HLine)
-    line.setFrameShadow(QFrame.Shadow.Plain)
+    line.setFixedHeight(1)
+    line.setStyleSheet(RULE % getattr(theme, "divider"))
     return line
 
 
 class ContextPane(QWidget):
     """Everything the window knows about the selected line, beside the editor."""
 
-    def __init__(self, theme_, metrics, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._theme = theme_
+        self._theme = theme
+        self._metrics = metrics
+        self._speaker_label = QLabel(NO_LINE, self)
+        self._speaker_label.setWordWrap(True)
+        self._speaker_label.setFont(theme_module.type_scale().body)
+        self.portrait = QLabel("", self)
+        self.portrait.setWordWrap(True)
+        self.portrait.setProperty("role", "caption")
+        self.portrait.setFont(theme_module.type_scale().caption)
         self.retail_heading = self._heading("Retail says")
-        self.retail = QLabel(NO_LINE)
+        self.retail = QLabel(NO_LINE, self)
         self.retail.setWordWrap(True)
         self.retail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.retail.setFont(theme_module.type_scale().prose)
         self.contained_heading = self._heading("Contained by")
-        self.contained = QTableWidget(0, 2)
-        self.contained.setHorizontalHeaderLabels(["Record", "Speaker"])
-        self.contained.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.contained.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents)
-        self.contained.verticalHeader().setVisible(False)
-        self.contained.verticalHeader().setDefaultSectionSize(metrics.row_height)
-        self.contained.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.contained.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.contained.setShowGrid(False)
-        # The join is a measured minority report, so the pane states the share.
-        self.share = QLabel()
-        self.share.setWordWrap(True)
-        self.share.setProperty("role", "hint")
-        self.proven = QLabel(NO_PROOF)
-        self.proven.setWordWrap(True)
-        self.proven.setProperty("role", "hint")
-        self.sites_heading = self._heading("Sites")
-        self.sites = QLabel(NO_LINE)
+        self.contained = self._table(metrics)
+        self.sites = QLabel(NO_LINE, self)
         self.sites.setWordWrap(True)
-        self.preview_heading = self._heading("In-game preview")
+        self.sites.setFont(theme_module.type_scale().caption)
+        self.preview_heading = self._heading(PREVIEW_CAPTION)
         self.preview = preview.DialoguePreview(self)
-        self.caption = QLabel(PREVIEW_CAPTION)
-        self.caption.setEnabled(False)
-        self.raw_button = QToolButton()
-        self.raw_button.setText("Address, offset and size")
+        self.raw_button = QToolButton(self)
+        self.raw_button.setText(ADDRESS_LABEL)
         self.raw_button.setCheckable(True)
+        self.raw_button.setAutoRaise(True)
         self.raw_button.toggled.connect(self._raw_toggled)
-        self.raw_field = QLineEdit()
+        self.raw_field = QLineEdit(self)
         self.raw_field.setReadOnly(True)
-        self.raw_field.setFont(theme.mono_font())
+        self.raw_field.setFont(theme_module.type_scale().data)
         self.raw_field.setVisible(False)
         column = QVBoxLayout(self)
-        column.setContentsMargins(10, 8, 10, 8)
+        column.setContentsMargins(metrics.pad_lg, metrics.pad_md, metrics.pad_lg,
+                                  metrics.pad_md)
         column.setSpacing(metrics.gap)
-        for widget in (self.retail_heading, self.retail, rule(), self.contained_heading,
-                       self.contained, self.share, rule(), self.sites_heading, self.sites,
-                       self.proven, rule(), self.preview_heading, self.preview, self.caption):
+        for widget in (self._speaker_label, self.portrait, rule(theme),
+                       self.retail_heading, self.retail, rule(theme),
+                       self.contained_heading, self.contained, self.sites, rule(theme),
+                       self.preview_heading, self.preview):
             column.addWidget(widget)
         column.addStretch(1)
         column.addWidget(self.raw_button)
         column.addWidget(self.raw_field)
 
+    # --- the shell's API -----------------------------------------------------
+
+    def set_line(self, session, line) -> None:
+        """Show one row, or clear every section when there is none."""
+        if session is None or line is None:
+            self._speaker_label.setText(NO_LINE)
+            self.portrait.setVisible(False)
+            self.retail.setText(NO_LINE)
+            self.contained.setRowCount(0)
+            self.sites.setText(NO_LINE)
+            return
+        self._show_speaker(session, line)
+        self._show_retail(session, line)
+        self._show_covering(session, session.covering(line.key))
+        self.sites.setText(SITE_LINE.format(count=session.sites(line.key)))
+
+    def set_preview_state(self, text: str) -> None:
+        """The preview draws its own waiting state; the pane only forwards the text."""
+        self.preview.set_text(text)
+
+    def set_address(self, raw: str) -> None:
+        """The row's address, offset and size, revealed on request and copyable."""
+        self.raw_field.setText(raw)
+
+    # --- sections ------------------------------------------------------------
+
+    def _show_speaker(self, session, line) -> None:
+        self._speaker_label.setText(line.speaker_label)
+        found = session.portraits.get(line.target or line.key)
+        operand = getattr(found, "operand", None)
+        self.portrait.setText("" if operand is None
+                              else f"Portrait operand 0x{operand:02X}")
+        self.portrait.setVisible(operand is not None)
+
+    def _show_retail(self, session, line) -> None:
+        """The retail wording appears only where it differs, never as a repeat."""
+        if line.retail is None:
+            self.retail.setText(NO_RETAIL)
+            return
+        self.retail.setText(line.retail if session.differs_from_retail(line.key)
+                            else AGREES)
+
+    def _show_covering(self, session, covering: tuple[str, ...]) -> None:
+        """Each carrier's own speaker label, so the table and the list agree."""
+        self.contained.setRowCount(len(covering))
+        for row, key in enumerate(covering):
+            self.contained.setItem(row, 0, QTableWidgetItem(key))
+            carrier = session.line(key)
+            self.contained.setItem(
+                row, 1,
+                QTableWidgetItem(UNKNOWN_SPEAKER if carrier is None
+                                 else carrier.speaker_label))
+
     def _heading(self, text: str) -> QLabel:
-        label = QLabel(text)
-        font = label.font()
-        font.setBold(True)
-        label.setFont(font)
+        label = QLabel(text, self)
+        label.setProperty("role", "sectionLabel")
+        label.setFont(theme_module.type_scale().label)
         return label
+
+    def _table(self, metrics) -> QTableWidget:
+        table = QTableWidget(0, 2, self)
+        table.setHorizontalHeaderLabels(["Record", SPEAKER_HEADING])
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(metrics.row_height)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setShowGrid(False)
+        table.setFont(theme_module.type_scale().body)
+        return table
 
     def _raw_toggled(self, shown: bool) -> None:
         self.raw_field.setVisible(shown)
-
-    def show_line(self, session, key: str, text: str, raw: str) -> None:
-        line = None if session is None or key == "" else session.line(key)
-        if line is None:
-            self.retail.setText(NO_LINE)
-            self._set_covering(session, ())
-            self.sites.setText(NO_LINE)
-        else:
-            self.retail.setText(line.retail if line.retail is not None else NO_RETAIL)
-            self._set_covering(session, session.covering(key))
-            self.sites.setText(f"{session.sites(key)} handle site(s) name this line in the image.")
-        self.proven.setVisible(line is not None and not line.proven)
-        self._set_share(session)
-        self.raw_field.setText(raw)
-        self.preview.set_text(text)
-        self.caption.setText(PREVIEW_CAPTION if self.preview.is_approximate()
-                             else f"{self.preview.glyph_source_name()} glyphs")
-
-    def _set_share(self, session) -> None:
-        """How much of the dialogue list carries a name, from the session's own count."""
-        resolved, total = (0, 0) if session is None else session.speaker_share()
-        self.share.setText("" if not total else
-                           f"speaker known for {resolved} of {total} lines")
-        self.share.setVisible(bool(total))
-
-    def _set_covering(self, session, covering: tuple[str, ...]) -> None:
-        """The records that contain the line, each with the face it draws itself."""
-        self.contained.setRowCount(len(covering))
-        for index, key in enumerate(covering):
-            self.contained.setItem(index, 0, QTableWidgetItem(key))
-            row = None if session is None else session.line(key)
-            item = QTableWidgetItem(UNKNOWN_SPEAKER if row is None else row.speaker_label)
-            if row is None or not row.speaker:
-                item.setForeground(theme.color(self._theme, "text_secondary"))
-            self.contained.setItem(index, 1, item)

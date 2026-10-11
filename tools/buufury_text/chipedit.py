@@ -1,355 +1,418 @@
-"""The three editor sections, the length meter and the move notice.
+"""The editor: RETAIL, CURRENT and NEW over one line, the meter and the move notice.
 
-RETAIL and CURRENT are the same read-only renderer, so reference text and
-editable text cannot disagree visually. The meter and the notice read the
-engine's own answer through the session; nothing here computes a ROM value.
+The three sections are the same widget with the same frame, padding and label
+style, because a read-only section must not read as a lesser one. RETAIL and
+CURRENT differ from NEW in exactly two ways: they refuse the keyboard, and NEW
+carries one weight step on its label plus the accent hairline above its frame.
+Nothing else in the editor competes for attention.
+
+Every number here comes from `session.py`: the meter, the covering records, the
+site count and the refusal reason. This module computes no ROM value.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QFont, QPainter, QPalette
+from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QTextEdit,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
-from . import chips, status as status_words, theme
+from . import chips
+from . import theme as theme_module
 from .session import State
 
-#: The spec's prose size. Monospace belongs to chip internals and to numbers.
-PROSE_POINT_SIZE = 10
+RETAIL = "RETAIL"
+CURRENT = "CURRENT"
+NEW = "NEW"
 
 RETAIL_EXPLANATION = "original game, read-only"
 CURRENT_EXPLANATION = "loaded ROM, read-only"
 NEW_EXPLANATION = "editable"
+
+#: The section-level word that carries the same fact as the run's underline, so the
+#: mark is never colour alone.
+CHANGED = "changed"
 NO_RETAIL = "no retail reference loaded"
 NO_EDIT = "no pending edit"
-UNSTATED = "limit unstated"
+UNSTATED = "unstated"
+CHARS = "chars"
+BYTES = "bytes"
+OVER = "over the limit"
+AT_LIMIT = "at the limit"
+
 MOVE_HEADLINE = "This edit will move to appended space"
 HIDE_DETAILS = "Hide details"
 SHOW_DETAILS = "Show details"
+SELECT_RECORDS = "Select covering records"
 #: The target an unproven line still edits, stated where the edit is made.
 UNPROVEN_TARGET = "Its edit target is unproven: no proven handle site reaches this line."
 
+#: One accent hairline above NEW, and one 1 px control border around every section.
+HAIRLINE = "border-top: 1px solid %s;"
+FRAME = "border: 1px solid %s;"
+INK = "color: %s;"
 
-class SectionHeader(QWidget):
-    """One section's name and its secondary explanation, on a fixed header line."""
 
-    def __init__(self, name: str, explanation: str, height: int,
-                 parent: QWidget | None = None) -> None:
+def _token(theme, role: str) -> str:
+    """One theme token by name, in the form a stylesheet needs it."""
+    return getattr(theme, role)
+
+
+class Section:
+    """One editor section: its label, its explanation, its frame and its text."""
+
+    def __init__(self, owner: QWidget, name: str, explanation: str, editable: bool,
+                 theme, metrics, emphasised: bool = False) -> None:
+        self.name = name
+        self.frame = QFrame(owner)
+        self.frame.setObjectName(f"section{name}")
+        self.frame.setStyleSheet(FRAME % _token(theme, "border"))
+        self.label = QLabel(name, self.frame)
+        self.label.setProperty("role", "sectionLabel")
+        self.label.setFont(theme_module.type_scale().label)
+        # The one accent hairline in the editor sits above NEW and nowhere else.
+        self.label.setStyleSheet(HAIRLINE % _token(theme, "accent") if emphasised else "")
+        self.explanation = QLabel(explanation, self.frame)
+        self.explanation.setProperty("role", "caption")
+        self.explanation.setFont(theme_module.type_scale().caption)
+        self.word = QLabel("", self.frame)
+        self.word.setProperty("role", "caption")
+        self.word.setFont(theme_module.type_scale().caption)
+        self.word.setStyleSheet(INK % _token(theme, "accent"))
+        self.word.setVisible(False)
+        self.editor = chips.ChipTextEdit(self.frame, editable=editable)
+        self.editor.setFont(theme_module.type_scale().prose)
+        if not editable:
+            # Text selectable, never focusable: the caret belongs to NEW.
+            self.editor.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse)
+            self.editor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.editor.setCursorWidth(0)
+        head = QHBoxLayout()
+        head.setContentsMargins(metrics.pad_md, metrics.pad_sm, metrics.pad_md, 0)
+        head.setSpacing(metrics.pad_md)
+        head.addWidget(self.label)
+        head.addWidget(self.explanation)
+        head.addStretch(1)
+        head.addWidget(self.word)
+        body = QVBoxLayout(self.frame)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(metrics.pad_xs)
+        body.addLayout(head)
+        body.addWidget(self.editor, 1)
+
+    def set_text(self, text: str) -> None:
+        self.editor.set_text(text)
+
+
+class BarTrack(QWidget):
+    """The discrete segments and the in-place threshold tick, drawn by the theme."""
+
+    def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.name = QLabel(name)
-        self.explanation = QLabel(explanation)
-        font = QFont(self.name.font())
-        font.setBold(True)
-        self.name.setFont(font)
-        self.explanation.setEnabled(False)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(2, 0, 2, 0)
-        row.setSpacing(8)
-        row.addWidget(self.name)
-        row.addWidget(self.explanation)
-        row.addStretch(1)
-        self.setFixedHeight(height)
-
-
-class ThresholdBar(QWidget):
-    """One unit's fill, and a one-pixel tick at the in-place limit.
-
-    The bar is scaled by whichever is larger, the value or the limit, so a value
-    past the limit is visible as a bar that crosses the tick.
-    """
-
-    HEIGHT = 4
-
-    def __init__(self, parent: QWidget | None = None, theme_=None) -> None:
-        super().__init__(parent)
-        self._theme = theme_
+        self._theme = theme
         self._value = 0
         self._limit: int | None = None
-        self.setFixedHeight(self.HEIGHT)
+        self._over = False
+        self.setFixedHeight(metrics.segment_height + 4)
 
-    def set_measure(self, value: int, limit: int | None) -> None:
-        self._value, self._limit = value, limit
+    def show_measure(self, value: int, limit: int | None, over: bool) -> None:
+        self._value, self._limit, self._over = value, limit, over
         self.update()
 
-    def tick_at(self, width: int) -> int | None:
-        """Where the in-place limit sits in a bar of ``width``, or None when unstated."""
+    def scale(self) -> int:
+        """The denominator: whichever is larger, so a value past the limit shows."""
+        return max(self._value, self._limit or 0, 1)
+
+    def tick_x(self, width: int) -> int | None:
+        """Where the in-place threshold sits, or None when the engine stated none."""
         if self._limit is None:
             return None
-        scale = max(self._value, self._limit, 1)
-        return round(width * self._limit / scale)
+        return round(width * self._limit / self.scale())
 
-    def fill_width(self, width: int) -> int:
-        if self._limit is None:
-            return 0
-        scale = max(self._value, self._limit, 1)
-        return min(width, round(width * self._value / scale))
-
-    def paintEvent(self, _event) -> None:
-        if self._theme is None:
-            return
+    def paintEvent(self, _event) -> None:  # noqa: N802
         painter = QPainter(self)
-        painter.fillRect(self.rect(), theme.color(self._theme, "surface_raised"))
-        painter.setPen(theme.color(self._theme, "border"))
-        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
-        fill = self.fill_width(self.width() - 2)
-        if fill:
-            painter.fillRect(1, 1, fill, self.HEIGHT - 2, theme.color(self._theme, "accent"))
-        tick = self.tick_at(self.width() - 2)
+        rect = QRect(0, 0, self.width(), self.height())
+        total = self._value if self._limit is None else self._limit
+        theme_module.paint_segments(painter, rect, total, self._value, self._theme,
+                                    accent=self._over or self._at_limit(),
+                                    over=self._over)
+        tick = self.tick_x(self.width())
         if tick is not None:
-            painter.fillRect(1 + tick, 0, 1, self.HEIGHT, theme.color(self._theme, "text_primary"))
+            painter.setPen(theme_module.color(self._theme, "text_secondary"))
+            painter.drawLine(min(tick, self.width() - 1), 0,
+                             min(tick, self.width() - 1), self.height() - 1)
+
+    def _at_limit(self) -> bool:
+        return self._limit is not None and self._value == self._limit
 
 
-class StateBadge(QWidget):
-    """The semantic result of the meter: an icon and the full words."""
+class SegmentBar(QWidget):
+    """One unit of the meter: a tabular readout above its own segments."""
 
-    def __init__(self, theme_, parent: QWidget | None = None) -> None:
+    def __init__(self, unit: str, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._theme = theme_
-        self.icon_label = QLabel()
-        self.word_label = QLabel()
-        row = QHBoxLayout(self)
-        row.setContentsMargins(6, 1, 6, 1)
-        row.setSpacing(4)
-        row.addWidget(self.icon_label)
-        row.addWidget(self.word_label)
-        self.setAutoFillBackground(True)
+        self.unit = unit
+        self._theme = theme
+        self.readout = QLabel(NO_EDIT, self)
+        self.readout.setFont(theme_module.type_scale().data)
+        self.readout.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.track = BarTrack(theme, metrics, self)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(metrics.pad_xs)
+        column.addWidget(self.readout)
+        column.addWidget(self.track)
+        self.setFixedHeight(self.readout.sizeHint().height() + metrics.pad_xs
+                            + self.track.height())
 
-    def show_state(self, state: State, icon: str, word: str) -> None:
-        fill, ink = theme.state_colors(self._theme, state)
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, fill)
-        palette.setColor(QPalette.ColorRole.WindowText, ink)
-        self.setPalette(palette)
-        self.icon_label.setPixmap(theme.icon(icon).pixmap(16, 16))
-        self.word_label.setText(word)
+    def show_measure(self, value: int, limit: int | None) -> None:
+        over = limit is not None and value > limit
+        self.readout.setText(
+            f"{value} / {limit} {self.unit}" if limit is not None
+            else f"{value} {self.unit}, {UNSTATED} {self.unit} limit")
+        self.readout.setStyleSheet(
+            INK % _token(self._theme, "accent")
+            if limit is not None and value >= limit else "")
+        self.track.show_measure(value, limit, over)
+
+    def clear(self) -> None:
+        self.readout.setText(NO_EDIT)
+        self.readout.setStyleSheet("")
+        self.track.show_measure(0, None, False)
+
+    def text(self) -> str:
+        return self.readout.text()
 
 
 class LengthMeter(QWidget):
-    """Both units, two labelled bars, and the state badge on the same header line."""
+    """Both units, one aligned bar each, and the engine's refusal reason below."""
 
-    def __init__(self, theme_, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._theme = theme_
-        self.numbers = QLabel()
-        self._stated = False
-        self.numbers.setFont(theme.mono_font())
-        self.badge = StateBadge(theme_, self)
-        self.reason = QLabel()
+        self._theme = theme
+        self.chars = SegmentBar(CHARS, theme, metrics, self)
+        self.bytes = SegmentBar(BYTES, theme, metrics, self)
+        self.word = QLabel("", self)
+        self.word.setProperty("role", "caption")
+        self.word.setFont(theme_module.type_scale().caption)
+        self.word.setVisible(False)
+        self.reason = QLabel("", self)
         self.reason.setWordWrap(True)
+        self.reason.setFont(theme_module.type_scale().caption)
+        self.reason.setStyleSheet(INK % _token(theme, "text_secondary"))
         self.reason.setVisible(False)
-        self.char_label = QLabel("Chars")
-        self.byte_label = QLabel("Bytes")
-        for label in (self.char_label, self.byte_label):
-            label.setFont(theme.mono_font())
-        self.chars_bar = ThresholdBar(theme_=theme_)
-        self.bytes_bar = ThresholdBar(theme_=theme_)
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
-        header.addWidget(self.numbers)
-        header.addStretch(1)
-        header.addWidget(self.badge)
+        bars = QHBoxLayout()
+        bars.setContentsMargins(metrics.pad_md, 0, metrics.pad_md, 0)
+        bars.setSpacing(metrics.pad_lg)
+        bars.addWidget(self.chars, 1)
+        bars.addWidget(self.bytes, 1)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(2)
-        column.addLayout(header)
-        column.addLayout(self._bar_row(self.char_label, self.chars_bar))
-        column.addLayout(self._bar_row(self.byte_label, self.bytes_bar))
+        column.setSpacing(metrics.pad_xs)
+        column.addWidget(self.word)
+        column.addLayout(bars)
         column.addWidget(self.reason)
 
-    @staticmethod
-    def _bar_row(label: QLabel, track: ThresholdBar) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        row.addWidget(label)
-        row.addWidget(track, 1)
-        return row
-
-    def text(self) -> str:
-        return self.numbers.text()
-
-    def stated(self) -> bool:
-        """Whether the engine stated a span, so a tick and a fill mean something."""
-        return self._stated
-
-    def show_meter(self, session, key: str) -> None:
-        meter = None if session is None or key == "" else session.meter(key)
-        decision = None if session is None or key == "" else session.decision(key)
-        state = State.UNCHANGED if session is None or key == "" else session.state(key)
+    def show_meter(self, meter, word: str = "") -> None:
+        """`meter` is the session's own answer; None means there is no pending edit."""
         if meter is None:
-            self._stated = False
-            self.numbers.setText(NO_EDIT)
-            self.chars_bar.set_measure(0, None)
-            self.bytes_bar.set_measure(0, None)
-            self.badge.setVisible(False)
-            self.reason.setVisible(False)
-            return
-        self._stated = meter.chars_limit is not None and meter.bytes_limit is not None
-        self.numbers.setText(self._numbers(meter))
-        self.chars_bar.set_measure(meter.chars, meter.chars_limit)
-        self.bytes_bar.set_measure(meter.bytes, meter.bytes_limit)
-        self._show_result(state, decision, meter)
-
-    @staticmethod
-    def _numbers(meter) -> str:
-        characters = f"{meter.chars} / {meter.chars_limit} chars" if meter.chars_limit is not None \
-            else f"{meter.chars} chars"
-        size = f"{meter.bytes} / {meter.bytes_limit} bytes" if meter.bytes_limit is not None \
-            else f"{meter.bytes} bytes"
-        unstated = "" if meter.chars_limit is not None and meter.bytes_limit is not None \
-            else f"     {UNSTATED}"
-        return f"{characters}     {size}{unstated}"
-
-    def _show_result(self, state: State, decision, _meter) -> None:
-        if state is State.REFUSED:
-            entry = status_words.presentation(State.REFUSED)
-            self.badge.show_state(State.REFUSED, entry.icon, entry.word)
-        elif state is State.WILL_MOVE:
-            entry = status_words.presentation(State.WILL_MOVE)
-            self.badge.show_state(State.WILL_MOVE, entry.icon, entry.word)
-        elif decision is None:
-            self.badge.setVisible(False)
-            self.reason.setVisible(False)
-            return
+            self.chars.clear()
+            self.bytes.clear()
         else:
-            self.badge.show_state(State.EDITED, "check", "FITS IN PLACE")
-        self.badge.setVisible(True)
-        reason = "" if decision is None or state is not State.REFUSED else decision.reason
+            self.chars.show_measure(meter.chars, meter.chars_limit)
+            self.bytes.show_measure(meter.bytes, meter.bytes_limit)
+        self.word.setText(word)
+        self.word.setVisible(bool(word))
+
+    def show_reason(self, reason: str) -> None:
         self.reason.setText(reason)
         self.reason.setVisible(bool(reason))
 
+    def reason_shown(self) -> bool:
+        """Whether the engine's refusal reason is disclosed under the meter."""
+        return self.reason.isVisibleTo(self)
+
+    def word_shown(self) -> bool:
+        return self.word.isVisibleTo(self)
+
+    def text(self) -> str:
+        return "     ".join((self.chars.text(), self.bytes.text()))
+
+    def stated(self) -> bool:
+        """Whether the engine stated a span, so a threshold tick means something."""
+        return self.chars.track.tick_x(100) is not None or \
+            self.bytes.track.tick_x(100) is not None
+
 
 class MoveNotice(QFrame):
-    """A persistent inline disclosure under the meter. It collapses, never expires."""
+    """A persistent inline disclosure. It collapses, and it never expires."""
 
     records_requested = Signal(tuple)
 
-    def __init__(self, theme_, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFrameShape(QFrame.Shape.Box)
-        self.setFrameShadow(QFrame.Shadow.Plain)
-        self.setAutoFillBackground(True)
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, theme.color(theme_, "surface_raised"))
-        self.setPalette(palette)
-        self.headline = QLabel(MOVE_HEADLINE)
-        self.detail = QLabel()
+        self._covering: tuple[str, ...] = ()
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setStyleSheet(FRAME % _token(theme, "border"))
+        self.headline = QLabel(MOVE_HEADLINE, self)
+        self.headline.setWordWrap(True)
+        self.headline.setFont(theme_module.type_scale().body)
+        self.detail = QLabel("", self)
         self.detail.setWordWrap(True)
-        self.select_button = QToolButton()
-        self.select_button.setText("Select covering records")
+        self.detail.setProperty("role", "caption")
+        self.detail.setFont(theme_module.type_scale().caption)
+        self.select_button = QToolButton(self)
+        self.select_button.setText(SELECT_RECORDS)
+        self.select_button.setAutoRaise(True)
         self.select_button.clicked.connect(
             lambda: self.records_requested.emit(tuple(self._covering)))
-        self.collapse_button = QToolButton()
+        self.collapse_button = QToolButton(self)
         self.collapse_button.setText(HIDE_DETAILS)
+        self.collapse_button.setAutoRaise(True)
         self.collapse_button.setCheckable(True)
         self.collapse_button.toggled.connect(self._collapsed)
-        self._covering: tuple[str, ...] = ()
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        row.addWidget(self.select_button)
-        row.addWidget(self.collapse_button)
-        row.addStretch(1)
+        buttons = QHBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        buttons.setSpacing(metrics.pad_md)
+        buttons.addWidget(self.collapse_button)
+        buttons.addWidget(self.select_button)
+        buttons.addStretch(1)
         column = QVBoxLayout(self)
-        column.setContentsMargins(8, 6, 8, 6)
-        column.setSpacing(4)
+        column.setContentsMargins(metrics.pad_md, metrics.pad_sm, metrics.pad_md,
+                                  metrics.pad_sm)
+        column.setSpacing(metrics.pad_xs)
         column.addWidget(self.headline)
         column.addWidget(self.detail)
-        column.addLayout(row)
+        column.addLayout(buttons)
 
     def _collapsed(self, hidden: bool) -> None:
         self.detail.setVisible(not hidden)
         self.collapse_button.setText(SHOW_DETAILS if hidden else HIDE_DETAILS)
 
+    def detail_shown(self) -> bool:
+        return self.detail.isVisibleTo(self)
+
     def show_notice(self, covering: tuple[str, ...], sites: int, visible: bool,
-                    proven: bool = True) -> None:
-        self._covering = covering
+                    proven: bool) -> None:
+        self._covering = tuple(covering)
         self.setVisible(visible)
         if not visible:
             return
-        names = ", ".join(covering) if covering else "no other record"
-        detail = (f"Original bytes are also referenced by {names}. "
-                  f"{sites} handle site(s) name this line in the image.")
-        if not proven:
-            detail = f"{detail} {UNPROVEN_TARGET}"
-        self.detail.setText(detail)
+        self.detail.setText(self._detail(covering, sites, proven))
         self.select_button.setEnabled(bool(covering))
         self.detail.setVisible(not self.collapse_button.isChecked())
 
-
-def prose_font() -> QFont:
-    """The 10 pt proportional face the three editor surfaces share."""
-    font = QFont(QApplication.font())
-    font.setPointSize(PROSE_POINT_SIZE)
-    return font
+    @staticmethod
+    def _detail(covering: tuple[str, ...], sites: int, proven: bool) -> str:
+        names = ", ".join(covering) if covering else "no other record"
+        second = (f"It is named by {sites} handle site(s), and the original bytes are "
+                  f"also referenced by {names}.")
+        return second if proven else f"{second} {UNPROVEN_TARGET}"
 
 
 class EditorSections(QWidget):
-    """RETAIL, CURRENT and NEW over one line, with the meter and the move notice."""
+    """RETAIL, CURRENT and NEW over one line, then the meter and the move notice."""
 
-    edited = Signal(str)
+    committed = Signal(str, str)
 
-    def __init__(self, theme_, metrics, parent: QWidget | None = None) -> None:
+    def __init__(self, theme, metrics, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._theme = theme_
+        self._theme = theme
         self._metrics = metrics
         self._key = ""
-        self.retail_header = SectionHeader("RETAIL", RETAIL_EXPLANATION, metrics.header_height)
-        self.current_header = SectionHeader("CURRENT", CURRENT_EXPLANATION, metrics.header_height)
-        self.new_header = SectionHeader("NEW", NEW_EXPLANATION, metrics.header_height)
-        self.retail = self._surface(read_only=True)
-        self.current = self._surface(read_only=True)
-        self.new = self._surface(read_only=False)
-        self.new.edited.connect(self.edited)
-        self.meter = LengthMeter(theme_, self)
-        self.notice = MoveNotice(theme_, self)
+        self.retail = Section(self, RETAIL, RETAIL_EXPLANATION, False, theme, metrics)
+        self.current = Section(self, CURRENT, CURRENT_EXPLANATION, False, theme, metrics)
+        self.new = Section(self, NEW, NEW_EXPLANATION, True, theme, metrics,
+                           emphasised=True)
+        self.meter = LengthMeter(theme, metrics, self)
+        self.notice = MoveNotice(theme, metrics, self)
+        # A hidden notice keeps its slot, so the editor does not jump when it shows.
+        self.notice.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.notice.hide()
+        self.new.editor.edited.connect(self._edited)
         column = QVBoxLayout(self)
-        column.setContentsMargins(10, 8, 10, 8)
-        column.setSpacing(6)
-        column.addWidget(self.retail_header)
-        column.addWidget(self.retail, 3)
-        column.addWidget(self.current_header)
-        column.addWidget(self.current, 3)
-        column.addWidget(self.new_header)
-        column.addWidget(self.new, 4)
+        column.setContentsMargins(metrics.pad_lg, metrics.pad_md, metrics.pad_lg,
+                                  metrics.pad_md)
+        column.setSpacing(metrics.pad_sm)
+        for section in (self.retail, self.current):
+            column.addWidget(section.label)
+            column.addWidget(section.frame, 1)
+        column.addWidget(self.new.label)
+        column.addWidget(self.new.frame, 1)
         column.addWidget(self.meter)
         column.addWidget(self.notice)
 
-    def _surface(self, read_only: bool) -> chips.ChipTextEdit:
-        editor = chips.ChipTextEdit(self)
-        editor.setReadOnly(read_only)
-        editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
-        editor.setFont(prose_font())
-        editor.setFrameShape(QFrame.Shape.StyledPanel)
-        return editor
+    # --- the shell's API -----------------------------------------------------
 
-    def show_line(self, session, key: str, text: str, keep_editor: bool = False) -> None:
-        """Show one line. The editor is only rewritten when the selection moved."""
-        moved = key != self._key
-        self._key = key
-        line = None if session is None or key == "" else session.line(key)
-        if line is None:
-            self.retail.set_text("")
-        elif line.retail is None:
-            self.retail.set_text(NO_RETAIL)
-        else:
-            self.retail.set_text(line.retail)
+    def set_line(self, line, state: State = State.UNCHANGED, meter=None,
+                 differs: bool = False, decision_reason: str = "", covering=(),
+                 sites: int = 0, proven: bool = True) -> None:
+        """Show one row. Everything shown here is the session's own answer."""
+        self._key = "" if line is None else line.key
+        self.retail.set_text("" if line is None else (line.retail or NO_RETAIL))
         self.current.set_text("" if line is None else line.text)
-        if moved or not keep_editor:
+        self.new.set_text("" if line is None else line.text)
+        self.new.word.setText(CHANGED if line is not None and differs else "")
+        self.new.word.setVisible(bool(line is not None and differs))
+        self.set_state(state, meter, differs, decision_reason)
+        self.notice.show_notice(tuple(covering), sites, bool(covering), proven)
+
+    def set_state(self, state: State, meter=None, differs: bool = False,
+                  decision_reason: str = "") -> None:
+        """The meter, the engine's own words for a refusal, and the changed word."""
+        self.meter.show_meter(meter, self._state_word(state, meter))
+        self.meter.show_reason(decision_reason if state is State.REFUSED else "")
+        self.new.word.setText(CHANGED if differs else "")
+        self.new.word.setVisible(bool(differs))
+
+    def set_pending(self, text: str) -> None:
+        """Show what the project will make this row say, without stealing typing."""
+        if self.new.editor.serialized() != text and not self.has_focus():
             self.new.set_text(text)
-        self.meter.show_meter(session, key)
-        state = State.UNCHANGED if line is None else session.state(key)
-        self.notice.show_notice(() if line is None else session.covering(key),
-                                0 if line is None else session.sites(key),
-                                state is State.WILL_MOVE,
-                                True if line is None else line.proven)
+
+    def focus_new(self) -> None:
+        self.new.editor.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def new_text(self) -> str:
+        return self.new.editor.serialized()
+
+    def notice_shown(self) -> bool:
+        """Whether the move notice is disclosed, whatever the window's own state."""
+        return self.notice.isVisibleTo(self.notice.parentWidget()) or \
+            self.notice.isVisible()
+
+    def has_focus(self) -> bool:
+        """Whether NEW carries the caret, rather than any child of the editor."""
+        return self.new.editor.hasFocus()
+
+    def commit(self) -> None:
+        """Send NEW's text for the current row, as typing in it would."""
+        if self._key:
+            self.committed.emit(self._key, self.new_text())
+
+    # --- internals -----------------------------------------------------------
+
+    def _edited(self, text: str) -> None:
+        if self._key:
+            self.committed.emit(self._key, text)
+
+    @staticmethod
+    def _state_word(state: State, meter) -> str:
+        if state is State.WILL_MOVE:
+            return MOVE_HEADLINE
+        if meter is None:
+            return ""
+        pairs = ((meter.chars, meter.chars_limit), (meter.bytes, meter.bytes_limit))
+        if any(limit is not None and value > limit for value, limit in pairs):
+            return OVER
+        if any(limit is not None and value == limit for value, limit in pairs):
+            return AT_LIMIT
+        return ""

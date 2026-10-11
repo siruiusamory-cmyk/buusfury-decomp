@@ -92,6 +92,9 @@ At the frozen candidate:
   pre-existing reading list that never changes the exit code.
 - `python -m tools.buufury_text --smoke`: exits 0.
 - The export end to end on release 3.1 passes, and the artifact is unchanged.
+- The one-folder package builds, carries the Qt SVG plugin and all 19 icons, and its
+  executable smokes to exit 0: `914c1d57d10343e27da5431b759960983bcfab7b6365b4a2394d8612a7459e1c`,
+  88.5 MB in 122 files.
 - The mechanical anti-generic runner reports exactly one finding, the recorded prose
   measure conflict, and prints what it cannot see.
 
@@ -348,11 +351,20 @@ Toolbelt and tool entries added to the project:
 - **The mGBA rule changed during this ticket**: runtime evidence now requires a visible,
   non-minimized window from the launcher the runtime skill names. No emulator run was
   needed for the rebuild, so the rule was not exercised here.
-- **The frozen package was not rebuilt for this round.** A one-folder PyInstaller build
-  was started against this tree and was cancelled before it finished, so the packaging
-  proof stands on the earlier commit that built and smoked it, not on this candidate. The
-  application's own start paths are all exercised here: `python -m tools.buufury_text`
-  runs, `--smoke` exits 0, and `--version` prints the product name and version.
+- **The frozen package was rebuilt and smoked at this candidate.** A one-folder
+  PyInstaller build against this tree produced 88.5 MB in 122 files, and the packaged
+  executable ran `--smoke` to exit 0 in under 120 seconds with no window. The Qt SVG
+  image plugin travelled inside the bundle as
+  `_internal\PySide6\plugins\imageformats\qsvg.dll`, with `Qt6Svg.dll` beside it, and all
+  19 icons were staged, which is the requirement that the drawing plugin and the icon set
+  survive packaging rather than only working from source. The executable's SHA-256 is
+  `914c1d57d10343e27da5431b759960983bcfab7b6365b4a2394d8612a7459e1c`. An earlier attempt
+  at this build was cancelled before it finished, which is why the first version of this
+  report recorded the proof as resting on an earlier commit; this line supersedes that
+  and records the measurement.
+- **The application's own start paths are all exercised**: `python -m tools.buufury_text`
+  runs, `--smoke` exits 0, `--version` prints the product name and version, and the
+  packaged executable does the same.
 - **The underline over a control unit was measured on the shipping platform only.** The
   offscreen runner paints an extra-selection underline in a plain document and none in a
   document carrying an inline object, measured at 91 accent columns against 0, so the

@@ -48,6 +48,8 @@ rather than aligning by guess.
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -59,7 +61,7 @@ from ..dialogue_repack import container_pointers, text_of
 from ..formats import text_tables as tt
 from ..formats import webfoot_lz
 from ..handles import DialogueHandle, unpack_handle
-from ..write import WriteError, ensure_not_source_alias
+from ..write import WriteError, ensure_new_destination, ensure_not_source_alias
 
 #: One UTF-16LE code unit. A handle's start and length fields count these.
 UNIT = 2
@@ -135,11 +137,6 @@ class Layout:
     kinds: Mapping[int, int]
     room: Mapping[int, int]
 
-    @property
-    def slot_at(self) -> int:
-        """File offset of the table slot the appended container is written into."""
-        return self.table_offset + self.profile.grown_selector * 4
-
 
 def detect(image: bytes) -> Layout:
     """The validated layout of `image`, or a refusal naming the check it failed."""
@@ -176,6 +173,11 @@ def validate(image: bytes, profile: TitleProfile) -> Layout:
     offsets: dict[int, int] = {}
     kinds: dict[int, int] = {}
     room: dict[int, int] = {}
+    live_end = table_offset + profile.live_selectors * 4
+    if live_end > len(image):
+        raise TextEditError(
+            f"REFUSED: {profile.key}: the container table at {table_offset:#x} does not hold "
+            f"{profile.live_selectors} live selectors inside a {len(image)}-byte image")
     for selector in range(SELECTOR_SLOTS):
         slot = table_offset + selector * 4
         if slot + 4 > len(image):
@@ -282,6 +284,7 @@ class Model:
     slots: tuple[Slot, ...]
     records: tuple[Record, ...]
     by_key: Mapping[str, Record]
+    retail_path: Path | None = None
     retail_sha256: str | None = None
     retail_streams: Mapping[int, bytes] = ()
 
@@ -330,12 +333,14 @@ def open_rom(rom_path: str | Path, canonical: str | Path | None = None) -> Model
             f"REFUSED: {path} carries {len(records)} dialogue record(s), under the "
             f"{MINIMUM_DIALOGUE_RECORDS}-record floor this profile validates against")
     slots = _read_slots(image, layout.profile)
+    retail_file: Path | None = None
     retail_sha256 = None
     retail_streams: Mapping[int, bytes] = {}
     if canonical is not None:
         retail_path = Path(canonical)
         retail = retail_path.read_bytes()
         retail_layout = detect(retail)
+        retail_file = retail_path
         retail_sha256 = hashlib.sha256(retail).hexdigest()
         retail_streams = dict(retail_layout.streams)
         retail_slots = _read_slots(retail, retail_layout.profile)
@@ -353,6 +358,7 @@ def open_rom(rom_path: str | Path, canonical: str | Path | None = None) -> Model
         slots=slots,
         records=records,
         by_key={record.key: record for record in records},
+        retail_path=retail_file,
         retail_sha256=retail_sha256,
         retail_streams=retail_streams,
     )
@@ -910,7 +916,7 @@ def _write_in_place(model: Model, in_place: list[_InPlace], decisions: list[Deci
                 final.extend(by_selector[selector])
                 continue
             at = builder.append(packed, f"container {selector} relocated")
-            entry = model.layout.table_offset + selector * 4
+            entry = _table_base(model.profile, builder.out) + selector * 4
             builder.write(entry, (ROM_BASE + at).to_bytes(4, "little"), f"table slot {selector}")
         else:
             builder.write(at, packed, f"container {selector}")
@@ -919,35 +925,66 @@ def _write_in_place(model: Model, in_place: list[_InPlace], decisions: list[Deci
     return final, decisions, rewritten
 
 
+def _refuse_all(decisions: list[Decision], rows: list[_Placement], reason: str) -> None:
+    for row in rows:
+        decisions[row.decision] = replace(decisions[row.decision], method=REFUSED, reason=reason)
+
+
 def _write_moves(model: Model, placements: list[_Placement], decisions: list[Decision],
                  builder: _Builder, warnings: list[str]) -> tuple[list[_Placement], list[Decision]]:
-    """Copy every moved record into the appended container, prefix carried forward."""
+    """Copy every moved record into the appended container, prefix carried forward.
+
+    THE RETAIL TABLE IS NEVER WRITTEN. A table whose grown slot does not already
+    name a container is the image's own table, and its words are live structure:
+    measured on the canonical image, the grown slot holds 0x03004A68 and three
+    code loads reach that word through the literal at file 0x03D92C. The shipped
+    releases never wrote it either: they ran on images whose table had already
+    been moved into expansion space. This route does the same - copy the whole
+    64-slot table into appended space and repoint the one literal that names it -
+    and refuses when that literal is not named exactly once, rather than writing
+    a word whose owner is unproven (P-027).
+    """
     if not placements:
         return [], decisions
     selector = model.profile.grown_selector
-    slot_at = model.layout.slot_at
+    table = model.layout.table_offset
+    slot_at = table + selector * 4
     if slot_at + 4 > len(model.image):
-        for row in placements:
-            decisions[row.decision] = replace(decisions[row.decision], method=REFUSED,
-                                              reason="the grown selector's table slot lies outside "
-                                                     "the image")
+        _refuse_all(decisions, placements,
+                    "the grown selector's table slot lies outside the image")
         return [], decisions
+    out = builder.out
+    pointer = int.from_bytes(out[slot_at:slot_at + 4], "little")
     prefix = b""
-    pointer = int.from_bytes(model.image[slot_at:slot_at + 4], "little")
-    if not ROM_BASE <= pointer < ROM_BASE + len(model.image):
-        warnings.append(
-            f"table slot {selector} did not name a container and is being taken for this "
-            f"image's appended container; it held {pointer:#010x} before this export")
-    else:
+    if ROM_BASE <= pointer < ROM_BASE + len(model.image):
         try:
-            prefix = bytes(webfoot_lz.unpack(model.image, pointer - ROM_BASE).data)
+            prefix = bytes(webfoot_lz.unpack(bytes(out), pointer - ROM_BASE).data)
         except webfoot_lz.ContainerError as error:
-            for row in placements:
-                decisions[row.decision] = replace(
-                    decisions[row.decision], method=REFUSED,
-                    reason=f"the container that table slot {selector} names does not decode, so "
-                           f"its payload cannot be carried forward: {error}")
+            _refuse_all(decisions, placements,
+                        f"the container that table slot {selector} names does not decode, so "
+                        f"its payload cannot be carried forward: {error}")
             return [], decisions
+    else:
+        literal_at = model.profile.table_literal
+        literal = int.from_bytes(model.image[literal_at:literal_at + 4], "little")
+        references = _references(model.image, literal)
+        if references != 1:
+            _refuse_all(decisions, placements,
+                        f"table slot {selector} holds {pointer:#010x}, not a container, so the "
+                        f"table would have to be moved before that slot can be used; the table "
+                        f"at {table:#x} is named by {references} word-aligned references and a "
+                        "table with more than one owner cannot be moved aside, so the slot is "
+                        "not proven free")
+            return [], decisions
+        block = bytes(out[table:table + SELECTOR_SLOTS * 4])
+        table = builder.append(block, "container table")
+        builder.write(literal_at, (ROM_BASE + table).to_bytes(4, "little"),
+                      "container table literal")
+        slot_at = table + selector * 4
+        warnings.append(
+            f"the container table is copied to {ROM_BASE + table:#010x} and the literal at "
+            f"{literal_at:#x} repointed, because table slot {selector} held {pointer:#010x}, "
+            "not a container, and the image's own table words are live structure")
     kept: list[_Placement] = []
     for row in placements:
         bad = next((site for site in row.sites
@@ -972,11 +1009,9 @@ def _write_moves(model: Model, placements: list[_Placement], decisions: list[Dec
     if len(payload) % 2:
         payload += bytes([0x00, 0x00])
     if len(payload) > PLACEMENT_CEILING:
-        for row in kept:
-            decisions[row.decision] = replace(
-                decisions[row.decision], method=REFUSED,
-                reason=f"the carried payload would be {len(payload)} bytes, above the "
-                       f"{PLACEMENT_CEILING}-byte ceiling the start field addresses")
+        _refuse_all(decisions, kept,
+                    f"the carried payload would be {len(payload)} bytes, above the "
+                    f"{PLACEMENT_CEILING}-byte ceiling the start field addresses")
         return [], decisions
     at = builder.append((0).to_bytes(4, "little") + len(payload).to_bytes(4, "little")
                         + bytes(payload), f"container {selector} appended")
@@ -1025,17 +1060,24 @@ def _write_slots(model: Model, slot_moves: list[_SlotMove], decisions: list[Deci
 def _container_stream(model: Model, image: bytes, selector: int, cache: dict) -> bytes:
     """The decoded payload of one selector in `image`, decoded once per call site.
 
-    The selector is read from the OUTPUT image's own table, because a move gives
-    a record a selector the input did not carry.
+    The table is found through the literal in the OUTPUT image, because a move
+    gives a record a selector the input did not carry and may have moved the table
+    itself.
     """
     if selector not in cache:
-        entry = model.layout.table_offset + selector * 4
+        entry = _table_base(model.profile, image) + selector * 4
         pointer = int.from_bytes(image[entry:entry + 4], "little")
         if not ROM_BASE <= pointer < ROM_BASE + len(image):
             raise webfoot_lz.ContainerError(
                 f"selector {selector} holds {pointer:#010x}, which names no container")
-        cache[selector] = bytes(webfoot_lz.unpack(image, pointer - ROM_BASE).data)
+        cache[selector] = bytes(webfoot_lz.unpack(bytes(image), pointer - ROM_BASE).data)
     return cache[selector]
+
+
+def _table_base(profile: TitleProfile, image: bytes) -> int:
+    """The container table's file offset, read from the image's own literal."""
+    literal = int.from_bytes(image[profile.table_literal:profile.table_literal + 4], "little")
+    return literal - ROM_BASE
 
 
 def _text_at_site(model: Model, image: bytes, site: int, cache: dict) -> tuple[str, str]:
@@ -1057,36 +1099,39 @@ def readback(plan: Plan) -> tuple[str, ...]:
 
     P-030: a moved record is checked at its HANDLE, never at the address it held
     before the move. P-007: an expected value comes from the plan, never from
-    searching the payload for the wording. Every record of a rewritten container
-    is checked, which is also the carry-forward proof: a record an earlier release
-    placed in the grown selector must still read its own text at its own offset.
+    searching the payload for the wording. Every live SITE is checked, keyed by the
+    site itself, so a record that moved out of a container that was also edited in
+    place is checked once, against the text its own new handle names, and never
+    against the row it left behind. Every record of the grown selector is checked
+    too, which is the carry-forward proof: a record an earlier release placed there
+    must still read its own text at its own offset.
     """
     model = plan.model
     image = plan.output
     cache: dict[int, bytes] = {}
     problems: list[str] = []
+    expected: dict[int, tuple[str, bool]] = {}
     for row in model.records:
-        if row.selector not in plan.rewritten_selectors:
-            continue
         want = row.text
         for item in plan.in_place:
             if (plan.decisions[item.decision].method == IN_PLACE
                     and item.selector == row.selector
                     and row.start <= item.start < row.start + row.length):
                 want = want.replace(item.old, item.new)
-        got, why = _text_at_site(model, image, row.sites[0], cache)
-        if why:
-            problems.append(f"{row.key}: {why}")
-        elif got.replace(" ", "") != want.replace(" ", ""):
-            problems.append(f"{row.key}: reads {got[:50]!r}, expected {want[:50]!r}")
+        for site in row.sites:
+            expected[site] = (want, False)
     for row in plan.placements:
         for site in row.sites:
-            got, why = _text_at_site(model, image, site, cache)
-            if why:
-                problems.append(f"{row.key}: {why}")
-            elif got != row.text:
-                problems.append(f"{row.key}: site {site:#06x} reads {got[:50]!r}, expected "
-                                f"{row.text[:50]!r}")
+            expected[site] = (row.text, True)
+    for site in sorted(expected):
+        want, exact = expected[site]
+        got, why = _text_at_site(model, image, site, cache)
+        if why:
+            problems.append(why)
+        elif exact and got != want:
+            problems.append(f"site {site:#06x} reads {got[:50]!r}, expected {want[:50]!r}")
+        elif not exact and got.replace(" ", "") != want.replace(" ", ""):
+            problems.append(f"site {site:#06x} reads {got[:50]!r}, expected {want[:50]!r}")
     for row in plan.slot_moves:
         if plan.decisions[row.decision].method == REFUSED:
             continue
@@ -1107,29 +1152,46 @@ def apply(plan: Plan, out_path: str | Path) -> dict:
     """Write the plan to a new file, or refuse and write nothing.
 
     The order is the safety property: a refused edit or a failed readback raises
-    before any byte is staged, the destination is checked against the protected
-    ROM inputs and against the input file's own identity (a hard link to the
-    input is the same file), and the staged file is read back and compared with
-    the verified bytes before it is renamed into place.
+    before any byte is staged; the destination is checked against the protected
+    ROM inputs, against the input file's own identity and against the canonical
+    image opened as the retail reference (a hard link to either is the same file);
+    an existing output is refused rather than overwritten; and the staged file is
+    read back and compared with the verified bytes before it is renamed into
+    place. The staged name is unpredictable and is created exclusively, so a
+    leftover cannot be mistaken for an output and a stale name cannot be occupied.
     """
     refusals = plan.refusals
     if refusals:
         raise TextEditError("REFUSED: " + "; ".join(
             f"{item.target}: {item.reason}" for item in refusals))
     target = Path(out_path)
-    source = plan.model.path
     try:
-        refuse_rom_destination(source, target)
-        ensure_not_source_alias(source, target)
+        for source in (plan.model.path, plan.model.retail_path):
+            if source is None:
+                continue
+            refuse_rom_destination(source, target)
+            ensure_not_source_alias(source, target)
+        ensure_new_destination(target)
     except WriteError as error:
         raise TextEditError(f"REFUSED: {error}") from error
     problems = readback(plan)
     if problems:
         raise TextEditError("REFUSED: the built image does not read back: "
                             + "; ".join(problems))
-    staged = target.with_name(target.name + ".staged")
-    staged.write_bytes(plan.output)
-    if staged.read_bytes() != plan.output:
-        raise TextEditError("REFUSED: the staged write does not match the verified bytes")
-    staged.replace(target)
+    staged = None
+    try:
+        handle = tempfile.NamedTemporaryFile(dir=target.parent, prefix=target.name + ".",
+                                             suffix=".staged", delete=False)
+        staged = Path(handle.name)
+        with handle:
+            handle.write(plan.output)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if staged.read_bytes() != plan.output:
+            raise TextEditError("REFUSED: the staged write does not match the verified bytes")
+        os.replace(staged, target)
+    except BaseException:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+        raise
     return {**plan.summary, "output": str(target)}

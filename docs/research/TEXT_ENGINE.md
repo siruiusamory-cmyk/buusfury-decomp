@@ -72,6 +72,17 @@ stage and rename, returning the output sha256.
   table slot is repointed, and every handle word that carries the record is
   rewritten. Prefix and append: `apply_friend_v3_registration_rows.py` and
   `build_friend_v3_release31.py`.
+- **The retail table is never written.** A table whose grown slot does not already
+  name a container is the image's own table, and its words are live structure:
+  measured on the canonical image, the grown slot holds `0x03004A68` and three
+  code loads reach that word through the literal at file `0x03D92C`. The shipped
+  releases never wrote it either; they ran on images whose table had already been
+  moved into expansion space. On first use the engine therefore copies the whole
+  64-slot table into appended space and repoints the one literal that names it
+  (`0x123CC`), leaving every retail table word byte-identical, and it REFUSES when
+  that literal is not named exactly once rather than writing a word whose owner is
+  unproven (P-027). A table that already carries a container in the grown slot is
+  the project's own append table, and one slot word of it is written.
 - **Carry-forward.** The prefix is the previous container's DECODED payload. The
   two release builders copied the stored bytes from the container's header, which
   coincides with the payload only because the container they carried was kind 0.
@@ -97,7 +108,7 @@ stage and rename, returning the output sha256.
 
 ## 4. Golden replay
 
-Measured 2026-10-11 in the ticket worktree, with these images staged as real
+Measured 2026-10-10 in the ticket worktree, with these images staged as real
 copies under `roms/` and verified by sha256.
 
 ### 4.1 Release 3, the wording stage
@@ -144,11 +155,11 @@ declaring 23,790 bytes at file offset 10,146,136.
 
 ## 5. Tests
 
-`tests/unit/test_text_engine.py`, 20 tests, all portable (`fast` gate): 17 on the
-synthetic image and 3 golden replays that skip when the release images are not
-staged. The fixture is a 450 KB synthetic image with seven stored containers,
-real record words and the real 1,534-slot table, so every rule runs in CI
-without any ROM.
+`tests/unit/test_text_engine.py`, 27 tests, all portable (`fast` gate): 23 on the
+synthetic image and 4 that need the canonical image or the release images and skip
+without them. The fixture is a 450 KB synthetic image with seven stored containers,
+real record words and the real 1,534-slot table, so every rule runs in CI without
+any ROM.
 
 | Rule | Test |
 | --- | --- |
@@ -156,10 +167,12 @@ without any ROM.
 | refusal blocks the export | `test_a_refused_edit_blocks_the_export_and_writes_nothing` |
 | boundary-safe | `test_a_span_with_another_record_boundary_inside_it_moves_instead_of_writing`, `test_a_record_that_merely_contains_the_span_is_not_a_boundary_conflict` |
 | one-reference guard | `test_a_slot_whose_pointer_has_a_second_reference_is_refused`, `test_a_slot_with_one_reference_moves_and_reads_back`, `test_a_slot_edit_refuses_a_guard_that_does_not_match_the_slot` |
-| carry-forward prefix | `test_a_moved_record_is_appended_after_the_carried_payload`, `test_a_carried_record_still_resolves_through_its_own_handle`, `test_the_first_use_of_the_grown_slot_warns_that_the_slot_was_taken` |
+| carry-forward prefix | `test_a_moved_record_is_appended_after_the_carried_payload`, `test_a_carried_record_still_resolves_through_its_own_handle`, `test_a_record_already_in_the_grown_selector_moves_and_reads_back` |
+| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` |
+| readback per site | `test_an_in_place_edit_and_a_move_from_one_container_both_read_back` |
 | per-occurrence decision | `test_a_record_holding_both_actors_renames_only_the_retail_occurrence`, `test_an_occurrence_with_no_retail_name_is_counted_unclear`, `test_a_rename_refuses_when_the_offsets_do_not_correspond` |
-| destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory` |
-| detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused` |
+| destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory`, `test_apply_refuses_the_canonical_reference_as_its_own_destination`, `test_apply_refuses_to_overwrite_an_existing_output` |
+| detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused`, `test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector` |
 | golden replay | the three tests of section 4, which skip when the release images are not staged |
 
 ## 6. Open limits
@@ -170,12 +183,13 @@ without any ROM.
 - **No box metrics.** There is no font or dialogue-box model, so nothing checks
   whether a line fits the box. The engine bounds a record by the handle's 4,094
   byte length field and the container's 65,534 byte start field, not by pixels.
-- **The grown selector slot is taken on first use.** On the retail image that
-  slot holds an IWRAM word, and the block past the seven live entries belongs to
-  something else. The engine uses the slot (the project measured it as the
-  reserved append slot and proved selector 7 at runtime), reports it as a warning
-  when the slot did not already name a container, and lists the byte range it
-  writes. Freeness in the P-027 sense has not been proven for that word.
+- **The table is relocated when the grown slot is not already a container.** On
+  the retail image that slot holds `0x03004A68`, an IWRAM word three code loads
+  reach through the literal at file `0x03D92C`, so the engine copies the whole
+  table into appended space and repoints the `0x123CC` literal on first use, and
+  refuses when that literal is not named exactly once. A table that already
+  carries a container in the grown slot (the shape every shipped release has) gets
+  one slot word written in place, which is the route the releases used.
 - **A move leaves the old bytes.** Every longer record covering the same span
   keeps the old wording; the plan reports each one and warns. Release 4's
   container rebuild is what removes the case.
@@ -187,6 +201,10 @@ without any ROM.
   container table, string table and record shape.
 - **A container over 64 KiB of declared payload** is refused by the existing
   decoder, not by this module.
+- **The readback compares words, not padding, for records it did not move.** An
+  in-place edit pays its difference as trailing spaces, so a covering record can
+  legitimately lose interior spaces; those sites are compared with spaces removed,
+  and a moved record's sites are compared exactly.
 - **No CLI and no UI.** Ticket 1 is the engine. The desktop surface is ticket 2.
 
 ## 7. Harvest
@@ -205,6 +223,13 @@ ticket:
 - **P-035**: a per-occurrence rename's "kept" count must come from the canonical
   text, never from the record's own text: comparing a record's text with itself
   is true by construction and counts every occurrence as kept.
+- **P-036**: the review of this ticket found the engine WARNING and then writing a
+  table slot that was not proven free, on an image whose table was still the
+  retail one. The retail table's grown slot is live structure, reached by three
+  loads through a second literal.
+- **P-037**: the review found a readback keyed on the INPUT's per-selector record
+  rows, which mis-checks a record that moved out of a container that was also
+  edited in place; the expectation must be keyed on the SITE.
 
 Also `references/tools.md` T-011 records the module itself, its invocation, the
 two golden digests and its limits.

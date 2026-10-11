@@ -38,6 +38,7 @@ PAYLOAD_BYTES = 0x100
 RECORD_AT = 0x2000
 BODY_AT = 0x60000
 TABLE_AT = 0x6DF00
+TABLE_BYTES = 64 * 4
 GROWN_AT = 0x8000
 SPACES = b"\x20\x00" * (PAYLOAD_BYTES // 2)
 RECORD_WORD = bytes([0x00, 0x00, 0x05, 0x00])
@@ -81,8 +82,8 @@ def build(payloads=None, records=(), slots=None, grown=None):
     return image
 
 
-def open_image(image, directory, **kwargs):
-    path = Path(directory) / "fixture.gba"
+def open_image(image, directory, name: str = "fixture.gba", **kwargs):
+    path = Path(directory) / name
     path.write_bytes(image)
     with mock.patch.object(textedit.engine, "MINIMUM_DIALOGUE_RECORDS", 1):
         return textedit.open_rom(path, **kwargs)
@@ -240,15 +241,67 @@ def test_a_carried_record_still_resolves_through_its_own_handle(tmp_path: Path) 
         (7, 0, len(carried))
 
 
-def test_the_first_use_of_the_grown_slot_warns_that_the_slot_was_taken(tmp_path: Path) -> None:
+def test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone(
+        tmp_path: Path) -> None:
     text = "hello there everybody, this is"
     image = build(payloads={1: line_payload(text)},
                   records=[(1, 0x20, 0x40), (1, 0x30, 0x10)])
     model = open_image(image, tmp_path)
     built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 0x40, "hello", "hi")])
-    assert any("did not name a container" in warning for warning in built.warnings)
+    assert built.decisions[0].method == textedit.MOVE
+    assert built.output[TABLE_AT:TABLE_AT + TABLE_BYTES] == image[TABLE_AT:TABLE_AT + TABLE_BYTES]
+    assert any("container table is copied" in warning for warning in built.warnings)
+    table = int.from_bytes(built.output[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert table >= len(image)
+    for selector in range(7):
+        assert built.output[table + selector * 4:table + selector * 4 + 4] == \
+            image[TABLE_AT + selector * 4:TABLE_AT + selector * 4 + 4]
+    pointer = int.from_bytes(built.output[table + 7 * 4:table + 7 * 4 + 4], "little")
+    assert pointer >= ROM_BASE + len(image)
     assert slot_payload(built.output, 7).decode("utf-16le").startswith(
         "hi there everybody, this is")
+    assert textedit.readback(built) == ()
+
+
+def test_a_table_with_more_than_one_reference_is_refused_instead_of_written(
+        tmp_path: Path) -> None:
+    text = "hello there everybody, this is"
+    image = build(payloads={1: line_payload(text)},
+                  records=[(1, 0x20, 0x40), (1, 0x30, 0x10)])
+    image[0x9000:0x9004] = image[TABLE_LITERAL:TABLE_LITERAL + 4]
+    model = open_image(image, tmp_path)
+    built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 0x40, "hello", "hi")])
+    assert built.decisions[0].method == textedit.REFUSED
+    assert "not proven free" in built.refusals[0].reason
+    with pytest.raises(textedit.TextEditError, match="REFUSED"):
+        textedit.apply(built, tmp_path / "unused.gba")
+
+
+def test_an_in_place_edit_and_a_move_from_one_container_both_read_back(
+        tmp_path: Path) -> None:
+    payload = bytearray(line_payload("hello", 0x20))
+    payload[0x40:0x45] = "world".encode("utf-16le")
+    image = build(payloads={1: bytes(payload)},
+                  records=[(1, 0x20, 0x20), (1, 0x40, 0x20)])
+    model = open_image(image, tmp_path)
+    built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 0x20, "hello", "hi"),
+                                  textedit.RecordEdit(1, 0x40, 0x20, "world",
+                                                      "a much longer line than this")])
+    assert [item.method for item in built.decisions] == [textedit.IN_PLACE, textedit.MOVE]
+    assert textedit.readback(built) == ()
+    textedit.apply(built, tmp_path / "mixed.gba")
+
+
+def test_a_record_already_in_the_grown_selector_moves_and_reads_back(tmp_path: Path) -> None:
+    carried = "#Hey sis!".encode("utf-16le")
+    image = build(records=[(7, 0, len(carried))], grown=carried)
+    model = open_image(image, tmp_path)
+    built = textedit.plan(model, [textedit.RecordEdit(7, 0, len(carried), "Hey sis",
+                                                      "a much longer greeting")])
+    assert built.decisions[0].method == textedit.MOVE
+    assert built.placements[0].new_start == len(carried)
+    assert textedit.readback(built) == ()
+    textedit.apply(built, tmp_path / "grown.gba")
 
 
 # --- the per-occurrence decision ---------------------------------------------
@@ -296,6 +349,28 @@ def test_apply_refuses_a_destination_inside_the_protected_rom_directory(tmp_path
     assert not target.exists()
 
 
+def test_apply_refuses_the_canonical_reference_as_its_own_destination(tmp_path: Path) -> None:
+    image, _model = simple(tmp_path)
+    retail = open_image(image, tmp_path, name="retail.gba")
+    model = open_image(image, tmp_path, name="edited.gba", canonical=retail.path)
+    assert model.retail_path == retail.path
+    built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 20, "hello", "hi")])
+    before = retail.path.read_bytes()
+    with pytest.raises(textedit.TextEditError, match="REFUSED"):
+        textedit.apply(built, retail.path)
+    assert retail.path.read_bytes() == before
+
+
+def test_apply_refuses_to_overwrite_an_existing_output(tmp_path: Path) -> None:
+    _image, model = simple(tmp_path)
+    built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 20, "hello", "hi")])
+    target = tmp_path / "existing.gba"
+    target.write_bytes(b"already here")
+    with pytest.raises(textedit.TextEditError, match="overwrite"):
+        textedit.apply(built, target)
+    assert target.read_bytes() == b"already here"
+
+
 # --- detection ---------------------------------------------------------------
 
 
@@ -314,6 +389,14 @@ def test_an_image_whose_live_selector_is_not_a_container_is_refused(tmp_path: Pa
     path = tmp_path / "broken.gba"
     path.write_bytes(image)
     with pytest.raises(textedit.TextEditError, match="live selector 3"):
+        textedit.open_rom(path)
+
+
+def test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector(tmp_path: Path) -> None:
+    image = build()
+    path = tmp_path / "truncated.gba"
+    path.write_bytes(image[:TABLE_AT + 6 * 4])
+    with pytest.raises(textedit.TextEditError, match="does not hold 7 live selectors"):
         textedit.open_rom(path)
 
 
@@ -380,6 +463,25 @@ def test_the_release3_edit_list_from_its_base_differs_only_in_the_non_text_stage
                for index in differing)
     assert published[len(built.output):] == \
         golden("v3-release3.2-profile.gba").read_bytes()[len(built.output):]
+
+
+def test_the_canonical_table_words_are_untouched_when_a_record_moves(tmp_path: Path) -> None:
+    rom = canonical()
+    image = rom.read_bytes()
+    table = int.from_bytes(image[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    model = textedit.open_rom(rom)
+    target = model.record(1, 38856, 252)
+    assert target is not None
+    built = textedit.plan(model, [textedit.RecordEdit(1, 38856, 252, target.text,
+                                                      target.text + " and more")])
+    assert built.decisions[0].method == textedit.MOVE
+    assert built.output[table:table + TABLE_BYTES] == image[table:table + TABLE_BYTES]
+    moved = int.from_bytes(built.output[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert moved >= len(image)
+    pointer = int.from_bytes(built.output[moved + 7 * 4:moved + 7 * 4 + 4], "little")
+    assert ROM_BASE <= pointer < ROM_BASE + len(built.output)
+    assert textedit.readback(built) == ()
+    textedit.apply(built, tmp_path / "canonical-move.gba")
 
 
 def test_the_release31_rename_replays_byte_identically(tmp_path: Path) -> None:

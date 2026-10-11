@@ -198,8 +198,8 @@ modification, and it is the one you share. [Release artefacts](docs/release-arte
 states what a user receives, what must never be distributed, and how version and
 build identity work.
 
-The desktop editor needs the PySide6 extra
-(`uv pip install -e ".[workbench]"`) and starts from `DragonByte Z.cmd` or with
+The desktop editor needs the PySide6 extra, which `scripts\setup.ps1` installs by
+default alongside the test tooling, and starts from `DragonByte Z.cmd` or with
 `python -m tools.webfoot.workbench`. Before it can open any ROM it also needs the
 assembled atlas at `build\atlas\atlas.jsonl`, and it refuses every ROM without it.
 Produce one from a local ROM:

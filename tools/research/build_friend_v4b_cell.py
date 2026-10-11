@@ -227,7 +227,7 @@ def main() -> int:
 
     log2_path = Path(args.log2)
     digest = sha256_of(log2_path)
-    if digest != LOG2_SHA256 and not Path(args.image).name.startswith("log2"):
+    if digest != LOG2_SHA256:
         raise CellPortError(f"REFUSED: {log2_path} is {digest}, expected {LOG2_SHA256}")
     log2 = log2_path.read_bytes()
 
@@ -254,9 +254,24 @@ def main() -> int:
     report["output_sha256"] = hashlib.sha256(out).hexdigest()
     report["output_bytes"] = len(out)
 
-    Path(args.out).write_bytes(out)
-    Path(args.manifest).write_text(
-        "\n".join(f"{key}: {value}" for key, value in report.items()) + "\n", encoding="utf-8")
+    # ROM_SAFETY: an output may never BE an input. The canonical ROM, the source title and the base image
+    # are protected, and the write is staged so a failure cannot leave a half-written image behind.
+    protected = {log2_path.resolve(), image_path.resolve()}
+    out_path = Path(args.out).resolve()
+    manifest_path = Path(args.manifest).resolve()
+    for target, label in ((out_path, "--out"), (manifest_path, "--manifest")):
+        if target in protected:
+            raise CellPortError(f"REFUSED: {label} names an input this build reads: {target}")
+        if any(part in ("roms", "extracted", "dump", "dumps", "stock", "exports")
+               for part in target.parts):
+            raise CellPortError(f"REFUSED: {label} is inside a protected input directory: {target}")
+    for target, payload in ((out_path, out),
+                            (manifest_path, ("\n".join(f"{key}: {value}"
+                                                        for key, value in report.items())
+                                             + "\n").encode("utf-8"))):
+        staging = target.with_name(target.name + ".staging")
+        staging.write_bytes(payload)
+        staging.replace(target)
     for key, value in report.items():
         print(f"  {key}: {value}")
     print(f"# wrote {args.out} ({len(out)} bytes)")

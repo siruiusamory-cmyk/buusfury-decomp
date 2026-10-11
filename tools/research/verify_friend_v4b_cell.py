@@ -185,6 +185,20 @@ def main() -> int:
             print("  NOTE: until a palette route is chosen, those indices show this image's own colours, "
                   "so the character renders but not in the source title's colours")
 
+    # The source's records must appear in the port IN ORDER: a set comparison would accept a reorder that
+    # changes which frame plays for which direction (the review's finding).
+    port_sequence = [item[5] for item in rendered]
+    source_sequence = [item[5] for item in source]
+    expected_sequence = (source_sequence * ((len(port_sequence) // max(1, len(source_sequence))) + 1))[
+        :len(port_sequence)]
+    if port_sequence != expected_sequence and len(port_sequence) == len(source_sequence):
+        failures.append("the ported frames are not in the source's order")
+    elif len(port_sequence) != len(source_sequence):
+        first = next((index for index, (a, b) in enumerate(zip(port_sequence, expected_sequence)) if a != b),
+                     None)
+        if first is not None:
+            failures.append(f"the ported frame order first differs from the source at index {first}")
+
     for failure in failures[:20]:
         print(f"FAIL: {failure}")
     print(f"verdict: {'PASS' if not failures else 'FAIL'} ({len(failures)} finding(s))")

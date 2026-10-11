@@ -104,3 +104,30 @@ def test_the_independent_verifier_passes(built) -> None:
     assert "payloads: port 24 frame(s) against source 24" in result.stdout
     assert "entries whose colour differs from the source title" in result.stdout, (
         "the palette difference must be reported: the port renders, but not in the source colors")
+
+
+def test_the_builder_requires_the_source_titles_digest(tmp_path) -> None:
+    """No filename may excuse skipping the source identity check."""
+    from tools.research.build_friend_v4b_cell import LOG2_SHA256, CellPortError, sha256_of
+    text = (ROOT / "tools/research/build_friend_v4b_cell.py").read_text(encoding="utf-8")
+    assert "and not Path(args.image).name.startswith(\"log2\")" not in text, (
+        "the digest check must not be skippable by naming the output after the source title")
+    assert LOG2_SHA256 in text
+    fake = tmp_path / "log2-not-really.gba"
+    fake.write_bytes(b"\x00" * 64)
+    assert sha256_of(fake) != LOG2_SHA256
+
+
+def test_the_builder_refuses_to_write_over_an_input(tmp_path) -> None:
+    """ROM_SAFETY: an output may never BE an input, and the write must be staged."""
+    path = ROOT / "tools/research/build_friend_v4b_cell.py"
+    text = path.read_text(encoding="utf-8")
+    assert "names an input this build reads" in text, "no refusal for an output equal to an input"
+    assert "protected input directory" in text, "no refusal for writing inside roms/ or dumps/"
+    assert ".staging" in text, "the write must go through a staged file that is renamed into place"
+
+
+def test_the_verifier_checks_frame_order_not_just_membership() -> None:
+    text = (ROOT / "tools/research/verify_friend_v4b_cell.py").read_text(encoding="utf-8")
+    assert "not in the source's order" in text, (
+        "a reordered port would pass a set comparison, so the order must be checked")

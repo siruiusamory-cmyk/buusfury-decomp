@@ -79,10 +79,23 @@ stage and rename, returning the output sha256.
   releases never wrote it either; they ran on images whose table had already been
   moved into expansion space. On first use the engine therefore copies the whole
   64-slot table into appended space and repoints the one literal that names it
-  (`0x123CC`), leaving every retail table word byte-identical, and it REFUSES when
-  that literal is not named exactly once rather than writing a word whose owner is
-  unproven (P-027). A table that already carries a container in the grown slot is
-  the project's own append table, and one slot word of it is written.
+  (`0x123CC`), and it REFUSES when that literal is not named exactly once rather
+  than writing a word whose owner is unproven (P-027). A table that already
+  carries a container in the grown slot is the project's own append table, and one
+  slot word of it is written.
+  **One case is not yet byte-clean, and it is the first item of the UI ticket
+  (finding F1 of this ticket's sign-off).** The in-place phase runs before the move
+  phase, so in a plan that both relocates a container in place (a grown replacement
+  that no longer fits the space its container occupies) and moves a record, the
+  in-place phase writes that container's table entry in the image's own table
+  before the table is copied. Measured example on the canonical image: a plan with
+  `1:5498:12` grown and a move writes retail table slot 1 at file `0x7B5B68`. The
+  write is dead, because the literal is repointed in the same export and nothing
+  else names that word, but the retail block is then NOT byte-identical. The fix is
+  to relocate the table before any container relocation, with a mixed-plan test
+  asserting `0x7B5B64..0x7B5C64` unchanged; until it lands, byte-identity of the
+  retail block is claimed only for plans that do not relocate a container in place,
+  which is every plan this ticket reproves.
 - **Carry-forward.** The prefix is the previous container's DECODED payload. The
   two release builders copied the stored bytes from the container's header, which
   coincides with the payload only because the container they carried was kind 0.
@@ -173,7 +186,7 @@ any ROM.
 | per-occurrence decision | `test_a_record_holding_both_actors_renames_only_the_retail_occurrence`, `test_an_occurrence_with_no_retail_name_is_counted_unclear`, `test_a_rename_refuses_when_the_offsets_do_not_correspond` |
 | destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory`, `test_apply_refuses_the_canonical_reference_as_its_own_destination`, `test_apply_refuses_to_overwrite_an_existing_output` |
 | detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused`, `test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector` |
-| golden replay | the three tests of section 4, which skip when the release images are not staged |
+| golden replay | the three golden tests of section 4 plus the canonical-image test in the row above: four ROM-dependent tests in all, which skip when those images are not staged |
 
 ## 6. Open limits
 
@@ -190,6 +203,12 @@ any ROM.
   refuses when that literal is not named exactly once. A table that already
   carries a container in the grown slot (the shape every shipped release has) gets
   one slot word written in place, which is the route the releases used.
+- **A mixed plan writes a dead retail table word (F1).** If one plan both
+  relocates a container in place and moves a record, the in-place phase writes the
+  container's table entry into the image's own table before the table is copied.
+  The write is dead, since the literal is repointed in the same export, but the
+  retail block is then not byte-identical. Fix and test are the first item of the
+  UI ticket; see section 3 for the measured example.
 - **A move leaves the old bytes.** Every longer record covering the same span
   keeps the old wording; the plan reports each one and warns. Release 4's
   container rebuild is what removes the case.

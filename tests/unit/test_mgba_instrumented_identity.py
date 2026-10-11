@@ -28,13 +28,16 @@ nothing on that path measured. The armed record now reports the identity of the
 manifest that `verify_instrumented_mgba` actually verified, and no literal may
 be bound to that field anywhere in the instrumented verification path.
 
-Every refusal below is proven to happen before any emulator process exists:
-`subprocess.Popen` is replaced by a recorder that raises, so a launch path that
-had lost its gate would be caught rather than started, and the machine's own
-process list is asked for the one image name this test handed the launcher.
-`_own_executable` makes that name unique to the test, so neither another test's
-emulator nor another session's can answer for it, while a launch that did go out
-still leaves a process under it.
+Every refusal below is proven to happen before any emulator process exists, by two
+nets with different reach. `subprocess.Popen` is replaced by a recorder that
+raises, so a launch path that had lost its gate is caught rather than started,
+whatever it would have run. The machine's own process list is the second net and it
+reaches only a launch that got past the recorder to the operating system: it is
+asked for the one image name this test handed the launcher, and `_own_executable`
+makes that name unique to the test, so neither another test's emulator nor another
+session's can answer for it. A fixture whose launcher target is not executable
+never creates a process at all, so on those the count can prove nothing and the
+recorder is the net that does the work.
 """
 
 from __future__ import annotations

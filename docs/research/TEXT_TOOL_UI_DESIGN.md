@@ -154,8 +154,11 @@ and unexplained.
   restraint, so nothing else in the editor competes.
 - The two read-only sections show **no caret**, because a blinking cursor on static
   text is a named tell of a generated interface.
-- **The changed run** inside NEW is marked by an underline that is 2 px in the
-  accent, plus a section-level word (`changed`) so the mark is never colour alone.
+- **The changed run** inside NEW is marked by an underline in the accent, plus a
+  section-level word (`changed`) so the mark is never colour alone. The underline is
+  drawn at the font's own thickness rather than a chosen 2 px, because Qt exposes no
+  underline width and the alternative is painting the text by hand. That is a recorded
+  shortfall against this note's wording, not a silent one.
 - **The meter**: the spec's two aligned bars, one for characters and one for bytes,
   drawn as Nothing's discrete segments: square-ended blocks with 2 px gaps, no
   radius, no track behind them, with the numeric readout above in tabular mono.

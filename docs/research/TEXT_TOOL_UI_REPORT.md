@@ -95,7 +95,16 @@ At the last full run, before the final review pass:
 
 Five captures of the running application: dark and light at 100 percent, dark and light
 at 150 percent, and dark at the window's minimum size. They live under the ignored
-`build/acceptance/text-tool-ui-001/` and are not committed.
+`build/acceptance/text-tool-ui-001/` and are not committed. Each one's SHA-256, so a
+reviewer can tell whether a file was replaced:
+
+| Capture | SHA-256 |
+| --- | --- |
+| `final-dark-100.png` | `9f98245e3c0de4f6659d1f5a022bf2e4800b55f1400d2a82a2eee1d3d7ec8088` |
+| `final-light-100.png` | `c9ab8f41fe36c9ba2d093ec8d0a180a67c5ccf73d1a07a29736ac8bab64bf2bf` |
+| `final-dark-150.png` | `d56e59b2c4700c9fe73071227797479917bb9d94282981c51e32221cd42c9c73` |
+| `final-light-150.png` | `795db31d384935caafb6fa54948b455b4a99b01d709bb810b0331622ea7b722b` |
+| `final-dark-minimum.png` | `24bbac8270ff3b8c3eef9c370ca3a5db576d6f9d2ee87b2ca1f799cd82734b76` |
 
 Fifteen colour-vision conversions accompany them: each capture through deuteranopia,
 protanopia and tritanopia.
@@ -124,16 +133,23 @@ their own counts, because the owner asked for the before and after numbers.
 
 ### Hallmark audit
 
-| | Before, `a19b587` | After, `a4c0a28` |
-| --- | --- | --- |
-| Gates assessed | 58 | 58 |
-| Pass | 24 | 25 |
-| Fail | 4 (4, 40, 41, 48) | 4 (26, 39, 40, 41) |
-| Pass as recorded deviation | 4 | 4 |
-| Not applicable to a native desktop tool | 24 | 23 |
-| Could not check | 2 | 2 |
-| Severity | 1 critical, 2 major, 5 minor | 0 critical, 3 major, 4 minor |
-| Verdict | needs changes | needs changes, and the critical is gone |
+| | `a19b587` | `a4c0a28` | `e83ec25` |
+| --- | --- | --- | --- |
+| Gates assessed | 58 | 58 | 58 |
+| Pass | 24 | 25 | 31 |
+| Fail | 4 (4, 40, 41, 48) | 4 (26, 39, 40, 41) | 3 (25, 35, 46) |
+| Pass as recorded deviation | 4 | 4 | 4 |
+| Not applicable to a native desktop tool | 24 | 23 | 23 |
+| Could not check | 2 | 2 | 2 |
+| Severity | 1 critical, 2 major, 5 minor | 0 critical, 3 major, 4 minor | 0 critical, 3 major, 3 minor |
+| Verdict | needs changes | needs changes, critical gone | the critical is gone and the three remaining fails are settled below |
+
+Of the third pass's three remaining fails, one is a recorded conflict (gate 25, the prose
+measure at a wide centre pane), one is a mislabel in this repository's own mechanical
+runner and is corrected there rather than in the build (gate 46, the invented-metric
+gate, which the audit showed is APPLICABLE and passing because every figure on screen is
+the engine's own: the meter's counts, the container offset, the span), and one was real
+and is fixed: gate 35, the changed run carrying a word but no underline.
 
 The critical is the one worth naming. With a stylesheet installed but no rule naming it,
 Qt paints a control with ink of its own choosing: the light theme rendered the menu bar,
@@ -146,22 +162,50 @@ against the defect rather than assumed: with the control rules removed the same
 measurement returns 1.09:1 in light and 14.98:1 in dark, the exact asymmetry that hid
 it, and with them in place 15.59:1 and 14.24:1.
 
-The after audit's three majors and their outcome: the combo boxes had lost their
-drop-down indicator, because the same commit that named the classes styled the
-subcontrol without supplying an indicator, and it now carries the bundled chevron in
-the theme's ink; the status column painted its own raised panel and broke the row's
-divider, which is fixed in the list's own file; and the meter's empty state printed one
-placeholder twice with no number, and it now states the budget, saying `unstated` where
-the engine states no limit.
+Every major from the second pass is closed and each has a measurement behind it: the
+combo boxes carry their drop-down arrow again, measured by the rule's effect on the
+painted band rather than by reading the stylesheet; the status badge stops where its word
+does, so the row's own fill and its divider run to the cell's edge; and the meter's
+untouched state states the row's own budget instead of printing one placeholder twice.
+The third pass's three majors are closed too, and two of them were not cosmetic: the
+rename dialog had no entry point anywhere, so the per-occurrence flow the owner asked
+for was unreachable, and the counters line painted zero pixels at every window size
+after a fix that was meant to let it elide.
+
+One finding of the third pass is contested and not actioned, with both measurements
+named: it reported the panes squeezed below their natural minimums with a list-pane floor
+of 664 px. That figure comes from the offscreen Qt platform, which on this machine has no
+font directory and falls back to a font about 50 percent wider. The same pane measures
+350 px on the real platform and the window's own minimum is 1018x611, which is what this
+worktree measured independently, so the 664 px floor is an artifact of the offscreen font
+rather than a defect.
 
 ### break-ui worst-case pass
 
-| | Before, `a19b587` | After, `a4c0a28` |
-| --- | --- | --- |
-| Observations | 89 | 142 in the primary pass, 394 including the scaling passes |
-| Case families | 25 | 42 |
-| Families with a break | 8 | 11 |
-| Severity split | 2 blockers, 5 majors, 1 minor, 1 nit | 1 blocker, 2 major, 4 minor, 2 nit |
+| | `a19b587` | `a4c0a28` | `e83ec25` |
+| --- | --- | --- | --- |
+| Observations | 89 | 142 in the primary pass, 394 with the scaling passes | 199 per platform, 796 across four |
+| Case families | 13 base, 24 identity strings | 19 base, 42 identity strings | 28 base, 64 identity strings |
+| Families with a break | 8 | 11 | 3 |
+| Severity split | 2 blockers, 5 majors, 1 minor, 1 nit | 1 blocker, 2 major, 4 minor, 2 nit | 1 blocker, 2 major, 2 minor, 3 nit |
+
+The third pass's blocker is the one this report would put first if it could keep only one
+finding: **a document position is not a string position.** A control unit is two
+characters in the canonical string, the escape byte and its operand, and one character in
+the document that draws it, so every edit route handed the document's number to a
+function that counts the string's. Measured before the fix, typing `XYZ` at the end of a
+line carrying a unit produced `Line one <unit> enXYZd`, the two-unit line landed two
+characters early, and a line ENDING in a unit dropped the keystrokes with no refusal and
+no message, which is a silent write failure rather than a display one. The conversion is
+now three pure functions applied at every boundary, and the case is parametrised over
+five shapes including the trailing one.
+
+The pass's two majors were the unreachable rename dialog and the counters line, both
+described above. Its minors were the status bar never releasing its message region, which
+now clears when the selection moves; an unraisable exception at process exit from a
+context-free lambda on the undo stack's clean signal, which now connects the bound
+method; and the check glyph being drawn twice, once by the themed rule and once as a
+character in the chip's own text.
 
 Its blocker was the worst defect the rebuilt layer had, and it was found only by feeding
 the widget a line that carries a control unit: `ChipObject.intrinsicSize` and
@@ -300,3 +344,12 @@ Toolbelt and tool entries added to the project:
 - **The mGBA rule changed during this ticket**: runtime evidence now requires a visible,
   non-minimized window from the launcher the runtime skill names. No emulator run was
   needed for the rebuild, so the rule was not exercised here.
+- **The frozen package was not rebuilt for this round.** A one-folder PyInstaller build
+  was started against this tree and was cancelled before it finished, so the packaging
+  proof stands on the earlier commit that built and smoked it, not on this candidate. The
+  application's own start paths are all exercised here: `python -m tools.buufury_text`
+  runs, `--smoke` exits 0, and `--version` prints the product name and version.
+- **The underline over a control unit was measured on the shipping platform only.** The
+  offscreen runner paints an extra-selection underline in a plain document and none in a
+  document carrying an inline object, measured at 91 accent columns against 0, so the
+  atom case asserts its marked ranges offscreen and its pixels on Windows.

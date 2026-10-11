@@ -311,21 +311,21 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
         name="release-4a",
         base_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
         base_bytes=10169982,
-        output_sha256="b11c7201efb2c987d1b607f446978cbd89ce56b57f62486f75e0c2cf44398f0d",
+        output_sha256="a21c1e27f7b4f04cbe6952d70eb102b350adac04e6eaba106fa10e2b90a55021",
         output_bytes=10170720,
         stages=("dabura-broly-swap",),
-        notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form included. "
-              "The mechanism that makes that true rather than merely sampled is the character table: "
-              "ids 73 and 98 are repointed at Broly's own sprite definition, and every path that "
-              "names a sprite id - both map-object families, the event-resource scripts of BOTH "
-              "types including the three type-4 cutscene spawns, the attached-actor native and any "
-              "code constant - reaches the definition through that table word, so the whole corpus "
-              "follows by construction and no script payload is re-packed. The five map-object sites "
-              "additionally name 38 outright and the two FD55 fights take Broly's own stat selector "
-              "10, proven by map 390 slot 0; appearances 28 and 29 take his sprite and portrait, and "
-              "text slot 1024 reads Broly. No enemy stat record, behaviour table, placement "
-              "descriptor or dialogue record is touched; description slot 1025 still names Dabura "
-              "until the owner supplies wording.",
+        notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form "
+              "included. Sprite ids 73 and 98 point at their own COPIES of Broly's definition, appended "
+              "and filled so every slot the originals occupied is non-empty, because the scripts index "
+              "the animation array with no missing-animation check (the donor leaves slot 12, which the "
+              "Heaven actor's resource 490 selects, and slot 22 empty). The placed sites and the "
+              "appearance records KEEP their retail ids: scripts find an actor by definition pointer, so "
+              "a site moved to the donor id would resolve to the shared definition while the scripts "
+              "resolve the copies, and the lookup would match nothing. The two FD55 fights take the "
+              "donor's stat selector 10; the appearance portraits become his; text slot 1024 reads "
+              "Broly. 17 bytes change inside the base and 738 bytes are appended. No enemy stat record, "
+              "behaviour table, placement descriptor, script payload or dialogue record is touched; "
+              "description slot 1025 still names Dabura until the owner supplies wording.",
     ),
 )
 

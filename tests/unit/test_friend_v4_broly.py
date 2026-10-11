@@ -24,20 +24,16 @@ def test_each_old_id_gets_its_own_definition_copy() -> None:
         "the definition pointers are computed addresses now, not static site rows")
 
 
-def test_every_draw_site_moves_from_a_dabura_sprite_to_broly() -> None:
-    """The census found five Dabura sites (sprite 73 four times, 98 once). Every one must be here,
-    or the 'Broly everywhere' claim is false, and no site may keep a Dabura sprite."""
-    sprite_sites = {"map207 slot4 sprite (ship fight, sprite 73 -> 38)",
-                    "map32 slot42 sprite (other Dabura fight, 73 -> 38)",
-                    "map206 slot3 sprite (ship scene, 73 -> 38)",
-                    "map207 slot3 sprite (ship scene, 73 -> 38)",
-                    "map451 slot0 sprite (Heaven form, 98 -> 38)"}
+def test_the_placed_sites_keep_their_retail_ids() -> None:
+    """Scripts find an actor by DEFINITION POINTER, so the id an actor carries must be the id the
+    scripts target. Moving the sites to the donor's id made every lookup miss: the Heaven actor's
+    resource 490 (98, state 12) and the ship scene's resource 337 (73, natives 71/65) found nothing.
+    The art change rides on the character table words instead."""
     labels = {label for label, _offset, _was, _now in SITES}
-    assert sprite_sites <= labels
-    for label, _offset, was, now in SITES:
-        if label in sprite_sites:
-            assert was in (73, 98), f"{label} does not start from a Dabura sprite"
-            assert now == 38, f"{label} does not become Broly"
+    assert not any("sprite" in label and "stat" not in label for label in labels), (
+        "no placed site's sprite id may move")
+    stats = [(label, was, now) for label, _offset, was, now in SITES]
+    assert len(stats) == 2, "exactly the two fight stat selectors change"
 
 
 def test_both_fights_take_brolys_own_stat_selector() -> None:
@@ -50,14 +46,16 @@ def test_both_fights_take_brolys_own_stat_selector() -> None:
         assert now == BROLY_STAT_RECORD == 10
 
 
-def test_the_appearances_take_brolys_sprite_and_portrait() -> None:
-    wanted = {"appearance 28 sprite 73 -> 38", "appearance 28 portrait 24 -> 16",
-              "appearance 29 sprite 98 -> 38", "appearance 29 portrait 32 -> 16"}
+def test_the_appearances_keep_their_ids_and_take_the_portrait() -> None:
+    """The scanner pairs an actor's sprite id with its stat index, so the appearance record's id must
+    stay as the actor carries it; what changes is the portrait the owner sees and the fight's stat."""
     labels = {label for label, _offset, _was, _now in APPEARANCES}
-    assert wanted <= labels
+    assert not any("sprite" in label for label in labels), (
+        "no appearance sprite id may move")
     for label, _offset, _was, now in APPEARANCES:
         if "portrait" in label:
-            assert now == 16, "Broly's portrait slot is 16"
+            assert now == 16, "the donor's portrait slot is 16"
+    assert any("stat 18 -> Broly 10" in label for label in labels)
 
 
 def test_the_name_edit_is_a_shrink_so_it_fits_in_place() -> None:
@@ -69,5 +67,5 @@ def test_the_name_edit_is_a_shrink_so_it_fits_in_place() -> None:
 def test_the_release_identity_is_the_approved_one() -> None:
     release = next(record for record in APPROVED_RELEASES if record.name == "release-4a")
     assert release.base_sha256 == "f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201"
-    assert release.output_sha256 == "b11c7201efb2c987d1b607f446978cbd89ce56b57f62486f75e0c2cf44398f0d"
+    assert release.output_sha256 == "a21c1e27f7b4f04cbe6952d70eb102b350adac04e6eaba106fa10e2b90a55021"
     assert release.output_bytes == 10170720 and release.base_bytes == 10169982

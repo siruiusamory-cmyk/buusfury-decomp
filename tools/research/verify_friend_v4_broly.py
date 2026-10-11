@@ -258,8 +258,9 @@ def main() -> int:
         for delta in range(4):
             fields[offset + delta] = None if wanted is None else (wanted if delta == 0 else None)
 
+    # The placed sites keep their retail sprite ids: a site moved to the donor's id would carry the
+    # donor's definition while the scripts resolve the copies, and the lookup would match nothing.
     for site in object_sites(retail, DABURA_SPRITES):
-        claim_word(site["sprite_field"], BROLY_SPRITE)
         if site["stat_field"] is not None and site["stat"] == DABURA_STAT:
             claim_word(site["stat_field"], BROLY_STAT)
     # The two definition pointers are claimed as fields but not pinned to a constant: they point into
@@ -272,7 +273,10 @@ def main() -> int:
         fields[offset] = None
     for index in (28, 29):
         base_offset = APPEARANCE_TABLE + index * APPEARANCE_STRIDE
-        claim_word(base_offset + 0x04, BROLY_SPRITE)
+        # The sprite id stays as the actors carry it, so the scanner's pair lookup still matches; the
+        # portrait is what the owner sees, and the fight record's stat index follows the fight.
+        if word(image, base_offset + 0x04) != word(retail, base_offset + 0x04):
+            fail(f"appearance {index} sprite id moved; the scanner pairs on it")
         claim_word(base_offset + 0x08, 16)
     claim_word(APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x0C, BROLY_STAT)
 
@@ -378,6 +382,37 @@ def main() -> int:
             fail(f"resource {spawn['resource']} spawns sprite {actor_id}, which still draws the "
                  "old actor's definition")
 
+    # THE LOOKUP, modelled as the engine does it: a script target id must resolve to the SAME
+    # definition as a sprite id some placed actor (or spawn) actually carries, because the engine
+    # compares definition pointers to find the actor. Without this, a build can resolve ids correctly
+    # and still match no actor at all, which is exactly what the review caught.
+    site_definitions = {}
+    for site in object_sites(image, (BROLY_SPRITE,) + DABURA_SPRITES):
+        site_definitions.setdefault(definition_of(image, site["sprite"]), []).append(
+            f"map {site['map']} slot {site['slot']} carries {site['sprite']}")
+    spawn_definitions = {}
+    for spawn in spawns:
+        if spawn["sprite"] is not None:
+            spawn_definitions.setdefault(definition_of(image, spawn["sprite"]), []).append(
+                f"resource {spawn['resource']} spawns {spawn['sprite']}")
+    targets = set()
+    for call in calls:
+        if len(call["arguments"]) >= 1:
+            targets.add(call["arguments"][0])
+    for call in spawns:
+        if call["sprite"] is not None:
+            targets.add(call["sprite"])
+    matched = 0
+    for target in sorted(targets):
+        definition = definition_of(image, target)
+        where = site_definitions.get(definition) or spawn_definitions.get(definition)
+        if where:
+            matched += 1
+        elif target in (BROLY_SPRITE,) + DABURA_SPRITES:
+            fail(f"script id {target} resolves to 0x{definition:08X}, which is the definition of no "
+                 "placed actor and no spawn, so the lookup finds nothing")
+    print(f"# script target ids matched to a placed or spawned actor: {matched} of {len(targets)}")
+
     # --- check 3: the fights and Broly's own record ----------------------------------------------
     for site in object_sites(image, (BROLY_SPRITE,)):
         if site["stat_field"] is not None and site["map"] in (32, 207):
@@ -393,8 +428,10 @@ def main() -> int:
     # --- check 4: appearances, the name, the description, the dialogue ---------------------------
     for index in (28, 29):
         base_offset = APPEARANCE_TABLE + index * APPEARANCE_STRIDE
-        if word(image, base_offset + 0x04) != BROLY_SPRITE:
-            fail(f"appearance {index} sprite is {word(image, base_offset + 0x04)}")
+        # The sprite id must NOT move: the scanner pairs an actor's sprite id with its stat index, and
+        # the placed actors still carry the retail ids.
+        if word(image, base_offset + 0x04) != word(retail, base_offset + 0x04):
+            fail(f"appearance {index} sprite id moved to {word(image, base_offset + 0x04)}")
         if word(image, base_offset + 0x08) != 16:
             fail(f"appearance {index} portrait is {word(image, base_offset + 0x08)}")
     if text_of_slot(image, NAME_SLOT) != NEW_NAME:

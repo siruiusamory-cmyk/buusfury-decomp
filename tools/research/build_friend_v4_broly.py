@@ -82,24 +82,21 @@ BROLY_DEFINITION = 0x086A9B78
 BROLY_SPRITE = 38
 COPY_SLOTS = {73: (22,), 98: (12,)}     # slots a script can select that the donor leaves empty
 SITES = (
-    ("map207 slot4 sprite (ship fight, sprite 73 -> 38)", 0x7F09C, 73, 38),
-    ("map207 slot4 stat selector (Dabura 18 -> Broly 10)", 0x7F094, 18, BROLY_STAT_RECORD),
-    ("map32 slot42 sprite (other Dabura fight, 73 -> 38)", 0x74AE0, 73, 38),
+    ("map207 slot4 stat selector (18 -> Broly 10)", 0x7F094, 18, BROLY_STAT_RECORD),
     ("map32 slot42 stat selector (18 -> Broly 10)", 0x74AD8, 18, BROLY_STAT_RECORD),
-    ("map206 slot3 sprite (ship scene, 73 -> 38)", 0x7F004, 73, 38),
-    ("map207 slot3 sprite (ship scene, 73 -> 38)", 0x7F078, 73, 38),
-    ("map451 slot0 sprite (Heaven form, 98 -> 38)", 0x8E204, 98, 38),
 )
+#: The placed sites are NOT edited. Scripts find an actor by definition pointer, so a site moved to
+#: sprite 38 would carry the donor's shared definition while the script ids 73 and 98 resolved to the
+#: copies, and every lookup would miss. The sites keep their retail ids and the character table carries
+#: the art change; that is also why the appearance records keep the ids the actors carry.
 
 #: appearance record 28 is the Dabura the fights display (sprite 73, portrait 24, stat 18);
 #: record 29 is the Heaven form (sprite 98, portrait 32, stat -1). Broly's portrait slot is 16 and
 #: his own appearance records are 16 and 17, both sprite 38 and portrait 16.
 APPEARANCES = (
-    ("appearance 28 sprite 73 -> 38", APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x04, 73, 38),
     ("appearance 28 portrait 24 -> 16", APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x08, 24, 16),
     ("appearance 28 stat 18 -> Broly 10", APPEARANCE_TABLE + 28 * APPEARANCE_STRIDE + 0x0C, 18,
      BROLY_STAT_RECORD),
-    ("appearance 29 sprite 98 -> 38", APPEARANCE_TABLE + 29 * APPEARANCE_STRIDE + 0x04, 98, 38),
     ("appearance 29 portrait 32 -> 16", APPEARANCE_TABLE + 29 * APPEARANCE_STRIDE + 0x08, 32, 16),
 )
 
@@ -232,14 +229,22 @@ def main() -> int:
         problems += 1
         print(f"FAIL text slot {NAME_SLOT}: reads {text_of_slot(out, NAME_SLOT)!r}")
     after = census(out)
-    still_dabura = [entry for entry in after if entry["sprite"] in (73, 98)]
-    if still_dabura:
+    # The sites keep their retail ids BY DESIGN: scripts find actors by definition pointer, so the
+    # id a site carries must be the id the scripts target. What must hold is that every site carrying
+    # one of those ids draws the donor art through that id's copy.
+    import struct as _struct
+    for entry in after:
+        if entry["sprite"] not in (73, 98):
+            continue
+        resolved = _struct.unpack_from("<I", out, 0x6B6BB4 + 4 * entry["sprite"])[0]
+        copy_at = copies[str(entry["sprite"])]["copy_file"]
+        if resolved != ROM_BASE + copy_at:
+            problems += 1
+            print(f"FAIL map {entry['map']} slot {entry['slot']} carries sprite {entry['sprite']}, "
+                  f"which resolves to 0x{resolved:08X}, not its copy 0x{ROM_BASE + copy_at:08X}")
+    if not any(entry["sprite"] in (73, 98) for entry in after):
         problems += 1
-        print(f"FAIL {len(still_dabura)} slot(s) still carry sprite 73 or 98: {still_dabura}")
-    broly_now = [entry for entry in after if entry["sprite"] == 38]
-    if len(broly_now) != 6:
-        problems += 1
-        print(f"FAIL after the swap {len(broly_now)} slot(s) carry sprite 38, expected 6")
+        print("FAIL no site carries a Dabura sprite id any more, so no script lookup can match")
     # The copies must satisfy the property the shared definition broke: every slot the ORIGINAL
     # definition occupied, and every slot a script can select for that id, is non-empty.
     import struct as _struct
@@ -303,8 +308,8 @@ def main() -> int:
     Path(args.manifest).write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     print(f"# {len(SITES)} draw site(s) and {len(APPEARANCES)} appearance field(s) rewritten")
     print(f"# text slot {NAME_SLOT}: {OLD_NAME!r} -> {NEW_NAME!r} in place")
-    print(f"# slots carrying sprite 38 after the swap: {len(broly_now)} "
-          f"(was 1: map 390 slot 0)")
+    print(f"# sites carrying 73/98, each resolving to its copy: "
+          f"{[entry['sprite'] for entry in after if entry['sprite'] in (73, 98)]}")
     print(f"# changed bytes: {len(changed)} in {len(document['changed_ranges'])} range(s)")
     print(f"# wrote {target} {len(written)} bytes sha256 {document['output_sha256']}")
     return 0

@@ -4,6 +4,10 @@ The canonical value is the Python string `ChipTextEdit.serialized()` returns. Th
 QTextDocument is a presentation projection of that string and never the source of
 truth, so an edit Qt made on its own is recomputed from the string, checked with
 `protected_edit`, and the document is rebuilt from the allowed result.
+
+A control unit is one atom. `protected_edit` is the rule behind every edit route -
+keystrokes, paste, drop and cut - and the caret never enters an atom, so the chip's
+appearance is never the only thing saying that the unit is locked.
 """
 
 from __future__ import annotations
@@ -48,7 +52,10 @@ def protected_edit(current: str, position: int, removed: int, inserted: str) -> 
     `position` and `removed` describe the edit as Qt reports it: replace
     `current[position:position + removed]` with `inserted`.
 
-    Every refusal returns `current` unchanged.
+    Refused: a removal that crosses any part of an atom, a removal that contains a
+    whole atom, an insertion strictly inside an atom, an insertion that itself
+    carries a control unit, and a lone high surrogate. Every refusal returns
+    `current` unchanged.
     """
     if removed > 0:
         end = min(len(current), position + removed)
@@ -95,25 +102,32 @@ def control_label(unit: str) -> str:
 
 
 class ChipObject(QPyTextObject):
-    """Paints one control unit. The label comes from the one labelling seam."""
+    """Paints one control unit: the data role, a 1 px control border, 3 px radius.
+
+    The chip is the raised surface with the control border, which keeps it legible
+    against both the editor surface and the selection without a second fill token.
+    """
 
     def intrinsicSize(self, doc, fmt, _=None) -> QSizeF:  # noqa: N802
         label = control_label(str(fmt.property(_CHAR_PROPERTY)))
-        width = doc.documentLayout().paintDevice().fontMetrics().horizontalAdvance(label)
-        return QSizeF(width + 8, max(theme.active_metrics().chip_height, 14))
+        metrics = theme.active_metrics()
+        device = doc.documentLayout().paintDevice()
+        width = device.fontMetrics().horizontalAdvance(label) if device is not None else 0
+        return QSizeF(width + 2 * metrics.pad_sm, metrics.chip_height)
 
     def drawObject(self, painter, rect, doc, fmt):  # noqa: N802
         label = control_label(str(fmt.property(_CHAR_PROPERTY)))
         active = theme.active_theme()
+        metrics = theme.active_metrics()
         painter.save()
         painter.setRenderHint(painter.RenderHint.Antialiasing, True)
-        chip = QRectF(rect).adjusted(1, 1, -1, -1)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+        chip = QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.setBrush(QColor(active.surface_raised))
         painter.setPen(QColor(active.border))
-        painter.drawRoundedRect(chip, 3, 3)
-        painter.setFont(theme.mono_font())
+        painter.drawRoundedRect(chip, metrics.radius, metrics.radius)
+        painter.setFont(theme.type_scale().data)
         painter.setPen(QColor(active.text_primary))
-        painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, label)
+        painter.drawText(QRectF(chip), Qt.AlignmentFlag.AlignCenter, label)
         painter.restore()
 
 
@@ -126,7 +140,7 @@ class ChipTextEdit(QTextEdit):
         super().__init__(parent)
         self.setReadOnly(not editable)
         self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        self.setFont(theme.mono_font())
+        self.setFont(theme.type_scale().data)
         # The layout holds the handler weakly; the widget has to keep it alive.
         self._object_handler = ChipObject()
         self.document().documentLayout().registerHandler(OBJECT_TYPE, self._object_handler)

@@ -7,21 +7,23 @@ the base image and the built image.
 
 WHAT IT PROVES.
 
-1. Every handle word the base carries still names a record in the built image, in
-   the same container, with the same non-space characters in the same order and a
-   length no longer than before.
+0. No record-shaped word outside the event-resource pool changed. That filter is
+   near-random outside the pool, so a word there is a coincidence until someone
+   proves who reads it, and this pass writes only proven carriers.
+1. Every handle word the base carries INSIDE the pool still names a record in the
+   built image, in the same container, with the same non-space characters in the
+   same order and a length no longer than before.
 2. Every interior 2+ space run left in the built image sits where the canonical
    image's record at the same identity carries a 2+ space run at the same unit
    offset. Nothing else survives.
-3. Every handle in the built image resolves inside its container's decoded
-   payload.
+3. Every handle in the pool resolves inside its container's decoded payload.
 4. Record containment is preserved: if one base record's span held another's, the
    built spans hold the same way (the covering relations the corpus depends on).
-5. Every changed byte lies inside a dialogue container's stored extent or inside a
-   four-byte handle word. Nothing else in the image moved, which is what keeps the
-   Release 4A stat selectors, appearance records, name slot and definition copies
-   byte-identical, and those sites are checked directly when the 4A manifest is
-   passed in.
+5. Every changed byte lies inside a dialogue container's stored extent or inside
+   the event-resource pool. The allowed set comes from the placement contract, NOT
+   from the shape filter this file also uses to read records, so sharing that
+   filter with the builder cannot hide a write. The Release 4A sites are checked
+   directly when the 4A manifest is passed in.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tools.webfoot import compressed_dialogue as cd  # noqa: E402
+from tools.webfoot.data.placement_contracts import CONTRACTS  # noqa: E402
 from tools.webfoot.dialogue_repack import container_pointers  # noqa: E402
 from tools.webfoot.formats import webfoot_lz  # noqa: E402
 from tools.webfoot.handles import unpack_handle  # noqa: E402
@@ -44,6 +47,11 @@ from tools.webfoot.handles import unpack_handle  # noqa: E402
 SPACE_UNIT = b"\x20\x00"
 SPACE = " "
 ROM_BASE = 0x08000000
+
+#: The proven handle-site range, read from the placement contract rather than from
+#: any shape filter. A word outside it is a coincidence this pass must not write.
+_EVENT_RESOURCE = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
+POOL = (_EVENT_RESOURCE["pool_start"] - ROM_BASE, _EVENT_RESOURCE["table"] - ROM_BASE)
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -163,15 +171,41 @@ def main() -> int:
     base_sites = site_records(base, base_streams)
     built_sites = site_records(built, built_streams)
 
-    if set(base_sites) != set(built_sites):
-        problems.append(f"the record-word sites differ: {len(set(base_sites) ^ set(built_sites))} "
-                        "site(s) gained or lost")
-    notes.append(f"record words: base {len(base_sites)}, built {len(built_sites)}")
+    in_pool = {site: record for site, record in base_sites.items() if POOL[0] <= site < POOL[1]}
+    outside = {site: record for site, record in base_sites.items() if not POOL[0] <= site < POOL[1]}
+    built_pool = {site for site in built_sites if POOL[0] <= site < POOL[1]}
+    notes.append(f"record words inside the event-resource pool {POOL[0]:#x}..{POOL[1]:#x}: "
+                 f"base {len(in_pool)}, built {len(built_pool)}; outside it {len(outside)}")
+    if set(in_pool) != built_pool:
+        problems.append(f"the in-pool record-word sites differ: "
+                        f"{len(set(in_pool) ^ built_pool)} site(s) gained or lost")
 
-    # 1. every base site resolves, same selector, non-space characters unchanged
+    # A shrunken payload can move an out-of-pool coincidence span out of range, so
+    # the outside set may drift. Those words are not references, and their bytes
+    # must not move.
+    drifted = sorted(site for site in set(base_sites) ^ set(built_sites)
+                     if not POOL[0] <= site < POOL[1])
+    notes.append(f"out-of-pool record-shaped words that appeared or vanished: {len(drifted)}")
+    for site in drifted:
+        if base[site:site + 4] != built[site:site + 4]:
+            problems.append(f"site {site:#06x} is outside the pool, appeared or vanished, and its "
+                            f"word changed: {base[site:site + 4].hex()} -> "
+                            f"{built[site:site + 4].hex()}")
+
+    # 0. a word outside the pool is a shape coincidence until someone proves who
+    #    reads it, so the pass must leave it alone. This is the check the shipped
+    #    candidate failed: it rewrote 155 of them, 142 in code and graphics.
+    touched = [site for site in outside if base[site:site + 4] != built[site:site + 4]]
+    notes.append(f"out-of-pool record-shaped words left byte-identical: "
+                 f"{len(outside) - len(touched)} of {len(outside)}")
+    for site in touched[:20]:
+        problems.append(f"site {site:#06x} is outside the event-resource pool and was rewritten: "
+                        f"{base[site:site + 4].hex()} -> {built[site:site + 4].hex()}")
+
+    # 1. every base site INSIDE the pool resolves, same selector, non-space characters unchanged
     checked = 0
     deleted_units = 0
-    for site, (selector, start, length) in base_sites.items():
+    for site, (selector, start, length) in in_pool.items():
         built_handle = built_sites.get(site)
         if built_handle is None:
             continue
@@ -196,7 +230,7 @@ def main() -> int:
             base_offset = mapping[offset]
             position = start + base_offset * 2
             if not retail_predicate(base_streams, canonical_streams,
-                                    base_records(base_sites, base_streams, selector),
+                                    base_records(in_pool, base_streams, selector),
                                     selector, position):
                 problems.append(f"site {site:#06x} ({selector}:{start_now}:{length_now}) keeps an "
                                 f"interior run at unit {offset} that canonical does not carry: "
@@ -204,8 +238,9 @@ def main() -> int:
     notes.append(f"records checked through their own handle word: {checked}")
     notes.append(f"space units removed across them: {deleted_units}")
 
-    # 3. every handle in the built image resolves inside its payload
-    for site, (selector, start, length) in built_sites.items():
+    # 3. every handle word in the pool resolves inside its payload
+    for site in in_pool:
+        selector, start, length = built_sites[site]
         stream = built_streams.get(selector)
         if stream is None:
             problems.append(f"site {site:#06x} names selector {selector}, which carries no payload")
@@ -215,25 +250,29 @@ def main() -> int:
                             f"past its {len(stream)}-byte payload")
 
     # 4. containment preserved
-    preserved, broken = containment(base_sites, built_sites)
+    preserved, broken = containment(in_pool, built_sites)
     notes.append(f"containment pairs checked: {preserved}")
     if broken:
         problems.append(f"{broken} containment pair(s) no longer hold")
 
-    # 5. every changed byte is inside a container extent or a handle word
+    # 5. every changed byte is inside a container extent or the event-resource pool.
+    #    The allowed set is the CONTRACT's pool range, NOT the site list this file
+    #    read with the shape filter: sharing that filter with the builder is the
+    #    common-mode failure this check exists to break.
     allowed = set()
     for selector, extent in base_extents.items():
         for at in range(base_offsets[selector], base_offsets[selector] + extent):
             allowed.add(at)
-    for site in base_sites:
-        for at in range(site, site + 4):
-            allowed.add(at)
+    for at in range(POOL[0], POOL[1]):
+        allowed.add(at)
     changed = [at for at in range(min(len(base), len(built))) if base[at] != built[at]]
     stray = [at for at in changed if at not in allowed]
-    notes.append(f"changed bytes: {len(changed)}")
+    in_pool_changed = [at for at in changed if POOL[0] <= at < POOL[1]]
+    notes.append(f"changed bytes: {len(changed)}, of them inside the event pool "
+                 f"{len(in_pool_changed)}")
     if stray:
         problems.append(f"{len(stray)} changed byte(s) outside the dialogue containers and the "
-                        f"handle words, first at {stray[0]:#x}")
+                        f"event-resource pool, first at {stray[0]:#x}")
 
     # 6. Release 4A content, when its manifest is supplied
     if args.release4_manifest:

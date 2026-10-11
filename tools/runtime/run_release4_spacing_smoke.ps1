@@ -105,12 +105,18 @@ $shots = @(Get-ChildItem -LiteralPath $runDir -Filter 'shot_*.png' -ErrorAction 
     Sort-Object Name)
 $shotHashes = @($shots | ForEach-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash })
 $distinct = @($shotHashes | Select-Object -Unique)
-$rows = @(if (Test-Path -LiteralPath $csv) { Import-Csv -LiteralPath $csv } else { @() })
-$copierRows = @($rows | Where-Object { $_.PSObject.Properties.Name -contains 'copy' })
+# The observer writes two row shapes into one CSV: `frame,pc,copier,rom_size` beats
+# and `copy,N,registers,...` rows with a different column count. Import-Csv parses
+# the copy rows into the beat header and produces nonsense, so the counts are taken
+# from the raw lines.
+$lines = @(if (Test-Path -LiteralPath $csv) { Get-Content -LiteralPath $csv } else { @() })
+$beatRows = @($lines | Where-Object { $_ -match '^\d+,' })
+$copierRows = @($lines | Where-Object { $_ -match '^copy,' })
 $lastCopier = 0
-foreach ($row in $rows) {
-    if ($row.PSObject.Properties.Name -contains 'copier') {
-        $value = [int]$row.copier
+foreach ($line in $beatRows) {
+    $fields = $line.Split(',')
+    if ($fields.Count -ge 3 -and $fields[2] -match '^\d+$') {
+        $value = [int]$fields[2]
         if ($value -gt $lastCopier) { $lastCopier = $value }
     }
 }
@@ -131,7 +137,7 @@ $summary = [ordered]@{
     exited_by_itself = $exited
     screenshots      = $shots.Count
     distinct_screenshots = $distinct.Count
-    csv_rows         = $rows.Count
+    csv_rows         = $lines.Count
     copier_rows      = $copierRows.Count
     copier_hits      = $lastCopier
     marker           = if (Test-Path -LiteralPath $marker) { (Get-Content -Raw -LiteralPath $marker).Trim() } else { $null }

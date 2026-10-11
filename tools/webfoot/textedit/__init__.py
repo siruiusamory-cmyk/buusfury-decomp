@@ -19,6 +19,7 @@ from __future__ import annotations
 from .engine import (
     IN_PLACE,
     MOVE,
+    PROVEN_HANDLE_POOL,
     REFUSED,
     Change,
     Decision,
@@ -38,6 +39,7 @@ from .engine import (
     locked_tokens,
     open_rom,
     plan,
+    proven_sites,
     readback,
     rename_positions,
     validate,
@@ -48,6 +50,7 @@ open = open_rom  # noqa: A001 - the public name the ticket's API specifies
 __all__ = [
     "IN_PLACE",
     "MOVE",
+    "PROVEN_HANDLE_POOL",
     "REFUSED",
     "Change",
     "Decision",
@@ -68,6 +71,7 @@ __all__ = [
     "open",
     "open_rom",
     "plan",
+    "proven_sites",
     "readback",
     "rename_positions",
     "validate",

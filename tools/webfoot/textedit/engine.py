@@ -58,12 +58,31 @@ from typing import Iterable, Mapping, Sequence
 
 from .. import compressed_dialogue as cd
 from ..binary import GBA_ROM_BASE as ROM_BASE
+from ..data.placement_contracts import CONTRACTS
 from ..destination import refuse_rom_destination
 from ..dialogue_repack import container_pointers, text_of
 from ..formats import text_tables as tt
 from ..formats import webfoot_lz
 from ..handles import DialogueHandle, unpack_handle
 from ..write import WriteError, ensure_new_destination, ensure_not_source_alias
+
+#: The only file-offset range in which a record word is a PROVEN reference to a
+#: dialogue record: the event-resource record pool, whose extent is the placement
+#: contract's (pool_start, table) pair rather than a number written here.
+#:
+#: WHY A RANGE AND NOT THE SHAPE FILTER. `dialogue_record_inventory` matches a
+#: 4-byte-aligned word whose +1 is zero and +2 is 0x05, followed by a word that
+#: decodes to a legal span. Outside this pool that filter is near-random: measured
+#: on the Release 4A image, 907 record-shaped words lie outside it and 281 pass the
+#: filter, 256 of them naming spans that share no edge with any real record. The
+#: same measurement inside the pool gives 11 of 2,639. Rewriting an outside word
+#: corrupts whatever actually lives there, and no earlier release did, because
+#: every earlier pass preserved record spans, so a false site was rewritten with
+#: the value it already held. A pass that MOVES a record changes the value, so it
+#: writes only here.
+_EVENT_RESOURCE = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
+PROVEN_HANDLE_POOL = (_EVENT_RESOURCE["pool_start"] - ROM_BASE,
+                      _EVENT_RESOURCE["table"] - ROM_BASE)
 
 #: One UTF-16LE code unit. A handle's start and length fields count these.
 UNIT = 2
@@ -138,6 +157,7 @@ class Layout:
     offsets: Mapping[int, int]
     kinds: Mapping[int, int]
     room: Mapping[int, int]
+    handle_pool: tuple[int, int] = (0, 0)
 
 
 def detect(image: bytes) -> Layout:
@@ -223,7 +243,7 @@ def validate(image: bytes, profile: TitleProfile) -> Layout:
                 f"REFUSED: {profile.key}: text slot {index} does not decode: {error}") from error
 
     return Layout(profile=profile, table_offset=table_offset, streams=streams,
-                  offsets=offsets, kinds=kinds, room=room)
+                  offsets=offsets, kinds=kinds, room=room, handle_pool=PROVEN_HANDLE_POOL)
 
 
 # --- the read-only model -----------------------------------------------------
@@ -712,6 +732,17 @@ def _refuse(decisions: list[Decision], target: str, reason: str, covering=(),
     return len(decisions) - 1
 
 
+def proven_sites(layout_or_pool, sites: Iterable[int]) -> tuple[int, ...]:
+    """The sites that are PROVEN carriers: those inside the event-resource pool.
+
+    Every handle-word write goes through this. A site outside the pool is a shape
+    coincidence in code or graphics until someone proves who reads it, and this
+    engine writes only what it can prove. See `PROVEN_HANDLE_POOL`.
+    """
+    low, high = getattr(layout_or_pool, "handle_pool", layout_or_pool)
+    return tuple(site for site in sites if low <= site < high)
+
+
 def _note(decisions: list[Decision], target: str, method: str, covering=(), sites: int = 0,
           bytes_before: int = 0, bytes_after: int = 0) -> int:
     decisions.append(Decision(target=target, method=method, covering=tuple(covering),
@@ -837,13 +868,20 @@ def _decide_record(model: Model, edit: RecordEdit, decisions: list[Decision],
         return
     conflict = _boundary_conflict(model, edit.selector, edit.start, edit.length)
     method = IN_PLACE if not conflict and len(encoded) <= edit.length else MOVE
-    index = _note(decisions, target, method, covering=record.covering, sites=len(record.sites),
+    carriers = proven_sites(model.layout, record.sites)
+    if not carriers:
+        _refuse(decisions, target,
+                "no handle word inside the event-resource pool names this record, so an edit to "
+                "it could not be read by the engine; every word that appears to name it outside "
+                "the pool is a shape coincidence")
+        return
+    index = _note(decisions, target, method, covering=record.covering, sites=len(carriers),
                   bytes_before=edit.length, bytes_after=len(encoded))
     if method == IN_PLACE:
         in_place.append(_InPlace(decision=index, selector=edit.selector,
                                  start=edit.start, length=edit.length, old=edit.old, new=edit.new))
         return
-    placements.append(_Placement(decision=index, key=target, text=replaced, sites=record.sites,
+    placements.append(_Placement(decision=index, key=target, text=replaced, sites=carriers,
                                  old_handle=DialogueHandle(edit.selector, edit.start,
                                                            edit.length).encode()))
     if record.covering:
@@ -893,10 +931,18 @@ def _decide_rename(model: Model, edit: RenameEdit, decisions: list[Decision],
                 continue
             found = model.record(selector, start, length)
             covering = found.covering if found is not None else ()
-            index = _note(decisions, key, MOVE, covering=covering, sites=len(record.sites),
+            carriers = proven_sites(model.layout, record.sites)
+            if not carriers:
+                # A record no pool word names is a slice of the blob, not a line the
+                # engine can display. Release 3.1 renamed eight of them and wrote the
+                # coincidence words that named them, which is finding B1; this pass
+                # still places the text (so the layout matches the release) and
+                # writes nothing, and lists the record instead.
+                listed.append(key)
+            index = _note(decisions, key, MOVE, covering=covering, sites=len(carriers),
                           bytes_before=length, bytes_after=len(encoded))
             placements.append(_Placement(
-                decision=index, key=key, text=text, sites=tuple(record.sites),
+                decision=index, key=key, text=text, sites=carriers,
                 old_handle=DialogueHandle(selector, start, length).encode()))
             if covering:
                 warnings.append(
@@ -1166,6 +1212,11 @@ def _decide_spacing(model: Model, edit: SpacingEdit, decisions: list[Decision],
                 f"carries the same run at the same offset: {', '.join(kept)}")
         if not deletions:
             continue
+        for at in deletions:
+            if stream[at:at + 2] != SPACE_UNIT:
+                raise TextEditError(
+                    f"REFUSED: selector {selector}: the unit at {at:#x} is not a space and would "
+                    "have been deleted")
         deleted = frozenset(at // 2 for at in deletions)
         texts, handles = _spacing_spans(model, selector, deleted)
         index = _note(decisions, f"selector {selector}", IN_PLACE, sites=len(handles),
@@ -1198,7 +1249,7 @@ def _spacing_spans(model: Model, selector: int, deleted: frozenset[int],
         start, end = remap(record.start), remap(record.start + record.length)
         handle = DialogueHandle(selector, start, end - start).encode()
         if handle != DialogueHandle(selector, record.start, record.length).encode():
-            for site in record.sites:
+            for site in proven_sites(model.layout, record.sites):
                 handles[site] = handle
     return texts, handles
 
@@ -1311,9 +1362,22 @@ def readback(plan: Plan) -> tuple[str, ...]:
         for site in row.sites:
             expected[site] = (want, False)
     for row in plan.placements:
+        if not row.sites:
+            stream = _container_stream(model, image, model.profile.grown_selector, cache)
+            got = stream[row.new_start:row.new_start + row.new_length].decode("utf-16le")
+            if got != row.text:
+                problems.append(f"{row.key}: placed text reads {got[:44]!r}, expected "
+                                f"{row.text[:44]!r}")
+            continue
         for site in row.sites:
             expected[site] = (row.text, True)
+    proven = set(proven_sites(model.layout, expected))
     for site in sorted(expected):
+        if site not in proven:
+            if image[site:site + 4] != model.image[site:site + 4]:
+                problems.append(f"site {site:#06x} is outside the event-resource pool and was "
+                                "written; a word there is a shape coincidence, not a reference")
+            continue
         want, exact = expected[site]
         got, why = _text_at_site(model, image, site, cache)
         if why:
@@ -1337,7 +1401,7 @@ def readback(plan: Plan) -> tuple[str, ...]:
             continue
         for record in model.selector_records(row.selector):
             want = row.texts[record.key]
-            for site in record.sites:
+            for site in proven_sites(model.layout, record.sites):
                 got, why = _text_at_site(model, image, site, cache)
                 if why:
                     problems.append(why)

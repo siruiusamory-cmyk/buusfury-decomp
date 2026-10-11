@@ -83,9 +83,19 @@ def build(payloads=None, records=(), slots=None, grown=None):
 
 
 def open_image(image, directory, name: str = "fixture.gba", **kwargs):
+    """Open a fixture, whose record words at RECORD_AT are the proven carriers.
+
+    A real image's proven carriers are the event-resource pool; the fixture plants
+    its record words at `RECORD_AT`, so the pool is patched to that region while
+    the image is validated. The model carries the pool, so a later `plan` call
+    needs no patch. A word planted anywhere else in a test is outside the pool and
+    must not be written.
+    """
     path = Path(directory) / name
     path.write_bytes(image)
-    with mock.patch.object(textedit.engine, "MINIMUM_DIALOGUE_RECORDS", 1):
+    with mock.patch.object(textedit.engine, "MINIMUM_DIALOGUE_RECORDS", 1), \
+            mock.patch.object(textedit.engine, "PROVEN_HANDLE_POOL",
+                              (RECORD_AT, RECORD_AT + 0x1000)):
         return textedit.open_rom(path, **kwargs)
 
 
@@ -367,6 +377,40 @@ def test_a_spacing_pass_without_the_canonical_image_is_refused(tmp_path: Path) -
         textedit.apply(built, tmp_path / "unused.gba")
 
 
+# --- proven carriers ---------------------------------------------------------
+
+
+def test_a_record_shaped_word_outside_the_pool_is_never_written(tmp_path: Path) -> None:
+    """The shape filter is near-random outside the pool; a write there is corruption."""
+    base = build(payloads={1: line_payload("Hi  there")}, records=[(1, 0x20, 18)])
+    handle = DialogueHandle(1, 0x20, 18).encode().to_bytes(4, "little")
+    base[0x9000:0x9004] = RECORD_WORD
+    base[0x9004:0x9008] = handle
+    retail = open_image(build(payloads={1: line_payload("Hi there")},
+                              records=[(1, 0x20, 18)]), tmp_path, name="retail.gba")
+    model = open_image(base, tmp_path, name="base.gba", canonical=retail.path)
+    assert len(model.record(1, 0x20, 18).sites) == 2
+    built = textedit.plan(model, [textedit.SpacingEdit()])
+    assert built.output[0x9000:0x9008] == base[0x9000:0x9008]
+    assert built.output[0x9004:0x9008] == handle
+    assert 0x9004 not in built.spacing[0].handles
+    assert RECORD_AT + 4 in built.spacing[0].handles
+    assert textedit.readback(built) == ()
+
+
+def test_a_targeted_edit_refuses_a_record_no_pool_word_names(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("hello there everybody, this is")})
+    handle = DialogueHandle(1, 0x20, 0x40).encode().to_bytes(4, "little")
+    image[0x9000:0x9004] = RECORD_WORD
+    image[0x9004:0x9008] = handle
+    model = open_image(image, tmp_path)
+    built = textedit.plan(model, [textedit.RecordEdit(1, 0x20, 0x40, "hello", "hi")])
+    assert built.decisions[0].method == textedit.REFUSED
+    assert "event-resource pool" in built.refusals[0].reason
+    with pytest.raises(textedit.TextEditError, match="REFUSED"):
+        textedit.apply(built, tmp_path / "unused.gba")
+
+
 # --- the per-occurrence decision ---------------------------------------------
 
 
@@ -547,7 +591,14 @@ def test_the_canonical_table_words_are_untouched_when_a_record_moves(tmp_path: P
     textedit.apply(built, tmp_path / "canonical-move.gba")
 
 
-def test_the_release31_rename_replays_byte_identically(tmp_path: Path) -> None:
+def test_the_release31_rename_replays_except_the_release_own_out_of_pool_writes(
+        tmp_path: Path) -> None:
+    """Release 3.1 wrote nine words the shape filter matched outside the pool.
+
+    Every in-pool handle word it wrote is reproduced byte-identically; the nine are
+    a shape coincidence in code and graphics that this engine refuses to write, so
+    the published digest is reproduced everywhere except there.
+    """
     model = textedit.open_rom(golden("v3-release3.gba"), canonical=canonical())
     built = textedit.plan(model, [textedit.RenameEdit(
         old="Videl", new="Lazuli",
@@ -559,7 +610,19 @@ def test_the_release31_rename_replays_byte_identically(tmp_path: Path) -> None:
         methods[item.method] = methods.get(item.method, 0) + 1
     assert methods == {textedit.MOVE: 37}
     assert len(built.placements) == 34
-    assert len(built.listed) == 60
     assert len(built.slot_moves) == 3
-    assert built.output_sha256 == RELEASE31
+    assert len(built.listed) == 68
+    published = golden("v3-release31.gba").read_bytes()
+    assert len(built.output) == len(published)
+    differing = [index for index in range(len(published))
+                 if built.output[index] != published[index]]
+    words = sorted({index - index % 4 for index in differing})
+    assert words == [0x316A18, 0x40E178, 0x4567CC, 0x46C29C, 0x4D99A8, 0x545A04,
+                     0x5C6FB4, 0x725474, 0x726074]
+    pool = textedit.PROVEN_HANDLE_POOL
+    assert all(not pool[0] <= word < pool[1] for word in words)
+    for row in built.placements:
+        for site in row.sites:
+            assert built.output[site:site + 4] == published[site:site + 4]
+    assert textedit.readback(built) == ()
     textedit.apply(built, tmp_path / "release31.gba")

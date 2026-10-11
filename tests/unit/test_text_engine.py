@@ -21,91 +21,20 @@ import pytest
 
 from tests.gates import REPOSITORY_ROOT
 from tests.rom_support import canonical_rom_path
+from tests.text_fixture import (
+    ROM_BASE,
+    TABLE_AT,
+    TABLE_BYTES,
+    TABLE_LITERAL,
+    build,
+    line_payload,
+    open_image,
+    simple,
+    slot_payload,
+)
 from tools.webfoot import textedit
 from tools.webfoot.formats import text_tables as tt
-from tools.webfoot.formats import webfoot_lz
-from tools.webfoot.handles import DialogueHandle, unpack_handle
-
-ROM_BASE = 0x08000000
-GAME_CODE = b"BG3E"
-TABLE_LITERAL = 0x123CC
-TEXT_TABLE = 0x6BCE8
-TEXT_SLOTS = 1534
-IMAGE_SIZE = 0x6E000
-CONTAINER_AT = 0x1000
-CONTAINER_STRIDE = 0x200
-PAYLOAD_BYTES = 0x100
-RECORD_AT = 0x2000
-BODY_AT = 0x60000
-TABLE_AT = 0x6DF00
-TABLE_BYTES = 64 * 4
-GROWN_AT = 0x8000
-SPACES = b"\x20\x00" * (PAYLOAD_BYTES // 2)
-RECORD_WORD = bytes([0x00, 0x00, 0x05, 0x00])
-
-
-def build(payloads=None, records=(), slots=None, grown=None):
-    """A synthetic image: seven stored containers, record words, the real text table."""
-    image = bytearray(IMAGE_SIZE)
-    image[0xAC:0xB0] = GAME_CODE
-    payloads = dict(payloads or {})
-    containers = {}
-    for selector in range(7):
-        payload = payloads.get(selector, SPACES)
-        at = CONTAINER_AT + selector * CONTAINER_STRIDE
-        image[at:at + 4] = (0).to_bytes(4, "little")
-        image[at + 4:at + 8] = len(payload).to_bytes(4, "little")
-        image[at + 8:at + 8 + len(payload)] = payload
-        containers[selector] = at
-    for index, (selector, start, length) in enumerate(records):
-        where = RECORD_AT + index * 0x10
-        image[where:where + 4] = RECORD_WORD
-        image[where + 4:where + 8] = DialogueHandle(selector, start, length).encode() \
-            .to_bytes(4, "little")
-    cursor = BODY_AT
-    slot_text = dict(slots or {})
-    for index in range(TEXT_SLOTS):
-        encoded = tt.encode_string(slot_text.get(index, "shared"))
-        image[cursor:cursor + len(encoded)] = encoded
-        image[TEXT_TABLE + index * 4:TEXT_TABLE + index * 4 + 4] = \
-            (ROM_BASE + cursor).to_bytes(4, "little")
-        cursor += len(encoded) + 2
-    image[TABLE_LITERAL:TABLE_LITERAL + 4] = (ROM_BASE + TABLE_AT).to_bytes(4, "little")
-    for selector, at in containers.items():
-        image[TABLE_AT + selector * 4:TABLE_AT + selector * 4 + 4] = \
-            (ROM_BASE + at).to_bytes(4, "little")
-    if grown is not None:
-        image[GROWN_AT:GROWN_AT + 4] = (0).to_bytes(4, "little")
-        image[GROWN_AT + 4:GROWN_AT + 8] = len(grown).to_bytes(4, "little")
-        image[GROWN_AT + 8:GROWN_AT + 8 + len(grown)] = grown
-        image[TABLE_AT + 7 * 4:TABLE_AT + 7 * 4 + 4] = (ROM_BASE + GROWN_AT).to_bytes(4, "little")
-    return image
-
-
-def open_image(image, directory, name: str = "fixture.gba", **kwargs):
-    path = Path(directory) / name
-    path.write_bytes(image)
-    with mock.patch.object(textedit.engine, "MINIMUM_DIALOGUE_RECORDS", 1):
-        return textedit.open_rom(path, **kwargs)
-
-
-def slot_payload(image: bytes, selector: int) -> bytes:
-    table = int.from_bytes(image[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
-    pointer = int.from_bytes(image[table + selector * 4:table + selector * 4 + 4], "little")
-    return bytes(webfoot_lz.unpack(image, pointer - ROM_BASE).data)
-
-
-def line_payload(text: str, at: int = 0x20) -> bytes:
-    payload = bytearray(SPACES)
-    encoded = text.encode("utf-16le")
-    payload[at:at + len(encoded)] = encoded
-    return bytes(payload)
-
-
-def simple(directory, text: str = "Say hello!", at: int = 0x20):
-    """One record holding `text`, and its model."""
-    image = build(payloads={1: line_payload(text, at)}, records=[(1, at, len(text) * 2)])
-    return image, open_image(image, directory)
+from tools.webfoot.handles import unpack_handle
 
 
 # --- byte coordinates --------------------------------------------------------
@@ -398,6 +327,33 @@ def test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector(tmp_pat
     path.write_bytes(image[:TABLE_AT + 6 * 4])
     with pytest.raises(textedit.TextEditError, match="does not hold 7 live selectors"):
         textedit.open_rom(path)
+
+
+def test_text_units_split_at_every_control_unit() -> None:
+    assert textedit.units("Hey, you!") == (textedit.Text("Hey, you!"),)
+    assert textedit.units("Hey\x08\x03you\x0a!") == (
+        textedit.Text("Hey"),
+        textedit.Control("\x08\x03", 0x08, "\x03"),
+        textedit.Text("you"),
+        textedit.Control("\x0a", 0x0A),
+        textedit.Text("!"),
+    )
+    # A trailing 0x0008 with no halfword left still reads as one locked unit.
+    assert textedit.units("ok\x08") == (textedit.Text("ok"), textedit.Control("\x08", 0x08))
+    assert textedit.locked_tokens("Hey\x08\x03you\x0a!") == ("\x08\x03", "\x0a")
+
+
+def test_every_rename_occurrence_carries_its_own_retail_decision() -> None:
+    current = "Videl then Videl then Videl"
+    counterpart = "Goten then Videl then ....."
+    assert textedit.rename_occurrences(current, counterpart, "Videl") == (
+        textedit.Occurrence(at=0, retail="Goten", decision=textedit.KEEP),
+        textedit.Occurrence(at=11, retail="Videl", decision=textedit.RENAME),
+        textedit.Occurrence(at=22, retail=".....", decision=textedit.UNCLEAR),
+    )
+    text, renamed, kept, unclear = textedit.rename_positions(
+        current, counterpart, old="Videl", new="Lazul")
+    assert (text, renamed, kept, unclear) == ("Videl then Lazul then Videl", 1, 1, 1)
 
 
 # --- the release goldens -----------------------------------------------------

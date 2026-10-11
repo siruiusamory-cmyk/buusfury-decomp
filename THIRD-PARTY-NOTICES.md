@@ -166,6 +166,55 @@ as documentation consulted during research, not as a source of code or data.
 
 ---
 
+## Tabler Icons - MIT
+
+- **Upstream:** <https://github.com/tabler/tabler-icons>
+- **Pinned revision:** `a4ce1404bc6d24d3c365afe7b258d6bf6f48d62d` (the `main` commit the outline SVGs were taken from)
+- **Upstream license:** MIT, stated in the upstream root `LICENSE`.
+- **Affected files in this repository:** `tools/buufury_text/icons/*.svg`
+
+### What is incorporated
+
+Eighteen outline icons, copied unmodified: `search`, `pencil`, `arrow-up-right`,
+`square-x`, `check`, `lock`, `copy`, `folder-open`, `device-floppy`,
+`arrow-back-up`, `arrow-forward-up`, `link`, `chevron-down`, `photo`, `x`,
+`external-link`, `refresh`, `filter`. They are the application's toolbar, list and
+dialog icons. Tabler draws them on a 24x24 grid with a 2 px stroke and the
+application renders them at 16 logical pixels, so the set stays legible at the
+density the visual specification calls for without a bitmap pack per scale.
+
+### Required notice
+
+The following notice is reproduced from the upstream `LICENSE` in satisfaction of
+the MIT license's condition that the copyright notice and permission notice be
+included in all copies or substantial portions of the Software:
+
+```
+MIT License
+
+Copyright (c) 2020-2026 Pawel Kuna
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## Game content
 
 This repository contains no commercial ROMs, BIOS images, saves, states, memory

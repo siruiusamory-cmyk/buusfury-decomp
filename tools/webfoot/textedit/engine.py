@@ -299,6 +299,57 @@ class Model:
         return tuple(record for record in self.records if record.selector == selector)
 
 
+@dataclass(frozen=True, slots=True)
+class Text:
+    """A run of displayed characters with no control unit in it."""
+
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class Control:
+    """One control unit, as the raw unit(s) it occupies.
+
+    `operand` is the following halfword for a code that takes one (0x0008), else
+    None. What the code DOES is not catalogued here: a caller that wants a name
+    for it supplies the catalogue (the RE Lab's is pending).
+    """
+
+    raw: str
+    code: int
+    operand: str | None = None
+
+
+def units(text: str) -> tuple[Text, Control]:
+    """Split displayed text into alternating text runs and control units.
+
+    `locked_tokens` answers which units a text carries; this answers where they
+    sit, which is what an editor needs to draw each one as a single atom and to
+    refuse an edit that splits one.
+    """
+    split: list[Text | Control] = []
+    run: list[str] = []
+    position = 0
+    while position < len(text):
+        codepoint = ord(text[position])
+        if codepoint < 0x20:
+            if run:
+                split.append(Text("".join(run)))
+                run = []
+            if codepoint == 0x08 and position + 1 < len(text):
+                split.append(Control(text[position:position + 2], codepoint,
+                                     text[position + 1]))
+                position += 2
+                continue
+            split.append(Control(text[position], codepoint))
+        else:
+            run.append(text[position])
+        position += 1
+    if run:
+        split.append(Text("".join(run)))
+    return tuple(split)
+
+
 def locked_tokens(text: str) -> tuple[str, ...]:
     """Every control unit in `text`, in order, as the raw unit(s) it occupies.
 
@@ -307,18 +358,7 @@ def locked_tokens(text: str) -> tuple[str, ...]:
     as its operand. The three 0x00A0-range units the containers also carry are
     text, not control, and are not tokens.
     """
-    tokens = []
-    position = 0
-    while position < len(text):
-        codepoint = ord(text[position])
-        if codepoint < 0x20:
-            if codepoint == 0x08 and position + 1 < len(text):
-                tokens.append(text[position:position + 2])
-                position += 2
-                continue
-            tokens.append(text[position])
-        position += 1
-    return tuple(tokens)
+    return tuple(item.raw for item in units(text) if isinstance(item, Control))
 
 
 def open_rom(rom_path: str | Path, canonical: str | Path | None = None) -> Model:
@@ -441,6 +481,52 @@ class RenameEdit:
     relocated_slots: tuple[int, ...] = ()
 
 
+#: What the retail test says about one occurrence of a name inside a record.
+RENAME = "rename"    # retail names the same actor at this offset, so the swap happens
+KEEP = "keep"        # retail names a different actor here, so this one stays
+UNCLEAR = "unclear"  # retail names neither, so nothing can be decided here
+
+
+@dataclass(frozen=True, slots=True)
+class Occurrence:
+    """One occurrence of a name in a record, and what retail says at that offset."""
+
+    at: int
+    retail: str
+    decision: str
+
+
+def rename_occurrences(current: str, counterpart: str, old: str) -> tuple[Occurrence, ...]:
+    """Every occurrence of `old`, with the decision the retail offset implies.
+
+    Split out of `rename_positions` so a per-occurrence dialog shows the decision
+    the rename will actually make: one rule, one place.
+    """
+    if not old:
+        raise TextEditError("REFUSED: a rename needs a name to replace")
+    if len(current) != len(counterpart):
+        raise TextEditError(
+            f"REFUSED: the record is {len(current)} units and its retail counterpart is "
+            f"{len(counterpart)}, so character offsets do not correspond and an occurrence "
+            "cannot be attributed to an actor")
+    found: list[Occurrence] = []
+    cursor = 0
+    while True:
+        at = current.find(old, cursor)
+        if at == -1:
+            break
+        retail_word = counterpart[at:at + len(old)]
+        if retail_word == old:
+            decision = RENAME
+        elif any(character.isalpha() for character in retail_word):
+            decision = KEEP
+        else:
+            decision = UNCLEAR
+        found.append(Occurrence(at=at, retail=retail_word, decision=decision))
+        cursor = at + len(old)
+    return tuple(found)
+
+
 def rename_positions(current: str, counterpart: str, *, old: str,
                      new: str) -> tuple[str, int, int, int]:
     """Rename each occurrence of `old` only where `counterpart` names the same actor.
@@ -463,35 +549,16 @@ def rename_positions(current: str, counterpart: str, *, old: str,
     retail names the other actor there, and left because the retail word is
     neither.
     """
-    if not old:
-        raise TextEditError("REFUSED: a rename needs a name to replace")
-    if len(current) != len(counterpart):
-        raise TextEditError(
-            f"REFUSED: the record is {len(current)} units and its retail counterpart is "
-            f"{len(counterpart)}, so character offsets do not correspond and an occurrence "
-            "cannot be attributed to an actor")
-    pieces = []
+    pieces: list[str] = []
     cursor = 0
-    renamed = kept = unclear = 0
-    while True:
-        position = current.find(old, cursor)
-        if position == -1:
-            break
-        retail_word = counterpart[position:position + len(old)]
-        pieces.append(current[cursor:position])
-        if retail_word == old:
-            pieces.append(new)
-            renamed += 1
-        else:
-            pieces.append(old)
-            rival = counterpart[position:position + len(old)]
-            if rival != old and any(character.isalpha() for character in rival):
-                kept += 1
-            else:
-                unclear += 1
-        cursor = position + len(old)
+    counts = {RENAME: 0, KEEP: 0, UNCLEAR: 0}
+    for item in rename_occurrences(current, counterpart, old):
+        pieces.append(current[cursor:item.at])
+        pieces.append(new if item.decision == RENAME else old)
+        counts[item.decision] += 1
+        cursor = item.at + len(old)
     pieces.append(current[cursor:])
-    return "".join(pieces), renamed, kept, unclear
+    return "".join(pieces), counts[RENAME], counts[KEEP], counts[UNCLEAR]
 
 
 # --- the plan ----------------------------------------------------------------

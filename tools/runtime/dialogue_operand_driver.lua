@@ -18,7 +18,9 @@ end
 
 local A_KEY = 0x0001
 local DIRECTIONS = { 0x0010, 0x0020, 0x0040, 0x0080 }   -- right, left, up, down
-local WARMUP = 300
+-- The schedule starts only after the savestate has loaded: pressing keys during the load opens menus and
+-- leaves the game paused, which is what made every earlier driver run silent on every channel.
+local WARMUP = 0
 local STEP_PERIOD = 90
 local WALK_FRAMES = 45
 local TAP_LENGTH = 6
@@ -26,6 +28,17 @@ local LAST_STEP = 4200
 
 local frames = 0
 local driver_id
+local state_loaded = false
+
+-- The probe exposes this hook and the launcher's bootstrap calls it once the state is in memory.
+local probe_note = dialogue_probe_note
+dialogue_probe_note = function(text)
+  if probe_note then probe_note(text) end
+  if text == "STATE loaded" then
+    state_loaded = true
+    frames = 0            -- the walk schedule is measured from the load, not from script start
+  end
+end
 local log_file = os.getenv("TOOLKIT031_OUT")
 
 local function note(line)
@@ -50,6 +63,7 @@ end
 
 driver_id = callbacks:add("frame", function()
   frames = frames + 1
+  if not state_loaded then return end
   if frames < WARMUP then return end
   local offset = frames - WARMUP
   if offset > LAST_STEP then

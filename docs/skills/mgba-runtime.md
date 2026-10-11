@@ -211,10 +211,11 @@ Qt key events. So the dashboard holds the keys and hands them to a Lua bridge th
 - what it does: it adds only the keys the dashboard currently holds and releases everything when the
   dashboard disconnects. It touches no emulated memory, writes no save, and loads no state.
 
-A run with the variable unset records that it was not set, and a variable that names a missing
-file records THAT, because the two are different states. The bridge holds no port of its own in this
-repository: it connects to the dashboard's listener on `127.0.0.1:61234`, which is why the dashboard, not
-the emulator, owns the keys.
+The bridge is switched OFF by a real sentinel rather than an empty value, because an environment
+variable set to "" does not survive to the child on Windows PowerShell 5.1: set
+`LOG1_MGBA_NO_EXTRA_SCRIPT=1`, or the literal value `none`. A run with the variable unset records that it was not set, and a variable that names a missing
+file records THAT, because the two are different states. The bridge LISTENS on `127.0.0.1:61234` itself: it is the server, and the dashboard connects to
+it to hand over the keys it is holding.
 
 The test that holds all of this is `tests/unit/test_mgba_extra_script.py`: its source-level checks always
 run, and its functional checks exercise the GDB launcher's `-DryRun` where a dev mGBA build and the

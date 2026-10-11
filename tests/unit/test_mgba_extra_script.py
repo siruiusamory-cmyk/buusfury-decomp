@@ -60,12 +60,14 @@ def test_the_session_helper_does_not_pollute_its_return_value() -> None:
     assert "Write-Host" in text
 
 
-def test_an_explicitly_empty_variable_is_hermetic() -> None:
-    """The functional half cannot rely on this machine's registry being unset; empty must mean empty."""
+def test_the_bridge_is_switched_off_by_a_sentinel_the_shell_cannot_drop() -> None:
+    """A "" value does not survive to the child on Windows PowerShell 5.1, so the switch is a sentinel."""
     for path in (SESSION, CAPTURE):
         text = path.read_text(encoding="utf-8")
-        assert "elseif ($extraScript -eq '')" in text, (
-            f"{path.name} must treat an explicitly empty variable as 'load no bridge'")
+        assert "LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1'" in text, (
+            f"{path.name} must honour LOG1_MGBA_NO_EXTRA_SCRIPT=1")
+        assert "$extraScript -ieq 'none'" in text, (
+            f"{path.name} must treat the literal value none as 'load no bridge'")
 
 
 def test_the_gdb_launcher_records_it_before_using_it() -> None:
@@ -144,12 +146,31 @@ def test_a_dry_run_with_the_variable_records_the_path_and_hash(prerequisites) ->
     assert "dashboard" in identity.get("extra_script_note", "")
 
 
-def test_a_dry_run_with_an_explicitly_empty_variable_records_none(prerequisites) -> None:
-    identity = dry_run(prerequisites, "")
+def test_a_dry_run_with_the_sentinel_records_none(prerequisites) -> None:
+    identity = dry_run(prerequisites, "none")
     assert identity.get("extra_script_loaded") is False
     assert identity.get("extra_script_path") is None
     assert identity.get("extra_script_sha256") is None
-    assert "not set" in identity.get("extra_script_note", "")
+    assert "disabled by request" in identity.get("extra_script_note", "")
+
+
+def test_a_dry_run_with_the_switch_variable_records_none(prerequisites) -> None:
+    environment = dict(os.environ)
+    environment["LOG1_MGBA_NO_EXTRA_SCRIPT"] = "1"
+    environment["LOG1_MGBA_EXTRA_SCRIPT"] = str(
+        Path(tempfile.gettempdir()) / "dsh-extra-script-test.lua")
+    mgb = prerequisites["mgb"]
+    result = subprocess.run(
+        [prerequisites["shell"], "-NoProfile", "-File", str(CAPTURE),
+         "-RomPath", str(prerequisites["rom"]), "-StatePath", str(prerequisites["state"]),
+         "-MGBPath", str(mgb), "-RequiredMGBVersion", "0.11",
+         "-MGBSha256", hashlib.sha256(mgb.read_bytes()).hexdigest().upper(),
+         "-DryRun"],
+        cwd=ROOT, capture_output=True, text=True, env=environment)
+    assert "{" in result.stdout, result.stdout + result.stderr
+    identity = json.loads(result.stdout[result.stdout.index("{"):])
+    assert identity.get("extra_script_loaded") is False, (
+        "the switch must win even when the bridge variable names a real file")
 
 
 def test_a_dry_run_naming_a_missing_file_says_so(prerequisites) -> None:

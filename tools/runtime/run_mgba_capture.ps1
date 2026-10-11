@@ -169,20 +169,25 @@ $stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
 # and records its path and SHA-256 in this run's inputs, which is what makes the exception in
 # docs/skills/mgba-runtime.md section 6 reviewable. A build without --script - the default here, since
 # this launcher is digest-pinned to 0.10.5 - SKIPS it with a printed note instead of refusing the launch.
+# A variable set to "" does NOT survive to the child on Windows PowerShell 5.1, so the switch that turns
+# the bridge off is a real sentinel: the literal value `none`, or LOG1_MGBA_NO_EXTRA_SCRIPT=1.
 $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
-if ($null -eq $extraScript) {
-    # Fall back to the registry for shells that predate the variable, but treat an EXPLICITLY EMPTY
-    # variable as "load no bridge", so a test can run hermetically on a machine where it is set.
+$extraScriptDisabled = ($env:LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1') -or ($extraScript -ieq 'none')
+if ($extraScriptDisabled) {
+    $extraScript = $null
+}
+elseif ($null -eq $extraScript) {
     $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
     if (-not $extraScript) { $extraScript = $null }
-}
-elseif ($extraScript -eq '') {
-    $extraScript = $null
 }
 $extraScriptPath = $null
 $extraScriptSha = $null
 $extraScriptLoaded = $false
-$extraScriptNote = 'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+$extraScriptNote = if ($extraScriptDisabled) {
+    'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
+} else {
+    'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+}
 if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
     $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
     Write-Output "extra script SKIPPED: $extraScriptNote"

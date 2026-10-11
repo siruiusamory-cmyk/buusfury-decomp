@@ -164,16 +164,18 @@ function Start-MgbaSession {
     # run RECORDS its absolute path and SHA-256 in the run directory, which is what makes the exception in
     # docs/skills/mgba-runtime.md section 6 reviewable. A build without --script skips it with a printed
     # note rather than refusing to launch, because the GDB launcher is pinned to such a build.
+    # A variable set to "" does NOT survive to the child on Windows PowerShell 5.1 - it arrives as $null -
+    # so "set but empty" cannot be the switch that disables the bridge. The switch is a real sentinel the
+    # shell cannot drop: the literal value `none`, or LOG1_MGBA_NO_EXTRA_SCRIPT=1.
     $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
-    if ($null -eq $extraScript) {
-        # Already-running shells predate the user variable, so fall back to the registry. An EXPLICITLY
-        # EMPTY variable is different: it says "do not load a bridge at all", which is how a test can run
-        # hermetically on a machine where the registry value is set.
+    $extraScriptDisabled = ($env:LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1') -or ($extraScript -ieq 'none')
+    if ($extraScriptDisabled) {
+        $extraScript = $null
+    }
+    elseif ($null -eq $extraScript) {
+        # Already-running shells predate the user variable, so fall back to the registry.
         $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
         if (-not $extraScript) { $extraScript = $null }
-    }
-    elseif ($extraScript -eq '') {
-        $extraScript = $null
     }
     if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
         Write-Host "extra script SKIPPED: LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
@@ -182,8 +184,16 @@ function Start-MgbaSession {
     }
     $extraScriptSha = $null
     $extraScriptLoaded = $false
-    $extraScriptNote = 'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
-    if ($extraScript) {
+    if ($extraScriptDisabled) {
+        $extraScriptNote = 'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
+    }
+    else {
+        $extraScriptNote = 'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+    }
+    if ($extraScriptDisabled) {
+        Write-Host "extra script SKIPPED: $extraScriptNote"
+    }
+    elseif ($extraScript) {
         $extraScriptPath = (Resolve-Path -LiteralPath $extraScript).Path
         $supportsScript = ((& $MGBPath --help 2>&1 | Out-String) -match '--script')
         if (-not $supportsScript) {

@@ -74,7 +74,9 @@ COLUMN_ID, COLUMN_TEXT, COLUMN_SPEAKER, COLUMN_STATUS = range(4)
 MARKER_COLUMN = 12
 AUX_GLYPH_WIDTH = 16
 IDENTITY_FLOOR = 64
-SPEAKER_FLOOR = 108
+#: The room a name needs before the whole column stops being worth showing. It
+#: elides, so this is small on purpose: the full label is the cell's tooltip.
+SPEAKER_FLOOR = 88
 #: The status column's own floor: the marker, the badge and a word that reads.
 STATUS_FLOOR = 96
 #: The room the text column keeps before any other column takes any. Below this the
@@ -606,18 +608,22 @@ class LinePane(QWidget):
                    max(SPEAKER_FLOOR, metrics.horizontalAdvance(widest) + self._metrics.pad_xl))
 
     def _fit_columns(self) -> None:
-        """Keep the text column readable, and make the speaker column yield first.
+        """Keep the text column readable, and drop the diagnostic column before it.
 
         Measured on the shipping font at the pane's default width: the status column
-        needs about 130 px to show `BASE CHANGED` whole, the speaker column wanted
-        168 px for the longest label, and the two together left the text column 32
-        px, which draws as an ellipsis. The order of who gives ground is the design
-        note's: the status keeps its whole word, the text keeps a readable floor, and
-        the speaker elides because its cell carries the full label as a tooltip.
+        needs about 133 px to show `BASE CHANGED` whole, the speaker column wanted
+        168 px for the longest label, and those two left the text column 32 px, which
+        draws as an ellipsis. Who gives ground is the design note's order: the status
+        keeps its whole word, the text keeps a readable floor, the speaker elides
+        because its cell carries the full label as a tooltip, and the identity column
+        goes entirely, because the key is on the status bar and in the context pane.
         """
         width = self.table.viewport().width()
         if width <= 0:
             return
+        wants_identity = self._id_by_view()
+        fits = width >= SPEAKER_FLOOR + self.status_width + TEXT_FLOOR + IDENTITY_FLOOR
+        self.table.setColumnHidden(COLUMN_ID, not wants_identity or not fits)
         identity = 0 if self.table.isColumnHidden(COLUMN_ID) \
             else self.table.columnWidth(COLUMN_ID)
         status = min(self.status_width, max(STATUS_FLOOR, width - TEXT_FLOOR))
@@ -627,6 +633,10 @@ class LinePane(QWidget):
         self.table.setColumnWidth(COLUMN_STATUS, status)
         if not self.table.isColumnHidden(COLUMN_SPEAKER):
             self.table.setColumnWidth(COLUMN_SPEAKER, speaker)
+
+    def _id_by_view(self) -> bool:
+        """Whether the current list wants an identity column at all."""
+        return self._kind == SLOT or self._view == RECORDS
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -721,9 +731,8 @@ class LinePane(QWidget):
             if isinstance(entry, Group):
                 # One heading spans the row, so its label and its reason read as one line.
                 self.table.setSpan(entry_row, 0, 1, self._model.columnCount())
-        # The identity column is a diagnostic: in the line list the key is on the status
-        # bar and in the context pane, and the text column needs the room more.
-        self.table.setColumnHidden(COLUMN_ID, self._kind != SLOT and self._view == LINES)
+        # Which columns show, and how wide, is one decision: `_fit_columns` owns the
+        # identity column, because it is a diagnostic that goes before the text does.
         self.table.setColumnHidden(COLUMN_SPEAKER, self._kind != RECORD)
         self._fit_columns()
         if any(isinstance(entry, Group) for entry in entries):
@@ -902,11 +911,17 @@ class LinePane(QWidget):
             f"\u2713 {CONTROL_FILTER}" if self.control_chip.isChecked() else CONTROL_FILTER)
 
     def _update_counters(self) -> None:
+        """The three state counts, which are the actionable numbers.
+
+        Measured at the pane's default width: this line plus the two tab names
+        together want 399 px inside 350, so one of the two elides. A list's own total
+        is on its tab tooltip instead, which leaves both names whole and the counts
+        readable.
+        """
         if self._session is None:
             self.counters.setText("")
             return
         counts = self._session.counts(self._kind)
-        parts = [row_count(self._session.total(self._kind), self._kind)]
-        parts.extend(f"{counts[state]} {status_words.presentation(state).word.lower()}"
-                     for state in (State.EDITED, State.WILL_MOVE, State.REFUSED))
-        self.counters.setText("   ".join(parts))
+        self.counters.setText("   ".join(
+            f"{counts[state]} {status_words.presentation(state).word.lower()}"
+            for state in (State.EDITED, State.WILL_MOVE, State.REFUSED)))

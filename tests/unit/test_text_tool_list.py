@@ -173,13 +173,13 @@ def test_the_pane_lists_one_row_per_line_and_the_shape_switches_the_count(
     assert split_pane.view() == app_session.LINES
     assert [line.text for line in split_pane.rows()] == ["One", "Two"]
     assert split_pane.kind() == app_session.RECORD
-    # The count sits on the counters line beside the tabs, not inside the tab label,
-    # because the two labels together elided their counts away at the pane's width.
+    # Each list's total is on its tab tooltip, because the counters line and the two
+    # tab names together want 399 px inside 350 and one of them has to elide.
     assert split_pane.tabs.tabText(0) == "Dialogue"
     assert split_pane.tabs.tabText(1) == "Names && bios"
     assert split_pane.tabs.tabToolTip(0) == "2 lines"
     assert split_pane.tabs.tabToolTip(1) == f"{TEXT_SLOTS} names"
-    assert split_pane.counters.text().startswith("2 lines")
+    assert "2 lines" not in split_pane.counters.text()
     assert split_pane.table.isColumnHidden(lineview.COLUMN_ID)
     assert split_pane.table.isColumnHidden(lineview.COLUMN_SPEAKER) is False
 

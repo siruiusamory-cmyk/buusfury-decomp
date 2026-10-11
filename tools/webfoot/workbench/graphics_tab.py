@@ -31,7 +31,6 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QImage,
-    QKeySequence,
     QPainter,
     QPixmap,
     QUndoCommand,
@@ -709,15 +708,14 @@ class GraphicsTab(QWidget):
         # E. Pending change surfaced in game language, never as a raw write.
         self._pending_label = QLabel("No pending palette change.")
         self._pending_label.setWordWrap(True)
-        # Undo/Redo actions from the stack: keyboard-enabled (Ctrl+Z/Ctrl+Y) and
-        # surfaced as toolbar buttons. Each button uses setDefaultAction so its
-        # enabled-state/text mirror the action automatically - no manual sync
-        # lambda (one such lambda outlived the C++ stack and crashed teardown).
-        # Scoped to this tab per WB-005 §8 (no app-wide menu retrofit this ticket).
+        # Undo/Redo actions from the stack, surfaced as toolbar buttons. Each
+        # button uses the action's enabled-state and text, and the two buttons
+        # drive the actions through `clicked`, so the keys are NOT set here.
+        # CQA-23: the shell's Edit -> Undo/Redo own Ctrl+Z and Ctrl+Y for the
+        # whole window. Binding the same standard keys on this tab as well made
+        # one key answer to two live actions.
         self._undo_action = self._undo_stack.createUndoAction(self, "Undo")
-        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self._redo_action = self._undo_stack.createRedoAction(self, "Redo")
-        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._undo_button = QPushButton("Undo")
         self._undo_button.clicked.connect(self._undo_action.trigger)
         self._undo_button.setEnabled(self._undo_stack.canUndo())

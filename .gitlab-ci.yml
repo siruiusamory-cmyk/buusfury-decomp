@@ -170,6 +170,12 @@ test-site:
 
 deploy-site:
   stage: deploy
+  # The one irreversible action in CI waits for both test jobs. `needs` is
+  # deliberately not `optional:`, so a pipeline whose jobs were excluded by their
+  # rules fails to be created rather than publishing without them. Naming both is
+  # what keeps the suite gate AND the implicit stage-barrier wait the deploy job
+  # had before this dependency existed, since `needs` bypasses the barrier.
+  needs: ["test-sdk", "test-site"]
   image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"

@@ -237,6 +237,24 @@ try {
         '-C', 'mute=0'
     )
     if ($startupLua) { $mgbaArgs += @('--script', ('"' + $startupLua + '"')) }
+    # The owner's dashboard input bridge, outside this repository and named only by an environment
+    # variable, so no machine path is tracked here. Honoured only when this build has the flag; the
+    # --help probe is skipped when the startup Lua above already proved it.
+    $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
+    if (-not $extraScript) {
+        $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+    }
+    if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) { $extraScript = $null }
+    if ($extraScript) {
+        if (-not $startupLua) {
+            $extraHelp = (& $resolvedMGB --help 2>&1 | Out-String)
+            if ($extraHelp -notmatch '--script') {
+                throw ("LOG1_MGBA_EXTRA_SCRIPT is set, but this mGBA build does not support " +
+                       "--script: " + $resolvedMGB + ". Unset it or use the 0.11 dev build.")
+            }
+        }
+        $mgbaArgs += @('--script', ('"' + $extraScript + '"'))
+    }
     $mgbaArgs += ('"' + $resolvedRom + '"')
     $process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
 

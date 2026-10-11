@@ -158,9 +158,25 @@ function Start-MgbaSession {
     # Paths go in as ONE argument string. As separate array elements PowerShell
     # mangles the embedded quotes and mGBA then reports "Failed to open game file"
     # for a ROM that is perfectly readable.
+    # The owner's dashboard sends key presses through a bridge that lives outside this repository and is
+    # named only by an environment variable, so no machine path is tracked here. It runs as a second
+    # --script, and only on a build whose version has the flag: 0.10.5 has no scripting and mGBA exits
+    # immediately on an unknown argument, which would surface as a mysterious launch failure.
+    $extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
+    if (-not $extraScript) {
+        # Already-running shells predate the user variable, so fall back to the registry.
+        $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+    }
+    if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) { $extraScript = $null }
+    if ($extraScript -and -not $mgbVersion.StartsWith('0.11')) {
+        throw ("LOG1_MGBA_EXTRA_SCRIPT is set, but this mGBA build does not support --script: " +
+               $MGBPath + ' (' + $mgbVersion + '). Unset it or use the 0.11 dev build.')
+    }
+
     $options = @()
     if ($ArgumentList.Count -gt 0) { $options += $ArgumentList }
     $options += @('--script', $bootstrap)
+    if ($extraScript) { $options += @('--script', $extraScript) }
     $argumentText = (($options | ForEach-Object { '"{0}"' -f $_ }) -join ' ') +
         (' "{0}"' -f $RomPath)
 

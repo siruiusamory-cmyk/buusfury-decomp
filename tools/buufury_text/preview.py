@@ -1,4 +1,4 @@
-﻿"""What the dialogue box will look like, approximately, at integer scale.
+"""What the dialogue box will look like, approximately, at integer scale.
 
 This is the one surface the interface is allowed to look like a Game Boy Advance.
 The glyph source is the seam the RE Lab's extracted font implements; until it

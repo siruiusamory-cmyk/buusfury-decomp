@@ -34,26 +34,39 @@ def staged(name: str) -> Path:
     return path
 
 
-def a_retail_matching_word(session) -> tuple[str, str, int] | None:
-    """A word the release and the original game both say at the same offset.
+def key_parts(key: str) -> tuple[int, int, int]:
+    selector, start, length = (int(part) for part in key.split(":"))
+    return selector, start, length
 
-    That is exactly the condition the per-occurrence rule tests, so the swap this
-    finds is one the retail reference attributes to the actor rather than one this
-    test guessed at. The line has to read as prose, or the swap lands on one of the
-    short fragments these containers also carry and proves the mechanics without
-    proving the workflow.
+
+def a_retail_matching_word(session) -> tuple[str, str, int] | None:
+    """A word in a spoken line that the retail reference attributes to the actor.
+
+    The row is a LINE, so the offset the rename needs is the one inside that line,
+    while `rename_hits` reports offsets inside the RECORD that carries it. The swap
+    is therefore accepted only where the retail test itself decides to rename that
+    occurrence, rather than where this test guesses it should. The line has to read
+    as prose, or the swap lands on one of the short fragments these containers also
+    carry and proves the mechanics without proving the workflow.
     """
     for line in session.lines:
-        if line.kind != "record" or line.retail is None:
-            continue
-        if len(line.text) != len(line.retail) or len(line.text) < 30:
+        if line.kind != "record" or not line.proven or len(line.text) < 30:
             continue
         if line.text.count(" ") < 3:
             continue
-        for match in re.finditer(r"[A-Za-z]{4,}", line.text):
-            at, end = match.span()
-            if line.retail[at:end] == line.text[at:end]:
-                return line.key, line.text[at:end], at
+        holder = session.model.record(*key_parts(line.target))
+        if holder is None or holder.start > line.position[1]:
+            continue
+        offset = (line.position[1] - holder.start) // 2
+        # A capitalised word, so the swap is a name swap of the release-3.1 kind
+        # rather than any word that happens to match.
+        for match in re.finditer(r"[A-Z][a-z]{3,}", line.text):
+            word = match.group(0)
+            wanted = offset + match.start()
+            if any(hit.key == line.target and hit.at == wanted
+                   and hit.decision == textedit.RENAME
+                   for hit in session.rename_hits(word)):
+                return line.key, word, match.start()
     return None
 
 
@@ -73,9 +86,6 @@ def test_a_name_swap_and_a_grown_line_export_and_read_back(tmp_path: Path) -> No
     found = a_retail_matching_word(session)
     assert found is not None, "release 3.1 has no retail-attributable word to swap"
     key, old, at = found
-    hit = next(item for item in session.rename_hits(old)
-               if item.key == key and item.at == at)
-    assert hit.decision == textedit.RENAME
     # A name strictly longer than the one it replaces, which is the shape of the
     # release-3.1 rename: the line no longer fits its span and has to move.
     swapped = "Kakarotto" if len(old) < 9 else old + "!"
@@ -85,14 +95,18 @@ def test_a_name_swap_and_a_grown_line_export_and_read_back(tmp_path: Path) -> No
     session.set_edit(key, renamed)
 
     # One dialogue line grown past its span, which is the route the window calls
-    # the mover.
+    # the mover. It must be a line in a DIFFERENT record, or the second edit would
+    # replace the first: an edit list is one entry per record, not per row.
     grower = next(line for line in session.lines
-                  if line.kind == "record" and line.key != key and len(line.text) > 20)
+                  if line.kind == "record" and line.key != key
+                  and line.target != session.line(key).target
+                  and len(line.text) > 20)
     session.set_edit(grower.key, grower.text + " and friends")
 
     assert session.state(key) is app_session.State.WILL_MOVE
     assert session.state(grower.key) is app_session.State.WILL_MOVE
     assert session.refusals() == ()
+    assert len(session.edited_keys()) == 2
 
     plan = session.plan()
     assert plan is not None

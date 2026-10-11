@@ -19,10 +19,20 @@ pytest.importorskip("PySide6.QtWidgets")
 from PySide6.QtCore import QMimeData, Qt  # noqa: E402
 from PySide6.QtGui import QKeyEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication, QTextEdit, QWidget  # noqa: E402
+from PySide6.QtWidgets import QApplication, QHeaderView, QTextEdit, QWidget  # noqa: E402
 
-from tests.text_fixture import SPACES, build, lowered_record_floor  # noqa: E402
-from tools.buufury_text import chips, preview, renamedialog, settings, status, theme  # noqa: E402
+from tests.text_fixture import SPACES, build, line_payload, lowered_record_floor  # noqa: E402
+from tools.buufury_text import (  # noqa: E402
+    chipedit,
+    chips,
+    contextpane,
+    lineview,
+    preview,
+    renamedialog,
+    settings,
+    status,
+    theme,
+)
 from tools.buufury_text import session as app_session  # noqa: E402
 from tools.buufury_text.renamedialog import DECISION_COLUMN, ROLE_CHOSEN  # noqa: E402
 from tools.buufury_text.session import State  # noqa: E402
@@ -371,6 +381,7 @@ def covering_image() -> bytes:
 
 def write_image(path: Path, canonical: Path | None = None):
     """Open the synthetic image, offscreen, with no ROM and no repository file touched."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(covering_image())
     with lowered_record_floor():
         return app_session.open_image(path, canonical=canonical)
@@ -378,20 +389,28 @@ def write_image(path: Path, canonical: Path | None = None):
 
 @pytest.fixture()
 def session(tmp_path):
-    return write_image(tmp_path / "fixture.gba")
+    # The image lives in its own directory, so the settings the window writes during a
+    # test never land beside it.
+    return write_image(tmp_path / "image" / "fixture.gba")
 
 
-def shown_shell(session_, qapp, tmp_path, monkeypatch) -> Shell:
-    """A shown window whose settings file is a temporary one, not the user's."""
+def shown_shell(session_, qapp, tmp_path, monkeypatch, shape=None) -> Shell:
+    """A shown window whose settings file is a temporary one, not the user's.
+
+    ``shape`` forces the dialogue list back to RECORDS for the record-level cases the
+    earlier lane wrote; the window restores its own stored shape at start-up.
+    """
     monkeypatch.setattr(settings, "directory", lambda: tmp_path / "user-config")
     window = Shell(session_, theme.apply_theme(qapp, theme.MODE_DARK))
+    if shape is not None:
+        window.pane.set_view(shape)
     window.show()
     return window
 
 
 @pytest.fixture()
 def shell(qapp, session, tmp_path, monkeypatch):
-    window = shown_shell(session, qapp, tmp_path, monkeypatch)
+    window = shown_shell(session, qapp, tmp_path, monkeypatch, shape=app_session.RECORDS)
     yield window
     window.close()
 
@@ -431,7 +450,7 @@ def test_a_two_record_rename_batch_is_one_undo_step(qapp, tmp_path, monkeypatch)
     session_ = write_image(tmp_path / "working.gba", canonical=retail)
     hits = session_.rename_hits("Inner")
     assert len(hits) == 2
-    window = shown_shell(session_, qapp, tmp_path, monkeypatch)
+    window = shown_shell(session_, qapp, tmp_path, monkeypatch, shape=app_session.RECORDS)
     try:
         dialog = renamedialog.RenameDialog(session_, "Inner", "Lazuli", window.metrics,
                                            window.theme, window)
@@ -503,3 +522,330 @@ def test_the_meter_reports_both_units_and_marks_an_unstated_limit(shell) -> None
     assert shell.editor.meter.stated() is False
     assert shell.editor.meter.bytes_bar.tick_at(100) is None
     assert "above the 4094-byte length field" in shell.editor.meter.reason.text()
+
+
+# --- the dialogue list: shape, speaker, grouping and order --------------------
+
+ALPHA = "Alpha line"
+BETA = "Beta line"
+GAMMA = "Gamma line"
+TWO_LINES = "One\nTwo"
+#: The synthetic image carries no appearance table, so the portrait join is stood in
+#: for. The column only has to render whatever the session answered.
+PORTRAITS = {1: textedit.Portrait(8, textedit.NAMED_PORTRAIT, "Bulma"),
+             2: textedit.Portrait(0, textedit.NO_PORTRAIT)}
+SHAPE_KEYS = {"gamma": "3:32:20", "alpha": "1:32:20", "beta": "2:32:18"}
+
+
+def shape_image() -> bytes:
+    """Three records in three containers, in the reverse of their handle order."""
+    return build(
+        payloads={1: line_payload(ALPHA), 2: line_payload(BETA), 3: line_payload(GAMMA)},
+        records=[(3, 0x20, len(GAMMA) * 2), (1, 0x20, len(ALPHA) * 2),
+                 (2, 0x20, len(BETA) * 2)])
+
+
+def split_image() -> bytes:
+    """One record holding two spoken lines, so the two views differ in row count."""
+    return build(payloads={1: line_payload(TWO_LINES)},
+                 records=[(1, 0x20, len(TWO_LINES) * 2)])
+
+
+def named_portraits(model):
+    """A stand-in join, because a synthetic image carries no appearance table."""
+    return {record.key: PORTRAITS[record.selector] for record in model.records
+            if record.selector in PORTRAITS}
+
+
+def opened(tmp_path: Path, name: str, image: bytes):
+    """A session over a synthetic image; no event pool exists, so every record cuts."""
+    path = tmp_path / name
+    path.write_bytes(image)
+    with lowered_record_floor():
+        return app_session.open_image(path, cutters_from_pool=False)
+
+
+@pytest.fixture()
+def shape_session(tmp_path):
+    return opened(tmp_path, "shape.gba", shape_image())
+
+
+@pytest.fixture()
+def shape_window(qapp, shape_session, tmp_path, monkeypatch):
+    window = shown_shell(shape_session, qapp, tmp_path, monkeypatch)
+    yield window
+    window.close()
+
+
+@pytest.fixture()
+def named_window(qapp, tmp_path, monkeypatch):
+    monkeypatch.setattr(textedit, "portraits", named_portraits)
+    window = shown_shell(opened(tmp_path, "named.gba", shape_image()), qapp, tmp_path,
+                         monkeypatch)
+    yield window
+    window.close()
+
+
+@pytest.fixture()
+def split_window(qapp, tmp_path, monkeypatch):
+    window = shown_shell(opened(tmp_path, "split.gba", split_image()), qapp, tmp_path,
+                         monkeypatch)
+    yield window
+    window.close()
+
+
+@pytest.fixture()
+def shared_key_window(qapp, tmp_path, monkeypatch):
+    """The one image whose line key and record key are the same string."""
+    path = tmp_path / "shared.gba"
+    path.write_bytes(covering_image())
+    with lowered_record_floor():
+        session_ = app_session.open_image(path, cutters_from_pool=False)
+    window = shown_shell(session_, qapp, tmp_path, monkeypatch)
+    yield window
+    window.close()
+
+
+def test_switching_shape_keeps_a_row_the_other_view_also_holds(shared_key_window) -> None:
+    pane = shared_key_window.pane
+    assert shared_key_window.session.view == app_session.LINES
+    pane.set_view(app_session.RECORDS)
+    assert pane.select_key(INNER_KEY)
+    pane.set_view(app_session.LINES)
+    assert pane.selected() == INNER_KEY
+    assert [line.key for line in pane.rows()] == ["1:32:22", "1:54:20"]
+    # A row the other view does not hold cannot stay selected.
+    pane.set_view(app_session.RECORDS)
+    assert pane.select_key(OUTER_KEY)
+    pane.set_view(app_session.LINES)
+    assert pane.selected() != OUTER_KEY
+
+
+def test_the_dialogue_list_defaults_to_lines_and_records_switches_the_shape(split_window) -> None:
+    pane = split_window.pane
+    assert pane.view() == app_session.LINES
+    assert split_window.session.view == app_session.LINES
+    assert [line.key for line in pane.rows()] == ["1:32:6", "1:40:6"]
+    assert split_window.session.view_size(app_session.RECORDS) == 1
+    pane.set_view(app_session.RECORDS)
+    assert split_window.session.view == app_session.RECORDS
+    assert pane.view_box.currentData() == app_session.RECORDS
+    assert split_window.shape_actions.checkedAction().data() == app_session.RECORDS
+    assert [line.key for line in pane.rows()] == ["1:32:14"]
+    # The View menu reaches the same control, which is why it carries the actions.
+    split_window.shape_actions.actions()[0].trigger()
+    assert pane.view() == app_session.LINES
+    assert split_window.session.view == app_session.LINES
+
+
+def test_the_speaker_column_shows_the_name_the_gap_word_and_the_unknown_word(named_window) -> None:
+    pane = named_window.pane
+    model = pane.table.model()
+    rows = {entry.key: row for row, entry in enumerate(model.entries())}
+    assert model.headerData(lineview.COLUMN_SPEAKER, Qt.Orientation.Horizontal,
+                            Qt.ItemDataRole.DisplayRole) == "Speaker (by portrait)"
+
+    def cell(key: str, role: int) -> object:
+        return model.data(model.index(rows[key], lineview.COLUMN_SPEAKER), role)
+
+    assert cell(SHAPE_KEYS["alpha"], Qt.ItemDataRole.DisplayRole) == "Bulma"
+    assert cell(SHAPE_KEYS["beta"], Qt.ItemDataRole.DisplayRole) == "No portrait"
+    assert cell(SHAPE_KEYS["gamma"], Qt.ItemDataRole.DisplayRole) == \
+        app_session.UNKNOWN_SPEAKER
+    assert cell(SHAPE_KEYS["alpha"], Qt.ItemDataRole.ForegroundRole) is None
+    for key in (SHAPE_KEYS["beta"], SHAPE_KEYS["gamma"]):
+        muted = cell(key, Qt.ItemDataRole.ForegroundRole)
+        assert muted is not None
+        assert muted.name() == theme.color(theme.active_theme(), "text_secondary").name()
+    assert pane.speaker_caption.text() == "Speaker (by portrait)"
+    pane.set_kind(app_session.SLOT)
+    assert pane.table.isColumnHidden(lineview.COLUMN_SPEAKER)
+    assert pane.rows()
+    pane.set_kind(app_session.RECORD)
+    assert not pane.table.isColumnHidden(lineview.COLUMN_SPEAKER)
+
+
+def test_the_speaker_filter_leaves_only_that_speaker_or_that_gap(named_window) -> None:
+    pane = named_window.pane
+    pane.speaker_box.setCurrentIndex(pane.speaker_box.findData("Bulma"))
+    assert [line.speaker_label for line in pane.rows()] == ["Bulma"]
+    assert [line.text for line in pane.rows()] == [ALPHA]
+    pane.speaker_box.setCurrentIndex(pane.speaker_box.findData("No portrait"))
+    assert [line.text for line in pane.rows()] == [BETA]
+
+
+def test_speaker_grouping_heads_each_name_and_puts_the_unknown_last(named_window) -> None:
+    pane = named_window.pane
+    pane.set_group(app_session.BY_SPEAKER)
+    model = pane.table.model()
+    headings = [entry for entry in model.entries() if isinstance(entry, lineview.Group)]
+    assert [group.label for group in headings] == ["Bulma", "No portrait",
+                                                   app_session.UNKNOWN_SPEAKER]
+    assert [len(group.rows) for group in headings] == [1, 1, 1]
+    assert model.data(model.index(0, 0), lineview.ROLE_HEADING) == ("Bulma (1)", "")
+    assert model.flags(model.index(0, 0)) == Qt.ItemFlag.NoItemFlags
+    assert pane.table.columnSpan(0, 0) == model.columnCount()
+
+
+def test_place_grouping_is_one_heading_that_names_the_gap(shape_window) -> None:
+    pane = shape_window.pane
+    pane.set_group(app_session.BY_PLACE)
+    model = pane.table.model()
+    headings = [entry for entry in model.entries() if isinstance(entry, lineview.Group)]
+    assert len(headings) == 1
+    assert headings[0].label == app_session.UNPLACED
+    assert len(headings[0].rows) == 3
+    assert model.data(model.index(0, 0), lineview.ROLE_HEADING) == \
+        ("Unplaced (3)", lineview.NO_PLACE_LINK)
+
+
+def test_a_group_heading_is_painted_as_a_raised_heading_row(shape_window) -> None:
+    pane = shape_window.pane
+    pane.set_group(app_session.BY_PLACE)
+    table = pane.table
+    image = table.grab().toImage()
+    assert table.viewport().width() > 200
+
+    def band(entry_row: int) -> str:
+        y = table.rowViewportPosition(entry_row) + table.rowHeight(entry_row) // 2
+        return image.pixelColor(200, y).name()
+
+    assert band(0) == theme.color(theme.active_theme(), "surface_raised").name()
+    assert band(3) == theme.color(theme.active_theme(), "surface").name()
+
+
+def test_appearance_and_storage_order_differ_in_the_first_row_only(shape_window) -> None:
+    pane = shape_window.pane
+    appearance = [line.key for line in pane.rows()]
+    pane.set_order(app_session.STORAGE)
+    storage = [line.key for line in pane.rows()]
+    assert appearance[0] == SHAPE_KEYS["gamma"]
+    assert storage[0] == SHAPE_KEYS["alpha"]
+    assert set(appearance) == set(storage)
+
+
+def test_editing_one_line_of_a_record_leaves_its_sibling_row_unchanged(split_window) -> None:
+    pane = split_window.pane
+    first, sibling = pane.rows()
+    assert first.target == sibling.target == "1:32:14"
+    # A same-length edit stays inside the record's own span.
+    split_window.apply_edit(first.key, "Uno")
+    assert split_window.session.state(first.key) is State.EDITED
+    assert split_window.session.state(sibling.key) is State.UNCHANGED
+    assert split_window.session.pending_text(first.key) == "Uno"
+    assert split_window.session.pending_text(sibling.key) == "Two"
+    # Growing the record past its own span moves it, and still leaves the sibling alone.
+    split_window.apply_edit(first.key, "Uno!")
+    assert split_window.session.state(first.key) is State.WILL_MOVE
+    assert split_window.session.state(sibling.key) is State.UNCHANGED
+    assert split_window.session.pending_text(sibling.key) == "Two"
+
+
+def test_switching_shape_keeps_the_search_term_and_the_filter_chips(shape_window) -> None:
+    pane = shape_window.pane
+    shape_window.search.setText(BETA)
+    assert [line.text for line in pane.rows()] == [BETA]
+    pane.chips[0].setChecked(True)
+    assert pane.rows() == ()
+    pane.set_view(app_session.RECORDS)
+    assert shape_window.session.view == app_session.RECORDS
+    assert shape_window.search.text() == BETA
+    assert pane.chips[0].isChecked() is True
+    assert pane.rows() == ()
+    pane.set_view(app_session.LINES)
+    assert shape_window.session.view == app_session.LINES
+    assert shape_window.search.text() == BETA
+    assert pane.chips[0].isChecked() is True
+    assert pane.rows() == ()
+
+
+def test_an_unproven_line_is_still_listed_and_its_target_is_called_unproven(shape_window) -> None:
+    pane = shape_window.pane
+    key = pane.rows()[0].key
+    assert shape_window.session.line(key).proven is False
+    shape_window.show_line(key)
+    assert key in [entry.key for entry in pane.table.model().entries()
+                   if isinstance(entry, lineview.Line)]
+    assert shape_window.context.proven.isVisible()
+    assert shape_window.context.proven.text() == contextpane.NO_PROOF
+
+
+def test_the_speaker_control_leads_with_the_unknown_count_and_the_pane_states_the_share(
+        named_window) -> None:
+    pane = named_window.pane
+    assert pane.speaker_box.itemText(0) == lineview.ALL_SPEAKERS
+    assert pane.speaker_box.itemText(1) == "Unknown speaker (1 line)"
+    assert pane.speaker_box.itemText(2) == "Bulma"
+    assert pane.speaker_box.itemText(3) == "No portrait"
+    assert named_window.session.speaker_share() == (1, 3)
+    named_window.show_line(pane.rows()[1].key)
+    assert named_window.context.share.text() == "speaker known for 1 of 3 lines"
+
+
+def test_the_context_pane_names_each_carrier_and_its_own_face(named_window) -> None:
+    pane = named_window.pane
+    table = named_window.context.contained
+    assert table.columnCount() == 2
+    assert [table.horizontalHeaderItem(column).text() for column in range(2)] == \
+        ["Record", "Speaker"]
+    seen = {}
+    for line in pane.rows():
+        named_window.show_line(line.key)
+        assert table.rowCount() == len(named_window.session.covering(line.key))
+        seen[line.key] = table.item(0, 1).text()
+    assert seen[SHAPE_KEYS["alpha"]] == "Bulma"
+    assert seen[SHAPE_KEYS["beta"]] == "No portrait"
+    assert seen[SHAPE_KEYS["gamma"]] == app_session.UNKNOWN_SPEAKER
+
+
+def test_the_list_says_what_is_empty_and_offers_one_way_out(shell) -> None:
+    pane = shell.pane
+    shell.search.setText("nothing at all matches this")
+    assert pane.empty_state.isVisible()
+    assert 'No line matches "nothing at all matches this"' in pane.empty_label.text()
+    assert pane.empty_button.text() == lineview.CLEAR_SEARCH
+    pane.empty_button.click()
+    assert shell.search.text() == ""
+    assert pane.empty_state.isVisible() is False
+
+    pane.chips[0].setChecked(True)
+    assert pane.empty_state.isVisible()
+    assert pane.empty_button.text() == lineview.CLEAR_FILTERS
+    # The checked state carries a glyph, so it does not rest on the fill alone.
+    assert pane.chips[0].text().startswith("\u2713 ")
+    pane.empty_button.click()
+    assert pane.chips[0].isChecked() is False
+    assert pane.empty_state.isVisible() is False
+
+
+def test_the_move_notice_collapse_button_says_what_it_will_do(shell) -> None:
+    shell.show_line(INNER_KEY)
+    shell.apply_edit(INNER_KEY, APPENDED)
+    button = shell.editor.notice.collapse_button
+    assert button.text() == chipedit.HIDE_DETAILS
+    button.setChecked(True)
+    assert shell.editor.notice.detail.isVisible() is False
+    assert button.text() == chipedit.SHOW_DETAILS
+
+
+def test_a_search_typed_on_the_other_list_offers_the_tab_switch(shape_window) -> None:
+    pane = shape_window.pane
+    shape_window.search.setText(ALPHA)
+    pane.set_kind(app_session.SLOT)
+    assert pane.rows() == ()
+    assert pane.empty_state.isVisible()
+    assert pane.empty_button.text() == lineview.SHOW_DIALOGUE
+    pane.empty_button.click()
+    assert pane.kind() == app_session.RECORD
+    assert [line.text for line in pane.rows()] == [ALPHA]
+
+
+def test_the_table_elides_the_text_column_and_holds_the_status_width(shell) -> None:
+    table = shell.pane.table
+    assert table.textElideMode() == Qt.TextElideMode.ElideRight
+    header = table.horizontalHeader()
+    assert header.sectionResizeMode(lineview.COLUMN_TEXT) == QHeaderView.ResizeMode.Stretch
+    assert header.sectionResizeMode(lineview.COLUMN_STATUS) == QHeaderView.ResizeMode.Fixed
+    assert header.sectionResizeMode(lineview.COLUMN_SPEAKER) == QHeaderView.ResizeMode.Fixed
+    assert table.columnWidth(lineview.COLUMN_STATUS) == lineview.STATUS_WIDTH
+    assert shell.pane.tabs.height() == shell.metrics.row_height

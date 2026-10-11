@@ -1,4 +1,4 @@
-﻿"""The app's model layer: the project file, the edit list, the plan, the states.
+"""The app's model layer: the project file, the edit list, the plan, the states.
 
 Everything here drives the shared synthetic image, so no ROM and no window are
 needed and the gate stays portable.

@@ -33,6 +33,10 @@ NO_RETAIL = "no retail reference loaded"
 NO_EDIT = "no pending edit"
 UNSTATED = "limit unstated"
 MOVE_HEADLINE = "This edit will move to appended space"
+HIDE_DETAILS = "Hide details"
+SHOW_DETAILS = "Show details"
+#: The target an unproven line still edits, stated where the edit is made.
+UNPROVEN_TARGET = "Its edit target is unproven: no proven handle site reaches this line."
 
 
 class SectionHeader(QWidget):
@@ -246,7 +250,7 @@ class MoveNotice(QFrame):
         self.select_button.clicked.connect(
             lambda: self.records_requested.emit(tuple(self._covering)))
         self.collapse_button = QToolButton()
-        self.collapse_button.setText("Hide details")
+        self.collapse_button.setText(HIDE_DETAILS)
         self.collapse_button.setCheckable(True)
         self.collapse_button.toggled.connect(self._collapsed)
         self._covering: tuple[str, ...] = ()
@@ -265,16 +269,20 @@ class MoveNotice(QFrame):
 
     def _collapsed(self, hidden: bool) -> None:
         self.detail.setVisible(not hidden)
+        self.collapse_button.setText(SHOW_DETAILS if hidden else HIDE_DETAILS)
 
-    def show_notice(self, covering: tuple[str, ...], sites: int, visible: bool) -> None:
+    def show_notice(self, covering: tuple[str, ...], sites: int, visible: bool,
+                    proven: bool = True) -> None:
         self._covering = covering
         self.setVisible(visible)
         if not visible:
             return
         names = ", ".join(covering) if covering else "no other record"
-        self.detail.setText(
-            f"Original bytes are also referenced by {names}. "
-            f"{sites} handle site(s) name this line in the image.")
+        detail = (f"Original bytes are also referenced by {names}. "
+                  f"{sites} handle site(s) name this line in the image.")
+        if not proven:
+            detail = f"{detail} {UNPROVEN_TARGET}"
+        self.detail.setText(detail)
         self.select_button.setEnabled(bool(covering))
         self.detail.setVisible(not self.collapse_button.isChecked())
 
@@ -343,4 +351,5 @@ class EditorSections(QWidget):
         state = State.UNCHANGED if line is None else session.state(key)
         self.notice.show_notice(() if line is None else session.covering(key),
                                 0 if line is None else session.sites(key),
-                                state is State.WILL_MOVE)
+                                state is State.WILL_MOVE,
+                                True if line is None else line.proven)

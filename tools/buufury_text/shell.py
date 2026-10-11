@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtCore import QTime, Qt, QUrl
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QDesktopServices,
     QKeySequence,
     QPalette,
@@ -43,9 +44,26 @@ from tools.webfoot import textedit
 from . import contextpane, exportdialog, lineview, renamedialog, settings, theme
 from .chipedit import EditorSections
 from .identity import PACKAGE, PRODUCT_NAME, PRODUCT_VERSION
-from .session import RECORD, SLOT, Session
+from .session import (
+    APPEARANCE,
+    BY_PLACE,
+    BY_SPEAKER,
+    LINES,
+    RECORDS,
+    RECORD,
+    SLOT,
+    STORAGE,
+    UNGROUPED,
+    Session,
+)
 
-LEFT_START, CENTRE_START, RIGHT_START = 330, 540, 350
+#: The adopted spec starts the panes at 330 / flexible / 350. The speaker column is
+#: a later requirement and costs the list about 96 px, which at 330 leaves the text
+#: column about 24 px wide once the state badge has its own 116. The spec's own rule
+#: is that TEXT is the column which consumes the remainder, so the start moves by
+#: the width of the column that was added rather than by taste. The range is
+#: unchanged, so a reader who wants the old proportions can drag the splitter.
+LEFT_START, CENTRE_START, RIGHT_START = 434, 540, 350
 LEFT_RANGE = (260, 470)
 RIGHT_RANGE = (300, 480)
 WINDOW_START = (1200, 760)
@@ -54,12 +72,10 @@ NO_IMAGE = f"No image open. Start with: python -m {PACKAGE} <image.gba>"
 
 
 def pending_text(session: Session, key: str) -> str:
-    """What the line will say: the engine's own pending text, else the loaded text."""
-    line = session.line(key)
-    if line is None:
+    """What the row will say, from the session's own answer for that row."""
+    if session is None or session.line(key) is None:
         return ""
-    edit = session.edits.get(key)
-    return line.text if edit is None else edit.new
+    return session.pending_text(key)
 
 
 def span_detail(session: Session, key: str) -> str:
@@ -276,6 +292,23 @@ class Shell(QMainWindow):
         for action in (self.dialogue_action, self.names_action):
             view_menu.addAction(action)
         view_menu.addSeparator()
+        # The same three controls the pane carries, so the keyboard reaches them.
+        self.shape_actions = self._choice_actions(view_menu, (
+            (LINES, "&Lines", lineview.VIEW_TOOLTIP),
+            (RECORDS, "&Records", lineview.VIEW_TOOLTIP)), self.pane.set_view)
+        self.order_actions = self._choice_actions(view_menu, (
+            (APPEARANCE, "&Appearance", lineview.ORDER_TOOLTIPS[APPEARANCE]),
+            (STORAGE, "&Storage", lineview.ORDER_TOOLTIPS[STORAGE])), self.pane.set_order)
+        self.group_actions = self._choice_actions(view_menu, (
+            (UNGROUPED, "&No grouping", lineview.GROUP_TOOLTIPS[UNGROUPED]),
+            (BY_SPEAKER, "Group by &speaker", lineview.GROUP_TOOLTIPS[BY_SPEAKER]),
+            (BY_PLACE, "Group by &place", lineview.GROUP_TOOLTIPS[BY_PLACE])),
+            self.pane.set_group)
+        for actions, value in ((self.shape_actions, self.pane.view()),
+                               (self.order_actions, self.pane.order()),
+                               (self.group_actions, self.pane.group())):
+            self._sync_choices(actions, value)
+        view_menu.addSeparator()
         for action in (self.search_action, self.next_list_action, self.next_pane_action):
             view_menu.addAction(action)
         view_menu.addAction(self.history_dock.toggleViewAction())
@@ -285,6 +318,25 @@ class Shell(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def _choice_actions(self, menu, pairs, setter) -> QActionGroup:
+        """One checkable single-choice group in the View menu."""
+        group = QActionGroup(self)
+        for value, label, tip in pairs:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setActionGroup(group)
+            action.setData(value)
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _checked=False, v=value: setter(v))
+        return group
+
+    def _sync_choices(self, group: QActionGroup, value: object) -> None:
+        """Check the action whose value the control now holds."""
+        for action in group.actions():
+            if action.data() == value:
+                action.setChecked(True)
+                return
+
     def _connect(self) -> None:
         self.pane.line_chosen.connect(self.show_line)
         self.pane.line_entered.connect(self.focus_new)
@@ -292,6 +344,13 @@ class Shell(QMainWindow):
         self.editor.notice.records_requested.connect(self.select_records)
         self.search.textChanged.connect(self.pane.set_term)
         self.search.returnPressed.connect(self.focus_list)
+        self.pane.search_cleared.connect(self.search.clear)
+        self.pane.view_box.currentIndexChanged.connect(
+            lambda: self._sync_choices(self.shape_actions, self.pane.view()))
+        self.pane.order_box.currentIndexChanged.connect(
+            lambda: self._sync_choices(self.order_actions, self.pane.order()))
+        self.pane.group_box.currentIndexChanged.connect(
+            lambda: self._sync_choices(self.group_actions, self.pane.group()))
         self.export_button.clicked.connect(self.prompt_export)
         self.stack.cleanChanged.connect(self._clean_changed)
         self.escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self.search)

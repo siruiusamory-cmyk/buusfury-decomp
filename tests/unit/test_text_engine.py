@@ -1,4 +1,4 @@
-﻿"""The text-edit engine on hand-built images, plus the release goldens.
+"""The text-edit engine on hand-built images, plus the release goldens.
 
 Every rule this engine adds is size arithmetic or an identity check, so a small
 synthetic image holds it: the container table names real stored containers, the

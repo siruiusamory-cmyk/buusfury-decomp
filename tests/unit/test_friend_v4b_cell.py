@@ -142,3 +142,66 @@ def test_the_verifier_checks_frame_order_not_just_membership() -> None:
     text = (ROOT / "tools/research/verify_friend_v4b_cell.py").read_text(encoding="utf-8")
     assert "not the source's blocks in order" in text, (
         "a reordered port would pass a set comparison, so the order must be checked")
+
+
+#: The release base: the image the 4B port is built on. It is a build artifact, not a repository file, so a
+#: test that needs it finds it by identity and skips with a reason rather than assuming a path.
+RELEASE_BASE_SHA256 = "a21c1e27f7b4f04cbe6952d70eb102b350adac04e6eaba106fa10e2b90a55021"
+RELEASE_BASE_ENVIRONMENT = ("WEBFOOT_V4A_IMAGE", "LOG1_V4A_IMAGE")
+
+
+def release_base() -> Path | None:
+    import hashlib
+    import os
+    candidates = [Path(os.environ[name]) for name in RELEASE_BASE_ENVIRONMENT
+                  if os.environ.get(name)]
+    candidates += [ROOT / "build" / "fv4" / "v4a-broly.gba",
+                   ROOT / "build" / "fv4" / "v4a-broly" / "v4a-broly.gba"]
+    for candidate in candidates:
+        if candidate.is_file():
+            if hashlib.sha256(candidate.read_bytes()).hexdigest().upper() == RELEASE_BASE_SHA256.upper():
+                return candidate
+    return None
+
+
+def test_the_name_is_written_on_the_release_base(tmp_path) -> None:
+    """The release configuration is id 252 on the 4A image, so the name write is exercised there."""
+    base = release_base()
+    if base is None:
+        pytest.skip("the release-4A image is not present (name it with WEBFOOT_V4A_IMAGE)")
+    log2 = log2_path()
+    if log2 is None:
+        pytest.skip("The Legacy of Goku II is not present locally")
+    out = tmp_path / "named.gba"
+    manifest = tmp_path / "named.txt"
+    result = subprocess.run(
+        [sys.executable, "-m", "tools.research.build_friend_v4b_cell",
+         "--log2", str(log2), "--image", str(base), "--expect-sha256", RELEASE_BASE_SHA256,
+         "--id", str(PORT_ID), "--slots", PORT_SLOTS, "--name", "Cell",
+         "--out", str(out), "--manifest", str(manifest)],
+        cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "name_slot: 1018" in manifest.read_text(encoding="utf-8")
+    import struct
+    port = out.read_bytes()
+    name_pointer = struct.unpack_from("<I", port, 0x6BCE8 + 4 * 1018)[0]
+    payload = port[name_pointer - 0x08000000:name_pointer - 0x08000000 + 10]
+    assert payload.decode("utf-16-le").rstrip("\x00") == "Cell", "the name slot must read Cell"
+
+    # A name longer than the slot holds must be refused rather than overlapping the next slot.
+    too_long = tmp_path / "too-long.gba"
+    refused = subprocess.run(
+        [sys.executable, "-m", "tools.research.build_friend_v4b_cell",
+         "--log2", str(log2), "--image", str(base), "--expect-sha256", RELEASE_BASE_SHA256,
+         "--id", str(PORT_ID), "--slots", PORT_SLOTS, "--name", "Spopovich the Great",
+         "--out", str(too_long), "--manifest", str(tmp_path / "too-long.txt")],
+        cwd=ROOT, capture_output=True, text=True)
+    assert refused.returncode != 0, "a name that does not fit must be refused"
+    assert "would overlap the next slot" in (refused.stdout + refused.stderr)
+
+
+def test_the_verifier_refuses_to_run_without_the_base_image() -> None:
+    """Without the base it cannot check the constructor-read fields, so it must not print a verdict."""
+    parser = (ROOT / "tools/research/verify_friend_v4b_cell.py").read_text(encoding="utf-8")
+    assert '"--base-image", required=True' in parser, (
+        "an optional --base-image let a run without it claim PASS without checking the header")

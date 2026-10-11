@@ -116,8 +116,10 @@ def main() -> int:
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--palette", help="this image's object palette file offset")
     parser.add_argument("--source-palette", help="the source title's object palette offset")
-    parser.add_argument("--base-image", help="the image whose definition this port replaces, so every "
-                                             "header field the constructor reads can be compared")
+    parser.add_argument("--base-image", required=True,
+                        help="the image whose definition this port replaces; REQUIRED, because "
+                             "without it the header fields the constructor reads would go "
+                             "unchecked and the tool would still print PASS")
     parser.add_argument("--base-id", type=int, default=None,
                         help="the id in the base image (defaults to --id)")
     args = parser.parse_args()

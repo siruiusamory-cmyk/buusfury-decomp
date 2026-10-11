@@ -109,6 +109,10 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs the port's independent verifier on the image the builder produced; it starts no emulator",
     ("tests/unit/test_palette_census.py", "census", "sys.executable"):
         "runs the palette index census over the canonical image; it starts no emulator",
+    ("tests/unit/test_friend_v4b_cell.py", "test_the_name_is_written_on_the_release_base",
+     "sys.executable"):
+        "runs the Cell port builder on the release-4A image to prove the name slot write and its refusal "
+        "for a name that does not fit; it starts no emulator",
     ("tools/research/build_friend_v3_text_derivative.py", "run", "command"):
         "runs this interpreter on the repository's own text-batch and padding-repair "
         "modules; it starts no emulator",

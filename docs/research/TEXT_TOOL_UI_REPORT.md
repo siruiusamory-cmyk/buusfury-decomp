@@ -76,20 +76,24 @@ control defect described in section 6 below.
 
 ## 4. Gates and tests
 
-At the last full run, before the final review pass:
+At the frozen candidate:
 
-- Focused tests: 225 passed, 1 skipped, across the theme, the dialogue preview, the
+- Focused tests: 246 passed, 1 skipped, across the theme, the dialogue preview, the
   list, the editor, the shell, colour vision, the model, the engine and the release
   files. Nothing was run from the full suite or `scripts/test.ps1`.
 - The one skip is the preview's capture harness, and it skips loudly: no extracted game
   data and no reference captures exist on this machine. Claiming pixel fidelity without
   them would be the lie the requirement forbids.
 - `python -m tools.quality.public_release`: 4 products, 0 findings.
-- `python -m tools.quality.architecture`: 0 violations.
-- `python -m tools.quality.public_surface --all`: 0 findings over 1,153 tracked files.
-- `python -m tools.quality.readability --all`: 0 hard hits.
+- `python -m tools.quality.architecture`: 0 violations, 5 observations, all pre-existing
+  large-module readings in the other desktop application.
+- `python -m tools.quality.public_surface --all`: 0 findings over 1,154 tracked files.
+- `python -m tools.quality.readability --all`: 0 hard hits, with 103 advisories, a
+  pre-existing reading list that never changes the exit code.
 - `python -m tools.buufury_text --smoke`: exits 0.
-- The export end to end on release 3.1 passes.
+- The export end to end on release 3.1 passes, and the artifact is unchanged.
+- The mechanical anti-generic runner reports exactly one finding, the recorded prose
+  measure conflict, and prints what it cannot see.
 
 ## 5. Screenshots and colour vision
 

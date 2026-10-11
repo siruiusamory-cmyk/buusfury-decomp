@@ -604,7 +604,11 @@ class DialoguePreview(QWidget):
 
     def sizeHint(self) -> QSize:  # noqa: N802
         if not self.ready():
-            return QSize(240, theme.active_metrics().row_height + 2 * _MARGIN)
+            # Room for the waiting line plus the wrapped list of what is absent. One
+            # line cut that list off at the pane's edge, which loses the one fact this
+            # state exists to give the reader.
+            line = QFontMetrics(theme.type_scale().caption).height()
+            return QSize(260, 3 * line + 2 * _MARGIN)
         width, height = self._data.metrics.box_rect[2], self._data.metrics.box_rect[3]
         return QSize(width + 2 * _MARGIN, height + 2 * _MARGIN)
 
@@ -619,12 +623,13 @@ class DialoguePreview(QWidget):
         active = theme.active_theme()
         painter.fillRect(self.rect(), QColor(active.preview_screen))
         if not self.ready():
-            # One line and nothing else. No box, no glyph, no placeholder: a drawn
-            # approximation is the failure this requirement exists to prevent.
+            # One wrapped line and nothing else. No box, no glyph, no placeholder: a
+            # drawn approximation is the failure this requirement exists to prevent.
             painter.setPen(QPen(QColor(active.preview_marker), 1))
             painter.setFont(theme.type_scale().caption)
             painter.drawText(self.rect().adjusted(_MARGIN, _MARGIN, -_MARGIN, -_MARGIN),
-                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                                 | Qt.TextFlag.TextWordWrap),
                              f"{WAITING}. Missing: {', '.join(self.missing())}")
             painter.end()
             return

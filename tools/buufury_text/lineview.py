@@ -134,6 +134,13 @@ def line_count(count: int) -> str:
     return f"{count} line" if count == 1 else f"{count} lines"
 
 
+def row_count(count: int, kind: str) -> str:
+    """What the list holds, in the words that list uses."""
+    if kind == SLOT:
+        return f"{count} name" if count == 1 else f"{count} names"
+    return line_count(count)
+
+
 def place_tooltip(session: Session | None) -> str:
     """The Place tooltip, with the coverage this image actually has.
 
@@ -875,9 +882,17 @@ class LinePane(QWidget):
     # --- the small print -----------------------------------------------------
 
     def _update_tabs(self) -> None:
+        """The tab names only, with each list's count beside them on the counters line.
+
+        Measured at the pane's default width: `Dialogue (3024)` and `Names && bios
+        (1534)` together needed more than the pane had, so Qt elided the counts away
+        and neither list said how much it held. The count belongs beside the tab,
+        which is where the counters line is.
+        """
         for index, (title, kind) in enumerate(TABS):
             total = 0 if self._session is None else self._session.total(kind)
-            self.tabs.setTabText(index, f"{title} ({total})")
+            self.tabs.setTabText(index, title)
+            self.tabs.setTabToolTip(index, row_count(total, kind))
 
     def _update_chips(self) -> None:
         """A checked chip carries the check glyph, so the state reads without the fill."""
@@ -891,6 +906,7 @@ class LinePane(QWidget):
             self.counters.setText("")
             return
         counts = self._session.counts(self._kind)
-        self.counters.setText("   ".join(
-            f"{counts[state]} {status_words.presentation(state).word.lower()}"
-            for state in (State.EDITED, State.WILL_MOVE, State.REFUSED)))
+        parts = [row_count(self._session.total(self._kind), self._kind)]
+        parts.extend(f"{counts[state]} {status_words.presentation(state).word.lower()}"
+                     for state in (State.EDITED, State.WILL_MOVE, State.REFUSED))
+        self.counters.setText("   ".join(parts))

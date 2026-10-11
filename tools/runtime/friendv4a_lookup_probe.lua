@@ -34,6 +34,7 @@ local SPRITE_RESOLVER = 0x08000158
 local DEFINITION_SLOTS = 0x54
 
 local hits = { animation = 0, lookup = 0, lookup_mode5 = 0, resolver = 0 }
+local armed = {}
 local frames = 0
 local started = false
 local seen_definitions = {}
@@ -77,9 +78,17 @@ local function report_definition(def, index)
                     slot and slot ~= 0 and "PLAYS" or "NULL"))
 end
 
+-- The signature is measured, not assumed: this build accepts `handler, address` (the project's own
+-- observers use it) and rejects `address, callback` with "invoking failed". A failed arm is fatal to
+-- the run's meaning, so it is logged and counted, never passed over.
 local function arm(address, name, callback)
-  local ok = pcall(emu.setBreakpoint, emu, address, function(_info) callback() end)
+  local handler = function(_info) callback() end
+  local ok = pcall(emu.setBreakpoint, emu, handler, address)
+  armed[name] = ok and true or false
   log(string.format("ARM %s at 0x%08X armed=%s", name, address, tostring(ok)))
+  if not ok then
+    log("ARM FAILED " .. name .. ": an unarmed channel proves nothing about this run")
+  end
   return ok
 end
 
@@ -111,9 +120,11 @@ arm(SPRITE_RESOLVER, "sprite-resolver", function()
   hits.resolver = hits.resolver + 1
 end)
 
-local callbacks = {}
-if emu.addFrameCallback then
-  pcall(emu.addFrameCallback, emu, function()
+-- Frame callbacks are registered through the `callbacks` table on this build.
+local frame_id = nil
+if callbacks and callbacks.add then
+  local ok, id = pcall(function()
+    return callbacks:add("frame", function()
     frames = frames + 1
     if frames % 600 == 0 then
       log(string.format("HEARTBEAT frames=%d resolver=%d animation=%d lookup=%d lookup_mode5=%d",
@@ -124,9 +135,18 @@ if emu.addFrameCallback then
       log(string.format("STOP frames=%d resolver=%d animation=%d lookup=%d lookup_mode5=%d",
                         frames, hits.resolver, hits.animation, hits.lookup, hits.lookup_mode5))
     end
+    end)
   end)
+  if ok then
+    frame_id = id
+    log("HEARTBEAT ARMED via callbacks:add(frame)")
+  else
+    log("HEARTBEAT ARM FAILED: " .. tostring(id))
+  end
 else
   log("FRAME CALLBACK UNAVAILABLE: the heartbeat and the frame bound are not armed")
 end
 
-log("ARMED animation-selector=0x0800ECDA actor-lookup=0x08011C70 sprite-resolver=0x08000158")
+log(string.format("ARMED animation=%s lookup=%s resolver=%s heartbeat=%s",
+                  tostring(armed["animation-selector"]), tostring(armed["actor-lookup"]),
+                  tostring(armed["sprite-resolver"]), tostring(frame_id ~= nil)))

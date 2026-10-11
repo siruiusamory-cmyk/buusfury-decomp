@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from tools.webfoot import textedit

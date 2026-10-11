@@ -67,6 +67,11 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\dialogue_limit_probe.lua')
     )
+    # Added by the layout-rule work: the INPUT DRIVER that loads the read-only probe above and presses keys
+    # on a bounded schedule. Observers stay read-only, so the driving lives in this separate file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_operand_driver.lua')
+    )
     # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the padding-repair render
     # observer. The trailing-pad repair shortens a record's handle by its pad, so the
     # engine copies fewer units; static reading says no other record's span changes,

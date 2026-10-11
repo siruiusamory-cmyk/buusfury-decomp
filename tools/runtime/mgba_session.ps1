@@ -148,6 +148,9 @@ function Start-MgbaSession {
             ([System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'))
     }
     $bootstrapLines += @(
+        # Mark the moment the state is in memory, so an observer's silence can be attributed to the scene
+        # rather than to a dead instrument. Guarded: observers without the hook are unaffected.
+        'if dialogue_probe_note then dialogue_probe_note([[STATE loaded]]) end',
         ('local f = assert(io.open([[{0}]], [[w]]))' -f ($ReadyPath -replace '\\', '/')),
         'f:write([[ready]])',
         'f:close()'

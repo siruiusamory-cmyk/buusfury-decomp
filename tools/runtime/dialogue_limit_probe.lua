@@ -134,4 +134,43 @@ frame_id = callbacks:add("frame", function()
   end
 end)
 
+-- The operand and the layout index, which the coordinator asked to tie on the machine. 0x080122A6 is the
+-- box constructor reading the dialogue record's operand byte (record+3); 0x0800B29E is the text-object
+-- builder storing the layout pointer it computed from the index. Logging both with the frame number gives
+-- the pair: the index is r0 at the store, and 0x08071720 + 0x10 + index*0x14 is the layout.
+arm(0x080122A6, "box-operand", function()
+  -- The constructor loads the dialogue record's +0x03 byte here; the destination register carries the
+  -- operand, and reading the record directly is the value that matters. Both are logged so a mismatch shows.
+  local record = reg("r1")
+  local from_register = reg("r2")
+  local from_memory = nil
+  if record and record >= 0x02000000 then
+    local raw = emu:read8(record + 3)
+    from_memory = raw
+  end
+  log(string.format("OPERAND frame=%d operand_register=%s operand_memory=%s record=%s",
+                    frames, tostring(from_register), tostring(from_memory),
+                    record and string.format("0x%08X", record) or "nil"))
+end)
+
+arm(0x0800B29E, "layout-store", function()
+  local layout = reg("r0")
+  local text_object = reg("r4")
+  if layout == nil then return end
+  local index = nil
+  if layout and layout >= 0x08071720 and layout < 0x0807177C then
+    index = (layout - (0x08071720 + 0x10)) // 0x14
+  end
+  log(string.format("LAYOUT frame=%d layout=0x%08X index=%s text_object=%s",
+                    frames, layout, tostring(index),
+                    text_object and string.format("0x%08X", text_object) or "nil"))
+end)
+
+-- Exposed so the bootstrap can mark the moment the savestate has loaded. Every channel line after that mark
+-- is attributable to the loaded scene; a channel that stays silent afterwards is a real negative, and one
+-- that is silent before it means nothing at all.
+function dialogue_probe_note(text)
+  log(string.format("NOTE frame=%d %s", frames, text))
+end
+
 log("PROBE armed")

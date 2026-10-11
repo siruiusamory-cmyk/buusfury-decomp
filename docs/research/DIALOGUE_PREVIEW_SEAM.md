@@ -63,3 +63,78 @@ The one capture that still differs, `shot-3300`, has a TWO-SIDED residual as the
 149 engine ink pixels the render misses and 148 the render draws that the engine does not, at limit 144. An
 earlier note here called it one-sided; that was a different search's output, and the tool's numbers are the
 ones above.
+
+## Which layout record a box takes: the operand-7 rule
+
+MEASURED from the code, and consistent with the two limits a runtime probe logged.
+
+The text object's layout pointer is written at `0x0800B29E` inside the text-object builder, from its first
+stack argument:
+
+```
+0800B290  ldr r0,[sp,#0x38]     ; the builder's FIRST STACK ARGUMENT = the layout index
+0800B292  ldr r1,[0x0800B310]   ; the style base (pool word 0x08071720)
+0800B294  lsls r3,r0,#2
+0800B296  adds r0,r3,r0         ; index * 5
+0800B298  lsls r0,r0,#2         ; index * 0x14   (a layout record is 20 bytes)
+0800B29A  adds r1,#0x10         ; records begin 0x10 into that base
+0800B29C  adds r0,r0,r1         ; layout = 0x08071720 + 0x10 + index*0x14
+0800B29E  str r0,[r4,#0x4C]     ; text_object+0x4C = the layout
+0800B2A2  ldr r0,[r0,#0x10]     ; layout+0x10 = the box ART container
+0800B2A4  bl 0x0803D940         ; decode that art into the surface
+```
+
+The index is chosen by the dialogue box constructor `0x08012012` from the record's portrait operand:
+
+```
+08012104  movs r0,#0            ; default: index 0
+08012106  cmp r6,#0x7
+08012108  bne  0x0801210C
+0801210A  movs r0,#1            ; index 1 ONLY when the portrait operand is exactly 7
+08012148  str r0,[sp,#0x0]      ; first stack argument -> the builder's [sp+0x38]
+```
+
+**The rule: layout index 1 if the portrait operand is exactly 7, otherwise 0.** Operand 0 also means "no
+portrait" but takes index 0, so what selects the second layout is the OPERAND VALUE, not whether a portrait
+is drawn. Operands 1..6 (party) and 8 and above (array) all take index 0.
+
+| index | layout | limit | box art |
+| --- | --- | --- | --- |
+| 0 | `0x08071730` | **144** | `0x08071758` |
+| 1 | `0x08071744` | **128** | `0x08071A6C` |
+
+Both confirm the runtime probe, which logged `limit=144 layout=0x08071730` for an ordinary box and
+`limit=128 layout=0x08071744` for the other. A preview must apply the limit AND the art of the layout the
+record's operand selects, not one of them.
+
+### Runtime evidence for the rule
+
+Logged from the owner's own savestate, which is a dialogue section with a box already on screen. The probe
+records the operand site and the layout store, and the launcher now marks the moment the savestate loads, so
+every line below is attributable to the loaded scene rather than to an instrument that never got there.
+
+```
+NOTE frame=0 STATE loaded
+OPERAND frame=345 record=0x0202BB0C
+LAYOUT  frame=346 layout=0x08071730 index=0 text_object=0x0203D750
+FIT     frame=354 limit=144 layout=0x08071730 layout_limit=144 flag=0
+OPERAND frame=641 record=0x0202BB0C
+LAYOUT  frame=642 layout=0x08071730 index=0
+OPERAND frame=885 record=0x0202BB0C
+LAYOUT  frame=886 layout=0x08071730 index=0
+OPERAND frame=1130 record=0x0202B274
+LAYOUT  frame=1131 layout=0x08071730 index=0
+OPERAND frame=1244 record=0x0202B274
+LAYOUT  frame=1245 layout=0x08071730 index=0
+OPERAND frame=1334 record=0x0202B274
+LAYOUT  frame=1335 layout=0x08071730 index=0
+```
+
+**Settled:** six box events, two different records, every one took **index 0 → layout `0x08071730` → limit
+**144**. The default branch of the rule is therefore observed at runtime, and the two limits the fitter
+received match what the layout records hold.
+
+**Not settled:** the `index 1` branch. No box whose portrait operand is 7 appeared in that scene, so
+`operand 7 → limit 128 + art 0x08071A6C` still rests on the code alone. The operand byte the channels
+logged came from an EWRAM copy of the record whose `+3` is not the operand, so the log carries the LAYOUT
+per box rather than the operand; capturing the operand is the parked owner tap (one box of that kind).

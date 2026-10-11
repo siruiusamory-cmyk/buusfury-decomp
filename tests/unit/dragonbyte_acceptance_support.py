@@ -15,7 +15,8 @@ Nothing here weakens a test: a page still installs a real surface built from the
 canonical image, still renders it and still states a real reason when a read
 fails, and every test still builds its own session, project copy, shell and
 page. The replacement is for one image: a module whose tests open a second one
-must not reuse this.
+must not reuse this, and the replacement loader refuses a call that names any
+other image instead of answering it with the wrong surfaces.
 
 This module also carries the four helpers these modules used to import from
 `tests/unit/test_dragonbyte_state.py`, because a test module importing another
@@ -105,6 +106,10 @@ class DecodedSurfaces:
     entities: object
     graphics: object
     text: object
+    #: The image these five reads were decoded from. The replacement loaders
+    #: check every call against it, so a read of a second image is refused
+    #: instead of answered with this one's surfaces.
+    image: bytes
 
 
 def decode_surfaces(canonical_rom, catalog) -> DecodedSurfaces:
@@ -126,21 +131,69 @@ def decode_surfaces(canonical_rom, catalog) -> DecodedSurfaces:
         entities=es.load_entity_surface(canonical_rom, catalog, identification, profile, image),
         graphics=gs.load_graphics_surface(identification, profile, image),
         text=text,
+        image=image,
     )
+
+
+#: The module attribute each destination's page asks for its own read, the
+#: DecodedSurfaces field its answer lives in, and the position the image holds
+#: in that loader's arguments. A page calls its loader by module attribute,
+#: which is the seam these modules already replace for the range index.
+LOADER_SITES = (
+    (ds, "load_data_surface", "data", 4),
+    (ms, "load_map_surface", "maps", 4),
+    (es, "load_entity_surface", "entities", 4),
+    (gs, "load_graphics_surface", "graphics", 2),
+    (ts, "load_text_surface", "text", 4),
+)
+
+
+def check_image(surfaces: DecodedSurfaces, called_with) -> None:
+    """Refuse to answer a read of an image these surfaces were not decoded from.
+
+    The five loaders have different arities, so the caller passes the image the
+    call actually names: the graphics loader's 3rd argument, the other four
+    loaders' 5th. A read of a second image would otherwise silently receive the
+    first one's surfaces, which is the silent-wrong-answer case F3 of the
+    TEST-SPEED-002 review flagged.
+    """
+    assert called_with == surfaces.image, (
+        "the decode is for a different image than this read names, so answering "
+        "it would report another image's surfaces; decode the named image "
+        "instead of reusing this one"
+    )
+
+
+def replacement_loader(surfaces: DecodedSurfaces, position: str, image_argument: int):
+    """The loader that stands in for one destination's own read.
+
+    It checks the image that call actually names against the one the surfaces
+    were decoded from, then answers with those surfaces, or refuses. The index
+    of the image argument is per loader because their arities differ.
+    """
+    surface = getattr(surfaces, position)
+
+    def loader(*args, **kwargs):
+        called_with = args[image_argument] if len(args) > image_argument else None
+        check_image(surfaces, called_with)
+        return surface
+
+    return loader
 
 
 def reuse_surfaces(monkeypatch, surfaces: DecodedSurfaces) -> None:
     """Answer each destination's own read with this module's one decode.
 
-    A page asks its loader by module attribute, which is the same seam these
-    modules already replace for the range index. The replacement answers every
-    call with the one decode, so it is for one image only.
+    The replacement answers every call with the one decode, for the one image it
+    was decoded from; a call that names any other image is refused rather than
+    answered.
     """
-    monkeypatch.setattr(ds, "load_data_surface", lambda *args, **kwargs: surfaces.data)
-    monkeypatch.setattr(ms, "load_map_surface", lambda *args, **kwargs: surfaces.maps)
-    monkeypatch.setattr(es, "load_entity_surface", lambda *args, **kwargs: surfaces.entities)
-    monkeypatch.setattr(gs, "load_graphics_surface", lambda *args, **kwargs: surfaces.graphics)
-    monkeypatch.setattr(ts, "load_text_surface", lambda *args, **kwargs: surfaces.text)
+    for module, attribute, position, image_argument in LOADER_SITES:
+        monkeypatch.setattr(
+            module,
+            attribute,
+            replacement_loader(surfaces, position, image_argument),
+        )
 
 
 @pytest.fixture(scope="module")

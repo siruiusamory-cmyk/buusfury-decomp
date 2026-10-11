@@ -211,9 +211,14 @@ webfoot atlas regenerate ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --out .\bui
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
 [verified project state](docs/PROJECT_STATE.md). `.\scripts\test.ps1` runs the
-portable `fast` gate by default, and passes any extra arguments through to
-pytest, so `.\scripts\test.ps1 tests\unit\test_write_invariants_property.py`
-narrows the same run.
+portable `fast` gate in parallel by default, across four pytest-xdist worker
+processes, and passes any extra arguments through to pytest after that
+selection, so `.\scripts\test.ps1 tests\unit\test_write_invariants_property.py`
+narrows the same run. `.\scripts\test.ps1 -n 0` runs the same gate serially in
+one process. Each failure is tagged with the worker that hit it, as in
+`[gw2] FAILED tests\unit\test_thing.py::test_case`, and
+`.\scripts\test.ps1 -n 0 tests\unit\test_thing.py::test_case` re-runs that one
+serially. [docs/testing.md](docs/testing.md) has the detail.
 
 ## Contributing and documentation
 

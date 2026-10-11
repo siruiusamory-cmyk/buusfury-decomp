@@ -129,7 +129,9 @@ and it carries a word plus a glyph rather than a tint alone.
   hidden, because the spec calls IDs diagnostics and the key is on the status bar.
 - **Group headings**: one row, bold label plus the count, on the raised surface,
   spanning the table. More space above a heading than below it, per the spacing
-  rules, and the heading is not selectable and not reachable by keyboard.
+  rules, and the heading is not selectable and not reachable by keyboard. The Place
+  grouping orders its headings by the map table's own row order, not by name, and
+  ends with the `Unplaced` heading carrying the reason its rows are there.
 - **Selected row**: the spec's selection fill across the whole row, plus a 2 px
   focus edge when the table has keyboard focus, plus Nothing's 2 px accent indicator
   at the left edge so the selection survives a colour-vision check.
@@ -249,10 +251,14 @@ These are decisions, not citations. Each names the entries that constrain it.
 6. **A speaker column.** Nothing covers an author column. Decided: the RE Lab's
    evidence governs the labels, and the column says `Speaker (by portrait)` because
    the record stores a portrait operand and never a speaker field.
-7. **Grouping by map.** The link is proven only in part (487 of 2,818 records, 558
-   of 3,024 lines, through the placement descriptor payloads, with one step
-   inferred). Decided: group by map where a line has a map, and put the rest in
-   `Unplaced` with the reason stated. Never invent a chapter.
+7. **Grouping by map.** The link exists but is partial and one step of it is
+   inferred: a map row's placements name descriptors whose payload is an event
+   resource, and a record belongs to that map when one of its own handle sites falls
+   inside that resource. Measured identically on three images, 486 of 2,805 records
+   and 538 of 3,003 lines on the canonical image, 486 and 538 on release 3.1's 2,818
+   and 3,024, across 26 groups in map-table order. Decided: group by map where a line
+   has a map, put the rest in `Unplaced` with the reason stated, and state the
+   coverage in the control rather than implying completeness. Never invent a chapter.
 
 ## 5. Considered but rejected
 
@@ -292,6 +298,33 @@ token discipline, the clickable-label wrap and the sticky-element check. The gat
 that are web or marketing shaped are recorded as not applicable with the reason. The
 deviations in section 6 are recorded before the check runs, so a failure of one of
 those gates is a known deviation rather than a surprise.
+
+`build/ttui-exit-check.py` runs the mechanically checkable half and prints a
+finding per gate: token discipline, the spacing scale, the family count, italic,
+emoji codepoints, the icon library count, animation, shadows, the border width
+set, the single control height, the focus ring, the contrast table for both modes
+over every declared pair, and the prose measure. It reports rather than fixes, and
+its output is quoted in the ticket report.
+
+### What the first build taught, which is why these gates run
+
+The first build was audited rather than designed, and three defects survived its own
+tests until a gate or a measurement caught them. They are recorded here because each
+one is now a rule above rather than a thing to remember:
+
+1. **Every icon painted black.** The Tabler sources carry `stroke="currentColor"`,
+   which Qt does not resolve, so the icons loaded as near black: the will-move badge
+   measured `#000000` on its own ink, about 1.2:1, invisible. The fix was to
+   substitute the ink before rendering. This is why the token table owns icons and
+   why the exit check renders each one in the ink it will sit on.
+2. **A grown line showed a truncated tail.** `pending_text` sliced a grown record to
+   its old length, so the editor showed `One` and `\nTw` for an edit the engine then
+   wrote correctly. A property test that grows and shrinks a span caught it. This is
+   why the pending-text rule is stated in terms of the row that was typed into.
+3. **A column of two dozen pixels.** Five columns at the adopted 330 px left pane
+   left the text column about 24 px wide, measured with the real font. Counting rules
+   in the references did not catch this; measuring did. This is why the pane widths
+   are part of the build and why the acceptance pass measures rather than looks.
 
 ## 8. Review protocol
 

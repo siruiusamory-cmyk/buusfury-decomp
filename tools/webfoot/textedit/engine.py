@@ -1016,13 +1016,16 @@ def _write_in_place(model: Model, in_place: list[_InPlace], decisions: list[Deci
                                f"{references} word-aligned references, so it cannot be repointed")
                 final.extend(by_selector[selector])
                 continue
-            at = builder.append(packed, f"container {selector} relocated")
+            # The table is settled BEFORE the container is appended: a refusal here
+            # leaves the plan holding nothing it did not accept, so a refused
+            # relocation cannot put unread bytes into the output buffer.
             table = _writable_table(
                 model, builder, decisions, applied, warnings,
                 f"selector {selector} has to be relocated and its table entry rewritten")
             if table is None:
                 final.extend(by_selector[selector])
                 continue
+            at = builder.append(packed, f"container {selector} relocated")
             builder.write(table + selector * 4, (ROM_BASE + at).to_bytes(4, "little"),
                           f"table slot {selector}")
         else:
@@ -1317,7 +1320,8 @@ def _write_spacing(model: Model, spacing: list[_Spacing], decisions: list[Decisi
                            "cannot be repointed")
                 final.append(row)
                 continue
-            at = builder.append(packed, f"container {row.selector} relocated")
+            # Settle the table first, for the same reason as the in-place route: a
+            # refusal must not leave an appended container behind in the buffer.
             table = _writable_table(
                 model, builder, decisions, [row], warnings,
                 f"selector {row.selector} has to be repointed where it stands, and its table "
@@ -1325,6 +1329,7 @@ def _write_spacing(model: Model, spacing: list[_Spacing], decisions: list[Decisi
             if table is None:
                 final.append(row)
                 continue
+            at = builder.append(packed, f"container {row.selector} relocated")
             builder.write(table + row.selector * 4, (ROM_BASE + at).to_bytes(4, "little"),
                           f"table slot {row.selector}")
         else:

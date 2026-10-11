@@ -220,7 +220,7 @@ filter, used by a corpus-wide spacing pass, wrote 155 such words.
 
 ## 5. Tests
 
-`tests/unit/test_text_engine.py`, 33 tests, all portable (`fast` gate): 29 on the
+`tests/unit/test_text_engine.py`, 36 tests, all portable (`fast` gate): 32 on the
 synthetic image and 4 that need the canonical or the release images and skip
 without them. The fixture is a 450 KB synthetic image with seven stored containers,
 real record words and the real 1,534-slot table, so every rule runs in CI without
@@ -233,7 +233,7 @@ any ROM.
 | boundary-safe | `test_a_span_with_another_record_boundary_inside_it_moves_instead_of_writing`, `test_a_record_that_merely_contains_the_span_is_not_a_boundary_conflict` |
 | one-reference guard | `test_a_slot_whose_pointer_has_a_second_reference_is_refused`, `test_a_slot_with_one_reference_moves_and_reads_back`, `test_a_slot_edit_refuses_a_guard_that_does_not_match_the_slot` |
 | carry-forward prefix | `test_a_moved_record_is_appended_after_the_carried_payload`, `test_a_carried_record_still_resolves_through_its_own_handle`, `test_a_record_already_in_the_grown_selector_moves_and_reads_back` |
-| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` |
+| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, `test_an_in_place_relocation_leaves_every_retail_table_word_alone`, `test_a_spacing_relocation_leaves_every_retail_table_word_alone`, `test_a_refused_relocation_appends_nothing`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` |
 | readback per site | `test_an_in_place_edit_and_a_move_from_one_container_both_read_back` |
 | spacing rebuild | `test_the_spacing_pass_collapses_a_chain_shared_run_and_rewrites_every_handle`, `test_a_run_the_canonical_image_carries_is_kept_and_the_other_collapses`, `test_a_spacing_plan_may_not_carry_another_edit`, `test_a_spacing_pass_without_the_canonical_image_is_refused` |
 | proven carriers | `test_a_record_shaped_word_outside_the_pool_is_never_written`, `test_a_targeted_edit_refuses_a_record_no_pool_word_names` |
@@ -266,7 +266,10 @@ any ROM.
   before ANY entry is written, whether the write comes from a move or from a
   container that has to be relocated, and it refuses when that literal is not named
   exactly once (P-027). A table already in expansion space, which every shipped
-  release has, is written in place.
+  release has, is written in place. The table is settled BEFORE a relocated
+  container is appended, so a refusal leaves the plan holding exactly the image it
+  was handed: no orphan container in the output buffer for a caller that never
+  exports it (N5 of the RELEASE4-SPRITEFIX-001 review).
 - **A mixed plan no longer writes a dead retail table word (F1, closed).** An
   in-place container relocation now goes through the same `_writable_table` guard,
   so the table is copied aside before the entry is written and the retail block

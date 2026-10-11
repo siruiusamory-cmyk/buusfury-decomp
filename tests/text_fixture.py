@@ -10,6 +10,7 @@ the app's tests need no ROM.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -110,3 +111,46 @@ def simple(directory, text: str = "Say hello!", at: int = 0x20):
     """One record holding `text`, and its model."""
     image = build(payloads={1: line_payload(text, at)}, records=[(1, at, len(text) * 2)])
     return image, open_image(image, directory)
+
+
+# --- the portrait operand and the appearance table ---------------------------
+
+
+#: Where a fixture puts its appearance table: clear of the text table, which ends
+#: at 0x6D4E0, and below the container table at 0x6DF00.
+APPEARANCE_AT = 0x6D600
+
+
+@contextmanager
+def appearances(table: int = APPEARANCE_AT, count: int = 4):
+    """Point the profile at a fixture's own appearance table."""
+    profile = replace(textedit.engine.PROFILES[0], appearance_table=table,
+                      appearance_count=count)
+    with mock.patch.object(textedit.engine, "PROFILES", (profile,)):
+        yield
+
+
+def with_operand(image, operand: int, record_index: int = 0):
+    """Set one record word's portrait operand byte, which sits at word +3."""
+    image[RECORD_AT + record_index * 0x10 + 3] = operand
+    return image
+
+
+def with_appearances(image, entries, table: int = APPEARANCE_AT):
+    """Write appearance records: each entry is (name slot, portrait slot)."""
+    for index, (name_slot, portrait) in enumerate(entries):
+        at = table + index * 0x10
+        image[at:at + 2] = name_slot.to_bytes(2, "little")
+        image[at + 8:at + 12] = portrait.to_bytes(4, "little")
+    return image
+
+
+def speaking_image(text: str = "Say hello!", operand: int = 0x3F,
+                   slots: dict[int, str] | None = None, records=None):
+    """A fixture whose first record carries a resolvable portrait operand."""
+    image = with_operand(
+        build(payloads={1: line_payload(text, 0x00)},
+              records=records or [(1, 0x00, len(text) * 2)],
+              slots=slots or {1066: "Lazuli", 1067: "Kakarot"}),
+        operand)
+    return with_appearances(image, [(1066, operand), (1067, 0x88)])

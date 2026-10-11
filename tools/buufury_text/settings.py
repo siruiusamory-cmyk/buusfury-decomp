@@ -23,7 +23,16 @@ FILE_NAME = "settings.json"
 
 #: Every key the window reads, with the value it gets when the file is silent.
 #: The splitter sizes are left, centre and right: the centre takes the slack.
-DEFAULTS: dict[str, object] = {"theme": "system", "splitter": [330, 540, 350]}
+#: `view`, `order` and `group` are the dialogue list's shape; the words are the
+#: session's own (`session.LINES`, `session.APPEARANCE`, `session.UNGROUPED`) and
+#: are repeated here rather than imported so this module stays data only.
+DEFAULTS: dict[str, object] = {
+    "theme": "system",
+    "splitter": [330, 540, 350],
+    "view": "lines",
+    "order": "appearance",
+    "group": "none",
+}
 
 
 def directory() -> Path:

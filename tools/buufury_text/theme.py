@@ -312,7 +312,12 @@ def icon(name: str) -> QIcon:
 
 
 def mono_font(delta: int = -1) -> QFont:
-    """Cascadia Mono then Consolas, else the system fixed font, resized by delta."""
+    """Cascadia Mono then Consolas, else the system fixed font, resized by delta.
+
+    Tabular figures are declared rather than inherited: the length meter rewrites
+    its numbers on every keystroke, and proportional digits would shift the layout
+    under the reader while they type.
+    """
     font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
     families = _FAMILIES or frozenset(QFontDatabase.families())
     for family in _MONO_PREFERENCE:
@@ -320,6 +325,8 @@ def mono_font(delta: int = -1) -> QFont:
             font.setFamily(family)
             break
     font.setPointSize(max(1, font.pointSize() + delta))
+    if hasattr(font, "setFeature") and hasattr(QFont, "Tag"):
+        font.setFeature(QFont.Tag("tnum"), 1)
     return font
 
 

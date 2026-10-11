@@ -1,4 +1,4 @@
-"""The text-edit engine on hand-built images, plus the release goldens.
+﻿"""The text-edit engine on hand-built images, plus the release goldens.
 
 Every rule this engine adds is size arithmetic or an identity check, so a small
 synthetic image holds it: the container table names real stored containers, the
@@ -14,6 +14,8 @@ of a whole retail image, and a fixture carries the records the rule needs.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -22,15 +24,20 @@ import pytest
 from tests.gates import REPOSITORY_ROOT
 from tests.rom_support import canonical_rom_path
 from tests.text_fixture import (
+    APPEARANCE_AT,
+    RECORD_AT,
     ROM_BASE,
     TABLE_AT,
     TABLE_BYTES,
     TABLE_LITERAL,
     build,
+    appearances,
     line_payload,
     open_image,
     simple,
     slot_payload,
+    with_appearances,
+    with_operand,
 )
 from tools.webfoot import textedit
 from tools.webfoot.formats import text_tables as tt
@@ -354,6 +361,103 @@ def test_every_rename_occurrence_carries_its_own_retail_decision() -> None:
     text, renamed, kept, unclear = textedit.rename_positions(
         current, counterpart, old="Videl", new="Lazul")
     assert (text, renamed, kept, unclear) == ("Videl then Lazul then Videl", 1, 1, 1)
+
+
+# --- spoken lines and speakers ----------------------------------------------
+
+
+def test_a_line_lists_every_record_that_contains_it(tmp_path: Path) -> None:
+    """One covering record, two inner records: two lines, each once, both carriers."""
+    image = build(payloads={1: line_payload("One line, two line", 0x00)},
+                  records=[(1, 0x00, 0x24), (1, 0x00, 0x12), (1, 0x12, 0x12)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["One line,", " two line"]
+    assert [row.key for row in rows] == ["1:0:18", "1:18:18"]
+    # Narrowest carrier first, and the covering record is a carrier of both halves.
+    assert rows[0].records == ("1:0:18", "1:0:36")
+    assert rows[1].records == ("1:18:18", "1:0:36")
+    assert rows[0].target == "1:0:18"
+    assert rows[0].sites == (0x2004, 0x2014)
+
+
+def test_a_line_break_ends_a_line_and_the_terminator_is_not_part_of_it(
+        tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("first\x0asecond", 0x00)},
+                  records=[(1, 0x00, 0x18)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["first", "second"]
+    assert all(textedit.locked_tokens(row.text) == () for row in rows)
+
+
+def test_a_line_that_is_only_control_units_is_not_a_line(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("real\x0a\x0b\x0a", 0x00)},
+                  records=[(1, 0x00, 0x10)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["real"]
+
+
+def test_the_pool_filter_is_the_rule_s_own_switch(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("alpha beta gamma", 0x00)},
+                  records=[(1, 0x00, 0x20)])
+    model = open_image(image, tmp_path)
+    # The fixture's site is not in this title's event pool, so the filtered rule
+    # contributes no row and the unfiltered one contributes the whole span.
+    assert textedit.lines(model) == ()
+    assert [row.text for row in textedit.lines(model, cutters_from_pool=False)] == \
+        ["alpha beta gamma"]
+
+
+def test_a_record_whose_sites_disagree_has_no_speaker(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("hello there", 0x00)},
+                  records=[(1, 0x00, 0x16), (1, 0x00, 0x16)])
+    with_operand(image, 0x3F, 0)
+    with_operand(image, 0x88, 1)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x88)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) is None
+        assert textedit.speakers(model) == {}
+
+
+def test_a_speaker_is_the_loaded_image_s_own_name_for_the_operand(tmp_path: Path) -> None:
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x3F)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x88)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) == 0x3F
+        assert textedit.speakers(model) == {"1:0:22": "Lazuli"}
+
+
+def test_a_runtime_party_face_names_no_character(tmp_path: Path) -> None:
+    """An operand below the table's first real slot resolves to nothing."""
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x03)
+    with_appearances(image, [(1066, 0x03)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) == 0x03
+        assert textedit.speakers(model) == {}
+
+
+def test_an_appearance_table_two_records_disagree_about_is_dropped(tmp_path: Path) -> None:
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x3F)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x3F)])
+    with appearances(count=4):
+        model = open_image(image, tmp_path)
+        assert textedit.speakers(model) == {}
+
+
+def test_shown_text_drops_every_control_unit() -> None:
+    assert textedit.shown_text("a\x08\x03b\x0ac") == "abc"
+    assert textedit.shown_text("\x0a\x0b") == ""
 
 
 # --- the release goldens -----------------------------------------------------

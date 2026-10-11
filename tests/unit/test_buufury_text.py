@@ -1,4 +1,4 @@
-"""The app's model layer: the project file, the edit list, the plan, the states.
+﻿"""The app's model layer: the project file, the edit list, the plan, the states.
 
 Everything here drives the shared synthetic image, so no ROM and no window are
 needed and the gate stays portable.
@@ -12,7 +12,14 @@ from pathlib import Path
 import pytest
 
 from tests.gates import REPOSITORY_ROOT
-from tests.text_fixture import build, line_payload, lowered_record_floor
+from tests.text_fixture import (
+    appearances,
+    build,
+    with_operand,
+    line_payload,
+    lowered_record_floor,
+    speaking_image,
+)
 from tools.buufury_text import project as project_file
 from tools.buufury_text import session as app_session
 from tools.buufury_text.session import RECORD, SLOT, Session, State
@@ -37,7 +44,15 @@ def hello_image(text: str = HELLO, slots=None):
 
 
 def opened(directory, image=None, name: str = "fixture.gba", **kwargs) -> Session:
+    """A session over a fixture, in the RECORDS view unless asked otherwise.
+
+    The fixture's handle sites are not in this title's event pool, so the
+    pool-limited cutter rule contributes no line row. The record-level cases want
+    the record view for that reason, and the line cases ask for the line view with
+    the one free parameter switched off, which is the same rule.
+    """
     path = write(directory, hello_image() if image is None else image, name)
+    kwargs.setdefault("view", app_session.RECORDS)
     with lowered_record_floor():
         return app_session.open_image(path, **kwargs)
 
@@ -229,8 +244,8 @@ def test_search_and_filters_read_the_same_rows(tmp_path: Path) -> None:
 def test_the_control_unit_filter_and_the_progress_counters(tmp_path: Path) -> None:
     session = opened(tmp_path, image=build(payloads={1: line_payload("He\x08\x03llo", AT)},
                                            records=[(1, AT, 12)]))
-    assert [line.key for line in session.matching(locked=True)] == ["1:32:12"]
-    assert len(session.matching(locked=False)) == 1534
+    assert [row.key for row in session.matching(kind=RECORD, locked=True)] == ["1:32:12"]
+    assert len(session.matching(kind=SLOT, locked=False)) == 1534
     assert session.total(SLOT) == 1534
     assert session.counts(RECORD)[State.UNCHANGED] == 1
 
@@ -292,3 +307,144 @@ def test_export_replays_from_the_base_and_leaves_it_alone(tmp_path: Path) -> Non
     assert source.read_bytes() == before
     assert first["output_sha256"] != second["output_sha256"]
     assert session.model.path.read_bytes() == before
+
+
+# --- the line view, speakers, ordering and grouping --------------------------
+
+
+def lined(directory, **kwargs) -> Session:
+    """A session in the LINES view over a fixture, with the cutter filter off."""
+    kwargs.setdefault("view", app_session.LINES)
+    kwargs.setdefault("cutters_from_pool", False)
+    return opened(directory, **kwargs)
+
+
+def two_lines_image():
+    """One covering record and two inner records over one container."""
+    return build(payloads={1: line_payload("One line, two line", 0x00)},
+                 records=[(1, 0x00, 0x24), (1, 0x00, 0x12), (1, 0x12, 0x12)])
+
+
+def test_the_dialogue_list_is_lines_and_records_is_a_switch(tmp_path: Path) -> None:
+    session = lined(tmp_path, image=two_lines_image())
+    assert session.view == app_session.LINES
+    assert [row.key for row in session.lines] == ["1:0:18", "1:18:18"]
+    assert session.view_size(app_session.RECORDS) == 3
+    session.set_view(app_session.RECORDS)
+    session.set_order(app_session.STORAGE)
+    assert [row.key for row in session.lines] == ["1:0:18", "1:0:36", "1:18:18"]
+    assert session.view_size(app_session.LINES) == 2
+
+
+def test_editing_one_line_leaves_its_sibling_in_the_same_record_alone(tmp_path: Path) -> None:
+    session = lined(tmp_path, image=two_lines_image())
+    session.set_edit("1:0:18", "One row, ")
+    assert session.state("1:0:18") is State.EDITED
+    assert session.state("1:18:18") is State.UNCHANGED
+    assert session.pending_text("1:18:18") == session.line("1:18:18").text
+    # One edit, named by the record the engine reads and writes.
+    assert session.edited_keys() == ("1:0:18",)
+    assert session.plan().decisions[0].target == "1:0:18"
+    meter = session.meter("1:0:18")
+    assert (meter.chars, meter.bytes) == (9, 18)
+    assert (meter.chars_limit, meter.bytes_limit) == (9, 18)
+    assert session.meter("1:18:18") is None
+
+
+def test_a_line_smaller_than_its_record_edits_only_its_own_span(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("first\x0asecond", 0x00)},
+                  records=[(1, 0x00, 0x18)])
+    session = lined(tmp_path, image=image)
+    assert [row.key for row in session.lines] == ["1:0:10", "1:12:12"]
+    # Neither row is the whole record, so both name it as their target.
+    assert [row.target for row in session.lines] == ["1:0:24", "1:0:24"]
+    session.set_edit("1:0:10", "FIRST")
+    assert session.state("1:0:10") is State.EDITED
+    assert session.state("1:12:12") is State.UNCHANGED
+    assert session.pending_text("1:12:12") == "second"
+    assert session.edited_keys() == ("1:0:24",)
+    assert session.plan().decisions[0].target == "1:0:24"
+    assert session.line("1:12:12").text == "second"
+
+
+def test_a_line_shows_the_speaker_the_engine_resolved(tmp_path: Path) -> None:
+    with appearances():
+        session = lined(tmp_path, image=speaking_image("hello there"))
+        row = session.lines[0]
+        assert row.speaker == "Lazuli"
+        assert row.speaker_label == "Lazuli"
+        assert session.speaker_share() == (1, 1)
+        assert session.speaker_counts() == {"Lazuli": 1}
+        assert [group.label for group in session.grouped(by=app_session.BY_SPEAKER)] == \
+            ["Lazuli"]
+        assert session.matching(speaker="Lazuli") == session.lines
+        assert session.matching(speaker=app_session.UNKNOWN_SPEAKER) == ()
+
+
+def test_an_unattributed_line_says_which_gap_it_is_and_groups_honestly(
+        tmp_path: Path) -> None:
+    session = lined(tmp_path, image=hello_image())
+    row = session.lines[0]
+    # The fixture's record word carries operand 0, which the box constructor sends
+    # down its no-art branch, so the honest word is "No portrait".
+    assert row.speaker is None
+    assert row.portrait == "No portrait"
+    assert row.speaker_label == "No portrait"
+    assert session.speaker_share() == (0, 1)
+    assert [group.label for group in session.grouped(by=app_session.BY_SPEAKER)] == \
+        ["No portrait"]
+    # No proven map or chapter link exists, so there is exactly one honest group.
+    placed = session.grouped(by=app_session.BY_PLACE)
+    assert [group.label for group in placed] == [app_session.UNPLACED]
+    assert [item.key for item in placed[0].rows] == [row.key]
+    assert session.matching(speaker="No portrait") == session.lines
+    assert session.matching(speaker=app_session.UNKNOWN_SPEAKER) == ()
+
+
+def test_the_portrait_gaps_are_named_separately(tmp_path: Path) -> None:
+    """Each gap gets its own word, so none of them reads as a guess."""
+    party = lined(tmp_path, image=with_operand(hello_image(), 0x03))
+    assert party.lines[0].speaker_label == "Party member (depends on save)"
+
+    # An operand the fixture cannot resolve: the real appearance table lives outside
+    # a 450 KB image, so nothing names it and the row says so.
+    unnamed = lined(tmp_path, image=with_operand(hello_image(), 0x3F))
+    assert unnamed.lines[0].speaker_label == "Unknown portrait"
+
+    # Two sites, two operands: one identity, two faces, so nothing is attributed.
+    contested_image = build(payloads={1: line_payload("hello there", 0x00)},
+                            records=[(1, 0x00, 0x16), (1, 0x00, 0x16)])
+    with_operand(contested_image, 0x3F, 0)
+    with_operand(contested_image, 0x88, 1)
+    contested = lined(tmp_path, image=contested_image)
+    assert contested.lines[0].speaker_label == app_session.UNKNOWN_SPEAKER
+
+
+def test_appearance_order_and_storage_order_can_disagree(tmp_path: Path) -> None:
+    """The later line is named first by site, because its handle site comes first."""
+    image = build(payloads={1: line_payload("Alpha beta ga", 0x00)},
+                  records=[(1, 0x12, 0x12), (1, 0x00, 0x12)])
+    session = lined(tmp_path, image=image)
+    assert session.order == app_session.APPEARANCE
+    assert [row.key for row in session.lines] == ["1:18:18", "1:0:18"]
+    session.set_order(app_session.STORAGE)
+    assert [row.key for row in session.lines] == ["1:0:18", "1:18:18"]
+    assert session.line("1:0:18").first_site == 0x2014
+    assert session.line("1:18:18").first_site == 0x2004
+
+
+def test_a_line_no_proven_site_names_is_still_listed_and_says_so(tmp_path: Path) -> None:
+    session = lined(tmp_path, image=hello_image())
+    row = session.lines[0]
+    assert row.proven is False
+    assert row.target == "1:32:20"
+    assert session.line(row.key) is row
+    session.set_edit(row.key, "Say bye!")
+    assert session.state(row.key) is State.EDITED
+
+
+def test_the_search_term_survives_a_view_change(tmp_path: Path) -> None:
+    session = lined(tmp_path, image=two_lines_image())
+    assert [row.key for row in session.matching("two")] == ["1:18:18"]
+    session.set_view(app_session.RECORDS)
+    assert {row.key for row in session.matching("two")} == {"1:18:18", "1:0:36"}

@@ -53,6 +53,10 @@ CI_CONFIG = REPOSITORY_ROOT / ".gitlab-ci.yml"
 #: the shipping GUI dependency set.
 TEST_JOB = "test-sdk"
 
+#: The job that validates the built site. Named alongside the suite in the deploy
+#: job's dependencies, because `needs` bypasses the stage barrier.
+SITE_JOB = "test-site"
+
 #: Extras the test job must install for the shipping surface to execute.
 REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
 
@@ -314,15 +318,17 @@ def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
         ) = saved
 
 
-def test_the_deploy_job_needs_the_test_job():
-    """Prevents: publishing a commit whose portable suite never ran.
+def test_the_deploy_job_needs_both_test_jobs():
+    """Prevents: publishing a commit whose portable suite or site check never ran.
 
-    ``deploy-site`` matches only the default branch, while ``test-sdk``'s second
-    rule skips it when that branch push has an open merge request. A
-    rule-excluded job cannot fail anything, so without this dependency the deploy
-    job publishes regardless of whether the suite ran. The dependency must be
-    required, not ``optional``: an optional need is silently dropped when the
-    job is absent from the pipeline, which is the exact case being closed.
+    ``deploy-site`` matches only the default branch, while both test jobs' second
+    rule skips them when that branch push has an open merge request. A
+    rule-excluded job cannot fail anything, so without these dependencies the
+    deploy job publishes regardless of whether they ran. The dependencies must be
+    required, not ``optional``: an optional need is silently dropped when the job
+    is absent from the pipeline, which is the exact case being closed. Both jobs
+    are named because ``needs`` bypasses the stage barrier, so naming only the
+    suite would drop the wait on the site job that the barrier used to give.
     """
     deploy = _ci_config().get("deploy-site") or {}
     needs = deploy.get("needs") or []
@@ -331,8 +337,9 @@ def test_the_deploy_job_needs_the_test_job():
         for need in needs
         if not (isinstance(need, dict) and need.get("optional"))
     }
-    assert TEST_JOB in required, (
+    assert required == {TEST_JOB, SITE_JOB}, (
         f"{_cited('deploy-site')}: deploy-site must require a `needs:` entry "
-        f"naming {TEST_JOB}; its needs are {needs!r}, so a pipeline whose "
-        f"{TEST_JOB} was excluded by its rules can still publish the site"
+        f"naming both {TEST_JOB} and {SITE_JOB}; its required needs are "
+        f"{required!r}, so a pipeline whose jobs were excluded by their rules "
+        f"can still publish the site without them"
     )

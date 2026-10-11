@@ -42,13 +42,15 @@ canonical image's text when a canonical image was supplied), every `Record`
 (selector, start, length, text, every carrying site, and the longer records that
 cover it), and each record's locked control units.
 
-An edit is one of three frozen dataclasses:
+An edit is one of four frozen dataclasses:
 
 - `SlotEdit(slot, old, new)` for the 1,534-slot string table;
 - `RecordEdit(selector, start, length, old, new)` for one dialogue record, where
   `old` must occur exactly once in the record's text;
 - `RenameEdit(old, new, retail_test, relocated_slots)` for a character rename
-  whose target is fixed by the canonical image.
+  whose target is fixed by the canonical image;
+- `SpacingEdit()` for the corpus-wide spacing rebuild of section 3. It needs the
+  canonical image at open and must be the only edit in its plan.
 
 `plan` decides one of `IN_PLACE`, `MOVE` or `REFUSED` per target, lists every
 byte range the export will write, lists the covering records a move leaves
@@ -111,6 +113,18 @@ stage and rename, returning the output sha256.
 - **Locked control units.** A control unit is a halfword below 0x20 (0x0008
   consumes the next halfword as its operand); an edit whose replacements change
   that sequence is refused. What each unit draws is not known.
+- **Spacing rebuild.** `SpacingEdit` collapses every interior 2+ space run in the
+  DECODED STREAM, not inside a record, because the containers are chain-shared and
+  a per-record fix re-creates the run in a covering record (pitfall P-023). Each
+  record's handle is rewritten to the span its text now occupies, so no record
+  keeps a length it paid for and no payback space exists. A run survives exactly
+  where the canonical image's record at the same identity carries a 2+ space run at
+  the same unit offset, and when the canonical run is shorter the base run is cut
+  down to it. Every deletion is asserted to be a space unit before it is made, and
+  a record whose text would collapse to nothing refuses the plan. Used by
+  `tools/research/build_release4_spacing.py`; measured over Release 4A: 490 units
+  removed, 2,691 handle words rewritten, 20 retail runs kept, containers rewritten
+  at the offsets they already occupied so the table never moves.
 - **Detection.** The container table is reached through the image's own literal
   word, the containers through the table, the records through their handles, and
   the string table through its declared base. Every candidate is then validated:
@@ -168,8 +182,8 @@ declaring 23,790 bytes at file offset 10,146,136.
 
 ## 5. Tests
 
-`tests/unit/test_text_engine.py`, 27 tests, all portable (`fast` gate): 23 on the
-synthetic image and 4 that need the canonical image or the release images and skip
+`tests/unit/test_text_engine.py`, 31 tests, all portable (`fast` gate): 27 on the
+synthetic image and 4 that need the canonical or the release images and skip
 without them. The fixture is a 450 KB synthetic image with seven stored containers,
 real record words and the real 1,534-slot table, so every rule runs in CI without
 any ROM.
@@ -183,6 +197,7 @@ any ROM.
 | carry-forward prefix | `test_a_moved_record_is_appended_after_the_carried_payload`, `test_a_carried_record_still_resolves_through_its_own_handle`, `test_a_record_already_in_the_grown_selector_moves_and_reads_back` |
 | the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` |
 | readback per site | `test_an_in_place_edit_and_a_move_from_one_container_both_read_back` |
+| spacing rebuild | `test_the_spacing_pass_collapses_a_chain_shared_run_and_rewrites_every_handle`, `test_a_run_the_canonical_image_carries_is_kept_and_the_other_collapses`, `test_a_spacing_plan_may_not_carry_another_edit`, `test_a_spacing_pass_without_the_canonical_image_is_refused` |
 | per-occurrence decision | `test_a_record_holding_both_actors_renames_only_the_retail_occurrence`, `test_an_occurrence_with_no_retail_name_is_counted_unclear`, `test_a_rename_refuses_when_the_offsets_do_not_correspond` |
 | destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory`, `test_apply_refuses_the_canonical_reference_as_its_own_destination`, `test_apply_refuses_to_overwrite_an_existing_output` |
 | detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused`, `test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector` |
@@ -224,6 +239,16 @@ any ROM.
   in-place edit pays its difference as trailing spaces, so a covering record can
   legitimately lose interior spaces; those sites are compared with spaces removed,
   and a moved record's sites are compared exactly.
+- **A spacing pass keeps retail runs, including one that a non-retail record also
+  reads.** On the Release 4A image, run `0:47756` is retail spacing and is also
+  inside a longer record's span, so that record still shows the two spaces. Keeping
+  it is correct and it is the only such position; the rest are read only by their
+  retail holder. Measured detail in `RELEASE4_SPACING.md` section 6.
+- **A spacing pass can be defeated by an image whose canonical correspondence does
+  not hold.** The keep rule maps the base's byte offsets straight onto the canonical
+  payload. Every release preserved record lengths, so that correspondence holds for
+  this corpus; on an image where it does not, the pass would keep the wrong runs and
+  the verifier's independent rule would report it.
 - **No CLI and no UI.** Ticket 1 is the engine. The desktop surface is ticket 2.
 
 ## 7. Harvest

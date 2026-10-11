@@ -304,6 +304,69 @@ def test_a_record_already_in_the_grown_selector_moves_and_reads_back(tmp_path: P
     textedit.apply(built, tmp_path / "grown.gba")
 
 
+# --- the spacing pass --------------------------------------------------------
+
+
+def test_the_spacing_pass_collapses_a_chain_shared_run_and_rewrites_every_handle(
+        tmp_path: Path) -> None:
+    """Two records read the same run, so a record-level fix would re-create it (P-023)."""
+    base = build(payloads={1: line_payload("Hi  there")},
+                 records=[(1, 0x20, 18), (1, 0x22, 16)])
+    retail = open_image(build(payloads={1: line_payload("Hi there")},
+                              records=[(1, 0x20, 18), (1, 0x22, 16)]),
+                        tmp_path, name="retail.gba")
+    model = open_image(base, tmp_path, name="base.gba", canonical=retail.path)
+    built = textedit.plan(model, [textedit.SpacingEdit()])
+    assert [item.method for item in built.decisions] == [textedit.IN_PLACE]
+    assert len(built.spacing) == 1
+    row = built.spacing[0]
+    assert row.selector == 1
+    assert row.deleted == (0x26,)
+    assert row.texts["1:32:18"] == "Hi there"
+    assert row.texts["1:34:16"] == "i there"
+    assert slot_payload(built.output, 1)[0x20:0x30].decode("utf-16le") == "Hi there"
+    assert textedit.readback(built) == ()
+    assert len(built.output) == len(base)
+    table_slot = TABLE_AT + 4
+    assert built.output[table_slot:table_slot + 4] == base[table_slot:table_slot + 4]
+    textedit.apply(built, tmp_path / "spacing.gba")
+
+
+def test_a_run_the_canonical_image_carries_is_kept_and_the_other_collapses(
+        tmp_path: Path) -> None:
+    base = build(payloads={1: line_payload("Hi  there"), 2: line_payload("Bye  now")},
+                 records=[(1, 0x20, 18), (2, 0x20, 16)])
+    retail = open_image(build(payloads={1: line_payload("Hi  there"),
+                                        2: line_payload("Bye now")},
+                              records=[(1, 0x20, 18), (2, 0x20, 16)]),
+                        tmp_path, name="retail.gba")
+    model = open_image(base, tmp_path, name="base.gba", canonical=retail.path)
+    built = textedit.plan(model, [textedit.SpacingEdit()])
+    assert [row.selector for row in built.spacing] == [2]
+    assert built.spacing[0].kept_retail == ()
+    assert any("run(s) kept" in warning and "1:36" in warning for warning in built.warnings)
+    assert slot_payload(built.output, 1) == slot_payload(base, 1)
+    assert built.spacing[0].texts["2:32:16"] == "Bye now"
+    assert slot_payload(built.output, 2)[0x20:0x2E].decode("utf-16le") == "Bye now"
+    assert textedit.readback(built) == ()
+
+
+def test_a_spacing_plan_may_not_carry_another_edit(tmp_path: Path) -> None:
+    _image, model = simple(tmp_path)
+    with pytest.raises(textedit.TextEditError, match="only edit a plan may carry"):
+        textedit.plan(model, [textedit.SpacingEdit(),
+                              textedit.RecordEdit(1, 0x20, 20, "hello", "hi")])
+
+
+def test_a_spacing_pass_without_the_canonical_image_is_refused(tmp_path: Path) -> None:
+    _image, model = simple(tmp_path)
+    built = textedit.plan(model, [textedit.SpacingEdit()])
+    assert [item.method for item in built.decisions] == [textedit.REFUSED]
+    assert "canonical image" in built.refusals[0].reason
+    with pytest.raises(textedit.TextEditError, match="REFUSED"):
+        textedit.apply(built, tmp_path / "unused.gba")
+
+
 # --- the per-occurrence decision ---------------------------------------------
 
 

@@ -26,7 +26,9 @@
 -- Environment, set by the launcher: TOOLKIT031_OUT names the log file. DIALOGUE_PROBE_LIMIT bounds the
 -- run in frames so it prints its verdict by itself.
 
-local OUT = os.getenv("TOOLKIT031_OUT") or "dialogue-limit-probe.txt"
+-- The launcher names the log. A working-directory default would contradict this file's promise to write
+-- only inside its run directory, so an unset variable is reported and nothing is written until it is set.
+local OUT = os.getenv("TOOLKIT031_OUT")
 local FRAME_LIMIT = tonumber(os.getenv("DIALOGUE_PROBE_LIMIT") or "0") or 0
 
 local FITTER_CALL = 0x0800AF3A

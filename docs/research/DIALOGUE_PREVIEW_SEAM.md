@@ -38,8 +38,9 @@ of each is named. Nothing here is inferred from a document.
 
 ## The box scrolls
 
-- The box draws a WINDOW of the record, not necessarily its first character. One capture was reproduced
-  pixel-exactly only with the window starting **159 characters** into the record.
+- The box draws a WINDOW of the record, not necessarily its first character. TWO captures were
+  reproduced pixel-exactly only with the window starting part way in: **159 characters** into one record and
+  **75** into another.
 - Consequence for a preview: a long record cannot be previewed correctly by always starting at character 0.
   The scroll-advance rule is NOT established yet; this document will carry it when it is.
 
@@ -48,3 +49,17 @@ of each is named. Nothing here is inferred from a document.
 - 12 of the 13 captures that contain a dialogue box are reproduced PIXEL-EXACT: zero engine ink pixels
   missed, zero pixels drawn that the engine did not. The 13th (`shot-3300`) is open and described in the
   tracker; a preview that reproduces the 12 is reproducing the engine, not an approximation of it.
+
+## Provenance of the captures, stated plainly
+
+The captures were taken of the **modified** image the release 4A work built (`v4a-broly.gba`, recorded in
+the capture directory's `inputs.json`), while the font, the box art and the dialogue corpus are decoded
+from the **canonical** retail image. Release 4A changes byte fields only and appends a region; it does not
+touch the font table or the box containers, but the validator checks neither image's identity, so a
+reviewer should read "the modified image draws this line the way the canonical font says" as measured for
+those captures, not as a general proof about the canonical image.
+
+The one capture that still differs, `shot-3300`, has a TWO-SIDED residual as the tracked tool prints it:
+149 engine ink pixels the render misses and 148 the render draws that the engine does not, at limit 144. An
+earlier note here called it one-sided; that was a different search's output, and the tool's numbers are the
+ones above.

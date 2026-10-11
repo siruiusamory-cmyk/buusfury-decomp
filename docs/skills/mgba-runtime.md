@@ -195,6 +195,26 @@ sends input should state that the same way rather than silently.
 Quote characters do **not** survive PowerShell to UI Automation `SetValue`.
 Write Lua sent that way with long-bracket strings: `print([[text]])`.
 
+### 6.1 Owner-authorised exception: the dashboard input bridge
+
+The owner's dashboard docks an mGBA window and drives it with keys, and an embedded emulator never receives
+Qt key events. So the dashboard holds the keys and hands them to a Lua bridge that starts as a SECOND
+`--script`. This is an exception to section 6, granted by the owner on 2026-10-11, and it is bounded:
+
+- the bridge lives outside this repository and is named only by `LOG1_MGBA_EXTRA_SCRIPT`; no machine path is
+  tracked, and a shell that predates the variable falls back to the User registry value;
+- it is loaded on every run whose mGBA build has `--script`, and a build without the flag SKIPS it with a
+  printed note rather than refusing to launch, because the GDB launcher is pinned to such a build;
+- EVERY run that loads it records its absolute path, its SHA-256 and a note in the run directory
+  (`extra-script.json`, and `extra_script_path`/`extra_script_sha256`/`extra_script_loaded` in the GDB
+  launcher's `inputs.json`), so the exception is reviewable after the fact;
+- what it does: it adds only the keys the dashboard currently holds and releases everything when the
+  dashboard disconnects. It touches no emulated memory, writes no save, and loads no state.
+
+A run with the variable unset records that it was not set. The test that holds this is
+`tests/unit/test_mgba_launch_coverage.py`'s extra-script family, which fails if the recording, the SHA-256
+or the skip-not-refuse behaviour goes missing.
+
 ## 7. Observers stay read-only
 
 `tests/unit/test_mgba_capture.py` greps observer sources and fails on input- or

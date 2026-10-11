@@ -111,12 +111,12 @@ def _advance_positions(font: Font, text: str, wrap: int) -> list[list[tuple[int,
     return per_character
 
 
-#: Wrap widths by box style: with a portrait the text area is four cells wide, without one it is two.
-#: Both fitted from captures: 108 with a portrait, 132 without, everything else identical.
-#: MEASURED at runtime: the limit the engine passes to its line fitter is the layout record's own
-#: limit field, 128 for the layout at 0x08071744 and 144 for the one at 0x08071730 (the two records sit
-#: 20 bytes apart). The third case is the -0x14 reduction, which applies when [text_object+0x28] == 0;
-#: no capture has shown it yet, so 108 is carried as the candidate and is reported per capture.
+#: MEASURED at runtime: the limit the engine passes to its line fitter is the layout record's own limit
+#: field - 144 for the layout at 0x08071730 and 128 for the one at 0x08071744, and a whole-ROM scan finds
+#: no third layout record. 108 is NOT a measured value: it was fitted from captures before the limit was
+#: read out of the engine, and it is searched only because the -0x14 reduction at 0x0800AF30 has never been
+#: observed, so that possibility stays open rather than being closed by assertion. The validator reports
+#: EVERY width that reproduces the pixels; one reported width was a first-fit artefact and proves nothing.
 WRAP_WIDTHS = (108, 128, 144)
 
 
@@ -124,11 +124,17 @@ def identify(font: Font, corpus: list[str], engine: set[tuple[int, int]],
              ink: tuple[int, int, int]) -> dict | None:
     """The dialogue line, prefix and wrap width that best explain the engine's ink pixels."""
     best = None
+    exact_widths = []
     for wrap in WRAP_WIDTHS:
         found = identify_at_width(font, corpus, engine, wrap)
-        if found is not None and (best is None or found["missed"] + found["extra"]
-                                  < best["missed"] + best["extra"]):
+        if found is None:
+            continue
+        if found["missed"] == 0 and found["extra"] == 0:
+            exact_widths.append(wrap)
+        if best is None or found["missed"] + found["extra"] < best["missed"] + best["extra"]:
             best = {**found, "wrap": wrap, "identified_by": "ink-count"}
+    if best is not None:
+        best["exact_widths"] = exact_widths
     if best is not None and best["missed"] + best["extra"] == 0:
         return best
     # The count filter is a pre-filter and can pick a record whose ink count agrees while the text does
@@ -315,8 +321,10 @@ def main() -> int:
                  **found}
         entry["pixel_exact"] = found["missed"] == 0 and found["extra"] == 0
         results.append(entry)
+        widths = found.get("exact_widths") or []
         print(f"{capture.name}: {'PIXEL-EXACT' if entry['pixel_exact'] else 'differs'}  "
-              f"wrap {found['wrap']}  line {found['text'][:40]!r} prefix {found['prefix']}  "
+              f"wrap {found['wrap']} (every exact width: {widths or 'none'})  "
+              f"line {found['text'][:40]!r} prefix {found['prefix']}  "
               f"missed {found['missed']}  extra {found['extra']}")
 
     exact = sum(1 for entry in results if entry.get("pixel_exact"))

@@ -633,8 +633,12 @@ def plan(model: Model, edits: Iterable[object]) -> Plan:
                 f"REFUSED: {edit!r} is not a SlotEdit, a RecordEdit or a RenameEdit")
 
     builder = _Builder(model.image)
+    # The table moves before anything aims at one of its slots: an in-place
+    # container relocation writes the slot of the table in force, and the image's
+    # own table is live structure that must not be written (F1).
+    table = _relocate_table(model, placements, decisions, builder, warnings)
     in_place, decisions, rewritten = _write_in_place(model, in_place, decisions, builder)
-    placements, decisions = _write_moves(model, placements, decisions, builder, warnings)
+    placements, decisions = _write_moves(model, placements, decisions, builder, table)
     if placements:
         rewritten.add(model.profile.grown_selector)
     slot_moves, decisions = _write_slots(model, slot_moves, decisions, builder)
@@ -930,9 +934,9 @@ def _refuse_all(decisions: list[Decision], rows: list[_Placement], reason: str) 
         decisions[row.decision] = replace(decisions[row.decision], method=REFUSED, reason=reason)
 
 
-def _write_moves(model: Model, placements: list[_Placement], decisions: list[Decision],
-                 builder: _Builder, warnings: list[str]) -> tuple[list[_Placement], list[Decision]]:
-    """Copy every moved record into the appended container, prefix carried forward.
+def _relocate_table(model: Model, placements: list[_Placement], decisions: list[Decision],
+                    builder: _Builder, warnings: list[str]) -> int | None:
+    """Copy the container table aside when the grown slot does not name a container.
 
     THE RETAIL TABLE IS NEVER WRITTEN. A table whose grown slot does not already
     name a container is the image's own table, and its words are live structure:
@@ -943,17 +947,63 @@ def _write_moves(model: Model, placements: list[_Placement], decisions: list[Dec
     64-slot table into appended space and repoint the one literal that names it -
     and refuses when that literal is not named exactly once, rather than writing
     a word whose owner is unproven (P-027).
+
+    This runs before any container relocation, never after it: an in-place
+    container relocation writes the slot of the table in force, and run the other
+    way round that write lands in the image's own table (F1).
+
+    Returns the file offset of the table in force, or ``None`` when the table
+    could not be moved aside, in which case every row has been refused.
     """
-    if not placements:
-        return [], decisions
-    selector = model.profile.grown_selector
     table = model.layout.table_offset
+    if not placements:
+        return table
+    selector = model.profile.grown_selector
     slot_at = table + selector * 4
     if slot_at + 4 > len(model.image):
         _refuse_all(decisions, placements,
                     "the grown selector's table slot lies outside the image")
-        return [], decisions
+        return None
     out = builder.out
+    pointer = int.from_bytes(out[slot_at:slot_at + 4], "little")
+    if ROM_BASE <= pointer < ROM_BASE + len(model.image):
+        return table
+    literal_at = model.profile.table_literal
+    literal = int.from_bytes(model.image[literal_at:literal_at + 4], "little")
+    references = _references(model.image, literal)
+    if references != 1:
+        _refuse_all(decisions, placements,
+                    f"table slot {selector} holds {pointer:#010x}, not a container, so the "
+                    f"table would have to be moved before that slot can be used; the table "
+                    f"at {table:#x} is named by {references} word-aligned references and a "
+                    "table with more than one owner cannot be moved aside, so the slot is "
+                    "not proven free")
+        return None
+    block = bytes(out[table:table + SELECTOR_SLOTS * 4])
+    moved = builder.append(block, "container table")
+    builder.write(literal_at, (ROM_BASE + moved).to_bytes(4, "little"),
+                  "container table literal")
+    warnings.append(
+        f"the container table is copied to {ROM_BASE + moved:#010x} and the literal at "
+        f"{literal_at:#x} repointed, because table slot {selector} held {pointer:#010x}, "
+        "not a container, and the image's own table words are live structure")
+    return moved
+
+
+def _write_moves(model: Model, placements: list[_Placement], decisions: list[Decision],
+                 builder: _Builder, table: int | None) -> tuple[list[_Placement], list[Decision]]:
+    """Copy every moved record into the appended container, prefix carried forward.
+
+    ``table`` is the offset of the table in force, which `_relocate_table` has
+    already moved aside when the grown slot did not name a container. A grown slot
+    that names no container has nothing to carry forward, so the payload starts
+    empty; the slot is written at the end either way.
+    """
+    if not placements or table is None:
+        return [], decisions
+    selector = model.profile.grown_selector
+    out = builder.out
+    slot_at = table + selector * 4
     pointer = int.from_bytes(out[slot_at:slot_at + 4], "little")
     prefix = b""
     if ROM_BASE <= pointer < ROM_BASE + len(model.image):
@@ -964,27 +1014,6 @@ def _write_moves(model: Model, placements: list[_Placement], decisions: list[Dec
                         f"the container that table slot {selector} names does not decode, so "
                         f"its payload cannot be carried forward: {error}")
             return [], decisions
-    else:
-        literal_at = model.profile.table_literal
-        literal = int.from_bytes(model.image[literal_at:literal_at + 4], "little")
-        references = _references(model.image, literal)
-        if references != 1:
-            _refuse_all(decisions, placements,
-                        f"table slot {selector} holds {pointer:#010x}, not a container, so the "
-                        f"table would have to be moved before that slot can be used; the table "
-                        f"at {table:#x} is named by {references} word-aligned references and a "
-                        "table with more than one owner cannot be moved aside, so the slot is "
-                        "not proven free")
-            return [], decisions
-        block = bytes(out[table:table + SELECTOR_SLOTS * 4])
-        table = builder.append(block, "container table")
-        builder.write(literal_at, (ROM_BASE + table).to_bytes(4, "little"),
-                      "container table literal")
-        slot_at = table + selector * 4
-        warnings.append(
-            f"the container table is copied to {ROM_BASE + table:#010x} and the literal at "
-            f"{literal_at:#x} repointed, because table slot {selector} held {pointer:#010x}, "
-            "not a container, and the image's own table words are live structure")
     kept: list[_Placement] = []
     for row in placements:
         bad = next((site for site in row.sites

@@ -484,6 +484,35 @@ def test_the_canonical_table_words_are_untouched_when_a_record_moves(tmp_path: P
     textedit.apply(built, tmp_path / "canonical-move.gba")
 
 
+def test_a_mixed_plan_leaves_the_retail_table_words_alone(tmp_path: Path) -> None:
+    """F1: a container relocated in place must not write the image's own table.
+
+    ``1:5498:12`` reads ``Arqua!``; a same-length swap makes container 1 re-pack
+    over its room, so the plan both relocates that container in place and moves a
+    record. Before the table was relocated first, this wrote retail table slot 1
+    at file 0x7B5B68 (f0047a08 -> 00008008) and ``readback`` still returned clean.
+    """
+    rom = canonical()
+    image = rom.read_bytes()
+    table = int.from_bytes(image[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert table == 0x7B5B64
+    model = textedit.open_rom(rom)
+    grown = model.record(1, 5498, 12)
+    mover = model.record(1, 38856, 252)
+    assert grown is not None
+    assert mover is not None
+    built = textedit.plan(model, [
+        textedit.RecordEdit(1, 5498, 12, grown.text, "B" + grown.text[1:]),
+        textedit.RecordEdit(1, 38856, 252, mover.text, mover.text + " and more"),
+    ])
+    assert [item.method for item in built.decisions] == [textedit.IN_PLACE, textedit.MOVE]
+    assert [change.what for change in built.changes if "relocated" in change.what] == \
+        ["container 1 relocated"]
+    assert built.output[table:table + TABLE_BYTES] == image[table:table + TABLE_BYTES]
+    assert textedit.readback(built) == ()
+    textedit.apply(built, tmp_path / "canonical-mixed.gba")
+
+
 def test_the_release31_rename_replays_byte_identically(tmp_path: Path) -> None:
     model = textedit.open_rom(golden("v3-release3.gba"), canonical=canonical())
     built = textedit.plan(model, [textedit.RenameEdit(

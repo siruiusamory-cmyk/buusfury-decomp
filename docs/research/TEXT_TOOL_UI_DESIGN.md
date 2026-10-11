@@ -8,15 +8,15 @@ named below, and the build follows it rather than the other way round.
 
 1. **This repository's recorded policy**, `docs/ROM_SAFETY.md` and
    `docs/DEVELOPMENT.md`.
-2. **The adopted visual direction**, Cartridge Workbench
-   (`C:\Dev\log1-coordinator\deep-research-report.md` plus
-   `briefs\TEXT-TOOL-UI-SPEC-DECISIONS.md`). It owns the palette, the three-pane
-   layout, the component list and the density band. Where a reference entry
-   disagrees with it, the conflict is recorded in section 6 and the spec governs.
+2. **The adopted visual direction**, Cartridge Workbench: the deep research report the
+   coordinator holds, plus its text tool decisions brief. It owns the palette, the
+   three-pane layout, the component list and the density band. Where a reference
+   entry disagrees with it, the conflict is recorded in section 6 and the spec
+   governs.
 3. **The owner's hard constraints**, which nothing below may override: the owner is
    red-green colourblind so no state may be carried by red against green; the look
    is dense and native rather than web; the pixel font appears only in the dialogue
-   preview; the shipped tool contains no AI features.
+   preview; the shipped tool generates no content of its own.
 4. **The reference entries**, listed in section 1, used for everything the spec does
    not decide: hierarchy, rhythm, states, comparison semantics, list and table
    craft, meters, empty states, dialogs, iconography and the anti-generic gate.
@@ -152,7 +152,7 @@ and unexplained.
   label, one accent hairline above its frame, and the caret. Von Restorff says use
   restraint, so nothing else in the editor competes.
 - The two read-only sections show **no caret**, because a blinking cursor on static
-  text is a named AI tell.
+  text is a named tell of a generated interface.
 - **The changed run** inside NEW is marked by an underline that is 2 px in the
   accent, plus a section-level word (`changed`) so the mark is never colour alone.
 - **The meter**: the spec's two aligned bars, one for characters and one for bytes,

@@ -31,9 +31,11 @@ local FRAME_LIMIT = tonumber(os.getenv("FRIENDV4A_FRAME_LIMIT") or "0") or 0
 local ANIMATION_SELECTOR = 0x0800ECDA
 local ACTOR_LOOKUP = 0x08011C70
 local SPRITE_RESOLVER = 0x08000158
+local FRAME_READER = 0x0800EF38
 local DEFINITION_SLOTS = 0x54
 
-local hits = { animation = 0, lookup = 0, lookup_mode5 = 0, resolver = 0 }
+local hits = { animation = 0, lookup = 0, lookup_mode5 = 0, resolver = 0,
+               frame_reader = 0 }
 local armed = {}
 local frames = 0
 local started = false
@@ -120,6 +122,26 @@ end)
 -- in r0 when the actor is built. Logging each distinct id once names the actors in a scene even when
 -- they never change animation state, which the selector-based channels cannot see.
 local resolver_ids = {}
+-- The draw path: runs for every actor every frame it is drawn, so a standing actor appears here even
+-- though it never re-selects its animation. `read32(r0-4)` is the actor's definition pointer.
+local drawn_definitions = {}
+arm(FRAME_READER, "frame-reader", function()
+  hits.frame_reader = (hits.frame_reader or 0) + 1
+  local component = reg("r0")
+  if component == nil then return end
+  local definition = r32(component - 4)
+  if definition == nil then return end
+  local key = hex(definition)
+  local seen = drawn_definitions[key] or 0
+  drawn_definitions[key] = seen + 1
+  if seen == 0 then
+    local record = r32(component + 0x50)
+    local frames = record and r32(record) or nil
+    log(string.format("DRAWN definition=%s animation_record=%s frames=%s", key, hex(record),
+                      tostring(frames)))
+  end
+end)
+
 arm(SPRITE_RESOLVER, "sprite-resolver", function()
   hits.resolver = hits.resolver + 1
   local sprite_id = reg("r0")
@@ -134,20 +156,89 @@ arm(SPRITE_RESOLVER, "sprite-resolver", function()
   end
 end)
 
+-- One-shot memory hunt for definition pointers. Every actor stores its definition at `+0x58`, so a
+-- standing actor that never animates AND was built before the state was loaded is still findable: a
+-- word in RAM equal to a definition address IS an actor (or a template) using that definition. Scanning
+-- 256 KiB per frame is not something an observer should do, so this runs once, after the scene is up.
+local HUNT = {
+  { name = "donor", value = 0x086A9B78 },
+  { name = "retail73", value = 0x086AB24C },
+  { name = "retail98", value = 0x086AC6A4 },
+  { name = "copy73", value = 0x089B2E80 },
+  { name = "copy98", value = 0x089B304C },
+}
+local hunt_done = false
+
+local function hunt()
+  if hunt_done then return end
+  hunt_done = true
+  local counts = {}
+  for _, region in ipairs({ { 0x02000000, 0x02040000 }, { 0x03000000, 0x03008000 } }) do
+    local address = region[1]
+    while address < region[2] do
+      local value = r32(address)
+      if value ~= nil then
+        for _, target in ipairs(HUNT) do
+          if value == target.value then
+            counts[target.name] = (counts[target.name] or 0) + 1
+            if counts[target.name] <= 3 then
+              log(string.format("HUNT %s at 0x%08X animRecord=%s next=%s", target.name, address,
+                                hex(r32(address - 4)), hex(r32(address + 4))))
+            end
+          end
+        end
+      end
+      address = address + 4
+    end
+  end
+  for _, target in ipairs(HUNT) do
+    log(string.format("HUNT TOTAL %s = %d", target.name, counts[target.name] or 0))
+  end
+end
+
+-- The dialogue box's position, at the two stores that set it.
+local BOX_X_STORE = 0x0800B1D8
+local BOX_Y_STORE = 0x0800B1D6
+
+arm(BOX_X_STORE, "box-x", function()
+  local x = reg("r2")
+  log(string.format("BOX x=%s", tostring(x)))
+end)
+
+arm(BOX_Y_STORE, "box-y", function()
+  local y = reg("r1")
+  log(string.format("BOX y=%s", tostring(y)))
+end)
+
 -- Frame callbacks are registered through the `callbacks` table on this build.
 local frame_id = nil
 if callbacks and callbacks.add then
   local ok, id = pcall(function()
     return callbacks:add("frame", function()
     frames = frames + 1
+    local drawn = 0
+    for _ in pairs(drawn_definitions) do drawn = drawn + 1 end
+    if frames == 900 then
+      hunt()
+    end
+    -- Native-resolution screenshots at a few frames, into the run directory the launcher set up.
+    if frames >= 600 and frames <= 18000 and frames % 300 == 0 then
+      local directory = OUT:gsub("[^/\\]+$", "")
+      local ok, err = pcall(function()
+        return emu:screenshot(string.format("%sshot-%d.png", directory, frames))
+      end)
+      log(string.format("SHOT frame=%d ok=%s %s", frames, tostring(ok), tostring(err)))
+    end
     if frames % 600 == 0 then
       log(string.format("HEARTBEAT frames=%d resolver=%d animation=%d lookup=%d lookup_mode5=%d",
-                        frames, hits.resolver, hits.animation, hits.lookup, hits.lookup_mode5))
+                        frames, hits.resolver, hits.animation, hits.lookup,
+                        hits.lookup_mode5, drawn))
     end
     if FRAME_LIMIT > 0 and frames >= FRAME_LIMIT and not started then
       started = true
       log(string.format("STOP frames=%d resolver=%d animation=%d lookup=%d lookup_mode5=%d",
-                        frames, hits.resolver, hits.animation, hits.lookup, hits.lookup_mode5))
+                        frames, hits.resolver, hits.animation, hits.lookup,
+                        hits.lookup_mode5, drawn))
     end
     end)
   end)

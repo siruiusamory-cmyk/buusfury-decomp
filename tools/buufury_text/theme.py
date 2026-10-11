@@ -703,11 +703,10 @@ def _control_rules(theme: Theme, shape) -> list[str]:
         f"border-bottom: 2px solid {theme.accent}; }}",
         f"QToolTip {{ background: {theme.surface_raised}; color: {theme.text_primary}; "
         f"border: 1px solid {theme.divider}; }}",
-        f"QScrollBar:vertical, QScrollBar:horizontal {{ background: {theme.window}; "
-        f"border: none; }}",
-        f"QScrollBar::handle {{ background: {theme.border}; "
-        f"border-radius: {shape.pad_xs}px; }}",
-        "QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; }",
+        # The scrollbar keeps Qt's own drawing on purpose. Styling it with a background
+        # and a handle left the sub-page area unpainted, which renders as a 1 px
+        # checkerboard down the track where Qt draws nothing at all. The palette is
+        # correct, so the base style already draws it in the theme's own colours.
     ]
 
 

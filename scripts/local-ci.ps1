@@ -296,6 +296,8 @@ function Invoke-Captured {
         $info.WorkingDirectory = $WorkDir
         $info.UseShellExecute = $false
         $info.CreateNoWindow = $true
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
         $info.StandardOutputEncoding = [System.Text.Encoding]::UTF8
         $info.StandardErrorEncoding = [System.Text.Encoding]::UTF8
         $process = New-Object System.Diagnostics.Process

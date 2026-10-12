@@ -586,19 +586,27 @@ def test_the_map_painter_reads_the_authored_grid_and_vocabulary(
     assert overlay.structural and overlay.editable
     assert (overlay.columns, overlay.rows) == (3, 2)
     assert all(cell.offset == -1 for cell in overlay.cells)
-    # The structural grid's own fill vocabulary leads - so an ordinal a project
-    # already stored keeps resolving - and the map's sibling chunks follow it.
+    # A project-authored grid paints with the layer's OWN chunks, and only those.
+    # Those ordinals are what such a grid persists and what `map_resize` resolves a
+    # build against (map_resize.py:1340 and :1367), so appending a sibling's chunks
+    # would shift every stored ordinal and refuse the build. Borrowing into an
+    # authored grid is a separate capability question, recorded as a follow-up.
     fill = [choice.address for choice in resizer.vocabulary(OVERLAY_MAP, 1)]
-    assert [choice.pointer for choice in overlay.vocabulary][: len(fill)] == fill
-    # The same set the canonical grids of this map offer, no wider and no narrower.
-    canonical = set()
+    assert [choice.pointer for choice in overlay.vocabulary] == fill
+    assert [choice.ordinal for choice in overlay.vocabulary] == list(
+        range(1, len(fill) + 1)
+    )
+    # Nothing wider: no sibling chunk reaches this grid's brush.
+    sibling = set()
     for slot in range(4):
         if slot == OVERLAY_SLOT:
             continue
-        canonical.update(
+        sibling.update(
             choice.pointer for choice in painter.layer(OVERLAY_MAP, slot).vocabulary
         )
-    assert set(choice.pointer for choice in overlay.vocabulary) == set(fill) | canonical
+    assert set(choice.pointer for choice in overlay.vocabulary).isdisjoint(
+        sibling - set(fill)
+    )
 
 
 def test_the_painter_refuses_a_cell_outside_the_authored_grid(

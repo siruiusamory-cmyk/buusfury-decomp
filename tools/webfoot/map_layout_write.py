@@ -36,6 +36,22 @@ class MapLayoutWriteError(ValueError):
     """The requested fixed-size map-layout replacement is unsupported."""
 
 
+def window_ordinals(window: Iterable[int]) -> dict[int, int]:
+    """The 1-based ordinal each pointer has in one window, DISTINCT and in order.
+
+    The same numbering as :func:`legal_chunk_pointers`, so a template resolves a
+    chunk and a project stores it through one rule instead of two. Duplicates take
+    the ordinal of their first appearance: a window may reference one chunk many
+    times and a template names the chunk, not the occurrence. Counting occurrences
+    instead is what made 43 choices name the wrong chunk once the sets were widened.
+    """
+    ordinals: dict[int, int] = {}
+    for pointer in window:
+        if pointer and pointer not in ordinals:
+            ordinals[pointer] = len(ordinals) + 1
+    return ordinals
+
+
 def legal_chunk_pointers(*groups: Iterable[int]) -> tuple[int, ...]:
     """The distinct non-null pointers across pointer groups, in first-appearance order.
 

@@ -201,3 +201,38 @@ def test_a_slot_without_sources_still_answers_without_raising():
     assert slot.source_of(FIRST) is None
     assert slot.borrowed_note(FIRST) == ""
     assert not slot.editable
+
+
+# --- the window ordinal, counted per distinct pointer ------------------------
+
+
+def test_window_ordinals_counts_distinct_pointers_in_first_appearance_order():
+    """The one numbering: a repeated pointer keeps its first-appearance ordinal.
+
+    Counting occurrences instead made a choice resolve to a DIFFERENT chunk once the
+    sets were widened, because a window may reference one chunk many times while a
+    template names the chunk. Measured on the canonical image: 43 choices wrong.
+    """
+    from tools.webfoot.map_layout_write import window_ordinals
+
+    assert window_ordinals(()) == {}
+    assert window_ordinals((0, 0, 0)) == {}
+    assert window_ordinals((FIRST,)) == {FIRST: 1}
+    # A repeat does NOT take a new ordinal and does not shift the ones after it.
+    assert window_ordinals((FIRST, FIRST, SECOND)) == {FIRST: 1, SECOND: 2}
+    assert window_ordinals((FIRST, SECOND, FIRST, THIRD)) == {
+        FIRST: 1, SECOND: 2, THIRD: 3,
+    }
+    # Nulls are skipped rather than numbered, as everywhere else.
+    assert window_ordinals((0, FIRST, 0, SECOND)) == {FIRST: 1, SECOND: 2}
+
+
+def test_the_window_ordinal_agrees_with_the_legal_set():
+    """One rule for both, so a template ordinal and a stored ordinal cannot drift."""
+    from tools.webfoot.map_layout_write import legal_chunk_pointers, window_ordinals
+
+    window = (FIRST, FIRST, SECOND, 0, THIRD, SECOND)
+    legal = legal_chunk_pointers(window)
+    ordinals = window_ordinals(window)
+    assert legal == tuple(ordinals)
+    assert [ordinals[p] for p in legal] == [1, 2, 3]

@@ -4361,6 +4361,11 @@ class MapBrowserTab(QWidget):
             + (f", plus {len(authored)} authored here. " if authored else ". ")
             + "Pick the one a click should paint; Create Chunk\u2026 starts from the "
             "selected one."
+            if slot.vocabulary_scope != "layer"
+            else f"Chunks this layer uses ({len(slot.choices)})"
+            + (f", plus {len(authored)} authored here. " if authored else ". ")
+            + "A project-authored grid paints with this layer's own chunks, so the "
+            "brush does not borrow from a sibling layer here."
         )
         char_data = (
             self._editor.character_block(self._current.index)
@@ -5892,6 +5897,9 @@ class MapBrowserTab(QWidget):
             grid=grid,
             cells=cells,
             choices=tuple(chunk.pointer for chunk in paint.vocabulary),
+            # A project-authored grid persists and builds against the layer's own
+            # ordinals, so its chooser offers only the layer's chunks and says so.
+            vocabulary_scope="layer",
             read_only_reason=paint.read_only_reason,
         )
 

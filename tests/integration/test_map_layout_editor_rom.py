@@ -1070,6 +1070,55 @@ def test_the_map_policy_is_what_refuses_an_illegal_declared_change(
     editor.reset()
 
 
+def test_every_choice_template_target_resolves_to_that_exact_chunk(
+    editor: MapLayoutEditor,
+) -> None:
+    """The two numberings, checked through the PRODUCTION path on the real image.
+
+    Every choice a chooser offers must translate to a template that resolves back to
+    the same chunk. This is the check that a hand-built ``LayoutSlot`` cannot make:
+    it reads whatever ``MapLayoutEditor._build_target`` actually produces, over every
+    dominant slot of all 452 maps, so a window that repeats a pointer is included.
+
+    Five canonical dominant windows reference a pointer more than once. Counting the
+    occurrences instead of the distinct chunks made 43 choices name the wrong chunk,
+    22 of them silently, including 12 of a layer's OWN chunks. That is what this pins.
+    """
+    from tools.webfoot.map_chunk import (
+        ChunkAuthor,
+        ChunkTemplate,
+        resolve_template,
+    )
+
+    author = ChunkAuthor(editor.build())
+    checked = 0
+    repeated_windows = 0
+    for index in range(editor.map_entry_count):
+        target = editor.target(index)
+        for slot in target.slots:
+            window = tuple(cell.pointer for cell in slot.cells)
+            if len(window) != len(set(window)):
+                repeated_windows += 1
+            for pointer in slot.choices:
+                target_pair = slot.template_target(pointer)
+                assert target_pair is not None, (
+                    f"map:{index:04d} BG{slot.slot} offers {pointer:#010x} with no target"
+                )
+                template_slot, template_ordinal = target_pair
+                address, _entries = resolve_template(
+                    author._view,
+                    ChunkTemplate(index, template_slot, template_ordinal),
+                )
+                assert address == pointer, (
+                    f"map:{index:04d} BG{slot.slot} choice {pointer:#010x} resolved to "
+                    f"{address:#010x} through BG{template_slot} ordinal {template_ordinal}"
+                )
+                checked += 1
+    # The five known repeats must have been walked, or this proves less than it claims.
+    assert repeated_windows >= 5
+    assert checked > 1000
+
+
 def test_canonical_source_is_unchanged_after_the_whole_suite(
     canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor
 ) -> None:

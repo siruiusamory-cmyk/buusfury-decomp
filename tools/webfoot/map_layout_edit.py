@@ -37,6 +37,7 @@ from .map_layout_write import (
     MapLayoutWriter,
     legal_chunk_pointers,
     validate_chunk_replacement,
+    window_ordinals,
 )
 from .map_layout_provenance import REASON as MANIFEST_REASON
 from .packaged import packaged_profile
@@ -172,6 +173,11 @@ class LayoutSlot:
     #: against the map-wide position. Keeping both stops the two numberings being
     #: confused, which is what a borrowed brush did before this existed.
     owner_ordinals: tuple[int, ...] = ()
+    #: Where the brush set comes from. `MAP_WIDE` for a canonical dominant layer,
+    #: whose cells may borrow any dominant layer's chunk. `LAYER_ONLY` for a
+    #: project-authored grid, which persists and builds against the layer's own
+    #: first-appearance ordinals, so a chooser there must say the set is the layer's.
+    vocabulary_scope: str = "map"
     #: Non-empty when the slot cannot be edited, and why - a reason, not an error.
     read_only_reason: str = ""
 
@@ -440,6 +446,15 @@ class MapLayoutEditor:
                         if sibling.slot != record.slot
                     ),
                 )
+                # The edited layer's window first, then its siblings', once, in the
+                # order the legal set uses. One mapping rather than a tuple rebuilt
+                # here, so the set and the ordinals cannot be built from different
+                # orderings.
+                all_windows: dict[int, tuple[int, ...]] = {}
+                all_windows.setdefault(record.slot, record.chunk_addresses)
+                for sibling in records:
+                    if sibling.slot != record.slot:
+                        all_windows.setdefault(sibling.slot, sibling.chunk_addresses)
                 # Which slot each choice came from and its 1-based position inside
                 # that slot's own window, in the same order as `choices`. The
                 # position is the number a template resolves against, because
@@ -447,20 +462,14 @@ class MapLayoutEditor:
                 # choice's own index is the map-wide one a project stores. Both are
                 # kept so a caller never has to assume the two numberings agree,
                 # which is exactly what went wrong when the set was widened.
+                #
+                # The ordinal is per DISTINCT pointer, through the same helper the
+                # legal set uses. Counting every non-null entry instead made a layer
+                # whose window repeats a chunk report an ordinal past its own end.
                 owners: dict[int, tuple[int, int]] = {}
-                for group_slot, window in (
-                    (record.slot, record.chunk_addresses),
-                    *(
-                        (sibling.slot, sibling.chunk_addresses)
-                        for sibling in records
-                        if sibling.slot != record.slot
-                    ),
-                ):
-                    position = 0
-                    for pointer in window:
-                        if pointer:
-                            position += 1
-                            owners.setdefault(pointer, (group_slot, position))
+                for group_slot in all_windows:
+                    for pointer, ordinal in window_ordinals(all_windows[group_slot]).items():
+                        owners.setdefault(pointer, (group_slot, ordinal))
                 sources = tuple(owners[pointer][0] for pointer in choices)
                 owner_ordinals = tuple(owners[pointer][1] for pointer in choices)
                 reason = self._dominant_read_only_reason(grid, choices)

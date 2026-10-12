@@ -42,6 +42,7 @@ from .map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
     validate_chunk_replacement,
+    window_ordinals,
 )
 from .packaged import packaged_profile
 from .write import ByteChange
@@ -360,15 +361,14 @@ def _vocabulary(
     order: list[int] = []
     owned: dict[int, int] = {}
     for group_slot, window in groups:
-        position = 0
-        for pointer in window:
-            if not pointer:
-                continue
-            position += 1
+        # The same first-appearance numbering `legal_chunk_pointers` and
+        # `resolve_template` use, through the one helper, so a repeated pointer takes
+        # the ordinal of its first appearance rather than its occurrence.
+        for pointer, ordinal in window_ordinals(window).items():
             if pointer not in source:
                 source[pointer] = group_slot
                 order.append(pointer)
-            owned.setdefault(pointer, position)
+            owned.setdefault(pointer, ordinal)
     return tuple(
         PaintChunk(
             ordinal=ordinal,
@@ -559,10 +559,15 @@ class MapPainter:
             )
             for index in range(layer.cell_count)
         )
-        # The structural grid's own fill vocabulary leads, so an ordinal already
-        # stored in a project keeps resolving to the chunk it named.
+        # The structural grid's own fill vocabulary, from the structural authority.
         own = tuple(choice.address for choice in layer.vocabulary)
-        vocabulary = _vocabulary(record, records, cells, lead=own)
+        # The brush vocabulary is the structural grid's OWN chunks, and only those.
+        # A project-authored grid persists its ordinals as the layer's own
+        # first-appearance numbers and `map_resize` resolves a build the same way, so
+        # appending a sibling's chunks would shift every ordinal an already-saved
+        # project stores and refuse the build. Borrowing into an authored grid is a
+        # separate capability question and is not built here.
+        vocabulary = _vocabulary(record, (), cells, lead=own)
         return PaintLayer(
             slot=record.slot,
             classification=_DOMINANT,

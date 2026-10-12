@@ -140,6 +140,44 @@ test-sdk:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 
+# The ROM-gated directory has exactly one member that reads no image:
+# `tests/integration/test_container_decode_synthetic.py`. It needs no `roms/`, no
+# emulator and no network, and it never skips, so it is the one integration-shaped
+# member a runner without the canonical image can actually execute.
+#
+# The selection is that file BY NAME, and it must stay that way. Every other file
+# under `tests/integration` carries its own `roms/...` guard, so a job that
+# collected the directory would collect over a thousand members and skip all of
+# them, exit 0, and be a job that cannot fail. `tests/unit/test_ci_gui_surface.py`
+# fails if this selection becomes the directory or if the job stops matching the
+# sibling test job's rules.
+test-integration:
+  stage: test
+  image: python:3.12-slim
+  # A bounded runtime, so a hung test cannot hold a runner until the project
+  # default. The file itself takes about a second; the install dominates.
+  timeout: 10 minutes
+  variables:
+    # Do not inherit the deployment credential into a test job.
+    CLOUDFLARE_API_TOKEN: ""
+  before_script:
+    # No apt step and no headless Qt platform, unlike `test-sdk`: this selection
+    # imports no PySide6, needs no system soname Qt links against, and shells out
+    # to no git.
+    - python -m pip install --quiet --upgrade pip
+    # The same editable install shape as `test-sdk`, so widening the selection to
+    # a member that does need an extra cannot fail on a missing dependency. The
+    # one file below imports none of them.
+    - python -m pip install --quiet -e ".[dev,workbench,research]"
+  script:
+    - python -m pytest tests/integration/test_container_decode_synthetic.py -q
+  rules:
+    # The sibling test job's rules, for the same reason: run on merge requests,
+    # and on branch pushes that have no open merge request, so the branch
+    # pipeline is not duplicated alongside the merge-request one.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
+
 # The public progress site is a public product surface, so its built artifact is
 # validated in the test stage rather than discovered to be wrong after a deploy.
 #
@@ -170,12 +208,14 @@ test-site:
 
 deploy-site:
   stage: deploy
-  # The one irreversible action in CI waits for both test jobs. `needs` is
+  # The one irreversible action in CI waits for every test job. `needs` is
   # deliberately not `optional:`, so a pipeline whose jobs were excluded by their
-  # rules fails to be created rather than publishing without them. Naming both is
-  # what keeps the suite gate AND the implicit stage-barrier wait the deploy job
-  # had before this dependency existed, since `needs` bypasses the barrier.
-  needs: ["test-sdk", "test-site"]
+  # rules fails to be created rather than publishing without them. Naming all
+  # three is what keeps the suite gate, the ROM-free integration member AND the
+  # implicit stage-barrier wait the deploy job had before this dependency existed,
+  # since `needs` bypasses the barrier. `tests/unit/test_ci_gui_surface.py` fails
+  # if any `stage: test` job is missing from this list.
+  needs: ["test-sdk", "test-integration", "test-site"]
   image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"

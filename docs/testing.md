@@ -29,6 +29,62 @@ The four subsystem gates cut across that axis, so a map-layout write test is
 reported on 2026-10-08 in this checkout; they move as tests are added, and they
 are not a maintained fact.
 
+## App-wide Qt state: the adjacency run
+
+`pytest` runs every test of one invocation in one process. That matters for the
+shipping GUI, because `QApplication` is a **process-wide singleton**: a module
+that names the application, sets its organisation, or applies the theme's style
+sheet and palette is changing state that outlives it, and the next module in the
+same process reads what it left behind. The concrete carriers here:
+
+- `tools/webfoot/randomizer/gui.py:1294-1296` - `configure_application` sets
+  `setOrganizationName`, `setApplicationName` and then calls
+  `theme.apply_app_theme(app)`;
+- `tools/webfoot/workbench/theme.py:430` - `apply_app_theme` ends in
+  `app.setPalette(palette)` and `app.setStyleSheet(app_stylesheet())`;
+- `tools/webfoot/workbench/theme.py:291` and
+  `tools/webfoot/randomizer/gui.py:433,447` - `CONTROL_HEIGHT = 24`, the height
+  the randomizer windows set on their controls, which is what
+  `tests/unit/test_enemy_randomizer_gui.py:665` asserts.
+
+`.\scripts\test.ps1` and the `test-sdk` CI job both distribute at **module**
+granularity (`--dist loadfile`), so a module and its neighbour never share a
+process there and that interaction is never exercised. The adjacency run is the
+narrow, explicit gate that does exercise it:
+
+```powershell
+.venv\Scripts\python.exe -m scripts.adjacency_run -Order forward
+.venv\Scripts\python.exe -m scripts.adjacency_run -Order reverse
+```
+
+One pytest process per order, no xdist, the whole fixed set in each. The set,
+the order definitions and the fail-on-skip rule live in
+`scripts/adjacency_run.py`, and `tests/unit/test_adjacency.py` pins them: the set
+is exactly `REQUIRED_GUI_MODULES` plus the two randomizer modules, both orders
+are exact reverses, and the `adjacency` CI job runs both. A change to
+`REQUIRED_GUI_MODULES` fails that test on purpose, so the set is re-measured
+rather than silently drifting.
+
+The run fails rather than skips if any member cannot execute: a module that
+collapses to a whole-file skip cannot say anything about adjacency, so a job
+satisfied by skips would be a lie. The one member of the set that needs the
+canonical image - `tests/unit/test_workbench_graphics.py:1010` - is excluded by
+node id with that reason in the job log.
+
+Measured 2026-10-12 in this worktree, PySide6 6.12.0, offscreen Qt:
+
+| order | command | result | wall clock |
+|---|---|---|---|
+| forward | `python -m scripts.adjacency_run -Order forward` | 399 collected, 399 passed, 0 skipped, 0 failed | 52.6 s |
+| reverse | `python -m scripts.adjacency_run -Order reverse` | 399 collected, 399 passed, 0 skipped, 0 failed | 35.3 s |
+
+Same counts in either order, which is what "no order-dependent module in this
+set" looks like as a measurement. What the set does carry across a module
+boundary is measured separately: after
+`tests/unit/test_warp_randomizer_gui.py` runs,
+`QApplication.applicationName()` is still `"Buu's Fury Warp Randomizer"` for
+every later module in the process, while the stylesheet and the palette are
+restored by that module's own `finally` block.
 ## Running a gate
 
 The whole of each gate, on its own:
@@ -198,9 +254,32 @@ reproducible run to run. Raise the search depth for a deeper sweep with
 `WEBFOOT_PROPERTY_EXAMPLES=500`; a failure always prints the falsifying example
 and the seed that produced it.
 
+## Before merging: the stale-base gate
+
+A merge-request pipeline runs on the branch's own commit, not on `master` as
+`master` is when the merge lands. `scripts/pre-merge-check.ps1` is the cheap gate
+for the one thing that leaves unmeasured - a path both master and the branch
+changed - and it is the only local check in this document that is not a pytest
+selection:
+
+```powershell
+.\scripts\pre-merge-check.ps1 -Ref <branch or SHA>
+```
+
+It fetches the target, prints the predicted merged tree, and exits 1 when the
+target changed a path the candidate changed or when the merge conflicts. It
+pushes and merges nothing, refuses the primary checkout structurally rather than
+by name, and writes only what git writes: remote-tracking refs from the fetch and
+tree/blob objects from `merge-tree`. Read its exit 1 as an instruction - rebase
+onto live master, re-run the focused tests, re-request - not as a block.
+`docs/git-workflow.md` carries the measured sample behind it, the one drifted
+merge it would have stopped, and the reasons it is not a re-test. It is
+deliberately not wired into `.\scripts\test.ps1`: it needs the network for its
+one fetch, and the portable gate must not.
+
 ## The CI jobs
 
-`.gitlab-ci.yml` runs three test-stage jobs and one deploy job, and each of them
+`.gitlab-ci.yml` runs four test-stage jobs and one deploy job, and each of them
 names what it executes rather than trusting a filter to select it:
 
 - **`test-sdk`** is the `fast` gate: `python -m pytest tests/unit` across xdist
@@ -218,6 +297,19 @@ names what it executes rather than trusting a filter to select it:
   selects. No new marker was added for it: a marker carrying one file would need a
   rule in `tests/gates.py`, an entry in `pyproject.toml` and a row in the table
   above, and the exception is stated here instead.
+
+  Its install is `.[dev]`, measured rather than assumed. The selection's runtime
+  import graph is `hashlib`, `json`, `pathlib`, `__future__` and
+  `tools.webfoot.formats`, and that package imports nothing at all; `pytest` is
+  the only non-stdlib need and it is the `dev` extra. `workbench` and `research`
+  are deliberately absent - the job used to install a Qt wheel of about 100 MiB
+  plus capstone for four tests that import neither.
+  `tests/unit/test_ci_gui_surface.py` asserts both halves. `QT_QPA_PLATFORM`
+  stays deliberately absent for the same reason the trim exists: the selection
+  imports no Qt, so there is no platform plugin to select.
+- **`adjacency`** runs `scripts/adjacency_run.py` twice, once per order, one
+  pytest process each (see "App-wide Qt state: the adjacency run"). `test-sdk`'s
+  `--dist loadfile` is what makes this a separate job rather than part of it.
 - **`test-site`** validates the built progress site.
 - **`deploy-site`** publishes it, and its non-optional `needs:` names every
   test-stage job, so a pipeline that excluded one of them by its rules fails to be

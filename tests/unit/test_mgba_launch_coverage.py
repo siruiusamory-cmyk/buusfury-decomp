@@ -258,6 +258,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "_git",
      "'git'"):
         "reports the repository's architecture with git; it starts no emulator",
+    ("scripts/adjacency_run.py",
+     "main",
+     "invocation"):
+        "runs this interpreter on pytest for the adjacency orders, so each order "
+        "is one process; it starts no emulator",
+    ("tests/unit/test_pre_merge_check.py",
+     "run_process",
+     "argv"):
+        "runs git in throwaway repositories and the pre-merge gate script over "
+        "them, to prove the gate's exit code both ways; it starts no emulator",
     ("tests/unit/test_release_identity.py",
      "test_a_checkout_reports_its_own_commit_and_tree_state",
      "'git'"):

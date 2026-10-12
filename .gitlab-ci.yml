@@ -151,6 +151,20 @@ test-sdk:
 # them, exit 0, and be a job that cannot fail. `tests/unit/test_ci_gui_surface.py`
 # fails if this selection becomes the directory or if the job stops matching the
 # sibling test job's rules.
+#
+# THE INSTALL IS `.[dev]`, AND THAT IS MEASURED, NOT ASSUMED. The selection's
+# runtime import graph was walked from the test file outward (2026-10-12, this
+# tree): `tests/integration/test_container_decode_synthetic.py` imports
+# `hashlib`, `json`, `pathlib`, `__future__` and `tools.webfoot.formats`, and
+# `tools.webfoot.formats` imports nothing at all - no PySide6, no capstone, no
+# yaml. `pytest` itself is the only non-stdlib need, and it is the `dev` extra.
+# The base install's one dependency is PyYAML, which nothing in the selection
+# reads but which the distribution declares. `workbench` (PySide6) and
+# `research` (capstone) were removed: the job was installing a ~100 MiB Qt wheel
+# plus capstone on every merge request for four tests that import neither.
+# `tests/unit/test_ci_gui_surface.py` pins this install so that widening the
+# selection to a member that does need an extra fails a named test rather than
+# failing the job for a reason nobody sees.
 test-integration:
   stage: test
   image: python:3.12-slim
@@ -163,18 +177,67 @@ test-integration:
   before_script:
     # No apt step and no headless Qt platform, unlike `test-sdk`: this selection
     # imports no PySide6, needs no system soname Qt links against, and shells out
-    # to no git.
+    # to no git. `QT_QPA_PLATFORM` stays deliberately absent for the same reason -
+    # the selection imports no Qt, so there is no platform plugin to select.
     - python -m pip install --quiet --upgrade pip
-    # The same editable install shape as `test-sdk`, so widening the selection to
-    # a member that does need an extra cannot fail on a missing dependency. The
-    # one file below imports none of them.
-    - python -m pip install --quiet -e ".[dev,workbench,research]"
+    - python -m pip install --quiet -e ".[dev]"
   script:
     - python -m pytest tests/integration/test_container_decode_synthetic.py -q
   rules:
     # The sibling test job's rules, for the same reason: run on merge requests,
     # and on branch pushes that have no open merge request, so the branch
     # pipeline is not duplicated alongside the merge-request one.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
+
+# The app-wide-Qt-state adjacency job. `test-sdk` runs the portable suite with
+# `--dist loadfile`, which gives every module its own worker process: no module
+# ever follows another in the same process, so a module that leaves the
+# process-wide `QApplication` restyled cannot affect the module that runs after
+# it. That interaction is real - the application name set by
+# `tools/webfoot/randomizer/gui.py:1294` through `configure_application`
+# outlives the module that set it, and `apply_app_theme`
+# (`tools/webfoot/workbench/theme.py:430`) writes the application style sheet a
+# later module's widget measurements read - and nothing in this pipeline
+# exercised it.
+#
+# ONE job, ONE pytest process per order, both orders, so the interaction is
+# exercised in both directions. `scripts/adjacency_run.py` holds the set and
+# fails on a skip, a failure, an empty run or a module outside the set: a job
+# satisfied by skips is a lie. It deselects, with the reason recorded in the
+# job log, the one set member that needs the canonical image that `test-sdk`
+# installs no ROM for.
+#
+# `needs: ["test-sdk"]` rather than the implicit stage barrier, because every
+# install this job needs is already in that job's install and its
+# `before_script` is therefore one line. It does not start until `test-sdk` is
+# green, so the adjacency orders never run alongside the parallel suite.
+adjacency:
+  stage: test
+  image: python:3.12-slim
+  timeout: 20 minutes
+  needs: ["test-sdk"]
+  variables:
+    # Do not inherit the deployment credential into a test job.
+    CLOUDFLARE_API_TOKEN: ""
+    QT_QPA_PLATFORM: "offscreen"
+  before_script:
+    # The same install line as `test-sdk`, for the same reason: the set is the
+    # shipping Workbench surface, so it needs the same sonames the comment in
+    # `test-sdk` names, the same git install, and both extras. This job does not
+    # invent a second install: it waits for the job that already proves it.
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends
+      git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
+    - python -m pip install --quiet --upgrade pip
+    - python -m pip install --quiet -e ".[dev,workbench,research]"
+  script:
+    # Each order is one pytest process across the whole set, forward and
+    # reversed, so module-to-module Qt state is exercised in both directions.
+    # The script exits non-zero on a skip, a failure, an error, or a member that
+    # did not run.
+    - python -m scripts.adjacency_run -Order forward
+    - python -m scripts.adjacency_run -Order reverse
+  rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 
@@ -210,12 +273,13 @@ deploy-site:
   stage: deploy
   # The one irreversible action in CI waits for every test job. `needs` is
   # deliberately not `optional:`, so a pipeline whose jobs were excluded by their
-  # rules fails to be created rather than publishing without them. Naming all
-  # three is what keeps the suite gate, the ROM-free integration member AND the
-  # implicit stage-barrier wait the deploy job had before this dependency existed,
-  # since `needs` bypasses the barrier. `tests/unit/test_ci_gui_surface.py` fails
-  # if any `stage: test` job is missing from this list.
-  needs: ["test-sdk", "test-integration", "test-site"]
+  # rules fails to be created rather than publishing without them. Naming every
+  # test-stage job is what keeps the suite gate, the ROM-free integration member,
+  # the adjacency orders, the site check AND the implicit stage-barrier wait the
+  # deploy job had before this dependency existed, since `needs` bypasses the
+  # barrier. `tests/unit/test_ci_gui_surface.py` fails if any `stage: test` job is
+  # missing from this list.
+  needs: ["test-sdk", "test-integration", "test-site", "adjacency"]
   image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"

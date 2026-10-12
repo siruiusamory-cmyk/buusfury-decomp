@@ -2,26 +2,6 @@ stages:
   - test
   - deploy
 
-# TEMPORARY PROBE (RETRO-CI-LOCAL-001), removed before this ticket freezes. It
-# proves the local CI runner takes a job end to end - the machine name, the
-# job's working directory and the `python` the rest of the port resolves - and
-# it is the only job here that does nothing else.
-#
-# Its rules are the merge-request / `$CI_OPEN_MERGE_REQUESTS` pair the test jobs
-# use, narrowed off the default branch. That narrowing is what keeps it out of
-# the deploy path: the deploy job matches only the default branch, so this probe
-# cannot appear in a pipeline that can publish, and the deploy job's
-# non-optional `needs:` must therefore NOT name it - a `needs` entry for a job
-# the pipeline excludes fails pipeline creation. `tests/unit/test_ci_gui_surface.py`
-# holds both halves of that.
-local-ci-hello:
-  stage: test
-  tags: ["local-ci"]
-  script:
-    - 'Write-Host "host: $env:COMPUTERNAME"; Write-Host "dir: $PWD"; python -V'
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "merge_request_event" || ($CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null)) && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
-
 # Portable SDK validation. The shipping product is `tools/webfoot/`, and its
 # unit suite is synthetic-fixture only: no commercial ROM is required, and the
 # ROM-gated integration tests are not collected here at all.

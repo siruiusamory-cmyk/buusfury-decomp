@@ -43,7 +43,9 @@ EXPECTED_BLOCK = bytes.fromhex("73469b05b60ab6029b0d1e434e60")
 #: The stub, hand-assembled Thumb. Every opcode is asserted against a disassembly in the tests, so a typo
 #: cannot silently become a different instruction.
 STUB = bytes.fromhex(
-    "0230"      # adds r0,#2           the block's own side effect: the loop reads piece w/h from r0 at +0
+    # NO `adds r0,#2` here: the block's own copy at 0x0800F2A2 is BEFORE the fourteen bytes this patch
+    # replaces, so it still runs, and repeating it made the loop read the piece dimensions two bytes late -
+    # which rendered correct 4bpp art as shifted garbage while the frames kept completing.
     "b60a"      # lsrs r6,r6,#0xa      clear attr2 bits 0..9
     "b602"      # lsls r6,r6,#0xa
     "0b68"      # ldr  r3,[r1]         word 0, carrying the piece word

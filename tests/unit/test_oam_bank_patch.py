@@ -26,7 +26,6 @@ def test_the_stub_disassembles_to_the_intended_instructions() -> None:
     listing = [(instruction.mnemonic, instruction.op_str)
                for instruction in Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(patch.STUB, patch.ROM_BASE)]
     assert listing == [
-        ("adds", "r0, #2"),
         ("lsrs", "r6, r6, #0xa"),
         ("lsls", "r6, r6, #0xa"),
         ("ldr", "r3, [r1]"),
@@ -125,7 +124,9 @@ def test_the_appended_stub_decodes_from_its_first_byte_through_its_return() -> N
     assert consumed == len(body), "every byte of the body is a complete instruction"
     tail = bytes(image[layout["load_at"]:layout["load_at"] + 4])
     assert tail == patch.RETURN_PAIR
-    assert listing[-1].mnemonic == "str", "the body ends with the store, and the return follows it"
+    stub_listing = list(Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(patch.STUB, stub_address))
+    assert stub_listing[-1].mnemonic == "str", (
+        "the instructions end with the store; padding nops after it only align the return literal")
 def test_a_second_patch_is_refused_rather_than_silently_applied_again() -> None:
     """The guard is the block's own content: a second run finds the entry, not the retail sequence."""
     image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)

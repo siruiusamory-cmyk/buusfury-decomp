@@ -139,21 +139,52 @@ $WorktreeDir = Join-Path $env:TEMP ('local-ci-' + $Sha8 + '-' + $PID)
 
 New-Item -ItemType Directory -Force -Path $RecordDir, $LogDir | Out-Null
 
+function Invoke-ExternalText {
+    # A .NET process, not `& git ... 2>&1`: with $ErrorActionPreference = 'Stop' a
+    # native command's stderr terminates the script, and a command with no output
+    # at all (a clean `git status --porcelain`) comes back as $null rather than an
+    # empty string. Redirecting to a file avoids both.
+    param([string] $FilePath, [string[]] $Arguments, [string] $WorkDir)
+    $script:ProbeIndex++
+    $target = Join-Path $RecordDir ('probe-' + $script:ProbeIndex + '.log')
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $FilePath
+    $info.Arguments = (($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' ')
+    $info.WorkingDirectory = $WorkDir
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $info.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $info
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    [System.IO.File]::WriteAllText($target, ($stdout + $stderr), $Utf8NoBom)
+    return $target
+}
+
 function Invoke-GitLines {
-    # $ErrorActionPreference = 'Stop' turns git's stderr into a terminating error,
-    # and asking rev-parse for the commit form of a SHA does not work from
-    # PowerShell 5.1 at all (measured: exit 1 and empty output for a valid SHA).
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $output = @(& git -C $RepoRoot @Arguments 2>&1 | ForEach-Object { $_.ToString() })
-    $ErrorActionPreference = $previous
-    return $output
+    # Powershell 5.1 also eats the caret in a native git argument, so this script
+    # never builds a revision expression with one. The output comes back as ONE
+    # string: Get-Content writes an array to the pipeline and PowerShell splits a
+    # multi-line answer on its line breaks, which silently dropped the second
+    # field of every `check-ignore -v` line.
+    param([string[]] $Arguments)
+    $target = Invoke-ExternalText -FilePath 'git' -Arguments (@('-C', $RepoRoot) + $Arguments) -WorkDir $RepoRoot
+    $text = ''
+    if (Test-Path $target) { $text = [System.IO.File]::ReadAllText($target) }
+    return ($text -replace "`r`n", [Environment]::NewLine).Trim()
 }
 
 $Record = New-Object System.Collections.Generic.List[string]
 $script:RunStarted = Get-Date
 $script:PeakTreeBytes = 0L
 $script:LastSample = Get-Date
+$script:ProbeIndex = 0
 $script:StepIndex = 0
 $script:StepCount = 0
 $script:StepFailures = 0
@@ -401,7 +432,9 @@ if ($Sha -notmatch '^[0-9a-fA-F]{40}$') {
     Complete-Record -Pass $false -Reason ('-Sha must be a full 40-character hex SHA, got: ' + $Sha)
 }
 
-$resolved = (Invoke-GitLines @('rev-parse', '--verify', '--quiet', $Sha) -join [Environment]::NewLine).Trim()
+# --quiet is deliberately absent: with it, a resolve failure writes nothing at all
+# and the helper's array is empty, which PowerShell flattens to $null.
+$resolved = (Invoke-GitLines @('rev-parse', '--verify', $Sha) -join [Environment]::NewLine).Trim()
 Add-Record ('sha: ' + $Sha)
 Add-Record ('repo: ' + $RepoRoot)
 Add-Record ('worktree: ' + $WorktreeDir)
@@ -423,7 +456,7 @@ if ($env:GITLAB_CI) {
     Complete-Record -Pass $false -Reason 'GITLAB_CI is set; this gate is for a local operator'
 }
 
-$tree = (Invoke-GitLines @('rev-parse', ($resolved + '^{tree}')) -join [Environment]::NewLine).Trim()
+$tree = (Invoke-GitLines @('show', '-s', '--format=%T', $resolved) -join [Environment]::NewLine).Trim()
 $subject = (Invoke-GitLines @('log', '-n', '1', '--format=%s', $resolved) -join [Environment]::NewLine).Trim()
 $dirty = (Invoke-GitLines @('status', '--porcelain') -join [Environment]::NewLine).Trim()
 Add-Record ('tree: ' + $tree)
@@ -498,9 +531,11 @@ Add-Step 'fresh venv at the fixed path, never --system-site-packages' $r.ExitCod
 if ($r.TimedOut) { Complete-Record -Pass $false -Reason 'the 45-minute budget expired while creating the venv' }
 
 if (-not $script:StopReason) {
-    $log = Join-Path $LogDir 'worktree-add.log'
-    $r = Invoke-Captured -FilePath 'git' -Arguments @('worktree', 'add', '--detach', $WorktreeDir, $resolved) -LogPath $log -WorkDir $RepoRoot -Environment @{} -DeadlineSeconds 300
-    Add-Step 'git worktree add (linked worktree, not a clone)' $r.ExitCode $r.Seconds $log
+    $addLog = Invoke-GitLines @('worktree', 'add', '--detach', $WorktreeDir, $resolved)
+    $exitCode = 0
+    if ($addLog -notmatch 'HEAD is now at|Preparing worktree') { $exitCode = 1 }
+    $r = [pscustomobject]@{ ExitCode = $exitCode; Seconds = 0.0; TimedOut = $false }
+    Add-Step 'git worktree add (linked worktree, not a clone)' $r.ExitCode $r.Seconds $addLog
 }
 if (-not $script:StopReason) {
     $worktreeGitDir = (Invoke-GitLines @('rev-parse', '--git-dir') -join [Environment]::NewLine).Trim()
@@ -724,10 +759,12 @@ Add-Record 'reconcile: a delta here is recorded, not failed; the pinned trace de
 
 $worktreeRemoved = 'the worktree was never created'
 if (Test-Path (Join-Path $WorktreeDir '.git')) {
-    $log = Join-Path $LogDir 'worktree-remove.log'
-    $r = Invoke-Captured -FilePath 'git' -Arguments @('-C', $RepoRoot, 'worktree', 'remove', '--force', $WorktreeDir) -LogPath $log -WorkDir $RepoRoot -Environment @{} -DeadlineSeconds 300
-    Add-Step 'git worktree remove --force' $r.ExitCode $r.Seconds $log
-    if (Test-Path $WorktreeDir) {
+    $removeLog = (Invoke-GitLines @('worktree', 'remove', '--force', $WorktreeDir))
+    $stillThere = Test-Path $WorktreeDir
+    $r = [pscustomobject]@{ ExitCode = 0; Seconds = 0.0; TimedOut = $false }
+    if ($stillThere) { $r = [pscustomobject]@{ ExitCode = 1; Seconds = 0.0; TimedOut = $false } }
+    Add-Step 'git worktree remove --force' $r.ExitCode $r.Seconds $removeLog
+    if ($stillThere) {
         $worktreeRemoved = 'REFUSED: the directory is still present'
         Set-Stop 'the worktree was not removed'
     } else {

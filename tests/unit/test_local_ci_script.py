@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import tempfile
 import subprocess
 from pathlib import Path
 
@@ -84,9 +85,9 @@ def test_the_geometry_is_the_one_the_brief_requires() -> None:
     assert "CLOUDFLARE_API_TOKEN = ''" in SOURCE
     assert "QT_QPA_PLATFORM = 'offscreen'" in SOURCE
     # $ErrorActionPreference = 'Stop' turns git's stderr into a terminating error
-    # and asking for the commit form of a SHA fails under PowerShell 5.1 (measured).
     assert "Invoke-GitLines" in SOURCE
-    assert "^{commit}" not in SOURCE
+    assert "^{" not in SOURCE
+    assert "--format=%T" in SOURCE
     assert "-Recurse" not in SOURCE
 
 
@@ -114,3 +115,57 @@ def test_the_script_parses_under_a_real_powershell_host() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_git_helper_resolves_a_sha_in_this_repository() -> None:
+    """The two PowerShell traps this script hit, exercised against the real git.
+
+    `$ErrorActionPreference = 'Stop'` makes git's stderr on a resolve failure a
+    terminating error, and PowerShell 5.1 does not splat an array argument into a
+    native command without a param block, so git received `-C` as the commit to
+    resolve and printed its usage text. Both arms are checked here as a fragment,
+    without building a venv or running a gate.
+    """
+    host = shutil.which("powershell") or shutil.which("pwsh")
+    if host is None:
+        pytest.skip("no PowerShell host on PATH to run the fragment with")
+    head = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    fragment = """
+function Invoke-GitLines {
+    param([string[]] $Arguments)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $output = @(& git -C 'REPO' @Arguments 2>&1 | ForEach-Object { $_.ToString() })
+    $ErrorActionPreference = $previous
+    return $output
+}
+$ErrorActionPreference = 'Stop'
+$resolved = (Invoke-GitLines @('rev-parse', '--verify', 'SHA') -join [Environment]::NewLine).Trim()
+$tree = (Invoke-GitLines @('show', '-s', '--format=%T', $resolved) -join [Environment]::NewLine).Trim()
+$bad = (Invoke-GitLines @('rev-parse', '--verify', 'not-a-real-sha') -join [Environment]::NewLine).Trim()
+Write-Output ("resolved=" + $resolved)
+Write-Output ("tree=" + $tree)
+Write-Output ("bad=" + $bad)
+""".replace("REPO", str(REPO_ROOT)).replace("SHA", head)
+    # A temp file, not -Command: PowerShell joins -Command lines with spaces, so
+    # the fragment's line breaks disappear and statements run together.
+    with tempfile.TemporaryDirectory(prefix="local-ci-helper-") as directory:
+        script = Path(directory) / "fragment.ps1"
+        script.write_text(fragment, encoding="utf-8")
+        result = subprocess.run(
+            [host, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+            capture_output=True,
+            text=True,
+        )
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = dict(
+        line.split("=", 1) for line in result.stdout.strip().splitlines() if "=" in line
+    )
+    assert lines["resolved"] == head
+    assert re.fullmatch(r"[0-9a-f]{40}", lines["tree"])
+    assert "usage:" not in result.stdout
+    assert not re.fullmatch(r"[0-9a-f]{40}", lines["bad"])

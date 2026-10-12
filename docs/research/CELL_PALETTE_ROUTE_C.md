@@ -68,18 +68,20 @@ different existing bank. Choosing the best bank per piece across all 24 pieces:
 
 | result | measurement |
 | --- | --- |
-| distinct banks needed | **3**: bank 2 for 12 pieces, bank 5 for 10 pieces, bank 0 for 2 pieces |
+| distinct banks needed | **2**: bank 5 for 22 pieces, bank 1 for 2 pieces |
 | pieces needing more than 16 distinct local indices | **0** |
-| per-piece worst-case squared RGB error | min **17,165**, median **19,169**, max **19,425** |
+| per-piece worst-case squared RGB error | min **8,613**, median **9,350**, max **9,350** |
 | theoretical maximum squared error | 195,075 |
 
-The colour sets were read from the Legacy of Goku II palette at `0x081DA6C8`, the shared bank from this image
-at `0x0805652C`. A worst-case of about 19,000 squared error is roughly 80 per channel on the single worst
-colour of a piece, and the per-piece mean is about 7,000, roughly 48 per channel. That is a visible shift on
+CORRECTED after the build. This section first said three banks (2, 5 and 0) with a worst case of 19,425. That
+measurement read Buu's Fury's palette where Cell's own colours belong, so it compared the image against itself
+and understated the fit. With the source read from the Legacy of Goku II palette at `0x081DA6C8` and the banks
+from this image at `0x0805652C`, the per-piece choice needs **two** banks and the worst case is **9,350**.
+
+The colour sets were read from the Legacy of Goku II palette, the shared banks from this image. A worst case of
+9,350 squared error is roughly 56 per channel on the single worst colour of a piece. That is a visible shift on
 close inspection and invisible in motion at 64x64 on a GBA screen; the owner should decide with those numbers in
-front of him. For contrast, the best SINGLE bank for all 22 colours needs 12 local indices and costs worst
-19,425 with mean 4,178 overall, so one bank per actor is possible and even simpler, at the price of the worst
-piece.
+front of him.
 
 ## 4. The reuse interface
 

@@ -83,6 +83,9 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
+#: The status this session decided, kept for the exit path below.
+_SESSION_EXIT_STATUS = 0
+
 
 # --- a mutable ROM fixture that cannot share a file with a protected input -----
 #
@@ -289,13 +292,17 @@ def pytest_collection_modifyitems(
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Close the Qt widgets, then fail the session when a required GUI module collapsed.
+    """Fail the session when a required GUI module collapsed to nothing.
 
     The check is at session end because only then is the whole picture known:
     which files were attempted, which contributed a test, and why the rest
     stopped. See the module docstring for the CI/local/opt-in scope.
 
+    The status is recorded before any early return, because the exit path below carries it.
     """
+    global _SESSION_EXIT_STATUS
+    _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
+                               else exitstatus)
     collapsed = _collapsed_required_modules()
     collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]
     if not collapsed:
@@ -378,6 +385,32 @@ def _required_gui_surface_is_enforced() -> bool:
     if os.environ.get(_REQUIRE_GUI_TESTS_VARIABLE) == "1":
         return True
     return any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """In CI only, leave before CPython tears the loaded Qt extensions down.
+
+    Measured on the pipeline job: every test passes, the summary prints, the JUnit artifact
+    is written, and then the process dies of a segmentation fault. With the fault handler
+    enabled the crash reports `QObject: shared QObject was deleted directly` and then `<no
+    Python frame>`, so the fault is inside native Qt teardown during interpreter
+    finalization. No Python frame exists to name, and no test result can depend on it,
+    because the results are final and the artifacts are written before this hook runs.
+
+    This is a mitigation, not a fix. It runs only under CI, so a local run keeps the
+    interpreter's own exit path, and the native fault stays recorded as unfixed in
+    ``docs/research/TEXT_TOOL_UI_REPORT.md``. ``os._exit`` is deliberate where ``sys.exit``
+    would not do: the point is to skip the finalizers. Streams are flushed first, because
+    ``os._exit`` does not flush them. ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary
+    exit so the crash can still be observed from CI by whoever works on it.
+    """
+    if os.environ.get("WEBFOOT_KEEP_INTERPRETER_EXIT") == "1":
+        return
+    if not any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES):
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_SESSION_EXIT_STATUS)
 
 
 def _collapsed_required_modules() -> list[tuple[str, str]]:

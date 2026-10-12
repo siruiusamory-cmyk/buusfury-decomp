@@ -501,10 +501,21 @@ now names its base style instead, so no such object exists. That change is defen
 is NOT proven to be the cause: a targeted two-variant probe of the two patterns exited 0 for
 both, three runs each, so the ownership question is unanswered rather than settled.
 
-What happens next. The suite's conftest now enables the standard fault handler on the
-interpreter's own stderr, so if the next pipeline run dies the same way it prints the frame
-that was executing, and the cause stops being a guess. Until then this is recorded as an
-intermittent native crash whose site is not established.
+The fault handler answered the question it was added for, and the answer is that there is no
+Python frame: the run printed `Fatal Python error: Segmentation fault`, `Current thread ...
+<no Python frame>`, and the list of loaded extension modules, all of it after `5242 passed`.
+So the crash is inside native Qt teardown during interpreter finalization, and nothing in
+Python can name or fix it.
+
+The test job therefore now leaves before that teardown, under CI only, once every result is
+final and the JUnit artifact is written. That is a mitigation and not a fix: the native fault
+stays unfixed, the object it belongs to is not identified, and it is written down here rather
+than filed away. Two things would change that. Master's pipelines do not crash, so the object
+is one this branch's Qt surfaces leave shared, and finding it means bisecting the suite in CI,
+where each step costs a full run. `QT_FATAL_WARNINGS=1` would turn Qt's warning into an abort
+at the exact instruction, which is the cheapest next instrument if someone wants the object
+named. `WEBFOOT_KEEP_INTERPRETER_EXIT=1` restores the ordinary exit in CI so the crash can be
+observed while that work happens.
 
 ## 7. End to end, on release 3.1, with digests
 

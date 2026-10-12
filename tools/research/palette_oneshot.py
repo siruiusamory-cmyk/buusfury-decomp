@@ -21,10 +21,12 @@ a 25-bit immediate (+/-16 MB), which is what lets a stub above EOF be reached fr
 image must stay inside that window, and the builder asserts it.
 
 THE CHOICE IS MADE AT RUNTIME, from what is actually drawn. Banks are chosen from the palette indices the
-VISIBLE OAM entries paint: for every enabled entry, the 8bpp tile at 0x06010000 + 64*tile is scanned and
-each non-zero pixel index marks its bank. A 4bpp entry (attr0 bit 13 clear; our own art, and the piece attr
-bit 13 is what the engine copies) marks the bank named in attr2 bits 12..15 without reading VRAM. The
-LOWEST three free banks are taken.
+VISIBLE OAM entries paint: for every enabled entry, the 8bpp tile at `0x06010000 + 32*(tile & ~1)` is
+scanned and each non-zero pixel index marks its bank (a tile number indexes 32-byte slots and an 8bpp tile
+occupies two of them, with the low bit of the number ignored - `tile * 64` reads the WRONG tile, which is
+the defect P-103 records). A 4bpp entry (attr0 bit 13 clear; our own art, and the piece attr bit 13 is what
+the engine copies) marks the bank named in attr2 bits 12..15 without reading VRAM. The LOWEST three free
+banks are taken.
 
 TWO CODED GUARDS, because the OAM is not yet known to be composed for the new scene at this instant:
 
@@ -156,7 +158,8 @@ def steps(minimum_used: int) -> list[tuple]:
         ("branch", 0xD000, "beq", "FOUR_BPP"),                  # attr0 bit 13 clear: 16-colour entry
         ("word", 0x059B, "lsls", "r3, r3, #22"),
         ("word", 0x0D9B, "lsrs", "r3, r3, #22"),                # tile number
-        ("word", 0x019B, "lsls", "r3, r3, #6"),                 # 64 bytes per 8bpp tile
+        ("word", 0x085B, "lsrs", "r3, r3, #1"),                 # 8bpp: the tile number's low bit is ignored
+        ("word", 0x019B, "lsls", "r3, r3, #6"),                 # so the offset is (tile & ~1) * 32
         ("ldr", 7, "ldr", "r7, [pc, #0]", "vram"),
         ("word", 0x18FF, "adds", "r7, r7, r3"),
         ("word", 0x2200 | TILE_BYTES_8BPP, "movs", "r2, #0x40"),   # pixels per tile

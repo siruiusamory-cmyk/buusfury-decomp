@@ -153,6 +153,18 @@ def test_the_body_writes_the_bank_and_falls_back_to_bank_zero() -> None:
         "lr is live draw-loop state at the resume address, so the return cannot use it")
 
 
+def test_the_8bpp_tile_scan_uses_the_hardware_slot_addressing() -> None:
+    """A tile number indexes 32-byte slots and an 8bpp tile's low bit is ignored: (tile & ~1) * 32.
+
+    `tile * 64` reads a neighbouring tile, so the occupancy scan would name the wrong banks and the
+    picker could hand the character a bank something visible is already drawing from. P-103.
+    """
+    text = [f"{mnemonic} {operands}" for mnemonic, operands in listing(oneshot.assemble(CODE, PALETTES), CODE)]
+    index = text.index("lsrs r3, r3, #0x16")
+    assert text[index + 1] == "lsrs r3, r3, #1", "the low bit of the tile number must be cleared"
+    assert text[index + 2] == "lsls r3, r3, #6", "then the slot stride is 32 bytes, so shift 6 after shift 1"
+
+
 def test_the_picker_rule_is_the_lowest_free_banks_and_a_short_scene_writes_nothing() -> None:
     """The measured map-137 runtime free set (8, 10, 11, 14, 15) is the case with evidence behind it."""
     measured_used = 0

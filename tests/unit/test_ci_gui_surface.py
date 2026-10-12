@@ -20,7 +20,11 @@ instead of silently reducing the suite:
 - ``deploy-site`` must need ``test-sdk``, because the deploy job's only rule is
   the default branch while the test job's second rule can exclude it from
   exactly that pipeline, and a rule-excluded job cannot fail anything. Audit
-  finding CQA-20 records the hole this asserts shut.
+  finding CQA-20 records the hole this asserts shut. The same requirement covers
+  every test-stage job the default branch can run, and deliberately not a
+  test-stage job whose rules narrow it off the default branch: that job cannot be
+  in the deploy job's pipeline at all, and a ``needs:`` entry for an excluded job
+  fails pipeline creation instead of gating it.
 - the ``test-integration`` job must run the ROM-gated directory's one ROM-free
   member by name rather than collecting the directory, because every other file
   there skips without the canonical image and a job that skipped everything
@@ -382,6 +386,38 @@ def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
         ) = saved
 
 
+def _runs_on_the_default_branch(job: dict) -> bool:
+    """Whether ``job``'s rules can select it in a default-branch pipeline.
+
+    ``deploy-site`` matches only ``$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH``, and
+    it is the only job that can publish. A ``needs:`` entry naming a job that
+    pipeline excludes does not wait for it - it fails pipeline creation - so a
+    test-stage job whose every rule is explicitly narrowed off the default branch
+    cannot be a dependency of the deploy job, and requiring it would break the
+    deploy pipeline rather than gate it. Such a job is also unable to publish
+    anything on its own. The requirement in the test below is therefore over the
+    test-stage jobs the default branch can actually run, and over all of them.
+
+    This is not an opt-out: the only way to leave the set is to give the job
+    rules that genuinely exclude the default branch from every one of its
+    pipelines, which is what removes it from the deploy path in the first place.
+
+    ponytail: the check is textual - a rule whose condition compares
+    ``!= $CI_DEFAULT_BRANCH``. A condition that ORs that comparison with
+    something true on the default branch would be judged excluded while still
+    being able to run there; that is a ceiling, named here rather than left
+    implicit.
+    """
+    rules = [rule for rule in job.get("rules") or [] if isinstance(rule, dict)]
+    if not rules:
+        return True
+    return not all(
+        "!= $CI_DEFAULT_BRANCH" in str(rule.get("if", ""))
+        or str(rule.get("when")) == "never"
+        for rule in rules
+    )
+
+
 def test_the_deploy_job_needs_both_test_jobs():
     """Prevents: publishing a commit whose portable suite or site check never ran.
 
@@ -393,6 +429,8 @@ def test_the_deploy_job_needs_both_test_jobs():
     is absent from the pipeline, which is the exact case being closed. Both jobs
     are named because ``needs`` bypasses the stage barrier, so naming only the
     suite would drop the wait on the site job that the barrier used to give.
+    Every test-stage job the default branch can run is required, which is what
+    ``_runs_on_the_default_branch`` decides.
     """
     config = _ci_config()
     deploy = config.get("deploy-site") or {}
@@ -406,13 +444,16 @@ def test_the_deploy_job_needs_both_test_jobs():
     # must be waited on too, or `needs` will silently bypass it. GitLab defaults a
     # job's stage to `test`, so a job with no `stage:` key belongs in this set;
     # `script`, `trigger` or `extends` is what makes a top-level block a job
-    # rather than a global such as `variables:`.
+    # rather than a global such as `variables:`. A job the default branch can
+    # never run is not in the set, for the reason `_runs_on_the_default_branch`
+    # gives.
     test_stage = {
         name
         for name, job in config.items()
         if isinstance(job, dict)
         and any(key in job for key in ("script", "trigger", "extends"))
         and job.get("stage", "test") == "test"
+        and _runs_on_the_default_branch(job)
     }
     assert test_stage, f"{_cited('stage: test')}: no test-stage job found"
     assert required == test_stage, (

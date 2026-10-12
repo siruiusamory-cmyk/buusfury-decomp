@@ -128,10 +128,24 @@ def patch(image: bytearray, body: bytes | None = None, padding: int = 0, return_
     if stub_address % 4:
         raise AssertionError(f"stub must start word aligned, got 0x{stub_address:X}")
 
-    # The entry is 14 bytes: a literal load, two nop slots, the stub address, and `bx`. The load's target is
-    # (PC & ~3) + 4 = the site + 6 rounded to a word boundary, so the literal sits at site + 6 and is read
-    # from there; the last two bytes are an unreachable nop so the block's length is exactly preserved.
-    entry = (bytes.fromhex("014b" "c046" "c046")
+    # The entry is 14 bytes and must NOT fall through into its own literal: after a `ldr` execution continues at
+    # the next instruction, so a literal placed before the `bx` is executed as two garbage instructions first.
+    # That is exactly what happened here: the effect was deterministic, independent of registers and of cycles,
+    # and absent when only the stub was appended.
+    #
+    #   0x0800F2B2  ldr r3,[pc,#4]   ; reads the literal at 0x0800F2B8: (PC & ~3) + 4
+    #   0x0800F2B4  b   +4*2        ; jumps to 0x0800F2BC, over the literal
+    #   0x0800F2B6  nop
+    #   0x0800F2B8  .word stub|1
+    #   0x0800F2BC  bx r3
+    #   0x0800F2BE  nop
+    skip = BLOCK_SITE + 10
+    # The branch sits at BLOCK_SITE + 2, and a Thumb B reaches address + 4 + imm11*2.
+    branch_offset = (skip - (BLOCK_SITE + 2 + 4)) // 2
+    branch = 0xE000 | (branch_offset & 0x7FF)
+    entry = (bytes.fromhex("014b")
+             + struct.pack("<H", branch)
+             + bytes.fromhex("c046")
              + struct.pack("<I", (stub_address + ROM_BASE) | 1)
              + bytes.fromhex("1847" "c046"))
     if len(entry) != BLOCK_BYTES:

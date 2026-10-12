@@ -833,7 +833,7 @@ def chunk_authoring_qa(
     tab._on_cell_clicked(0)
     harness.pump(12)
     print(
-        f"  brush: {tab._brush_authored}  staged placement: {tab._authored_cells}  "
+        f"  brush: {tab._brush_authored}  staged placement: {tab._chunks.cells}  "
         f"unsaved {tab.unsaved_edit_count()}"
     )
     shot(23, "23-chunk-authored-placement-on-map")

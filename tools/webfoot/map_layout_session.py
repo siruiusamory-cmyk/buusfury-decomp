@@ -18,9 +18,12 @@ rewrite an identical document, which is the no-op an Apply must not record.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Hashable, Iterable, Mapping, TypeVar
+from typing import Hashable, Iterable, Mapping, TYPE_CHECKING, TypeVar
 
 from .map_layout_edit import LayoutEdit
+
+if TYPE_CHECKING:
+    from .project import AuthoredChunk
 
 Key = TypeVar("Key", bound=Hashable)
 Value = TypeVar("Value")
@@ -74,6 +77,12 @@ class PendingWork:
     def clean(self) -> bool:
         """Nothing is staged, so a destructive transition has nothing to lose."""
         return self.count == 0
+
+    def __add__(self, other: "PendingWork") -> "PendingWork":
+        """Two families' work, in one total. One definition of the sum, not two."""
+        return PendingWork(
+            paints=self.paints + other.paints, changes=self.changes + other.changes
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,4 +138,57 @@ class LayoutSession:
         return PendingWork(
             paints=len(self.pending_edits(edits)) + sum(paints),
             changes=sum(changes),
+        )
+
+
+@dataclass(slots=True)
+class ChunkAuthoring:
+    """The authored-chunk family's staged work, outside the widget. CQA-27, slice A.
+
+    The Map Browser used to hold these three mappings itself and answer two
+    questions from them - which staged placements would actually change the
+    project, and which chunk documents are composed but unwritten - inside the
+    class that also owns the canvas, the brush and the chunk editor. This object
+    owns those answers, so the policy is testable without a GUI, and it owns the
+    classification the pending summary uses: an authored placement and a chunk
+    document are both work the user would lose, and neither is a cell paint.
+
+    The mappings are the caller's staged state and are written in place, as they
+    were before this move: this is the editor's accumulator, not a value. The
+    committed mapping is what the project holds, re-read on a project mutation or
+    a session change and never per repaint (CQA-07).
+    """
+
+    #: ``(map index, layer slot, cell) -> chunk identity`` staged for a write.
+    cells: dict[CellKey, str] = field(default_factory=dict)
+    #: The same keys as the project holds them, for the comparison above.
+    committed: dict[CellKey, str] = field(default_factory=dict)
+    #: ``identity -> document`` composed here and not yet written to the project.
+    documents: dict[str, "AuthoredChunk"] = field(default_factory=dict)
+
+    def placements(self) -> dict[CellKey, str]:
+        """Every staged authored placement that would actually change the project.
+
+        A cell the project already authors with this same chunk is not a change,
+        exactly as the ordinal batch leaves out a cell whose staged value the
+        project already holds: re-writing it would make a no-op apply rewrite an
+        identical document.
+        """
+        return staged_changes(self.cells, self.committed)
+
+    def pending_documents(self) -> dict[str, "AuthoredChunk"]:
+        """The documents composed here and not yet written to the project.
+
+        A copy, so a caller cannot stage or drop a document through the answer.
+        """
+        return dict(self.documents)
+
+    def pending_work(self) -> PendingWork:
+        """This family's contribution to the unsaved total: changes, never paints.
+
+        A placement and a chunk body are work the author would lose, and neither
+        is a paint, so the wording widens when either is staged.
+        """
+        return PendingWork(
+            changes=len(self.placements()) + len(self.pending_documents())
         )

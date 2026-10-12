@@ -92,7 +92,12 @@ from tools.webfoot.map_layout_edit import (
     MapLayoutEditError,
     MapLayoutEditor,
 )
-from tools.webfoot.map_layout_session import LayoutSession, PendingWork, staged_changes
+from tools.webfoot.map_layout_session import (
+    ChunkAuthoring,
+    LayoutSession,
+    PendingWork,
+    staged_changes,
+)
 from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.map_paint import (
     MapPaintError,
@@ -1977,25 +1982,22 @@ class MapBrowserTab(QWidget):
         # The map paint path is pointer-based - `MapLayoutEditor.set_cell` takes a
         # 4-byte chunk address and `LayoutSlot.choices` holds every chunk a
         # dominant layer of this map uses - so an authored chunk, which has no address until a
-        # build allocates one, cannot travel through it. It is staged here instead
-        # and persisted by its own SDK authority.
-        #: Staged authored placements: ``(map, layer, cell) -> chunk identity``.
-        self._authored_cells: dict[tuple[int, int, int], str] = {}
+        # build allocates one, cannot travel through it. It is staged in the session
+        # instead (`ChunkAuthoring`, CQA-27 slice A) and persisted by its own SDK
+        # authority; this tab holds display and input only.
+        #: Staged authored placements, the project's committed ones, and the chunk
+        #: documents composed but not yet written.
+        self._chunks = ChunkAuthoring()
         #: The authored chunk the map painter will place, or None for a canonical
         #: brush. Exactly one of `_brush_authored` and `_brush_pointer` is set.
         self._brush_authored: str | None = None
-        #: The project's committed authored chunks and placements, re-read from the
-        #: project on a mutation or a session change - never per repaint (CQA-07).
+        #: The project's committed authored chunks, re-read from the project on a
+        #: mutation or a session change - never per repaint (CQA-07).
         self._project_chunks: dict[str, AuthoredChunk] = {}
-        self._authored_committed: dict[tuple[int, int, int], str] = {}
         #: identity -> the resolved 1,024-entry plane, cached per session. Resolving
         #: a chunk re-reads its template and re-validates every edit, so doing it
         #: per repaint would be the CQA-07 regression in a different costume.
         self._resolved_planes: dict[str, tuple[int, ...]] = {}
-        #: Chunk documents composed but not yet written to the project, keyed by
-        #: identity. A chunk is created in the editor before it is persisted, so
-        #: this is what "the chunk counts as unsaved work" means.
-        self._staged_chunks: dict[str, AuthoredChunk] = {}
         #: The cached read/compose facade over the open image's canonical bytes.
         self._chunk_author_cache: ChunkAuthor | None = None
         self._chunk_author_error: str | None = None
@@ -3136,8 +3138,8 @@ class MapBrowserTab(QWidget):
         # belongs to is marked exactly the way a staged pointer paint marks it; a
         # chunk composed for a map is unsaved work for that map even before it is
         # placed, so its template's map is marked too.
-        pending |= {key[0] for key in self._authored_cells}
-        staged_chunks = self._pending_chunk_documents()
+        pending |= {key[0] for key in self._chunks.cells}
+        staged_chunks = self._chunks.pending_documents()
         for identity in staged_chunks:
             template = self._chunk_template_of(staged_chunks[identity])
             if template is not None:
@@ -3424,8 +3426,9 @@ class MapBrowserTab(QWidget):
         self._thumbnails = {}
         # The chunk editor belongs to one map's layer: its plane, its vocabulary and
         # its character block are all that map's, so a different map closes it and
-        # clears the page. A staged chunk survives in `_staged_chunks` and comes
-        # back from the palette of the map it was composed against.
+        # clears the page. A staged chunk survives in the session's
+        # `_chunks.documents` and comes back from the palette of the map it was
+        # composed against.
         self._close_chunk_editor_page()
         self._clear_chunk_editor_state()
         self._clear_grid_item()
@@ -4063,7 +4066,7 @@ class MapBrowserTab(QWidget):
         self._stroke_last = cell
         if before == identity:
             return False
-        self._authored_cells[key] = identity
+        self._chunks.cells[key] = identity
         if cell not in self._stroke:
             self._stroke.append(cell)
             self._stroke_applied[cell] = identity
@@ -4240,7 +4243,7 @@ class MapBrowserTab(QWidget):
     def _reapply_authored_place(self, command: "AuthoredPlaceCommand") -> None:
         """Re-apply one staged authored placement gesture (redo / merged stroke)."""
         for cell, identity in command.applied.items():
-            self._authored_cells[(command.map_index, command.layer_slot, cell)] = identity
+            self._chunks.cells[(command.map_index, command.layer_slot, cell)] = identity
         self._after_paint_change(command.map_index)
 
     def _reverse_authored_place(self, command: "AuthoredPlaceCommand") -> None:
@@ -4253,9 +4256,9 @@ class MapBrowserTab(QWidget):
         for cell, identity in command.previous.items():
             key = (command.map_index, command.layer_slot, cell)
             if identity is None:
-                self._authored_cells.pop(key, None)
+                self._chunks.cells.pop(key, None)
             else:
-                self._authored_cells[key] = identity
+                self._chunks.cells[key] = identity
         self._after_paint_change(command.map_index)
 
     def _after_paint_change(self, map_index: int) -> None:
@@ -4668,16 +4671,6 @@ class MapBrowserTab(QWidget):
             )
         return batch
 
-    def _staged_authored_placements(self) -> dict[tuple[int, int, int], str]:
-        """Every staged authored placement that would actually change the project.
-
-        A cell the project already authors with this same chunk is not a change
-        and is left out, exactly as the ordinal batch leaves out a cell whose
-        staged value the project already holds: re-writing it would make a no-op
-        apply rewrite an identical document.
-        """
-        return staged_changes(self._authored_cells, self._authored_committed)
-
     def apply_to_project(self) -> bool:
         """Commit every staged paint into the project, then re-read it back.
 
@@ -4719,8 +4712,8 @@ class MapBrowserTab(QWidget):
         except _EDIT_ERRORS as exc:
             QMessageBox.warning(self, "Map paint", str(exc))
             return False
-        placements = self._staged_authored_placements()
-        chunks = self._pending_chunk_documents()
+        placements = self._chunks.placements()
+        chunks = self._chunks.pending_documents()
         resizes = self._staged_resize_edits()
         layers = self._staged_layer_edits()
         structural_cells = self._staged_structural_cells()
@@ -4778,7 +4771,7 @@ class MapBrowserTab(QWidget):
             return False
         # Re-read the project so the session's floor, its chunk table, its authored
         # placements and its structural document are what was just written.
-        self._staged_chunks.clear()
+        self._chunks.documents.clear()
         self._chunk_applied_plane = tuple(self._chunk_plane)
         self._staged_resizes = {}
         self._staged_layers = {}
@@ -4789,7 +4782,7 @@ class MapBrowserTab(QWidget):
         # same rule the ordinal batch uses for a cell whose value the project
         # already had, so the pending count and the pending glyphs go clean without
         # touching a placement a write did not land.
-        self._authored_cells = self._staged_authored_placements()
+        self._chunks.cells = self._chunks.placements()
         self._undo_stack.clear()
         self._draft = None
         if changed:
@@ -4994,10 +4987,10 @@ class MapBrowserTab(QWidget):
         if self._editor is None:
             return
         dropped = self._editor.reset()
-        dropped_authored = len(self._authored_cells)
-        self._authored_cells = {}
-        dropped_chunks = len(self._staged_chunks)
-        self._staged_chunks = {}
+        dropped_authored = len(self._chunks.cells)
+        self._chunks.cells = {}
+        dropped_chunks = len(self._chunks.documents)
+        self._chunks.documents = {}
         self._resolved_planes = {}
         # MAP-RESIZE-AND-LAYERS-001: staged structural work is staged work too, so
         # "discard pending" drops a staged resize, a staged new layer and a staged
@@ -5045,7 +5038,7 @@ class MapBrowserTab(QWidget):
         repaint costs a dict walk and no project or template read (CQA-07).
         """
         overrides: dict[tuple[int, int], mv.ChunkSubstitution] = {}
-        for (cell_map, layer_slot, cell), identity in self._authored_committed.items():
+        for (cell_map, layer_slot, cell), identity in self._chunks.committed.items():
             if cell_map != map_index:
                 continue
             plane = self._resolved_plane(identity)
@@ -5085,7 +5078,7 @@ class MapBrowserTab(QWidget):
             QMessageBox.warning(self, "Layout edit", str(exc))
             self._draft = None
             return {}
-        for (cell_map, layer_slot, cell), identity in self._authored_cells.items():
+        for (cell_map, layer_slot, cell), identity in self._chunks.cells.items():
             if cell_map != index:
                 continue
             plane = self._resolved_plane(identity)
@@ -5156,7 +5149,7 @@ class MapBrowserTab(QWidget):
             # does a staged paint of a project-authored grid.
             staged_cells |= {
                 cell
-                for (cell_map, layer_slot, cell) in self._authored_cells
+                for (cell_map, layer_slot, cell) in self._chunks.cells
                 if cell_map == result.index and layer_slot == slot.slot
             }
             staged_cells |= {
@@ -5292,7 +5285,7 @@ class MapBrowserTab(QWidget):
         unsaved = self._unsaved_count()
         committed = self._editor.floor_cell_count if self._editor is not None else 0
         authored_committed = len(
-            [key for key in self._authored_committed if result is not None and key[0] == result.index]
+            [key for key in self._chunks.committed if result is not None and key[0] == result.index]
         )
         if not edits and not committed and self.unsaved_edit_count() == 0:
             self._set_change_label("No layout changes", "neutral")
@@ -5323,10 +5316,10 @@ class MapBrowserTab(QWidget):
         # reset and commit buttons answer to them exactly as they do to a paint -
         # and so is a staged structural edit (a resize, a new layer, a removal) or a
         # paint of a project-authored grid.
-        pending_chunks = bool(self._pending_chunk_documents())
+        pending_chunks = bool(self._chunks.pending_documents())
         staged_any = (
             bool(edits)
-            or bool(self._authored_cells)
+            or bool(self._chunks.cells)
             or pending_chunks
             or bool(self._staged_resize_edits())
             or bool(self._staged_layer_edits())
@@ -5500,7 +5493,7 @@ class MapBrowserTab(QWidget):
             elif self._editor is not None:
                 committed = self._editor.floor_cell_count
                 committed += len(
-                    [key for key in self._authored_committed if key[0] == result.index]
+                    [key for key in self._chunks.committed if key[0] == result.index]
                 )
                 unsaved = self._unsaved_count()
                 if unsaved:
@@ -5529,16 +5522,14 @@ class MapBrowserTab(QWidget):
 
         The policy is the SDK session's: it holds the written baseline and decides
         what counts as a change. This tab contributes only the families it alone
-        knows about - a staged chunk document, an authored placement, a staged
-        resize or new layer - and each is named here rather than sent as one
-        number, so a family that stops being staged cannot be counted by accident.
+        knows about - a staged resize or new layer, and the authored-chunk family's
+        own session object - and each is named here rather than sent as one number,
+        so a family that stops being staged cannot be counted by accident.
         """
-        return self._layout.pending(
+        structural = self._layout.pending(
             self._edits(),
             paints=(len(self._staged_structural_cells()),),
             changes=(
-                len(self._staged_authored_placements()),
-                len(self._pending_chunk_documents()),
                 # MAP-RESIZE-AND-LAYERS-001: a staged resize or a staged new layer
                 # is work the user has done and would lose, exactly as a staged
                 # cell paint is; a paint of a project-authored grid joins the count
@@ -5548,6 +5539,7 @@ class MapBrowserTab(QWidget):
                 len(self._staged_layer_edits()),
             ),
         )
+        return structural + self._chunks.pending_work()
 
     def _unsaved_count(self) -> int:
         """Pending changes that no Save As or project apply has written yet.
@@ -5711,7 +5703,7 @@ class MapBrowserTab(QWidget):
         """
         if self._structure_slot is not None and self._structure_slot.slot == layer_slot:
             return (map_index, layer_slot, cell) in self._structural_cells
-        if self._authored_cells.get((map_index, layer_slot, cell)) is not None:
+        if self._chunks.cells.get((map_index, layer_slot, cell)) is not None:
             return True
         if self._editor is None:
             return False
@@ -6464,12 +6456,12 @@ class MapBrowserTab(QWidget):
         """
         committed = sum(
             1
-            for key in list(self._structural_committed) + list(self._authored_committed)
+            for key in list(self._structural_committed) + list(self._chunks.committed)
             if (key[0], key[1]) == (map_index, layer_slot)
         )
         staged = sum(
             1
-            for key in list(self._structural_cells) + list(self._authored_cells)
+            for key in list(self._structural_cells) + list(self._chunks.cells)
             if (key[0], key[1]) == (map_index, layer_slot)
         )
         return committed + staged
@@ -7117,7 +7109,7 @@ class MapBrowserTab(QWidget):
         self._resolved_planes = {}
         if self._session.project_dir is None:
             self._project_chunks = {}
-            self._authored_committed = {}
+            self._chunks.committed = {}
             self._structural_committed = {}
             return
         try:
@@ -7131,7 +7123,7 @@ class MapBrowserTab(QWidget):
             self._publish_status(f"Project layout could not be read: {exc}")
             return
         self._project_chunks = dict(chunks.chunks)
-        self._authored_committed = {
+        self._chunks.committed = {
             key: value for key, value in cells.items() if isinstance(value, str)
         }
         # MAP-RESIZE-AND-LAYERS-001. An ordinal cell on a slot whose grid the
@@ -7154,12 +7146,12 @@ class MapBrowserTab(QWidget):
         all of them at once - which is why this is called from
         ``on_session_changed`` alone.
         """
-        self._authored_cells = {}
+        self._chunks.cells = {}
         self._brush_authored = None
         self._project_chunks = {}
-        self._authored_committed = {}
+        self._chunks.committed = {}
         self._resolved_planes = {}
-        self._staged_chunks = {}
+        self._chunks.documents = {}
         self._chunk_author_cache = None
         self._chunk_author_error = None
         self._chunk_thumbnails = {}
@@ -7202,7 +7194,7 @@ class MapBrowserTab(QWidget):
         through the character block of the map it was made for.
         """
         documents: dict[str, AuthoredChunk] = dict(self._project_chunks)
-        documents.update(self._pending_chunk_documents())
+        documents.update(self._chunks.pending_documents())
         identities: list[str] = []
         for identity in sorted(documents):
             template = self._chunk_template_of(documents[identity])
@@ -7214,7 +7206,7 @@ class MapBrowserTab(QWidget):
         return tuple(identities)
 
     def _authored_template_text(self, identity: str) -> str:
-        chunk = self._project_chunks.get(identity) or self._staged_chunks.get(identity)
+        chunk = self._project_chunks.get(identity) or self._chunks.documents.get(identity)
         return "template unknown" if chunk is None else f"from {chunk.template}"
 
     def _resolved_plane(self, identity: str) -> tuple[int, ...] | None:
@@ -7228,7 +7220,7 @@ class MapBrowserTab(QWidget):
         cached = self._resolved_planes.get(identity)
         if cached is not None:
             return cached
-        chunk = self._project_chunks.get(identity) or self._staged_chunks.get(identity)
+        chunk = self._project_chunks.get(identity) or self._chunks.documents.get(identity)
         if chunk is None:
             return None
         author = self.chunk_author()
@@ -7245,15 +7237,6 @@ class MapBrowserTab(QWidget):
             return None
         self._resolved_planes[identity] = entries
         return entries
-
-    def _pending_chunk_documents(self) -> dict[str, AuthoredChunk]:
-        """Chunk documents composed here and not yet written to the project.
-
-        Maintained by :meth:`_sync_staged_chunk` on every plane change, so this is
-        a read of the current state and never a re-composition (the unsaved count
-        and the palette ask it on paths that must stay cheap).
-        """
-        return dict(self._staged_chunks)
 
     def _compose_staged_chunk(self) -> AuthoredChunk | None:
         """The open editor's plane as the authored chunk a project would store.
@@ -7291,10 +7274,10 @@ class MapBrowserTab(QWidget):
     ) -> str | None:
         """The authored identity a map cell holds right now: staged, else committed."""
         key = (map_index, layer_slot, cell)
-        staged = self._authored_cells.get(key)
+        staged = self._chunks.cells.get(key)
         if staged is not None:
             return staged
-        return self._authored_committed.get(key)
+        return self._chunks.committed.get(key)
 
     # -- the chunk editor: opening and closing --------------------------------
     def create_chunk(self, _checked: bool = False) -> None:
@@ -7362,7 +7345,7 @@ class MapBrowserTab(QWidget):
         except ChunkAuthoringError as exc:
             QMessageBox.warning(self, "Create chunk", str(exc))
             return
-        if identity in self._project_chunks or identity in self._staged_chunks:
+        if identity in self._project_chunks or identity in self._chunks.documents:
             QMessageBox.warning(
                 self,
                 "Create chunk",
@@ -7449,7 +7432,7 @@ class MapBrowserTab(QWidget):
           work, so reopening brings that work back rather than dropping it.
         """
         project_doc = self._project_chunks.get(identity)
-        staged_doc = self._staged_chunks.get(identity)
+        staged_doc = self._chunks.documents.get(identity)
         document = project_doc or staged_doc
         if document is None:
             self._publish_status(f"{identity!r} is not a chunk this project declares.")
@@ -7512,7 +7495,7 @@ class MapBrowserTab(QWidget):
         palette and is still written by "Apply to project".
         """
         identity = self._chunk_identity
-        staged = identity is not None and identity in self._pending_chunk_documents()
+        staged = identity is not None and identity in self._chunks.pending_documents()
         self._close_chunk_editor_page()
         if identity is not None:
             self._publish_status(
@@ -8010,9 +7993,9 @@ class MapBrowserTab(QWidget):
         self._resolved_planes.pop(identity, None)
         document = self._compose_staged_chunk()
         if document is None or self._project_chunks.get(identity) == document:
-            self._staged_chunks.pop(identity, None)
+            self._chunks.documents.pop(identity, None)
         else:
-            self._staged_chunks[identity] = document
+            self._chunks.documents[identity] = document
         self._announce_dirty()
 
     def _refresh_chunk_editor_state(self) -> None:
@@ -8136,7 +8119,7 @@ class MapBrowserTab(QWidget):
             self._publish_status(message)
             QMessageBox.warning(self, "Chunk editor", message)
             return False
-        document = self._pending_chunk_documents().get(identity)
+        document = self._chunks.pending_documents().get(identity)
         if document is None:
             QMessageBox.warning(
                 self,
@@ -8156,7 +8139,7 @@ class MapBrowserTab(QWidget):
         except _EDIT_AND_PROJECT_ERRORS as exc:
             QMessageBox.warning(self, "Chunk editor", str(exc))
             return False
-        self._staged_chunks.pop(identity, None)
+        self._chunks.documents.pop(identity, None)
         self._resolved_planes.pop(identity, None)
         self._chunk_applied_plane = tuple(self._chunk_plane)
         self._plane_error_reported.discard(identity)

@@ -348,7 +348,7 @@ def test_create_chunk_opens_the_editor_with_the_right_plane(chunk_tab):
     # A brand-new chunk is not dirty and not yet a project document.
     assert not chunk_tab.chunk_is_dirty()
     assert chunk_tab.unsaved_edit_count() == 0
-    assert chunk_tab._staged_chunks == {}
+    assert chunk_tab._chunks.documents == {}
     # ...and the plane grid is installed over the artwork.
     assert isinstance(chunk_tab._chunk_overlay, ChunkPlaneOverlay)
     assert chunk_tab._chunk_overlay.cell_count == 1024
@@ -569,7 +569,7 @@ def test_apply_chunk_writes_the_chunk_to_the_project(chunk_tab):
     ]
     # Applied: the staged document is gone, the plane is the new floor, and the
     # chunk is still reversible through the history.
-    assert chunk_tab._staged_chunks == {}
+    assert chunk_tab._chunks.documents == {}
     assert not chunk_tab.chunk_is_dirty()
     assert chunk_tab.unsaved_edit_count() == 0
     assert chunk_tab._undo_stack.count() == 1
@@ -650,7 +650,7 @@ def test_an_authored_brush_stages_a_placement_instead_of_a_pointer_paint(chunk_t
 
     _paint_cells(chunk_tab, 1)
 
-    assert chunk_tab._authored_cells == {(MAP, SLOT, 1): CHUNK_IDENTITY}
+    assert chunk_tab._chunks.cells == {(MAP, SLOT, 1): CHUNK_IDENTITY}
     assert chunk_tab.editor.edits_for(MAP) == (), "set_cell was never called"
     assert chunk_tab.unsaved_edit_count() == 2, "one chunk + one placement"
     assert chunk_tab._grid_item._edited == frozenset({1})
@@ -662,9 +662,9 @@ def test_an_authored_brush_stages_a_placement_instead_of_a_pointer_paint(chunk_t
     assert chunk_tab._undo_stack.undoText().startswith("Place 1 cell")
 
     chunk_tab._undo_stack.undo()
-    assert chunk_tab._authored_cells == {}
+    assert chunk_tab._chunks.cells == {}
     chunk_tab._undo_stack.redo()
-    assert chunk_tab._authored_cells == {(MAP, SLOT, 1): CHUNK_IDENTITY}
+    assert chunk_tab._chunks.cells == {(MAP, SLOT, 1): CHUNK_IDENTITY}
 
 
 def test_a_no_op_authored_placement_creates_no_history(chunk_tab):
@@ -721,8 +721,8 @@ def test_apply_to_project_writes_the_chunk_before_the_placement(chunk_tab):
         ("placement", {(MAP, SLOT, 3): CHUNK_IDENTITY}),
     ]
     # Re-read back: the project now holds the placement, so the staged set is clean.
-    assert chunk_tab._authored_committed == {(MAP, SLOT, 3): CHUNK_IDENTITY}
-    assert chunk_tab._authored_cells == {}
+    assert chunk_tab._chunks.committed == {(MAP, SLOT, 3): CHUNK_IDENTITY}
+    assert chunk_tab._chunks.cells == {}
     assert chunk_tab.unsaved_edit_count() == 0
     assert "authored chunk(s)" in chunk_tab.status_text()
     assert "authored placement(s)" in chunk_tab.status_text()
@@ -754,15 +754,15 @@ def test_a_session_change_clears_every_staged_authored_fact(chunk_tab):
     _chunk_stroke(chunk_tab, 0)
     chunk_tab.use_chunk_as_brush()
     _paint_cells(chunk_tab, 1)
-    assert chunk_tab._authored_cells and chunk_tab._staged_chunks
+    assert chunk_tab._chunks.cells and chunk_tab._chunks.documents
 
     chunk_tab.on_session_changed()
 
-    assert chunk_tab._authored_cells == {}
-    assert chunk_tab._staged_chunks == {}
+    assert chunk_tab._chunks.cells == {}
+    assert chunk_tab._chunks.documents == {}
     assert chunk_tab._resolved_planes == {}
     assert chunk_tab._project_chunks == {}
-    assert chunk_tab._authored_committed == {}
+    assert chunk_tab._chunks.committed == {}
     assert chunk_tab._brush_authored is None
     assert chunk_tab._chunk_identity is None
     assert not chunk_tab.chunk_is_open()
@@ -893,7 +893,7 @@ def test_a_real_write_preserves_unrelated_staged_work(chunk_tab):
     plane = chunk_tab.chunk_plane_entries()
     history = chunk_tab._undo_stack.count()
     assert history > 0, "the plane edit is on the history"
-    assert chunk_tab._staged_chunks.get(CHUNK_IDENTITY) is not None
+    assert chunk_tab._chunks.documents.get(CHUNK_IDENTITY) is not None
 
     before = _arm_currency(session)
     assert chunk_tab.apply_chunk() is True
@@ -945,15 +945,15 @@ def test_a_project_mutation_keeps_every_staged_authored_fact(chunk_tab):
     chunk_tab.use_chunk_as_brush()
     _paint_cells(chunk_tab, 1)
     plane = chunk_tab.chunk_plane_entries()
-    staged_documents = dict(chunk_tab._staged_chunks)
-    placements = dict(chunk_tab._authored_cells)
+    staged_documents = dict(chunk_tab._chunks.documents)
+    placements = dict(chunk_tab._chunks.cells)
     history = chunk_tab._undo_stack.count()
     unsaved = chunk_tab.unsaved_edit_count()
 
     chunk_tab.on_project_mutated()
 
-    assert chunk_tab._authored_cells == placements
-    assert chunk_tab._staged_chunks == staged_documents
+    assert chunk_tab._chunks.cells == placements
+    assert chunk_tab._chunks.documents == staged_documents
     assert chunk_tab.chunk_plane_entries() == plane
     assert chunk_tab._chunk_identity == CHUNK_IDENTITY
     assert chunk_tab._brush_authored == CHUNK_IDENTITY
@@ -969,7 +969,7 @@ def test_a_project_mutation_re_reads_the_committed_placements(chunk_tab):
     chunk_tab.use_chunk_as_brush()
     _paint_cells(chunk_tab, 2)
     chunk_tab.apply_to_project()
-    assert chunk_tab._authored_committed == {(MAP, SLOT, 2): CHUNK_IDENTITY}
+    assert chunk_tab._chunks.committed == {(MAP, SLOT, 2): CHUNK_IDENTITY}
 
     # A placement written elsewhere (another tab, or an undo that rewrote the
     # project) must be picked up by the next mutation - without dropping the
@@ -978,7 +978,7 @@ def test_a_project_mutation_re_reads_the_committed_placements(chunk_tab):
 
     chunk_tab.on_project_mutated()
 
-    assert set(chunk_tab._authored_committed) == {(MAP, SLOT, 2), (MAP, SLOT, 0)}
+    assert set(chunk_tab._chunks.committed) == {(MAP, SLOT, 2), (MAP, SLOT, 0)}
     assert CHUNK_IDENTITY in chunk_tab._project_chunks
 
 
@@ -991,8 +991,8 @@ def test_reset_discards_staged_authored_work(chunk_tab):
 
     chunk_tab._reset_edits()
 
-    assert chunk_tab._authored_cells == {}
-    assert chunk_tab._staged_chunks == {}
+    assert chunk_tab._chunks.cells == {}
+    assert chunk_tab._chunks.documents == {}
     assert not chunk_tab.chunk_is_open()
     assert chunk_tab._undo_stack.count() == 0
     assert chunk_tab.unsaved_edit_count() == 0
@@ -1072,7 +1072,7 @@ def test_a_chunk_authoring_error_on_apply_is_a_warning_not_a_crash(
     assert warnings == [
         "authored chunk chunk:qa-chunk is not a dominant chunk"
     ]
-    assert chunk_tab._staged_chunks, "a refused write leaves the work staged"
+    assert chunk_tab._chunks.documents, "a refused write leaves the work staged"
 
 
 def test_a_chunk_authoring_error_on_the_vocabulary_is_a_warning_not_a_crash(
@@ -1144,7 +1144,7 @@ def test_a_frame_of_painting_does_no_project_or_template_work(chunk_tab, monkeyp
     assert reads == [], "a paint gesture reads no project document"
     assert len(resolves) <= 1, f"resolutions observed: {len(resolves)}"
     assert chunk_tab._undo_stack.count() == 1, "a drag is one history entry"
-    assert len(chunk_tab._staged_chunks) == 1, "one composed document, not one per cell"
+    assert len(chunk_tab._chunks.documents) == 1, "one composed document, not one per cell"
     assert chunk_tab.unsaved_edit_count() == 1
 
 
@@ -1184,7 +1184,7 @@ def test_the_chunk_editor_page_is_a_second_centre_page_not_a_new_tab(chunk_tab):
     assert not chunk_tab.chunk_is_open()
     assert chunk_tab._centre_stack.currentWidget() is chunk_tab._centre_split
     # Closing keeps the staged chunk: it is still unsaved work.
-    assert chunk_tab._staged_chunks
+    assert chunk_tab._chunks.documents
     assert chunk_tab.unsaved_edit_count() == 1
 
 

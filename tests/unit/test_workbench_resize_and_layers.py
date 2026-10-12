@@ -1095,7 +1095,7 @@ def test_a_new_layer_is_offered_in_the_map_editor_and_paintable_with_its_vocabul
         (MAP, 3, 1): 3,
         (MAP, 3, 2): 3,
     }
-    assert tab._authored_cells == {}
+    assert tab._chunks.cells == {}
     assert tab._undo_stack.count() == 2  # the creation, then the one stroke
     command = tab._undo_stack.command(1)
     assert isinstance(command, StructuralPaintCommand)
@@ -1226,7 +1226,7 @@ def test_a_project_mutation_keeps_a_staged_resize_and_re_reads_the_project(tab):
     # The ordinal cell of the staged grid is a paint of that grid, not of the
     # canonical record, so it is classified as a structural cell.
     assert tab._structural_committed == {(MAP, SLOT, 0): 3}
-    assert tab._authored_committed == {}
+    assert tab._chunks.committed == {}
 
 
 def test_a_project_mutation_re_reads_the_committed_structural_cells(tab):

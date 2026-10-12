@@ -72,37 +72,41 @@ def word(image: bytes, offset: int) -> int:
     return struct.unpack_from("<I", image, offset)[0]
 
 
-def stub_layout(stub_address: int) -> dict:
+def stub_layout(stub_address: int, body: bytes | None = None) -> dict:
     """Where the pieces of the stub live, so nothing has to hardcode an offset.
 
     The return uses `ldr r3,[pc,#0]`, which reads from `(PC & ~3)` with PC = instruction + 4. The body is
     therefore padded with nops to a multiple of four, so the load's target IS the literal that follows the
     `bx`, and the alignment holds by construction rather than by counting instructions.
     """
-    body = bytearray(STUB)
-    while (len(body) + 4) % 4:
-        body.extend(bytes.fromhex("c046"))            # nop
-    load_at = stub_address + len(body)
+    padded = bytearray(STUB if body is None else body)
+    while (len(padded) + 4) % 4:
+        padded.extend(bytes.fromhex("c046"))            # nop
+    load_at = stub_address + len(padded)
     literal_at = load_at + 4
     if (load_at + 4) & ~3 != literal_at:
         raise AssertionError("stub layout: the return load does not point at its literal")
-    return {"body": bytes(body), "load_at": load_at, "literal_at": literal_at,
+    return {"body": bytes(padded), "load_at": load_at, "literal_at": literal_at,
             "end": literal_at + 4}
 
 
-def patch(image: bytearray, alignment: int = 4):
-    """Apply the patch in place. Returns the stub address and the bytes it replaced."""
-    stub_address = len(image)
-    if stub_address % alignment:
-        stub_address += alignment - (stub_address % alignment)
-        image.extend(b"\x00" * (stub_address - len(image)))
+def patch(image: bytearray, body: bytes | None = None, padding: int = 0):
+    """Apply the patch in place. Returns the stub address and the bytes it replaced.
 
-    layout = stub_layout(stub_address)
+    `body` overrides the stub, which the bisect uses to test the entry and return path on its own; `padding`
+    inserts filler bytes before the stub so a variant can put it deeper into the ROM region.
+    """
+    if padding:
+        image.extend(b"\x00" * padding)
+    while len(image) % 4:
+        image.append(0)
+    stub_address = len(image)
+
+    layout = stub_layout(stub_address, body)
     image.extend(layout["body"] + bytes.fromhex("4b00") + bytes.fromhex("1847"))
     image.extend(struct.pack("<I", RESUME + 1))
     if len(image) != layout["end"]:
         raise AssertionError("stub layout disagrees with what was written")
-    stub = layout
 
     # The stub's own return: the `ldr r3,[pc,#0]` at body end reads (PC & ~3) + 0 = the next word, which is
     # the literal, so the read address must be word aligned. The body is an even number of halfwords, so the

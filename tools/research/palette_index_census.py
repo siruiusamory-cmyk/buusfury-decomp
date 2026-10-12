@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.webfoot.formats import webfoot_lz  # noqa: E402
+from tools.research import rom_paths  # noqa: E402
 
 ROM_BASE = 0x08000000
 DEFINITION_TABLE = 0x6B6BB4
@@ -31,7 +32,7 @@ MAX_SLOTS = 256
 MAX_FRAMES = 64
 BANK = 16
 
-image = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba").read_bytes()
+image = rom_paths.buu_fury().read_bytes()
 
 
 def u32(offset: int) -> int | None:

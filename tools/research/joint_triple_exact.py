@@ -44,10 +44,9 @@ from tools.research.cell_split import (  # noqa: E402
     rects_for_bank,
     round_trip_check,
 )
+from tools.research import rom_paths  # noqa: E402
 
-DEFAULT_LOG2 = Path(
-    r"C:\Dev\log1-remake\roms\Dragon Ball Z - The Legacy of Goku II (USA).gba"
-)
+DEFAULT_LOG2 = rom_paths.legacy_of_goku_2()
 DEFAULT_OUT = REPO / "build" / "joint_triple.json"
 LOG2_SOURCE_PALETTE = 0x081DA6C8
 BANKS = 3

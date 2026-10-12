@@ -18,8 +18,9 @@ import struct
 import sys
 from pathlib import Path
 
-ROOT = Path(r"C:\Dev\log1-remake-cell-c1")
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from tools.research import rom_paths  # noqa: E402
 sys.path.insert(0, str(ROOT / "build"))
 
 from build_two_bank_split import build_frame, cell_bank_assignment, palette_for_bank  # noqa: E402
@@ -33,10 +34,10 @@ PIECE_BYTES = 12
 FRAME_HEADER = 8
 ANIMATION_HEADER = 4
 CELL_ID = 252
-LOG2 = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - The Legacy of Goku II (USA).gba")
+LOG2 = rom_paths.legacy_of_goku_2()
 LOG2_SOURCE_PALETTE = 0x081DA6C8
-BASE = Path(r"C:\Dev\log1-remake-fv4\build\fv4\v4a-broly.gba")
-OUT = Path(r"C:\Dev\log1-remake-cell-c1\build\c1-split.gba")
+BASE = ROOT / "build" / "fv4" / "v4a-broly.gba"
+OUT = ROOT / "build" / "c1-split.gba"
 
 SHAPE_SIZE = {  # (width, height) -> (shape, size)
     (8, 8): (0, 0), (16, 16): (0, 1), (32, 32): (0, 2), (64, 64): (0, 3),

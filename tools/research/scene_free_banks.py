@@ -15,8 +15,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path(r"C:\Dev\log1-remake-cell-c1")
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from tools.research import rom_paths  # noqa: E402
 from tools.webfoot.formats import webfoot_lz  # noqa: E402
 
 ROM_BASE = 0x08000000
@@ -35,7 +36,7 @@ MAP_TABLE = 0x8E2E0
 MAP_STRIDE = 0x38
 FAMILIES = {0x0800FD55: 0x10, 0x080111A9: 0x0C, 0x08017DA3: 0x10}
 
-image = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba").read_bytes()
+image = rom_paths.buu_fury().read_bytes()
 
 
 def u32(offset: int) -> int | None:

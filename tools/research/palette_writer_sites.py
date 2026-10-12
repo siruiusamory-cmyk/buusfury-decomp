@@ -25,6 +25,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.research import thumb_disasm as t  # noqa: E402
+from tools.research import rom_paths  # noqa: E402
 
 ROM_BASE = 0x08000000
 OBJ_PAL = 0x05000200
@@ -70,7 +71,7 @@ def hexdump(image: bytes, start: int, length: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--image", type=Path,
-                        default=Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba"))
+                        default=rom_paths.buu_fury())
     parser.add_argument("--decode", type=lambda text: int(text, 16), default=None)
     parser.add_argument("--length", type=lambda text: int(text, 16), default=0x20)
     args = parser.parse_args()

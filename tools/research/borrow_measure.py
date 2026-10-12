@@ -14,8 +14,9 @@ import struct
 import sys
 from pathlib import Path
 
-ROOT = Path(r"C:\Dev\log1-remake-cell-c1")
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from tools.research import rom_paths  # noqa: E402
 from tools.webfoot.formats import webfoot_lz  # noqa: E402
 
 ROM_BASE = 0x08000000
@@ -30,8 +31,8 @@ MAX_FRAMES = 64
 BANK = 16
 CELL_ID = 252
 
-LOG2 = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - The Legacy of Goku II (USA).gba")
-BF = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba")
+LOG2 = rom_paths.legacy_of_goku_2()
+BF = rom_paths.buu_fury()
 LOG2_SOURCE_PALETTE = 0x081DA6C8
 BF_TABLE = 0x05652C
 WRITTEN_BANK = 14

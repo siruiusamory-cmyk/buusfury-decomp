@@ -16,20 +16,21 @@ import struct
 import sys
 from pathlib import Path
 
-ROOT = Path(r"C:\Dev\log1-remake-cell-c1")
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from tools.research import rom_paths  # noqa: E402
 sys.path.insert(0, str(ROOT / "build"))
 
 from build_two_bank_split import build_frame, pack_rect, rects_for_bank  # noqa: E402
 from split_frame_search import cells_of  # noqa: E402
 from tools.research.build_friend_v4b_cell import read_log2_cell  # noqa: E402
 
-LOG2 = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - The Legacy of Goku II (USA).gba")
+LOG2 = rom_paths.legacy_of_goku_2()
 LOG2_SOURCE_PALETTE = 0x081DA6C8
 RESTARTS = 400
 STEPS = 4000
 CAPACITY = 15
-OUT = Path(r"C:\Dev\log1-remake-cell-c1\build\joint_palettes.json")
+OUT = ROOT / "build" / "joint_palettes.json"
 
 
 def search(all_cells) -> dict[tuple[int, int, int], int]:

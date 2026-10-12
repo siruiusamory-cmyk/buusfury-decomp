@@ -32,6 +32,7 @@ from tools.research.cell_split import (  # noqa: E402
     cells_of,
     palette_for_bank,
 )
+from tools.research import rom_paths  # noqa: E402
 
 ROM_BASE = 0x08000000
 DEFINITION_TABLE = 0x6B6BB4
@@ -41,9 +42,7 @@ FRAME_HEADER = 8
 ANIMATION_HEADER = 4
 CELL_ID = 252
 LOG2_SOURCE_PALETTE = 0x081DA6C8
-DEFAULT_LOG2 = Path(
-    r"C:\Dev\log1-remake\roms\Dragon Ball Z - The Legacy of Goku II (USA).gba"
-)
+DEFAULT_LOG2 = rom_paths.legacy_of_goku_2()
 BANK_COUNT = 3
 
 SHAPE_SIZE = {  # (width, height) -> (shape, size)
@@ -68,7 +67,7 @@ def read_bank_colours(path: Path, order) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--image", type=Path,
-                        default=Path(r"C:\Dev\log1-remake-fv4\build\fv4\v4a-broly.gba"))
+                        default=REPO / "build" / "fv4" / "v4a-broly.gba")
     parser.add_argument("--log2", type=Path, default=DEFAULT_LOG2)
     parser.add_argument("--triple", type=Path,
                         default=REPO / "build" / "joint_triple.json")

@@ -26,6 +26,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 from tools.research.cell_split import VALID_RECT, cells_of, pack_rect, unpack_rect  # noqa: E402
+from tools.research import rom_paths  # noqa: E402
 
 ROM_BASE = 0x08000000
 DEFINITION_TABLE = 0x6B6BB4
@@ -44,9 +45,7 @@ def main() -> int:
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--triple", type=Path, default=REPO / "build" / "joint_triple.json")
-    parser.add_argument("--log2", type=Path,
-                        default=Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z "
-                                     r"- The Legacy of Goku II (USA).gba"))
+    parser.add_argument("--log2", type=Path, default=rom_paths.legacy_of_goku_2())
     args = parser.parse_args()
 
     from tools.research.build_friend_v4b_cell import read_log2_cell

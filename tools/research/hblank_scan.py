@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
+from tools.research import rom_paths  # noqa: E402
 
 ROM_BASE = 0x08000000
 DISPSTAT = 0x04000004
@@ -23,7 +24,7 @@ DMA0_CONTROL = 0x040000BA
 DMA_STRIDE = 12
 CHANNELS = 4
 
-image = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba").read_bytes()
+image = rom_paths.buu_fury().read_bytes()
 
 
 def literals(target: int) -> list[int]:

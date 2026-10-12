@@ -116,12 +116,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Report the banks a set of pieces needs")
     parser.add_argument("--log2", required=True)
     parser.add_argument("--palette", required=True, help="destination OBJ palette, GBA address or file offset")
+    parser.add_argument("--destination", required=True,
+                        help="the image whose palette the banks come from; it is an argument so no machine "
+                             "path is stored in this file")
     args = parser.parse_args()
     palette_address = int(args.palette, 0) if isinstance(args.palette, str) else args.palette
 
     from tools.research.build_friend_v4b_cell import read_log2_cell
     log2 = Path(args.log2).read_bytes()
-    destination = Path(r"C:\Dev\log1-remake\roms\Dragon Ball Z - Buu's Fury (U).gba").read_bytes()
+    destination = Path(args.destination).read_bytes()
     offset = palette_address - 0x08000000
     palette = destination[offset:offset + 512]
     source_palette = log2[0x081DA6C8 - 0x08000000:0x081DA6C8 - 0x08000000 + 512]

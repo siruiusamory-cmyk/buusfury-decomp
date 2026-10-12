@@ -156,6 +156,31 @@ REQUIRED_GUI_MODULES: tuple[str, ...] = (
     "unit/test_workbench_state_and_errors.py",
 )
 
+#: The portable-suite members that execute only when a locally built artefact -
+#: the progress site under ``dist/``, written by ``npm run build`` - is present.
+#: Each entry is a test node id relative to ``tests/`` with forward slashes; a
+#: parametrised member is named by its function, and a reported node id that
+#: starts with an entry is that member (``...::test_x[param]``).
+#:
+#: The dependency is declared here, in one place, instead of being recovered from
+#: a skip reason: ``dist/`` is ignored, so a fresh worktree has no artifact and
+#: these members skip, which leaves a green ``fast`` run proving less than a
+#: reader assumes. The reason is never restated here - ``tests/conftest.py``
+#: reports pytest's own.
+#:
+#: Unlike ``REQUIRED_GUI_MODULES`` this list is reported and never enforced. CI's
+#: ``fast`` gate job (``test-sdk``) has no Node build step, so no built site
+#: exists there by design, and the artifact checks run instead as
+#: ``python3 tools/quality/site_check.py`` in the ``test-site`` and ``deploy-site``
+#: jobs. Failing a session over a member that skipped here would turn a healthy
+#: pipeline red for a reason unrelated to the code under test.
+ARTEFACT_DEPENDENT_TESTS: tuple[str, ...] = (
+    "unit/test_capability_registry.py::test_the_built_page_renders_the_registry_list",
+    "unit/test_questline_rail.py::test_built_page_carries_the_derived_stop",
+    "unit/test_site_consistency.py::test_the_built_site_passes_every_check",
+    "unit/test_site_consistency.py::test_the_progress_figure_is_the_one_the_registry_reports",
+)
+
 #: The repository root, derived from this file's location.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 

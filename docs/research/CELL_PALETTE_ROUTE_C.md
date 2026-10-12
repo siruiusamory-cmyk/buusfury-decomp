@@ -131,3 +131,44 @@ Build **C1**: per-piece bank selection among the existing banks, three of sixtee
 satisfies the rule by construction rather than by argument, keeps the engine change to a few instructions, gives
 a reusable interface for any future actor, and its only cost is measured colour fidelity. Record the fidelity
 table as the evidence, and keep C2 as the option to revisit if the owner finds the shift unacceptable.
+
+## 8. What the owner chose, and what is measured now (2026-10-12)
+
+Section 7's recommendation is SUPERSEDED. The owner chose neither C1 nor C2 as written: **three written banks,
+one joint triple for the whole character, written once after the scene constructor, chosen at RUNTIME from the
+banks free at that moment, with a coded 16-colour fallback when fewer than three are free.** The ROM palette
+table at file 0x05652C is never written, and no other actor's colours may change.
+
+Measured since, all of it reproducible from the tools named in the toolbelt:
+
+1. **A joint triple exists and is pixel-exact.** 21 source colours across 463 occupied 8x8 cells, banks of
+   15/15/15 colours, 106 pieces over the eight frames (10, 9, 13, 13, 16, 15, 15, 15), OAM peak 16 of 128, and
+   7,153 of 7,153 opaque pixels round-trip through the packed 4bpp bytes with zero mismatched, zero missed and
+   zero overlap. A PAIR is impossible, proved by exact enumeration. Tool: `tools/research/joint_triple_exact.py`.
+2. **The emitted artifact.** Three appended 16-halfword palettes, an animation record, and a copied definition
+   whose animation count equals the slot pointers it carries. The emitted image differs from its base in 3 bytes
+   in the common prefix (the Cell definition-table slot) plus 18,884 appended bytes, and the ROM palette table is
+   byte-identical. Tools: `tools/research/emit_triple_port.py`, `tools/research/verify_triple_port.py`.
+3. **The definition's leading byte is the ANIMATION COUNT**, not a slot count: sprite 73 has 23 with 23 slot
+   pointers, sprite 38 has 22, Cell's retail id 252 has 20. The selector at 0x0800ECDA reads
+   `[def + 0x54 + 4*index]` with no bound check, so an actor's animation index is the slot index.
+4. **Correction to the earlier detour verdict.** The earlier note in this ticket that appending code and
+   detouring to it hangs the engine was measured on an entry veneer that executed its own literal; that was
+   fixed afterwards and never re-measured. With the current patcher both the bank-select stub and a zero-byte
+   body complete over 1,500 frames with real program counters in the owner scene. Appended code runs from this
+   site, so the runtime writer can be installed code rather than a one-shot copy patch.
+5. **Where a runtime writer can live.** `tools/research/palette_writer_sites.py` censuses the OBJ palette write
+   sites: 23 word-aligned literals hold 0x05000200, 30 Thumb load sites reach them, and the once-per-scene copy
+   at 0x0800657C loads 0x0805652C, loads 0x05000200 and calls the IWRAM copy veneer 0x08049144 with r2 = 0x200.
+
+Still owed, in order:
+
+1. the palette writer itself: take the bank already in r7 after the bank-select body, compute the destination
+   `0x05000200 + 32*bank` and the source `palette_table + 4*bank`, and copy 32 bytes through 0x08049144. Every
+   opcode is asserted against a disassembly before it is used (the project's rule after a byte-reversed halfword
+   hung five variants);
+2. the coded 16-colour fallback for the moment fewer than three banks are free;
+3. the runtime comparison: Cell's colours on screen against Legacy of Goku II, with the outside-Cell pixel
+   difference and the before/after bank census;
+4. the chain that turns the emitted image into a runnable one, pinned by digest rather than by a path in another
+   worktree.

@@ -110,18 +110,35 @@ def test_the_cutter_runs_npm_ci_only_for_the_site_gates():
 
 
 def test_the_cutter_prints_the_ownership_sweep_bounded():
+    """The sweep's own literals moved to the one implementation, with the loop.
+
+    The sweep is one definition (freeze checklist line 14), so this asserts the
+    cutter CALLS it and the sweep file carries the bound and the unreadable line;
+    executing the classification is tests/unit/test_worktree_owners.py.
+    """
     text = _script("new-ticket-worktree.ps1")
 
-    assert "'worktree', 'list', '--porcelain'" in text
-    assert "'status', '--porcelain'" in text
-    assert "uncommitted file(s)" in text
-    assert "Select-Object -First 8" in text
+    assert "..\\tools\\dev\\worktree_owners.ps1" in text
+    assert "Invoke-WorktreeOwnershipSweep -Repository $RepoRoot" in text
+    # Measured 2026-10-12: without this the process exit code was the last native
+    # call's, so a fully successful cut reported 128 off a stale worktree entry.
+    assert text.rstrip().endswith("exit 0")
+    # Not a second copy of the loop.
+    assert "Select-Object -First 8" not in text
+
+    sweep = (REPOSITORY_ROOT / "tools" / "dev" / "worktree_owners.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "'worktree', 'list', '--porcelain'" in sweep
+    assert "'status', '--porcelain'" in sweep
+    assert "uncommitted file(s)" in sweep
+    assert "Select-Object -First $MaxFiles" in sweep
     # A worktree git cannot read (moved or deleted) must not be reported as clean.
-    assert "unreadable: git status exited" in text
+    assert "unreadable: git status exited" in sweep
     # Measured 2026-10-12: `Invoke-Git 'status', '--porcelain', -Path $path` binds
     # `-Path` as an array element, so git saw an unknown switch and every worktree
     # was reported unreadable. The path is passed by name.
-    assert re.search(r",\s*-Path", text) is None
+    assert re.search(r",\s*-Path", sweep) is None
 
 
 def test_the_testing_document_states_the_interpreter_fallback_and_both_rom_variables():

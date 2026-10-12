@@ -263,5 +263,14 @@ entities were built before the state was written. Using one there produces the
 - `run_mgba_capture.ps1` accepts `-GeneratedRomSha256 <exact digest>` to launch
   a generated image. It is still an equality test: there is no accept-anything
   switch, and omitting it keeps the strict canonical guard.
+- `-StatePath` is OPTIONAL, and section 5's sequence applies when a state is named.
+  A boot-time scene has no savestate, so omitting it launches without `--savestate`
+  and records no state path or digest rather than a faked one; naming one keeps the
+  hash, the copy and the copy's verification unchanged. A relative `-LuaPath`
+  resolves against the INVOKING worktree first, and every resolved path is printed
+  before anything launches, so a run whose observer was allowlisted in another
+  worktree can no longer read as silence.
+- The launcher refuses to start when an mGBA process is already running, the same
+  check `start_toolkit031_session.ps1` makes, instead of racing it.
 - Observers that write a `marker.txt` need `-SkipLuaArmedMarker` under the GDB
   launcher, which otherwise waits for an `armed-marker.txt` they never write.

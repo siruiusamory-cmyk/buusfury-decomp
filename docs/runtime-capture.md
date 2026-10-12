@@ -140,7 +140,19 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 ```
 
 Add `-LuaPath tools/runtime/p004_actor_focus.lua` only when that Lua observer
-is actually needed. The launcher waits for the script's `armed-marker.txt` by
+is actually needed. A relative `-LuaPath` resolves against the worktree you are
+standing in first and the launcher's own tree second, and every resolved path -
+the ROM, the state, the observer, the invoking worktree, the tree the allowlist is
+read from - is printed before anything launches, so an empty log names its own
+cause. The launcher also refuses to start when an mGBA process is already running,
+instead of racing it and producing nothing.
+
+`-StatePath` is optional: omit it for a boot-time scene that has no savestate. The
+identity block then records no state at all rather than a faked path, and mGBA is
+launched without `--savestate`. When a state IS named, the hash, the copy and the
+copy's verification all still happen exactly as below.
+
+The launcher waits for the script's `armed-marker.txt` by
 default. A script that has no armed-marker contract requires the explicit
 `-SkipLuaArmedMarker` switch.
 

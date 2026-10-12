@@ -36,6 +36,8 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -352,3 +354,58 @@ def test_the_deploy_job_needs_both_test_jobs():
         f"required needs are {sorted(required)}, so a pipeline whose jobs were "
         f"excluded by their rules can still publish the site without them"
     )
+
+
+def test_a_collapsed_required_module_fails_the_process_exit_code(tmp_path) -> None:
+    """Under CI a collapsed required GUI module must leave the PROCESS non-zero.
+
+    The guard has always reported the collapse; what was measured is that the exit path
+    carried the status it read before the guard decided, so the process exited 0 over a
+    collapsed shipping surface and the job went green. PySide6 is forced unimportable by
+    shadowing it with a package that raises, which is what a missing Qt does, so the module
+    collapses through its own module-level guard exactly as it does in a bare environment.
+    """
+    shadow = tmp_path / "shadow" / "PySide6"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("raise ImportError('forced by the test')\n")
+    repository = Path(__file__).resolve().parents[2]
+    module = sorted(REQUIRED_GUI_MODULES)[0]
+    environment = dict(os.environ, GITLAB_CI="1", PYTHONPATH=str(shadow.parent))
+    environment.pop("WEBFOOT_KEEP_INTERPRETER_EXIT", None)
+    # A passing file beside the collapse is what makes this the real case: at the moment the
+    # session status is first readable it is 0, because nothing failed, and only the guard
+    # raises it. With the collapse alone the status is already 5, so an exit path that read it
+    # too early would still look correct.
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", f"tests/{module}",
+         "tests/unit/test_public_release.py", "-q", "-p", "no:cacheprovider"],
+        capture_output=True, text=True, cwd=repository, env=environment)
+    assert "COLLAPSED" in run.stdout, run.stdout[-2000:]
+    assert run.returncode != 0, (
+        f"a collapsed required module beside a passing file exited {run.returncode}\n"
+        f"{run.stdout[-2000:]}")
+
+
+def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None:
+    """The status the CI exit path carries must be the one the guard decided.
+
+    This is the defect itself, at the hook, rather than at the process: the guard raises the
+    session to TESTS_FAILED, and a status read before it carries the 0 the passing tests left
+    behind, so `pytest_unconfigure` exits clean over a collapsed shipping surface. The
+    subprocess test above shows the end-to-end exit; this one fails the moment the read moves
+    back above the guard, which is what the control run checks.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules",
+                        lambda: [("unit/test_build_panel_guard.py", "contributed no test")])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_required_gui_surface_is_enforced", lambda: True)
+    monkeypatch.setattr(conftest, "_report_collapsed_modules", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    session = types.SimpleNamespace(exitstatus=0, config=None)
+    conftest.pytest_sessionfinish(session, 0)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
+        "the exit path would carry a status the guard had already overruled")

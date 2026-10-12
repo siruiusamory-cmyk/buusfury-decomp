@@ -321,6 +321,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         _SKIPPED_TEST_REASONS[report.nodeid] = _skip_reason(report)
 
 
+@pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Report what the session skipped, and fail it on a collapsed GUI module.
 
@@ -328,10 +329,12 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     which files were attempted, which contributed a test, why the rest stopped,
     and which tests reported a skip. See the module docstring for the
     CI/local/opt-in scope of the GUI guard and the scope of the census.
+
+    The hook runs LAST, and the status the exit path carries is read at the very end of it,
+    because the guard below raises the status and the exit path must carry what the guard
+    decided. Measured: reading it first carried 0 over a collapsed shipping surface, so a CI
+    job reported success while failing, which is the CQA-22 class.
     """
-    global _SESSION_EXIT_STATUS
-    _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
-                               else exitstatus)
     collapsed = _collapsed_required_modules()
     collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]
     if collapsed:
@@ -343,6 +346,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             # a test failure, and the summary below says which one.
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     _report_skipped_tests(session.config)
+    global _SESSION_EXIT_STATUS
+    _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
+                               else exitstatus)
 
 
 def _is_test_file(path: Path | str) -> bool:

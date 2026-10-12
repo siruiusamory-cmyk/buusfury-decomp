@@ -96,8 +96,14 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
-#: The status this session decided, kept for the exit path below.
-_SESSION_EXIT_STATUS = 0
+#: The status the CI exit path below carries. It starts at pytest's INTERNAL_ERROR
+#: rather than at 0, because ``pytest_sessionfinish`` is what overwrites it and that
+#: hook does not run when the session dies before it: a raising ``pytest_sessionstart``
+#: or an earlier ``sessionfinish`` hook doing the same. Seeded with 0, the CI exit path
+#: would then report SUCCESS for a run that errored, which is worse than the crash it
+#: exists to avoid. Measured: a sessionstart that raises exits 3 without CI, 0 with
+#: CI=1, and 3 again with ``WEBFOOT_KEEP_INTERPRETER_EXIT=1``.
+_SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
 
 
 # --- a mutable ROM fixture that cannot share a file with a protected input -----
@@ -723,3 +729,6 @@ def _rom_status() -> str:
         + " or ".join(_ROM_ENVIRONMENT_VARIABLES)
         + f", or place {_ROM_DEFAULT}"
     )
+
+
+

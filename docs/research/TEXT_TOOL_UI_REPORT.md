@@ -488,34 +488,20 @@ rows that are no longer true.
 
 ### A shutdown crash the pipeline found, and what is known about it
 
-The pipeline's `test-sdk` job reports every test passing and then fails with exit code 139:
-`5242 passed, 293 skipped`, then `QObject: shared QObject was deleted directly`, then a
-segmentation fault. That is a native object being torn down twice at interpreter exit, and
-it is not a test result: nothing failed.
+The crash, its four carrier pipelines, the instrument and the debt are recorded
+where they belong: `docs/research/RETRO_QT_SHUTDOWN_001.md`, which master carries
+from the retro ticket. What is specific to this branch is one fact. It is the
+branch the crash lives on: master does not reproduce it, and the one site in the
+repository that hands a FACTORY-created style object to something that also takes
+ownership was this tool's theme, which now names its base style instead. That
+change is defensible and it is NOT proven to be the cause, so the crash is
+reproducible here rather than solved, and the CI exit path this branch adds stays
+until someone names the object.
 
-What is known. It is new in this branch, because master's own pipeline was green. It is
-intermittent locally, which is why five local runs of the Qt-heavy files exited 0 while the
-pipeline reproduced it twice. The one site in the repository that hands a FACTORY-created
-style object to something that also takes ownership is in this tool's theme, and that site
-now names its base style instead, so no such object exists. That change is defensible and it
-is NOT proven to be the cause: a targeted two-variant probe of the two patterns exited 0 for
-both, three runs each, so the ownership question is unanswered rather than settled.
-
-The fault handler answered the question it was added for, and the answer is that there is no
-Python frame: the run printed `Fatal Python error: Segmentation fault`, `Current thread ...
-<no Python frame>`, and the list of loaded extension modules, all of it after `5242 passed`.
-So the crash is inside native Qt teardown during interpreter finalization, and nothing in
-Python can name or fix it.
-
-The test job therefore now leaves before that teardown, under CI only, once every result is
-final and the JUnit artifact is written. That is a mitigation and not a fix: the native fault
-stays unfixed, the object it belongs to is not identified, and it is written down here rather
-than filed away. Two things would change that. Master's pipelines do not crash, so the object
-is one this branch's Qt surfaces leave shared, and finding it means bisecting the suite in CI,
-where each step costs a full run. `QT_FATAL_WARNINGS=1` would turn Qt's warning into an abort
-at the exact instruction, which is the cheapest next instrument if someone wants the object
-named. `WEBFOOT_KEEP_INTERPRETER_EXIT=1` restores the ordinary exit in CI so the crash can be
-observed while that work happens.
+The exit path is a mitigation and not a fix: under CI, and only under CI, the
+session leaves after every result is final and the JUnit artifact is written, and
+`WEBFOOT_KEEP_INTERPRETER_EXIT=1` restores the ordinary exit so the crash can
+still be observed while that work happens.
 
 ## 7. End to end, on release 3.1, with digests
 

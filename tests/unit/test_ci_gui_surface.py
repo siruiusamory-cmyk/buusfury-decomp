@@ -420,6 +420,64 @@ def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None
     conftest.pytest_sessionfinish(session, 0)
     assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
         "the exit path would carry a status the guard had already overruled")
+    # And the decision reaches the process: the same hook that must not report SUCCESS
+    # over an unfinished session reports exactly the status the guard decided here.
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.TESTS_FAILED)], (
+        f"the exit path carried {captured} instead of the status the guard decided")
+
+
+def test_a_run_that_errors_before_the_session_finishes_still_exits_non_zero(monkeypatch) -> None:
+    """Under CI the exit path must not report SUCCESS for a session that never finished.
+
+    ``pytest_unconfigure`` leaves through ``os._exit(_SESSION_EXIT_STATUS)`` before the
+    interpreter tears the Qt extensions down, and ``pytest_sessionfinish`` is what decides
+    that status. The hook does not run when the session dies before it: a raising
+    ``pytest_sessionstart``, or an earlier ``sessionfinish`` hook doing the same, as an
+    xdist worker that cannot start would. Seeded with ``pytest.ExitCode.OK`` that path
+    exits 0 over an errored run, so the mitigation meant to hide a crash would instead
+    publish a green pipeline over a failure.
+
+    The exit is captured rather than taken, so the status the hook hands the process is
+    read directly. Measured with the seed at 0: no exception is raised, which is the
+    silent green. The end-to-end shape is a real session that dies in ``sessionstart``;
+    this asserts the exact code that shape would carry.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    try:
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    except SystemExit as exit_call:
+        assert exit_call.code != pytest.ExitCode.OK, (
+            "the session never reached sessionfinish, so the exit path must not report "
+            "SUCCESS over a run that errored")
+        assert captured and captured[0] != pytest.ExitCode.OK, (
+            f"the exit path carried {captured} for a run that never reached sessionfinish")
+    else:
+        raise AssertionError(
+            "pytest_unconfigure did not leave through os._exit under CI, so a run that "
+            "never reached sessionfinish would be reported by pytest's own exit path")
 
 
 def test_the_session_hooks_are_defined_and_have_run() -> None:

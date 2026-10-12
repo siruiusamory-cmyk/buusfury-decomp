@@ -71,6 +71,14 @@ function New-CiVenv {
 #: The venv a sibling job already built. `adjacency` carries `needs: ["test-sdk"]`
 #: and runs the same shipping surface, so it runs in that job's environment
 #: rather than paying a second 700 MB install for the same extras.
+#:
+#: THIS IS CORRECT ONLY WHILE ONE RUNNER TAKES THIS PROJECT'S JOBS ONE AT A TIME
+#: AND BOTH JOBS LAND ON IT (`concurrent = 1`). `needs` orders jobs; it does not
+#: pin them to a runner or to a build directory. A second runner with this tag,
+#: or a build directory that moves between the two jobs, fails the consumer here
+#: with the message below rather than testing the wrong environment. Building a
+#: second venv in `adjacency` would remove the constraint for about 124 s and
+#: 700 MB per pipeline; that trade is recorded in `.gitlab-ci.yml`.
 function Use-CiVenv {
     param([Parameter(Mandatory)][string]$Name)
     $venv = Get-CiVenvDirectory -Name $Name

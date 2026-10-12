@@ -23,6 +23,12 @@ Set-Location $CiProjectRoot
 # job already built and proved, rather than paying a second 700 MB install of the
 # same `.[dev,workbench,research]` extras. `tests/unit/test_ci_gui_surface.py`
 # pins that link.
+#
+# That sharing holds while one runner takes this project's jobs one at a time
+# (`concurrent = 1`) and both jobs land on it: `needs` orders jobs, it does not
+# pin them to a runner or to a build directory. If that stops being true the venv
+# is absent and `Use-CiVenv` fails here naming the job that builds it, rather
+# than running the set in some other environment.
 $python = Use-CiVenv -Name 'test-sdk'
 $env:QT_QPA_PLATFORM = 'offscreen'
 # Do not inherit the deployment credential into a test job.

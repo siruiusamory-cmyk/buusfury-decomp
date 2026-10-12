@@ -22,12 +22,17 @@ $env:QT_QPA_PLATFORM = 'offscreen'
 # Do not inherit the deployment credential into a test job.
 $env:CLOUDFLARE_API_TOKEN = ''
 
-# The worker count and the memory reading stay in the log as evidence: this is
-# the machine's own 8 cores, not the shared runner's 2, and `-n auto` is
-# pytest-xdist's reading of it rather than a number that can drift from the
-# machine. `-q` suppresses the header where xdist would otherwise report it.
+# The worker count is capped at 4 rather than `-n auto`, which is 8 on this
+# machine's 8 cores. Measured 2026-10-12: at 8 workers the run produced
+# `Windows fatal exception: code 0x8007000e` (E_OUTOFMEMORY) from
+# `platform.platform()`'s WMI query inside xdist workers at sessionstart, and the
+# box had 8.7 GB free while other work was running. The lead measured a 4-worker
+# run of this suite at a peak of 2,862 MB across 12 python processes on the same
+# machine, where free memory fell to 4.2 GB during the day. The 8-worker peak was
+# not measured, so 8 workers are not claimed to be safe. The core count and the
+# free memory stay in the log as the reading the cap was chosen against.
 Invoke-CiStep { & $python -c "import os; print('cores:', os.cpu_count())" }
-Invoke-CiStep { & $python -c "import os; print('xdist workers (auto):', os.cpu_count())" }
+Invoke-CiStep { & $python -c "import os; print('xdist workers:', 4)" }
 Get-CimInstance Win32_OperatingSystem | ForEach-Object {
     Write-Host ("memory: {0:N1} GB total, {1:N1} GB free" -f ($_.TotalVisibleMemorySize / 1MB), ($_.FreePhysicalMemory / 1MB))
 }
@@ -36,7 +41,7 @@ Get-CimInstance Win32_OperatingSystem | ForEach-Object {
 # downloading the raw job log, and xdist merges every worker's results into this
 # one file. It is written to the repository root, where the job's
 # `artifacts:reports:junit` names it.
-Invoke-CiStep { & $python -m pytest tests/unit -q -n auto --dist loadfile --junitxml=report.xml }
+Invoke-CiStep { & $python -m pytest tests/unit -q -n 4 --dist loadfile --junitxml=report.xml }
 # The gates a reviewer is told to run, run here as well: the readability gate is
 # only asserted over the shipping package inside the suite, so the tree-wide form
 # has to be its own step or a finding outside `tools/webfoot/` would pass CI.

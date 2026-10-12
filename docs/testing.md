@@ -344,9 +344,20 @@ this section follows from:
 
 **One job at a time.** The runner takes a single concurrent job, and the machine
 is the owner's working PC: 8 logical cores and 31.8 GB of RAM, of which about
-8.7 GB was free when this was measured. `test-sdk` still runs the suite across
-`-n auto` xdist worker processes, which is that same 8, and prints both the core
-count and the free memory into the job log.
+8.7 GB was free when this was measured. `test-sdk` runs the suite across **4**
+xdist worker processes, not `-n auto`, which is 8 here: at 8 workers the run
+produced `Windows fatal exception: code 0x8007000e` (E_OUTOFMEMORY) from
+`platform.platform()`'s WMI query inside xdist workers at sessionstart, and a
+4-worker run of the same suite was measured at a peak of 2,862 MB across 12
+python processes. The 8-worker peak is not measured, so it is not claimed. The
+core count and the free memory still print into the job log.
+
+**Every routed job carries an explicit `timeout:`**, so a hang is bounded by a
+chosen number rather than the project default: `test-sdk` 30 minutes (measured
+1040 s end to end at 8 workers, of which pytest was 869 s; about 490 s to 550 s
+at 4 workers), `test-integration` 10 minutes, `adjacency` 20 minutes, `test-site`
+20 minutes (measured 237 s). `tests/unit/test_ci_gui_surface.py` fails if a
+routed job loses its cap.
 
 **The environment is built fresh, per job, outside every repository.**
 `ci\common.ps1` creates one venv per job name under
@@ -366,7 +377,14 @@ venv can silently differ from a fresh install.
 `adjacency` carries `needs: ["test-sdk"]` and, on this runner, opens that job's
 venv by name (`ci\adjacency.ps1` uses `Use-CiVenv -Name 'test-sdk'`) instead of
 paying a second copy of the same install. `tests/unit/test_ci_gui_surface.py`
-pins both halves of that link, so cutting either one fails a named test.
+pins both halves of that link, so cutting either one fails a named test. **That
+sharing is correct only while one runner takes this project's jobs one at a time
+(`concurrent = 1`) and both jobs land on it:** `needs` orders jobs, it does not
+pin them to a runner or to a build directory. A second runner with the same tag,
+or a build directory that moves between the two jobs, fails `adjacency` with the
+message that names `ci\test_sdk.ps1`, rather than exercising the set in the wrong
+environment. Building a second venv inside `adjacency` would remove the
+constraint for about 124 s and 700 MB per pipeline.
 
 **What the owner should know about that machine.** The runner runs as Cale's
 user, and it dies at logoff: a pipeline queued while the machine is logged out

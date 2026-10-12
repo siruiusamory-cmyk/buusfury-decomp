@@ -38,6 +38,14 @@ stages:
 test-sdk:
   stage: test
   tags: ["local-ci"]
+  # A bounded runtime, so a hung Qt test cannot hold the owner's machine until
+  # the project default. Sized from measurement, not taste: the whole job took
+  # 1040 s end to end at `-n auto` (8 workers) with the ROM-gated acceptance
+  # modules running here, of which pytest alone was 869 s; at `-n 4` the same
+  # suite is 307 s to 368 s by the lead's measurement, plus about 24 s of venv,
+  # 124 s of install and 31 s of quality gates. This cap is over three times the
+  # fast path and still bounds a hang.
+  timeout: 30 minutes
   variables:
     # Do not inherit the deployment credential into a test job. It is a
     # protected variable, so an unprotected ref cannot see it either way, and
@@ -132,6 +140,14 @@ test-integration:
 # `test-sdk`'s venv (`ci\adjacency.ps1`) instead of paying a second 700 MB
 # install of the same extras. It does not start until `test-sdk` is green, so the
 # adjacency orders never run alongside the parallel suite.
+#
+# THE SHARING IS SOUND ONLY WHILE ONE RUNNER TAKES THIS PROJECT AT A TIME
+# (`concurrent = 1`) AND BOTH JOBS LAND ON IT. `needs` orders jobs; it does not
+# pin them to a runner or to a build directory. A second `local-ci` runner, or a
+# build directory that moves between the two jobs, makes this job fail with
+# `ci: no venv at ...; run ci\test_sdk.ps1 first` rather than silently testing the
+# wrong environment. The alternative, building a second venv here, costs about
+# 124 s and 700 MB per pipeline for the same extras.
 adjacency:
   stage: test
   tags: ["local-ci"]
@@ -168,6 +184,10 @@ adjacency:
 test-site:
   stage: test
   tags: ["local-ci"]
+  # `npm ci` plus the check, the build and the artifact check measured 237 s
+  # end to end on this machine. The cap is five times that, because a cold npm
+  # cache is the slow case, and it still bounds a hung build.
+  timeout: 20 minutes
   script:
     # `npm run check` type-checks the site source, `npm run build` produces the
     # artifact, and the checker validates both the data and the artifact.

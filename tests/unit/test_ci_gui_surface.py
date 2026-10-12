@@ -628,6 +628,29 @@ def test_the_adjacency_job_runs_the_fixed_set_in_both_orders():
     )
 
 
+def test_every_routed_test_job_declares_an_explicit_timeout():
+    """Prevents: a hung job holding the owner's machine until the project default.
+
+    These jobs run on the owner's PC and a Qt test can hang rather than fail, so
+    each carries its own cap, chosen from a measured wall time. This asserts that
+    a cap is there and that it is a whole number of minutes, which is the form
+    GitLab parses; the numbers themselves belong to the jobs and are recorded in
+    `docs/testing.md`.
+    """
+    config = _ci_config()
+    for name in LOCAL_CI_JOBS:
+        timeout = config[name].get("timeout")
+        assert timeout, (
+            f"{_cited(name)}: {name} must declare an explicit `timeout:`, or a "
+            "hang holds the runner until the project default instead of a "
+            "number someone chose from a measurement"
+        )
+        assert re.fullmatch(r"\d+ minutes?", str(timeout).strip()), (
+            f"{_cited(name)}: {name} declares `timeout: {timeout!r}`, which is "
+            "not a whole number of minutes"
+        )
+
+
 def test_the_test_jobs_run_on_the_self_hosted_runner_and_the_deploy_job_does_not():
     """Prevents: silent drift of which runner executes what.
 

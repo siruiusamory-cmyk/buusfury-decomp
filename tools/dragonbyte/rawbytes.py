@@ -27,7 +27,7 @@ the two cannot disagree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tools.webfoot.atlas import Atlas, Confidence, strength
@@ -122,9 +122,6 @@ class RawEdits:
 
     def __bool__(self) -> bool:
         return bool(self.bytes_by_offset)
-
-    def with_write(self, write: RawWrite) -> "RawEdits":
-        return replace(self, bytes_by_offset={**self.bytes_by_offset, write.offset: write.new})
 
 
 def raw_owner(address: int) -> str:

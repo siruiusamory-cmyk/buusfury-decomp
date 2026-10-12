@@ -87,10 +87,23 @@ def lowered_record_floor():
         yield
 
 
+@contextmanager
+def proven_handle_pool():
+    """The fixture's record words are the proven carriers, as a real image's pool is.
+
+    A real image's proven carriers are the event-resource pool, which sits far above this
+    fixture's payload. The fixture plants its record words at `RECORD_AT`, so the pool is
+    patched to that region while an image is opened, which is where the engine reads it. The
+    model carries the pool, so a later `plan` call needs no patch.
+    """
+    with mock.patch.object(textedit.engine, "PROVEN_HANDLE_POOL",
+                           (RECORD_AT, RECORD_AT + 0x1000)):
+        yield
+
 def open_image(image, directory, name: str = "fixture.gba", **kwargs):
     path = Path(directory) / name
     path.write_bytes(image)
-    with lowered_record_floor():
+    with lowered_record_floor(), proven_handle_pool():
         return textedit.open_rom(path, **kwargs)
 
 

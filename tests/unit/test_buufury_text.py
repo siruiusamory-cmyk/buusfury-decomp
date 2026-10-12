@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from tests.gates import REPOSITORY_ROOT
+import tests.text_fixture as text_fixture  # noqa: E402
 from tests.text_fixture import (
     appearances,
     build,
@@ -42,6 +43,18 @@ def hello_image(text: str = HELLO, slots=None):
     """One dialogue record carrying `text` at 0x20, plus the real string table."""
     return build(payloads={1: line_payload(text, AT)}, records=[(1, AT, len(text) * 2)],
                  slots=slots)
+
+
+@pytest.fixture(autouse=True)
+def fixture_handle_pool():
+    """The fixture's record words are the proven carriers a write has to land on.
+
+    A real image's proven carriers are the event-resource pool, which sits far above this
+    fixture's payload. Without the patch the engine refuses every edit to a fixture record,
+    which is the rule working: it writes only what it can prove a reader reaches.
+    """
+    with text_fixture.proven_handle_pool():
+        yield
 
 
 def opened(directory, image=None, name: str = "fixture.gba", **kwargs) -> Session:

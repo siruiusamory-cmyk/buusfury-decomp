@@ -743,3 +743,19 @@ def test_the_native_captures_match_the_render() -> None:
                            "and the render does not reproduce it:\n" + "\n".join(disagreed))
     assert reproduced, ("no capture on this machine was located and held to the render; "
                         "report:\n" + "\n".join(reported[:10]))
+
+
+import tests.text_fixture as text_fixture  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fixture_handle_pool():
+    """The fixture's record words are the proven carriers a write has to land on.
+
+    A real image's proven carriers are the event-resource pool, which sits far above this
+    fixture's payload. Without the patch the engine refuses every edit to a fixture record,
+    which is the rule working: it writes only what it can prove a reader reaches. These tests
+    are about the states above that rule.
+    """
+    with text_fixture.proven_handle_pool():
+        yield

@@ -364,9 +364,12 @@ class _CanonicalView:
     def pointers(self, map_index: int, layer_slot: int) -> tuple[int, ...]:
         """The layer's distinct non-null chunk pointers, in first-appearance order.
 
-        This is the layer's own chunk vocabulary - exactly the set
-        ``maps/layout.toml`` numbers from 1 - so a template ordinal and an
-        authored chunk resolve through one rule rather than two.
+        This is one layer's own chunk vocabulary, which is the set a template ordinal
+        resolves against: a chunk is authored by naming the layer that draws it.
+        Since MAP-PAINT-ANY-CHUNK-001 it is NOT the numbering ``map_paint`` or a
+        project's ``layout`` ordinals use - those count across every dominant layer of
+        the map, so a borrowed chunk has a different number in each. Use
+        ``LayoutSlot.template_target`` to cross between them.
         """
         key = (map_index, layer_slot)
         cached = self._pointers.get(key)
@@ -404,9 +407,12 @@ def resolve_template(
 ) -> tuple[int, tuple[int, ...]]:
     """The container address and entries a template names, or refuse it.
 
-    The ordinal is resolved against the layer's own first-appearance vocabulary,
-    the same rule ``map_paint`` uses, so a template can never name a chunk the
-    layer does not actually use.
+    The ordinal is resolved against the LAYER the template names and its own
+    first-appearance vocabulary, because a chunk is authored by naming the layer that
+    draws it. That is not the map-wide ordinal a project stores
+    (``map_paint.PaintChunk.ordinal``), so a caller holding one of those must
+    translate it first with ``LayoutSlot.template_target``. Resolving a map-wide
+    ordinal here would refuse a legal chunk and report the layer's own count.
     """
     pointers = view.pointers(template.map_index, template.layer_slot)
     if template.ordinal > len(pointers):
@@ -952,8 +958,11 @@ class ChunkAuthor:
     def templates(self, map_index: int, layer_slot: int) -> tuple[ChunkTemplateChoice, ...]:
         """The canonical chunks this layer uses, in its own 1-based order.
 
-        The same order ``maps/layout.toml`` numbers from, so the "Chunk N" an
-        author picks here is the "Chunk N" the project stores.
+        This is the layer-scoped order a template ordinal resolves against. Since
+        MAP-PAINT-ANY-CHUNK-001 it is NOT the numbering a project's ``layout``
+        ordinals use: those count across every dominant layer of the map, so a chunk
+        borrowed from a sibling has a different number in each. Use
+        ``LayoutSlot.template_target`` to cross between the two.
         """
         record = self._view.layer(map_index, layer_slot)
         choices: list[ChunkTemplateChoice] = []

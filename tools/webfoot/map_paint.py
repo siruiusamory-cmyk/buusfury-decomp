@@ -92,6 +92,10 @@ class PaintChunk:
     #: itself; a slot number means the brush came from that sibling record, which
     #: is what the label has to say so a user is not choosing blind.
     source_slot: int | None = None
+    #: This chunk's 1-based position inside the window of the layer that draws it.
+    #: Chunk authoring names a chunk that way, so creating a chunk from a borrowed
+    #: brush needs this and not ``ordinal``, which counts across the whole map.
+    owner_ordinal: int = 0
 
     @property
     def label(self) -> str:
@@ -340,27 +344,40 @@ def _vocabulary(
     vocabulary, so an ordinal a project already stored keeps resolving to the chunk
     it named. Otherwise the layer's own non-null pointers in first-appearance order
     lead, which is what keeps the ordinals of every existing project stable. A
-    chunk's ``source_slot`` is the sibling record it was first seen in, or None for
-    the layer's own.
+    chunk's ``source_slot`` is the record it was first seen in, and ``owner_ordinal``
+    is its 1-based position inside that record's window, which is the number chunk
+    authoring resolves a template against.
     """
-    source: dict[int, int | None] = {}
-    for pointer in lead if lead is not None else record.chunk_addresses:
-        if pointer:
-            source.setdefault(pointer, None)
-    for sibling in records:
-        if sibling.slot == record.slot:
-            continue
-        for pointer in sibling.chunk_addresses:
-            if pointer:
-                source.setdefault(pointer, sibling.slot)
+    groups: list[tuple[int, tuple[int, ...]]] = [
+        (record.slot, lead if lead is not None else record.chunk_addresses)
+    ]
+    groups.extend(
+        (sibling.slot, sibling.chunk_addresses)
+        for sibling in records
+        if sibling.slot != record.slot
+    )
+    source: dict[int, int] = {}
+    order: list[int] = []
+    owned: dict[int, int] = {}
+    for group_slot, window in groups:
+        position = 0
+        for pointer in window:
+            if not pointer:
+                continue
+            position += 1
+            if pointer not in source:
+                source[pointer] = group_slot
+                order.append(pointer)
+            owned.setdefault(pointer, position)
     return tuple(
         PaintChunk(
             ordinal=ordinal,
             pointer=pointer,
             cell_count=sum(1 for cell in cells if cell.pointer == pointer),
-            source_slot=slot,
+            source_slot=source[pointer] if source[pointer] != record.slot else None,
+            owner_ordinal=owned[pointer],
         )
-        for ordinal, (pointer, slot) in enumerate(source.items(), start=1)
+        for ordinal, pointer in enumerate(order, start=1)
     )
 
 

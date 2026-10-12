@@ -1234,7 +1234,7 @@ export const project: ProjectStatus = {
         " which layers may be changed and which stay read-only.",
       facts: [
         `${layoutEditableMaps} of ${mapsViewable} maps expose an editable layer`,
-        "Brush drawn from the layer's own chunks",
+        "Brush drawn from the map's dominant-layer chunks",
         "Saved as a new ROM, with provenance",
       ],
     },

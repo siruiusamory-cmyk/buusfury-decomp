@@ -1144,7 +1144,7 @@ class LayoutEdits:
                     if ordinal < 1:
                         raise ProjectValidationError(
                             f"{where}: {cell_label} names chunk {ordinal}; ordinals are "
-                            "1-based, so 0 is not a chunk this layer uses"
+                            "1-based, so 0 is not a chunk this map uses"
                         )
                     by_cell[cell] = ordinal
                 if not by_cell:

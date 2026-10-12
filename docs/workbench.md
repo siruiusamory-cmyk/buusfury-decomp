@@ -39,7 +39,7 @@ chunk cells; a chunk the
 layer did not have can be created and its 32x32 plane painted; and the structure
 section can grow a supported layer's chunk grid or activate an unused layer slot.
 The
-grid overlay marks each chunk cell, the chooser offers that layer's own existing
+grid overlay marks each chunk cell, the chooser offers the map's dominant-layer
 chunks as thumbnails, and a pick previews immediately in memory - no ROM file is
 opened to preview. Apply commits a pick, Revert cell restores one cell to the
 chunk the source ROM holds, and Reset pending edits drops the session's changes.

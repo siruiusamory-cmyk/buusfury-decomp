@@ -4333,7 +4333,7 @@ class MapBrowserTab(QWidget):
     # -- layout editing: chunk chooser ---------------------------------------
 
     def _populate_chooser(self) -> None:
-        """Fill the chooser with the layer's own chunks and this map's authored ones.
+        """Fill the chooser with this map's dominant-layer chunks and its authored ones.
 
         MAP-CHUNK-AUTHORING-001, widened by MAP-PAINT-ANY-CHUNK-001. The canonical
         rows lead with this layer's own chunks, in their own 1-based order, and the
@@ -4641,8 +4641,8 @@ class MapBrowserTab(QWidget):
         spelled ``None`` (remove the authored paint) rather than re-written,
         because re-writing it would make an undo that returns a cell to its
         committed value rewrite an identical document. A cell whose value
-        differs is spelled with its ordinal, resolved through the layer's own
-        vocabulary so the persisted form is the one a build resolves.
+        differs is spelled with its ordinal, resolved through the map's accepted
+        set so the persisted form is the one a build resolves.
         """
         if self._editor is None:
             return {}
@@ -7305,6 +7305,21 @@ class MapBrowserTab(QWidget):
                 "chunk is created from an existing one."
             )
             return
+        # A chunk is authored by naming the LAYER that draws it, so the template needs
+        # that layer and the chunk's position inside that layer's own window. The
+        # brush ordinal counts across the map now that a cell may borrow from a
+        # sibling, so handing it to a template would resolve it against the wrong set
+        # and refuse a legal choice. `template_target` is the translation: it names the
+        # owning layer and that layer's own ordinal.
+        pointer = self._lookup_pointer(ordinal)
+        target = None if pointer is None else self._slot.template_target(pointer)
+        if target is None:
+            self._publish_status(
+                "Pick one of this map's chunks in the palette first: a new chunk is "
+                "created from an existing one."
+            )
+            return
+        template_slot, template_ordinal = target
         author = self.chunk_author()
         if author is None:
             QMessageBox.warning(
@@ -7334,7 +7349,7 @@ class MapBrowserTab(QWidget):
             )
             return
         try:
-            template = ChunkTemplate(self._current.index, self._slot.slot, ordinal)
+            template = ChunkTemplate(self._current.index, template_slot, template_ordinal)
             # The vocabulary is read before the editor opens, so a layer whose
             # permitted entries cannot be read refuses here - with the reason -
             # rather than opening an editor whose palette is empty.
@@ -7344,9 +7359,10 @@ class MapBrowserTab(QWidget):
             QMessageBox.warning(self, "Create chunk", str(exc))
             return
         self.open_chunk_editor(identity, template, plane, plane)
+        borrowed = self._slot.borrowed_note(pointer)
         self._publish_status(
-            f"Created {self._authored_name(identity)} from Chunk {ordinal}. Paint its "
-            "screen entries, then Apply chunk."
+            f"Created {self._authored_name(identity)} from Chunk {ordinal}{borrowed}. "
+            "Paint its screen entries, then Apply chunk."
         )
 
     def open_chunk_editor(

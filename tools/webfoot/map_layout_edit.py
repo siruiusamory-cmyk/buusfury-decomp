@@ -166,6 +166,12 @@ class LayoutSlot:
     #: chooser needs it because the widened set is the whole map's, so a row that
     #: only said "Chunk 3" would not say whose record 3 belongs to.
     sources: tuple[int, ...] = ()
+    #: MAP-PAINT-ANY-CHUNK-001. Where each choice sits inside its own slot's window,
+    #: 1-based, in the same order as ``choices``. A chunk is authored by naming the
+    #: layer that draws it, so a template resolves against this number and not
+    #: against the map-wide position. Keeping both stops the two numberings being
+    #: confused, which is what a borrowed brush did before this existed.
+    owner_ordinals: tuple[int, ...] = ()
     #: Non-empty when the slot cannot be edited, and why - a reason, not an error.
     read_only_reason: str = ""
 
@@ -178,6 +184,22 @@ class LayoutSlot:
         for offered, source in zip(self.choices, self.sources):
             if offered == pointer:
                 return source
+        return None
+
+    def template_target(self, pointer: int) -> tuple[int, int] | None:
+        """``(slot, ordinal)`` a template must name to author from ``pointer``.
+
+        The slot is the layer that actually draws the chunk and the ordinal is its
+        1-based position in that layer's own window, which is what
+        :func:`tools.webfoot.map_chunk.resolve_template` resolves against. None when
+        the pointer is not offered, so a caller cannot silently author from a chunk
+        this map does not use.
+        """
+        for offered, slot, ordinal in zip(
+            self.choices, self.sources, self.owner_ordinals
+        ):
+            if offered == pointer:
+                return slot, ordinal
         return None
 
     def borrowed_note(self, pointer: int) -> str:
@@ -418,29 +440,36 @@ class MapLayoutEditor:
                         if sibling.slot != record.slot
                     ),
                 )
-                # Which slot each choice came from, in the same order, so a chooser
-                # can say whose record a borrowed chunk belongs to. The layer's own
-                # pointers answer for `record.slot`; anything else came from the
-                # first sibling that showed it, which is the order `_vocabulary`
-                # uses, so the two spellings of this fact agree.
-                sources = tuple(
-                    record.slot if pointer in record.chunk_addresses else next(
-                        (
-                            sibling.slot
-                            for sibling in records
-                            if sibling.slot != record.slot
-                            and pointer in sibling.chunk_addresses
-                        ),
-                        record.slot,
-                    )
-                    for pointer in choices
-                )
+                # Which slot each choice came from and its 1-based position inside
+                # that slot's own window, in the same order as `choices`. The
+                # position is the number a template resolves against, because
+                # chunk authoring names a chunk by the layer that draws it; the
+                # choice's own index is the map-wide one a project stores. Both are
+                # kept so a caller never has to assume the two numberings agree,
+                # which is exactly what went wrong when the set was widened.
+                owners: dict[int, tuple[int, int]] = {}
+                for group_slot, window in (
+                    (record.slot, record.chunk_addresses),
+                    *(
+                        (sibling.slot, sibling.chunk_addresses)
+                        for sibling in records
+                        if sibling.slot != record.slot
+                    ),
+                ):
+                    position = 0
+                    for pointer in window:
+                        if pointer:
+                            position += 1
+                            owners.setdefault(pointer, (group_slot, position))
+                sources = tuple(owners[pointer][0] for pointer in choices)
+                owner_ordinals = tuple(owners[pointer][1] for pointer in choices)
                 reason = self._dominant_read_only_reason(grid, choices)
             else:
                 grid = LayoutGrid(0, 0)
                 cells = ()
                 choices = ()
                 sources = ()
+                owner_ordinals = ()
                 reason = _READ_ONLY_FORMS.get(
                     record.classification, "an unclassified layer handler"
                 )
@@ -453,6 +482,7 @@ class MapLayoutEditor:
                     cells=cells,
                     choices=choices,
                     sources=sources,
+                    owner_ordinals=owner_ordinals,
                     read_only_reason=reason,
                 )
             )

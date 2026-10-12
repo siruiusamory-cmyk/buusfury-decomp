@@ -70,6 +70,20 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\frames_only_probe.lua')
     )
+    # Added by FRIEND-V4B-CELL-PALETTE-C: the palette-RAM observer. READ-ONLY: it reads the 512 OBJ
+    # palette bytes and the visible OAM entries at named frames, so a run's log shows whether a runtime
+    # palette write landed in a bank and whether a Cell piece selected that bank. It writes no emulated
+    # memory, presses no keys, and writes host files inside the run directory only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\palette_ram_probe.lua')
+    )
+    # Added by FRIEND-V4B-CELL-PALETTE-C: the draw-loop block's liveness observer. READ-ONLY: it arms one
+    # breakpoint on the block the port patches and one on the piece advance, logs each arm result and each
+    # hit count, and reads no emulated memory beyond that. A silent target beside a firing advance is a real
+    # negative; both silent means the instrument is unproven.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\block_hits_probe.lua')
+    )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fetch_check_probe.lua')
     )

@@ -2197,13 +2197,13 @@ class MapBrowserTab(QWidget):
         self._redo_action = self._undo_stack.createRedoAction(self, "Redo paint")
         self._undo_button = QPushButton("Undo")
         self._undo_button.setToolTip(
-            "Undo the last paint gesture (Ctrl+Z is Edit > Undo, not this button)"
+            "Undo the last paint gesture (also Edit > Undo, Ctrl+Z)"
         )
         self._undo_button.clicked.connect(self._undo_action.trigger)
         self._undo_button.setEnabled(False)
         self._redo_button = QPushButton("Redo")
         self._redo_button.setToolTip(
-            "Redo the last undone paint gesture (Ctrl+Y is Edit > Redo, not this button)"
+            "Redo the last undone paint gesture (also Edit > Redo, Ctrl+Y)"
         )
         self._redo_button.clicked.connect(self._redo_action.trigger)
         self._redo_button.setEnabled(False)
@@ -2400,13 +2400,13 @@ class MapBrowserTab(QWidget):
         # disagree about the history.
         self._chunk_undo_button = QPushButton("Undo")
         self._chunk_undo_button.setToolTip(
-            "Undo the last edit gesture (Ctrl+Z is Edit > Undo, not this button)"
+            "Undo the last edit gesture (also Edit > Undo, Ctrl+Z)"
         )
         self._chunk_undo_button.clicked.connect(self._undo_action.trigger)
         self._chunk_undo_button.setEnabled(False)
         self._chunk_redo_button = QPushButton("Redo")
         self._chunk_redo_button.setToolTip(
-            "Redo the last undone gesture (Ctrl+Y is Edit > Redo, not this button)"
+            "Redo the last undone gesture (also Edit > Redo, Ctrl+Y)"
         )
         self._chunk_redo_button.clicked.connect(self._redo_action.trigger)
         self._chunk_redo_button.setEnabled(False)

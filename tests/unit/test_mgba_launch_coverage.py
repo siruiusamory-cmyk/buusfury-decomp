@@ -142,6 +142,11 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "test_the_removed_engine_prototype_stays_out_of_the_product_repository",
      "'git'"):
         "asks git what the repository tracks; it starts no emulator",
+    ("tests/unit/test_text_tool_shell.py",
+     "test_the_exit_is_clean_after_typing_into_a_row_carrying_a_control_unit",
+     "sys.executable"):
+        "runs this interpreter on the text editor's own smoke start to watch how it "
+        "exits, which only shows at interpreter shutdown; it starts no emulator",
     ("tests/unit/test_dragonbyte_foundation.py",
      "_run_module",
      "sys.executable"):

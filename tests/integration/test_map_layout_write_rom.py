@@ -21,6 +21,12 @@ CELL = 0
 ORIGINAL = 0x082928DC
 REPLACEMENT = 0x08292A54
 FILE_OFFSET = 0x00292CA0
+#: A real chunk address of another map's dominant window, taken from the image.
+#: It is not one map:0040 uses anywhere, so it stays the foreign-pointer refusal.
+FOREIGN_CHUNK = 0x08179A50
+#: A chunk map:0040's dominant layer 1 does not itself use but a sibling record of
+#: the same map does: the case the widened rule makes legal.
+SIBLING_CHUNK = 0x08292884
 
 #: The identity every address in this writer's stack is resolved against. Read
 #: from the packaged profile, which owns it, rather than from a literal here.
@@ -109,7 +115,7 @@ def test_fixed_width_edit_noop_inverse_and_render(
 def test_invalid_replacements_fail_closed(canonical_input: tuple[Path, bytes]) -> None:
     _, source = canonical_input
     writer = MapLayoutWriter(source)
-    for bad in (0, -1, 0x100000000, 0x08292884, True):
+    for bad in (0, -1, 0x100000000, FOREIGN_CHUNK, True):
         with pytest.raises(MapLayoutWriteError):
             writer.set_chunk_pointer(MAP, LAYER, CELL, bad)
     for map_index, slot, cell in ((-1, LAYER, CELL), (MAP, 4, CELL), (MAP, LAYER, 4), (19, 2, 0)):
@@ -117,3 +123,34 @@ def test_invalid_replacements_fail_closed(canonical_input: tuple[Path, bytes]) -
             writer.chunk_pointer(map_index, slot, cell)
     with pytest.raises(MapLayoutWriteError):
         MapLayoutWriter(source[:-1])
+
+
+def test_a_sibling_layers_chunk_is_accepted_and_writes_only_its_own_field(
+    canonical_input: tuple[Path, bytes]
+) -> None:
+    """The widened rule at the write primitive: four bytes in place, nothing else."""
+    _, source = canonical_input
+    writer = MapLayoutWriter(source)
+    assert SIBLING_CHUNK not in writer.read_layer(MAP, LAYER).chunk_addresses
+    writer.set_chunk_pointer(MAP, LAYER, CELL, SIBLING_CHUNK)
+    built = writer.build()
+    # The two values share their upper three bytes, so only the low bytes differ;
+    # what matters is that nothing outside this cell's four-byte field does.
+    differing = {index for index, (a, b) in enumerate(zip(source, built)) if a != b}
+    assert differing
+    assert differing <= set(range(FILE_OFFSET, FILE_OFFSET + 4))
+    assert built[FILE_OFFSET : FILE_OFFSET + 4] == SIBLING_CHUNK.to_bytes(4, "little")
+    # Read back through the accepted reader, not through the writer: the writer's
+    # constructor is the identity gate, and an edited image is deliberately not
+    # the canonical image it accepts.
+    from tools.webfoot.formats import map_graphics as mg
+    from tools.webfoot.packaged import packaged_profile
+
+    reader = mg.MapGraphicsReader(built, packaged_profile())
+    entry = mg.read_map_entries(reader)[MAP]
+    assert (
+        mg.read_layer(reader, entry.root_address, LAYER).chunk_addresses[CELL]
+        == SIBLING_CHUNK
+    )
+    assert len(built) == len(source)
+    assert hashlib.sha256(source).hexdigest() == SUPPORTED_ROM_SHA256

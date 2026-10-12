@@ -73,9 +73,9 @@ CHUNK_SIDE_TILES = mg.CHUNK_SIDE_TILES
 
 @dataclass(frozen=True, slots=True)
 class PaintChunk:
-    """One selectable brush value: a chunk the layer already uses.
+    """One selectable brush value: a chunk a dominant layer of this map uses.
 
-    ``ordinal`` is the 1-based position in the layer's own vocabulary, and it is
+    ``ordinal`` is the 1-based position in this layer's brush vocabulary, and it is
     the value an authored project stores - not ``pointer``. The pointer is
     published because a renderer needs it and because it is the honest identity
     of the value; the ordinal is published because it is the only form that
@@ -84,12 +84,19 @@ class PaintChunk:
 
     ordinal: int
     pointer: int
-    #: How many cells of this layer currently reference this chunk.
+    #: How many cells of this layer currently reference this chunk; 0 when the
+    #: chunk comes from a sibling layer and this one holds it nowhere.
     cell_count: int
+    #: The layer slot this chunk was first seen in. None means the edited layer
+    #: itself; a slot number means the brush came from that sibling record, which
+    #: is what the label has to say so a user is not choosing blind.
+    source_slot: int | None = None
 
     @property
     def label(self) -> str:
-        return f"Chunk {self.ordinal}"
+        if self.source_slot is None:
+            return f"Chunk {self.ordinal}"
+        return f"Chunk {self.ordinal} \u00b7 BG{self.source_slot}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +327,42 @@ _READ_ONLY_FORMS = {
 }
 
 
+def _vocabulary(
+    record: mg.LayerRecord,
+    records: tuple[mg.LayerRecord, ...],
+    cells: tuple[PaintCell, ...],
+    lead: tuple[int, ...] | None = None,
+) -> tuple[PaintChunk, ...]:
+    """The brush vocabulary for one layer: its own chunks first, then its siblings'.
+
+    ``lead`` overrides the layer's own window with the structural authority's fill
+    vocabulary, so an ordinal a project already stored keeps resolving to the chunk
+    it named. Otherwise the layer's own non-null pointers in first-appearance order
+    lead, which is what keeps the ordinals of every existing project stable. A
+    chunk's ``source_slot`` is the sibling record it was first seen in, or None for
+    the layer's own.
+    """
+    source: dict[int, int | None] = {}
+    for pointer in lead if lead is not None else record.chunk_addresses:
+        if pointer:
+            source.setdefault(pointer, None)
+    for sibling in records:
+        if sibling.slot == record.slot:
+            continue
+        for pointer in sibling.chunk_addresses:
+            if pointer:
+                source.setdefault(pointer, sibling.slot)
+    return tuple(
+        PaintChunk(
+            ordinal=ordinal,
+            pointer=pointer,
+            cell_count=sum(1 for cell in cells if cell.pointer == pointer),
+            source_slot=slot,
+        )
+        for ordinal, (pointer, slot) in enumerate(source.items(), start=1)
+    )
+
+
 class MapPainter:
     """Read-only paint authority over one immutable canonical image.
 
@@ -387,14 +430,20 @@ class MapPainter:
         name = None
         if entry.text_index is not None:
             name = self._reader.text(entry.text_index) or None
+        records = mg.read_layers(self._reader, entry.root_address)
         slots: list[PaintLayer] = []
-        for record in mg.read_layers(self._reader, entry.root_address):
-            slots.append(self._build_layer(map_index, record))
+        for record in records:
+            slots.append(self._build_layer(map_index, record, records))
         return PaintTarget(map_index=map_index, name=name, slots=tuple(slots))
 
-    def _build_layer(self, map_index: int, record: mg.LayerRecord) -> PaintLayer:
+    def _build_layer(
+        self,
+        map_index: int,
+        record: mg.LayerRecord,
+        records: tuple[mg.LayerRecord, ...],
+    ) -> PaintLayer:
         if (map_index, record.slot) in self._structural_slots:
-            return self._structural_layer(map_index, record)
+            return self._structural_layer(map_index, record, records)
         if record.classification != _EDITABLE_CLASSIFICATION:
             return PaintLayer(
                 slot=record.slot,
@@ -418,18 +467,11 @@ class MapPainter:
             )
             for index, pointer in enumerate(record.chunk_addresses)
         )
-        # The vocabulary is the layer's own non-null pointers in first-appearance
-        # order - exactly the set the proven replacement rule accepts, and
-        # therefore exactly what a brush may place.
-        pointers = tuple(dict.fromkeys(p for p in record.chunk_addresses if p))
-        vocabulary = tuple(
-            PaintChunk(
-                ordinal=ordinal,
-                pointer=pointer,
-                cell_count=sum(1 for cell in cells if cell.pointer == pointer),
-            )
-            for ordinal, pointer in enumerate(pointers, start=1)
-        )
+        # The brush vocabulary is this layer's own non-null pointers in
+        # first-appearance order, then whatever its sibling records add: the one
+        # accepted replacement set for this map, with the layer's own chunks
+        # keeping their familiar low ordinals.
+        vocabulary = _vocabulary(record, records, cells)
         return PaintLayer(
             slot=record.slot,
             classification=record.classification,
@@ -443,15 +485,22 @@ class MapPainter:
             ),
         )
 
-    def _structural_layer(self, map_index: int, record: mg.LayerRecord) -> PaintLayer:
+    def _structural_layer(
+        self,
+        map_index: int,
+        record: mg.LayerRecord,
+        records: tuple[mg.LayerRecord, ...],
+    ) -> PaintLayer:
         """A grid the project authored, read through the structural authority.
 
-        The geometry, the effective cell pointers and the vocabulary all come from
+        The geometry, the effective cell pointers and the fill vocabulary come from
         ``map_resize``, so a resize and a paint of it cannot disagree about how many
-        cells the layer has or which chunks it may be composed from. Only cells that
-        also exist in the canonical record carry an offset; the rest exist solely in
-        the record the build materializes, and a paint of them is persisted
-        semantically rather than written in place.
+        cells the layer has. The *brush* vocabulary is the map's accepted
+        replacement set, the same one :meth:`_build_layer` offers, so a grid the
+        project authored is paintable with the same chunks a canonical grid is.
+        Only cells that also exist in the canonical record carry an offset; the
+        rest exist solely in the record the build materializes, and a paint of them
+        is persisted semantically rather than written in place.
         """
         from .map_resize import MapStructureError, MapResizer
 
@@ -492,14 +541,10 @@ class MapPainter:
             )
             for index in range(layer.cell_count)
         )
-        vocabulary = tuple(
-            PaintChunk(
-                ordinal=choice.ordinal,
-                pointer=choice.address,
-                cell_count=sum(1 for cell in cells if cell.pointer == choice.address),
-            )
-            for choice in layer.vocabulary
-        )
+        # The structural grid's own fill vocabulary leads, so an ordinal already
+        # stored in a project keeps resolving to the chunk it named.
+        own = tuple(choice.address for choice in layer.vocabulary)
+        vocabulary = _vocabulary(record, records, cells, lead=own)
         return PaintLayer(
             slot=record.slot,
             classification=_DOMINANT,
@@ -520,10 +565,13 @@ class MapPainter:
     ) -> str:
         """Why a dominant slot has no brush, or "" when it has.
 
-        A cell may only be given a chunk the same layer already uses *at another
-        cell*, so a layer that uses a single chunk has nothing to paint with: a
-        1x1 grid holds one cell, and a larger grid repeating one chunk has no
-        second value to place. That is a read-only state, not a failure.
+        A cell may only be given a chunk some dominant layer of the same map
+        already uses, so a map whose dominant layers between them hold one chunk
+        has nothing to paint with: a 1x1 grid holds one cell, and a larger grid
+        repeating one chunk has no second value to place. That is a read-only
+        state, not a failure. A layer with a single chunk of its own whose
+        sibling records hold others is NOT read-only: the brush vocabulary is the
+        map's set, so it has something to place.
         """
         if not columns * rows:
             return "a dominant record whose chunk grid has a zero dimension"
@@ -544,8 +592,8 @@ class MapPainter:
 
         Every refusal the write side cares about happens here, before anything
         is planned: an unsupported layer, a cell outside the layer's own grid, a
-        non-integer or out-of-range ordinal, and a pointer the same layer does
-        not already use elsewhere.
+        non-integer or out-of-range ordinal, and a pointer no dominant layer of
+        this map already uses.
 
         A replacement that resolves to the value the cell already holds is NOT a
         refusal - see the note at the end of the method - so callers that need
@@ -572,18 +620,15 @@ class MapPainter:
             )
         original = layer.cells[cell].pointer
         try:
-            # The accepted replacement rule is "a chunk this same layer already
-            # uses", and for a canonical layer that is the set of pointers its own
-            # cells currently hold. A structural layer's cells are mostly one
-            # initialization value, so the layer does not yet *hold* the rest of
-            # its vocabulary - but the vocabulary is exactly the set of chunks the
-            # template layer draws, and `layer.chunk(ordinal)` has already refused
-            # anything outside it. Checking the vocabulary is therefore the same
-            # rule stated against the set that actually authorizes the brush.
-            if not layer.structural:
-                validate_chunk_replacement(
-                    tuple(cell.pointer for cell in layer.cells), entry.pointer
-                )
+            # The accepted replacement rule is "a chunk a dominant layer of this
+            # map already uses", and the vocabulary IS that set - the layer's own
+            # chunks first, then its siblings'. A structural layer's cells are
+            # mostly one initialization value, so the layer does not yet *hold*
+            # the rest of its vocabulary, but `layer.chunk(ordinal)` has already
+            # refused anything outside it.
+            validate_chunk_replacement(
+                tuple(chunk.pointer for chunk in layer.vocabulary), entry.pointer
+            )
             mg.dominant_chunk_words(self._reader, entry.pointer)
         except _READ_ERRORS as exc:
             raise MapPaintError(str(exc)) from exc

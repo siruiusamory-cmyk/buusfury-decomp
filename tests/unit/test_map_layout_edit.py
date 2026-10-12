@@ -25,6 +25,7 @@ from tools.webfoot.map_layout_edit import (
 from tools.webfoot.map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
 )
 
@@ -110,17 +111,22 @@ def test_grid_covers_a_row_major_window_exactly() -> None:
 # --- replacement policy ------------------------------------------------------
 
 
-def test_replacement_policy_accepts_only_this_layers_existing_chunks() -> None:
+def test_replacement_policy_accepts_any_chunk_of_the_maps_dominant_layers() -> None:
+    # The caller supplies the legal set, which is the map's dominant windows:
+    # a layer's own chunks and its siblings' are legal on the same terms.
     layer = (0x082928DC, 0x08292A54, 0, 0x082928DC)
-    assert mb.validate_cell_replacement(layer, 0x08292A54) == 0x08292A54
-    assert validate_chunk_replacement(layer, 0x082928DC) == 0x082928DC
+    sibling = (0x08292884,)
+    legal = legal_chunk_pointers(layer, sibling)
+    assert mb.validate_cell_replacement(legal, 0x08292A54) == 0x08292A54
+    assert validate_chunk_replacement(legal, 0x082928DC) == 0x082928DC
+    assert validate_chunk_replacement(legal, 0x08292884) == 0x08292884
 
 
 @pytest.mark.parametrize(
     "bad",
     [
         0,           # the null pointer
-        0x08292884,  # a real chunk, but not one this layer uses
+        0x08299999,  # a real chunk, but not one any layer of this map uses
         True,        # a bool is not an address, even when it equals an int
         1,
         -1,
@@ -141,6 +147,24 @@ def test_writer_refuses_a_null_replaceable_and_a_null_replacement() -> None:
     # A layer whose window is entirely null accepts no replacement at all.
     with pytest.raises(MapLayoutWriteError):
         validate_chunk_replacement((0, 0), 0)
+
+
+def test_widening_a_layer_vocabulary_is_what_keeps_the_writer_accepting() -> None:
+    """The refusal a single-chunk layer sees is the SET, not the predicate.
+
+    Given only its own window the predicate refuses a sibling chunk, which is why
+    the paint and editor surfaces have to hand it the map's set; handed that set,
+    the same call accepts. This is the one place the widening could silently stop
+    reaching the case it exists for.
+    """
+    own = (0x08292884, 0x08292A54)
+    sibling = 0x082928DC
+    with pytest.raises(MapLayoutWriteError):
+        validate_chunk_replacement(own, sibling)
+    assert validate_chunk_replacement(
+        legal_chunk_pointers(own, (sibling,)), sibling
+    ) == sibling
+
 
 
 # --- slot and target classification -----------------------------------------

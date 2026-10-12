@@ -300,11 +300,16 @@ def _resolve_chunk_overrides(
     layer slot and then by cell, which the stitch substitutes for a pointer
     lookup. Nothing is written and no ROM byte is touched.
     """
-    from .map_layout_write import MapLayoutWriteError, validate_chunk_replacement
+    from .map_layout_write import (
+        MapLayoutWriteError,
+        legal_chunk_pointers,
+        validate_chunk_replacement,
+    )
 
     if not overrides:
         return {}, {}
     by_slot = {record.slot: record for record in records}
+    legal = legal_chunk_pointers(*(record.chunk_addresses for record in records))
     addresses: dict[int, dict[int, int]] = {}
     planes: dict[int, dict[int, tuple[int, ...]]] = {}
     for key, replacement in overrides.items():
@@ -325,7 +330,7 @@ def _resolve_chunk_overrides(
             addresses.setdefault(slot, {})[cell] = 0
             continue
         try:
-            validate_chunk_replacement(record.chunk_addresses, replacement)
+            validate_chunk_replacement(legal, replacement)
         except MapLayoutWriteError as exc:
             raise MapBrowserError(str(exc)) from exc
         addresses.setdefault(slot, {})[cell] = replacement

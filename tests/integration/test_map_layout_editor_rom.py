@@ -52,10 +52,23 @@ GRAND_KAI_CHANGED_PIXELS = 29_208
 #: Two further ordinary dominant-layer maps with multi-chunk layouts.
 OTHER_MAPS = ((46, 3, 1, 2), (359, 3, 3, 1))
 
-#: Corpus census, measured on the canonical image.
+#: Corpus census, re-measured on the canonical image for the widened rule: a cell
+#: may take a chunk any dominant layer of the same map already uses, so a
+#: single-chunk layer borrows a sibling's. 99 maps that were read-only became
+#: editable; the 12 that remain are 11 whose dominant layers between them hold one
+#: chunk and one (map:0008) with no dominant layer at all.
 EXPECTED_MAPS = 452
-EXPECTED_EDITABLE = 341
-EXPECTED_READ_ONLY = 111
+EXPECTED_EDITABLE = 440
+EXPECTED_READ_ONLY = 12
+
+#: A map whose only dominant layer holds a single chunk, with no sibling holding
+#: another: read-only after the widening too, which is the refusal that survives.
+SINGLE_CHUNK_MAP = 1
+SINGLE_CHUNK_LAYER = 3
+
+#: A real chunk address that is not in map:0040's legal set at all, taken from the
+#: image rather than invented: the address map:0039's dominant window starts at.
+FOREIGN_CHUNK = 0x08179A50
 
 
 def _rom_path() -> Path:
@@ -168,23 +181,29 @@ def test_corpus_census_and_editable_detection(editor: MapLayoutEditor) -> None:
     assert 8 in read_only
 
 
-def test_grand_kai_target_offers_the_three_multi_chunk_layers(
+def test_grand_kai_target_offers_the_four_editable_layers(
     editor: MapLayoutEditor,
 ) -> None:
     target = editor.target(GRAND_KAI)
     assert target.name == "Grand Kai's Planet"
     assert target.editable
-    assert [slot.slot for slot in target.editable_slots] == [1, 2, 3]
+    assert [slot.slot for slot in target.editable_slots] == [0, 1, 2, 3]
     layer = target.slots[GRAND_KAI_LAYER]
     assert layer.grid.columns == 2 and layer.grid.rows == 2
     assert layer.cells[GRAND_KAI_CELL].pointer == GRAND_KAI_ORIGINAL
     assert layer.cells[1].pointer == GRAND_KAI_REPLACEMENT
     assert layer.cells[GRAND_KAI_CELL].offset == GRAND_KAI_FIELD_OFFSET
-    assert len(layer.choices) == 4
     assert GRAND_KAI_REPLACEMENT in layer.choices
-    # Slot 0 is a 1x1 grid holding one chunk, so it has nothing to substitute.
-    assert not target.slots[0].editable
-    assert "single chunk" in target.slots[0].read_only_reason
+    # Slot 0 is a 1x1 grid holding one chunk of its own, and it is editable
+    # precisely because its sibling records hold others: the wall this ticket
+    # removes. Its own chunk keeps ordinal 1 and the borrowed ones follow.
+    slot0 = target.slots[0]
+    assert slot0.editable
+    assert slot0.grid.cell_count == 1
+    assert slot0.choices[0] == slot0.cells[0].pointer
+    assert len(slot0.choices) > 1
+    assert all(choice in layer.choices for choice in slot0.choices)
+
 
 
 def test_map_19_stays_read_only_for_two_independent_reasons(
@@ -372,18 +391,28 @@ def test_unsupported_replacements_and_targets_fail_closed(
     _path, source = canonical_rom
     editor.reset()
     target = editor.target(GRAND_KAI)
-    layer = target.slots[GRAND_KAI_LAYER]
-    # A pointer used by the map's other dominant layer is a real chunk that this
-    # layer does not use: the writer must refuse it.
-    cross_layer = target.slots[2].choices[0]
-    assert cross_layer not in layer.choices
-    for bad in (0, True, -1, 0x100000000, 0x08292884, cross_layer, None, "x"):
+    # A chunk a sibling record uses is what the widening makes legal: chosen by
+    # measurement so the case is real rather than assumed.
+    own_pointers = {cell.pointer for cell in target.slots[GRAND_KAI_LAYER].cells}
+    sibling = next(
+        choice
+        for slot in (2, 3)
+        for choice in target.slots[slot].choices
+        if choice not in own_pointers
+    )
+    assert sibling not in own_pointers
+    assert editor.set_cell(
+        GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, sibling
+    ) is not None
+    editor.reset()
+    # ... and a real chunk this map does not use anywhere is still refused.
+    for bad in (0, True, -1, 0x100000000, FOREIGN_CHUNK, None, "x"):
         with pytest.raises(MapLayoutEditError):
             editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, bad)
     with pytest.raises(MapLayoutEditError):
         editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, 4, GRAND_KAI_REPLACEMENT)
     with pytest.raises(MapLayoutEditError):
-        editor.set_cell(GRAND_KAI, 0, 0, GRAND_KAI_ORIGINAL)  # single-chunk layer
+        editor.set_cell(SINGLE_CHUNK_MAP, SINGLE_CHUNK_LAYER, 0, GRAND_KAI_ORIGINAL)
     with pytest.raises(MapLayoutEditError):
         editor.set_cell(GRAND_KAI, 2, 0, 0)  # the null pointer is never a target
     with pytest.raises(MapLayoutEditError):
@@ -508,6 +537,74 @@ def test_save_publishes_a_provenance_manifest_beside_the_image(
     _w, _h, plain_pixels = _layer_pixels(plain, GRAND_KAI_LAYER)
     _w2, _h2, derived_pixels = _layer_pixels(derived, GRAND_KAI_LAYER)
     assert _count_differing(plain_pixels, derived_pixels) == GRAND_KAI_CHANGED_PIXELS
+    editor.reset()
+
+
+def test_a_sibling_layer_chunk_survives_save_reopen_and_provenance(
+    canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
+) -> None:
+    """The widened rule, end to end: the case that would have caught the trap.
+
+    A map:0040 BG0 holds one chunk of its own, so before the widening it was
+    read-only. Painted with a chunk from its sibling records, saved, reopened and
+    verified, its change must survive provenance - the write path and the
+    verification path have to agree about the widened set, or a derivative this
+    tool legitimately wrote would be refused by the tool that wrote it.
+    """
+    path, source = canonical_rom
+    editor.reset()
+    target = editor.target(GRAND_KAI)
+    slot0 = target.slots[0]
+    assert slot0.editable, "the wall this ticket removes is still standing"
+    assert len(slot0.cells) == 1
+    own = slot0.cells[0].pointer
+    borrowed = next(choice for choice in slot0.choices if choice != own)
+    borrowed_elsewhere = next(
+        choice for choice in target.slots[1].choices if choice not in (own, borrowed)
+    )
+    editor.set_cell(GRAND_KAI, 0, 0, borrowed)
+    editor.set_cell(GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, borrowed_elsewhere)
+
+    output = tmp_path / "sibling.gba"
+    saved = editor.save(output, source_path=path, profile_id=PROFILE_ID)
+    emitted = output.read_bytes()
+    assert len(saved.verified) == 2
+
+    # The build is the canonical image plus exactly the two four-byte fields:
+    # nothing outside them differs, and each field holds the chunk that was painted.
+    fields = {saved.changes[0].offset, saved.changes[1].offset}
+    assert len(fields) == 2
+    allowed = {field + index for field in fields for index in range(4)}
+    differing = {index for index, (a, b) in enumerate(zip(source, emitted)) if a != b}
+    assert differing
+    assert differing <= allowed
+    assert set(saved.changed_offsets) == differing
+    for change in saved.changes:
+        assert emitted[change.offset : change.offset + 4] == change.new
+
+    # Reopened through the accepted readers, both cells carry what was painted:
+    # the reader, not a fresh editor, because an emitted image is deliberately not
+    # the canonical image an editor's own identity gate accepts.
+    from tools.webfoot.formats import map_graphics as mg
+    from tools.webfoot.packaged import packaged_profile
+
+    reader = mg.MapGraphicsReader(emitted, packaged_profile())
+    entry = mg.read_map_entries(reader)[GRAND_KAI]
+    assert mg.read_layer(reader, entry.root_address, 0).chunk_addresses[0] == borrowed
+    assert (
+        mg.read_layer(reader, entry.root_address, GRAND_KAI_LAYER).chunk_addresses[
+            GRAND_KAI_CELL
+        ]
+        == borrowed_elsewhere
+    )
+
+    # The provenance document this tool wrote verifies against the borrowed chunk.
+    authored = prov.verify_authored_rom(output)
+    assert authored.canonical_image == source
+    assert authored.overrides_for(GRAND_KAI) == {
+        (0, 0): borrowed,
+        (GRAND_KAI_LAYER, GRAND_KAI_CELL): borrowed_elsewhere,
+    }
     editor.reset()
 
 
@@ -892,22 +989,22 @@ def test_save_refuses_every_derived_path_that_is_the_source(canonical_rom, edito
     editor.reset()
 
 
-def test_the_same_layer_policy_is_what_refuses_an_illegal_declared_change(
+def test_the_map_policy_is_what_refuses_an_illegal_declared_change(
     canonical_rom: tuple[Path, bytes], editor: MapLayoutEditor, tmp_path: Path
 ) -> None:
     """Identity, output hash and reconstruction can pass while the edit is illegal.
 
-    A file that really carries a foreign-layer pointer, with a manifest that declares
-    exactly that change, satisfies every other check; only the same-layer rule
-    stands between it and acceptance.
+    A file that really carries a chunk no dominant layer of that map uses, with a
+    manifest that declares exactly that change, satisfies every other check; only
+    the map's replacement rule stands between it and acceptance.
     """
     _path, source = canonical_rom
     editor.reset()
-    cross_layer = editor.target(GRAND_KAI).slots[2].choices[0]
-    assert cross_layer not in editor.target(GRAND_KAI).slots[GRAND_KAI_LAYER].choices
-    claim = tmp_path / "cross-layer.gba"
+    foreign = FOREIGN_CHUNK
+    assert foreign not in editor.target(GRAND_KAI).slots[GRAND_KAI_LAYER].choices
+    claim = tmp_path / "foreign-layer.gba"
     payload = bytearray(source)
-    payload[GRAND_KAI_FIELD_OFFSET : GRAND_KAI_FIELD_OFFSET + 4] = cross_layer.to_bytes(
+    payload[GRAND_KAI_FIELD_OFFSET : GRAND_KAI_FIELD_OFFSET + 4] = foreign.to_bytes(
         4, "little"
     )
     claim.write_bytes(bytes(payload))
@@ -924,7 +1021,7 @@ def test_the_same_layer_policy_is_what_refuses_an_illegal_declared_change(
                     1
                     for before, after in zip(
                         GRAND_KAI_ORIGINAL.to_bytes(4, "little"),
-                        cross_layer.to_bytes(4, "little"),
+                        foreign.to_bytes(4, "little"),
                     )
                     if before != after
                 ),
@@ -934,7 +1031,7 @@ def test_the_same_layer_policy_is_what_refuses_an_illegal_declared_change(
                         "offset_hex": f"0x{GRAND_KAI_FIELD_OFFSET:08X}",
                         "size": 4,
                         "old": GRAND_KAI_ORIGINAL.to_bytes(4, "little").hex(),
-                        "new": cross_layer.to_bytes(4, "little").hex(),
+                        "new": foreign.to_bytes(4, "little").hex(),
                         "owner": f"map:{GRAND_KAI:04d} layer {GRAND_KAI_LAYER} cell {GRAND_KAI_CELL}",
                         "reason": prov.REASON,
                     }
@@ -946,7 +1043,7 @@ def test_the_same_layer_policy_is_what_refuses_an_illegal_declared_change(
     with pytest.raises(prov.ProvenanceError) as excinfo:
         prov.verify_authored_rom(claim)
     assert "not a supported replacement" in str(excinfo.value)
-    assert "same dominant layer" in str(excinfo.value)
+    assert "dominant layer of the same map" in str(excinfo.value)
 
     # A pointer the layer does use elsewhere is the legal control: accepted.
     legal = tmp_path / "legal.gba"

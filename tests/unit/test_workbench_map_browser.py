@@ -1038,11 +1038,11 @@ def test_a_rejected_replacement_is_a_message_not_a_crash(edit_tab, monkeypatch):
     edit_tab._edit_toggle.setChecked(True)
     _choose(edit_tab, 2)
     edit_tab.editor.reject = MapLayoutEditError(
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     )
     _paint_cells(edit_tab, 0)
     assert errors == [
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     ]
     assert edit_tab.editor.edits_for(MAP) == ()
     assert edit_tab._undo_stack.count() == 0

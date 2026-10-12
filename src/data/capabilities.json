@@ -158,20 +158,20 @@
       "family": "edit",
       "title": "Map layout editing: chunk-cell replacement",
       "state": "shipped",
-      "detail": "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk that layer already uses. 341 of the 452 maps expose an editable layer; the remaining 111 are read-only, with the reason stated.",
+      "detail": "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk a dominant layer of that same map already uses. 440 of the 452 maps expose an editable layer; the remaining 12 are read-only, with the reason stated.",
       "limits": [
-        "One operation only: reassign an existing same-layer dominant-layer chunk cell. The replacement must be a non-null chunk that the same layer already uses elsewhere.",
+        "One operation only: reassign an existing dominant-layer chunk cell. The replacement must be a non-null chunk some dominant layer of the same map already uses, which may be the edited layer's own or a sibling record's.",
         "Cell replacement stays an in-place edit of a supported dominant layer: it does not relocate a layer's record, and it accepts no arbitrary map format.",
-        "111 of the 452 maps are read-only: dominant grids that use a single chunk, absent dominant layers, and maps outside the proven form state the reason.",
+        "12 of the 452 maps are read-only: maps whose dominant grids between them use a single chunk, and map:0008, which has no dominant layer at all. Each states the reason.",
         "Emulator validation of the layout write itself was not performed; the application round-trip, which reopens its own emitted ROM through the manifest it wrote, was."
       ],
-      "surface": "Maps editor, Layout mode: chunk-cell replacement with a same-layer chunk chooser",
+      "surface": "Maps editor, Layout mode: chunk-cell replacement with a chunk chooser over the map's dominant layers",
       "proof": "application",
       "evidence": "MAP-LAYOUT-WRITE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/workbench.md",
       "measurements": {
         "mapsViewable": 452,
-        "editableMaps": 341,
-        "readOnlyMaps": 111,
+        "editableMaps": 440,
+        "readOnlyMaps": 12,
         "chunkCellPixels": 256
       }
     },
@@ -180,12 +180,12 @@
       "family": "edit",
       "title": "Tile painting",
       "state": "shipped",
-      "surface": "Maps editor, Layout mode: pick an existing chunk of the layer, then click or drag it onto 256x256 chunk cells",
+      "surface": "Maps editor, Layout mode: pick a chunk a dominant layer of the map already uses, then click or drag it onto 256x256 chunk cells",
       "proof": "runtime",
-      "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
+      "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer of that map already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
       "limits": [
         "The editable unit is the engine's own: one four-byte chunk-cell reference to an existing 256x256 chunk. It is not an individual 8x8 hardware tile, and no surface pretends otherwise.",
-        "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only. Creating a chunk the layer does not already use is the separate Chunk creation capability.",
+        "A cell may be given any chunk a dominant layer of that same map already uses. A layer that uses a single chunk is therefore paintable from a sibling record's chunks, and the brush labels the record a borrowed chunk came from. Creating a chunk no layer of the map uses is the separate Chunk creation capability.",
         "No new-map creation, no graphics import and no collision editing. Resizing remains growth only, so painting cannot reshape a map either.",
         "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
         "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."

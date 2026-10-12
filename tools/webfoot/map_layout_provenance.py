@@ -42,6 +42,7 @@ from .formats import map_graphics as mg
 from .map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
 )
 from .packaged import packaged_profile
@@ -137,8 +138,8 @@ def _check_layout_changes(
     This is the domain half of provenance verification: the shared layer has
     already proved the image is the canonical image plus exactly these declared
     fields, and it is *this* rule - a four-byte dominant-layer chunk field, whose
-    replacement the same layer already uses elsewhere - that decides whether such
-    a derivative is one this editor could have written.
+    replacement a dominant layer of the same map already uses - that decides
+    whether such a derivative is one this editor could have written.
 
     Checked against the *canonical* window, which is the state the proven writer
     validated its replacements against. One reader and one writer are built for the
@@ -173,7 +174,8 @@ def _check_layout_changes(
     writer = MapLayoutWriter(canonical_image)
     for change, (map_index, layer_slot, cell) in zip(declared, targets):
         entry = entries[map_index]
-        layer = mg.read_layer(rom, entry.root_address, layer_slot)
+        records = mg.read_layers(rom, entry.root_address)
+        layer = records[layer_slot]
         if layer.handler != mg.DOMINANT_LAYER_HANDLER:
             raise ProvenanceError(
                 f"the manifest edits BG{layer_slot} of map:{map_index:04d}, "
@@ -202,24 +204,30 @@ def _check_layout_changes(
         # The image carrying the declared replacement bytes is the shared layer's
         # check, not a second copy here.
         replacement = int.from_bytes(change.new, "little")
+        # The legal set is the map's, the same one the painter offered and the
+        # writer accepted. Checking this layer alone would refuse a derivative
+        # this tool legitimately wrote with a sibling layer's chunk, which is a
+        # worse failure than the limit it would be enforcing. It stays an explicit
+        # check rather than a bare `in legal`: a replacement equal to the chunk the
+        # cell already stores is not a change, so a manifest claiming it is not
+        # this editor's output.
+        legal = legal_chunk_pointers(
+            layer.chunk_addresses,
+            *(record.chunk_addresses for record in records),
+        )
         try:
-            validate_chunk_replacement(layer.chunk_addresses, replacement)
+            if replacement == layer.chunk_addresses[cell]:
+                raise MapLayoutWriteError(
+                    "the replacement is the chunk the cell already stores, which is "
+                    "not a change"
+                )
+            validate_chunk_replacement(legal, replacement)
         except MapLayoutWriteError as exc:
             raise ProvenanceError(
                 f"the manifest's change at 0x{change.offset:08X} is not a supported "
                 f"replacement: {exc}"
             ) from exc
-        others = tuple(
-            address
-            for index, address in enumerate(layer.chunk_addresses)
-            if index != cell
-        )
-        if replacement not in others:
-            raise ProvenanceError(
-                f"the manifest's change at 0x{change.offset:08X} uses a chunk that "
-                f"map:{map_index:04d} BG{layer_slot} does not already use "
-                "elsewhere in that layer"
-            )
+
     return tuple(targets)
 
 

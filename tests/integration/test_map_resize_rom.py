@@ -586,9 +586,19 @@ def test_the_map_painter_reads_the_authored_grid_and_vocabulary(
     assert overlay.structural and overlay.editable
     assert (overlay.columns, overlay.rows) == (3, 2)
     assert all(cell.offset == -1 for cell in overlay.cells)
-    assert [choice.pointer for choice in overlay.vocabulary] == [
-        choice.address for choice in resizer.vocabulary(OVERLAY_MAP, 1)
-    ]
+    # The structural grid's own fill vocabulary leads - so an ordinal a project
+    # already stored keeps resolving - and the map's sibling chunks follow it.
+    fill = [choice.address for choice in resizer.vocabulary(OVERLAY_MAP, 1)]
+    assert [choice.pointer for choice in overlay.vocabulary][: len(fill)] == fill
+    # The same set the canonical grids of this map offer, no wider and no narrower.
+    canonical = set()
+    for slot in range(4):
+        if slot == OVERLAY_SLOT:
+            continue
+        canonical.update(
+            choice.pointer for choice in painter.layer(OVERLAY_MAP, slot).vocabulary
+        )
+    assert set(choice.pointer for choice in overlay.vocabulary) == set(fill) | canonical
 
 
 def test_the_painter_refuses_a_cell_outside_the_authored_grid(

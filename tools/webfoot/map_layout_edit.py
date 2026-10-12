@@ -4,17 +4,17 @@ This is the product-layer session the Map Browser's EDIT LAYOUT mode drives. It
 answers three questions and owns no binary format of its own:
 
 * which maps and layer slots the *proven* writer may touch (the accepted dominant
-  chunk-grid form, and only where the layer already contains a second non-null
+  chunk-grid form, and only where the map already contains a second non-null
   chunk to substitute);
-* which replacement chunks a selected layer offers - the layer's own existing
-  non-null pointers, numbered for a human, never a raw address as the primary
+* which replacement chunks a selected layer offers - the map's non-null pointers,
+  the layer's own first, numbered for a human, never a raw address as the primary
   identity; and
 * what a pending edit set would render as, in memory, without touching a byte.
 
 Every write goes through :class:`tools.webfoot.map_layout_write.MapLayoutWriter`,
-which accepts only an existing, non-null chunk pointer already used by the same
-dominant layer. This module adds no capability beyond that: no new chunks, no
-relocation, no resizing, no tile painting, no other layer form.
+which accepts only an existing, non-null chunk pointer already used by a dominant
+layer of the same map. This module adds no capability beyond that: no new chunks,
+no relocation, no resizing, no tile painting, no other layer form.
 
 Saving follows the project's ROM-safety flow - verified base, generated output,
 never the input - through the shared authored-image transaction in
@@ -35,6 +35,7 @@ from .formats import map_graphics as mg
 from .map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
 )
 from .packaged import packaged_profile
@@ -362,8 +363,9 @@ class MapLayoutEditor:
 
     def _build_target(self, map_index: int) -> LayoutTarget:
         entry = self._entries[map_index]
+        records = mg.read_layers(self._rom, entry.root_address)
         slots: list[LayoutSlot] = []
-        for record in mg.read_layers(self._rom, entry.root_address):
+        for record in records:
             if record.classification == _EDITABLE_CLASSIFICATION:
                 grid = LayoutGrid(record.chunk_x, record.chunk_y)
                 cells = tuple(
@@ -378,8 +380,18 @@ class MapLayoutEditor:
                     )
                     for index, pointer in enumerate(record.chunk_addresses)
                 )
-                choices = tuple(
-                    dict.fromkeys(pointer for pointer in record.chunk_addresses if pointer)
+                # The chooser offers the map's accepted replacement set: this
+                # layer's own chunks in first-appearance order, then whatever its
+                # sibling records add. A layer that uses a single chunk is
+                # therefore editable when a sibling holds another, which is the
+                # case the ability to choose is for.
+                choices = legal_chunk_pointers(
+                    record.chunk_addresses,
+                    *(
+                        sibling.chunk_addresses
+                        for sibling in records
+                        if sibling.slot != record.slot
+                    ),
                 )
                 reason = self._dominant_read_only_reason(grid, choices)
             else:
@@ -412,9 +424,10 @@ class MapLayoutEditor:
     ) -> str:
         """Why a dominant slot has nothing to substitute, or "" when it has.
 
-        The proven write may only put a chunk the *same layer already uses* into a
-        cell, so a layer that uses a single chunk - a 1x1 grid, or a larger grid
-        repeating one chunk - has no legal replacement at all. That is a read-only
+        The proven write may only put a chunk a dominant layer of this map already
+        uses into a cell, so a map whose dominant layers between them hold a single
+        chunk - a 1x1 grid, or a larger grid repeating one chunk with no sibling
+        offering another - has no legal replacement at all. That is a read-only
         state, not a failure.
         """
         if not grid.cell_count:
@@ -433,7 +446,7 @@ class MapLayoutEditor:
         return target.slots[layer_slot]
 
     def choices(self, map_index: int, layer_slot: int) -> tuple[int, ...]:
-        """The legal replacement chunks for one layer: existing, non-null, its own."""
+        """The legal replacement chunks for one layer: existing, non-null, this map's."""
         return self.slot(map_index, layer_slot).choices
 
     def pointer(self, map_index: int, layer_slot: int, cell: int) -> int:

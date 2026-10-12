@@ -486,6 +486,26 @@ that changes nothing pays neither. That is real lag on the largest image and it 
 of one derivation. If typing feels slow the answer is to debounce it rather than to cache
 rows that are no longer true.
 
+### A shutdown crash the pipeline found, and what is known about it
+
+The pipeline's `test-sdk` job reports every test passing and then fails with exit code 139:
+`5242 passed, 293 skipped`, then `QObject: shared QObject was deleted directly`, then a
+segmentation fault. That is a native object being torn down twice at interpreter exit, and
+it is not a test result: nothing failed.
+
+What is known. It is new in this branch, because master's own pipeline was green. It is
+intermittent locally, which is why five local runs of the Qt-heavy files exited 0 while the
+pipeline reproduced it twice. The one site in the repository that hands a FACTORY-created
+style object to something that also takes ownership is in this tool's theme, and that site
+now names its base style instead, so no such object exists. That change is defensible and it
+is NOT proven to be the cause: a targeted two-variant probe of the two patterns exited 0 for
+both, three runs each, so the ownership question is unanswered rather than settled.
+
+What happens next. The suite's conftest now enables the standard fault handler on the
+interpreter's own stderr, so if the next pipeline run dies the same way it prints the frame
+that was executing, and the cause stops being a guess. Until then this is recorded as an
+intermittent native crash whose site is not established.
+
 ## 7. End to end, on release 3.1, with digests
 
 - Input: `roms/v3-release31.gba`,

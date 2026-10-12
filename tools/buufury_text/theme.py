@@ -38,7 +38,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
-from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QStyleFactory
+from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle
 
 from . import status
 from .session import State
@@ -228,7 +228,11 @@ class EditorProxyStyle(QProxyStyle):
     """A deliberate set of overrides over Fusion; everything else defers to it."""
 
     def __init__(self, shape: Metrics | None = None, app: QApplication | None = None) -> None:
-        super().__init__()
+        # The base style is named rather than handed over as an object: a style created by
+        # `QStyleFactory` is one PySide owns, and `setBaseStyle` would own it too, so the
+        # process tears it down twice at exit. Measured, that is `QObject: shared QObject
+        # was deleted directly` and a segmentation fault after a full green run.
+        super().__init__("Fusion")
         self._metrics = shape
         self._app = app
 
@@ -283,7 +287,6 @@ def apply_theme(app: QApplication, mode: str = MODE_SYSTEM) -> Theme:
     _SHAPE = metrics(app)
     _TYPES = type_scale(app)
     proxy = EditorProxyStyle(_SHAPE, app)
-    proxy.setBaseStyle(QStyleFactory.create("Fusion"))
     app.setStyle(proxy)
     app.setPalette(build_palette(theme))
     app.setStyleSheet(app_stylesheet(theme))

@@ -47,9 +47,11 @@ once, up front, instead of leaving it to whoever reads the thirtieth
 
 from __future__ import annotations
 
+import faulthandler
 import getpass
 import os
 from pathlib import Path
+import sys
 import tempfile
 
 import pytest
@@ -143,6 +145,16 @@ _ROOTDIR: Path | None = None
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """Enable the fault handler, so a crash in a native call names the Python frame.
+
+    Measured: a pipeline run reported 5242 passed, then `QObject: shared QObject was
+    deleted directly`, then a segmentation fault, and nothing in the log said which frame
+    was executing. The handler is stdlib and prints that frame when a fatal signal arrives.
+    It writes to the interpreter's own stderr, which pytest's capture does not own, because
+    the crash happens after the last test when capture is being torn down itself.
+    """
+    faulthandler.enable(file=sys.__stderr__)
+
     """Make the temp root one ``tmp_path`` can actually live in.
 
     pytest derives its basetemp from ``tempfile.gettempdir()``, so redirecting
@@ -277,11 +289,12 @@ def pytest_collection_modifyitems(
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Fail the session when a required GUI module collapsed to nothing.
+    """Close the Qt widgets, then fail the session when a required GUI module collapsed.
 
     The check is at session end because only then is the whole picture known:
     which files were attempted, which contributed a test, and why the rest
     stopped. See the module docstring for the CI/local/opt-in scope.
+
     """
     collapsed = _collapsed_required_modules()
     collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]

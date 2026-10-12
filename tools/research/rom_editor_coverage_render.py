@@ -1,8 +1,13 @@
 """Render the ROM-editor coverage census documents from rom_editor_coverage.json.
 
 The JSON is the normative record. This renderer produces the three human-readable
-documents and holds only prose that is genuinely narrative; every count, table row
-and per-row dimension is read from the JSON, so the documents cannot drift from it.
+documents and holds only prose that is genuinely narrative. Every table row,
+per-row dimension and derived table is read from the JSON, as are the figures the
+JSON states directly: the denominator, the facility count, the capability-registry
+pair and the map figure. The evidence narrative restates other structural numbers
+in prose from the rows and evidence it cites (for example "452 records" and "735
+records"), so those are statements about the evidence rather than counts this file
+owns.
 
 Run:  python -m tools.research.rom_editor_coverage_render
 """
@@ -84,6 +89,18 @@ def map_figure(doc: dict) -> tuple[int, int]:
             "'N of M maps expose an editable layer'".format(MAP_FIGURE_ROW)
         )
     return int(match.group(1)), int(match.group(2))
+
+
+def registry_figure(doc: dict) -> tuple[int, int]:
+    """The shipped and total capability counts the census baseline records.
+
+    The summary names this pair twice and the ledger states the same two fields in
+    its own words; the census narrative does not name it. Reading the pair from
+    the baseline is what keeps a registry change reaching both places instead of
+    leaving a literal behind in one of them.
+    """
+    registry = doc["baseline"]["capability_registry"]
+    return registry["state_shipped"], registry["capabilities"]
 
 
 def matrix_row(r: dict) -> str:
@@ -507,11 +524,12 @@ def summary(doc: dict) -> str:
                "figure below is now recomputed from the rows by `tests/unit/test_rom_editor_coverage.py`. The "
                "denominator is therefore a research result, not a target: it says how many distinct engine systems were "
                "found, not how many the product ought to have.\n".format(doc["denominator"]["accepted_rows"]))
-    out.append("The 15 generic editor facilities (address read, safe write, semantic search, reference lookup, "
+    shipped, capabilities = registry_figure(doc)
+    out.append("The {} generic editor facilities (address read, safe write, semantic search, reference lookup, "
                "arbitrary byte write, undo, validation, rebuild, patch export, provenance and the rest) are reported "
                "separately and are **not** in the denominator: a facility is a product capability, not a game system. "
-               "The fixed 24/24 capability registry is a third, separate record, is untouched, and is not this "
-               "denominator.\n")
+               "The fixed {}/{} capability registry is a third, separate record, is untouched, and is not this "
+               "denominator.\n".format(len(doc["facilities"]), shipped, capabilities))
     out.append(drift_note(doc))
     out.append("## 2. Coverage per game\n")
     out.append("| state | Buu's Fury | LOGII | LOG1 | family-wide cells |")
@@ -632,8 +650,8 @@ def summary(doc: dict) -> str:
     out.append("No runtime observation was added by this ticket; the runtime lane launched no emulator. No compiler "
                "identity, save format, audio format, event element layout or LOG1 structure beyond identity is "
                "established. The ROM surface classification is a lower evidence rung than the bytes and four of its "
-               "region classes were refuted. And no percentage here replaces or adjusts the fixed 24/24 capability "
-               "registry.\n")
+               "region classes were refuted. And no percentage here replaces or adjusts the fixed {}/{} capability "
+               "registry.\n".format(*registry_figure(doc)))
     return "\n".join(out)
 
 

@@ -155,3 +155,30 @@ def test_the_summary_map_figure_is_read_from_the_census_row():
     assert moved in render.summary(doc), (
         "the summary restates the map figure instead of reading it from the census row")
     assert before not in render.summary(doc)
+
+
+def test_the_registry_pair_and_facility_count_are_read_from_the_json():
+    """A baseline or facility change must move the sentences that state them.
+
+    The registry pair is named twice in the summary and the facility count once.
+    Each source is moved here and must move in the rendered text, which a literal
+    cannot do.
+    """
+    doc = load()
+    baseline = doc["baseline"]["capability_registry"]
+    before = "{}/{}".format(baseline["state_shipped"], baseline["capabilities"])
+    assert render.summary(doc).count(before) == 2
+
+    baseline["state_shipped"] += 1
+    baseline["capabilities"] += 1
+    moved = "{}/{}".format(baseline["state_shipped"], baseline["capabilities"])
+
+    assert render.summary(doc).count(moved) == 2, (
+        "the summary restates the registry pair instead of reading the census baseline")
+    assert before not in render.summary(doc)
+
+    facilities = len(doc["facilities"])
+    assert "The {} generic editor facilities".format(facilities) in render.summary(doc)
+    doc["facilities"].append(dict(doc["facilities"][0]))
+    assert "The {} generic editor facilities".format(facilities + 1) in render.summary(doc), (
+        "the summary restates the facility count instead of counting the JSON's list")

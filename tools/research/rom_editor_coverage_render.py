@@ -94,9 +94,10 @@ def map_figure(doc: dict) -> tuple[int, int]:
 def registry_figure(doc: dict) -> tuple[int, int]:
     """The shipped and total capability counts the census baseline records.
 
-    The ledger, the summary and the census narrative all name this pair. Reading
-    it from the baseline is what keeps a registry change reaching all three
-    instead of leaving a literal behind in one of them.
+    The summary names this pair twice and the ledger states the same two fields in
+    its own words; the census narrative does not name it. Reading the pair from
+    the baseline is what keeps a registry change reaching both places instead of
+    leaving a literal behind in one of them.
     """
     registry = doc["baseline"]["capability_registry"]
     return registry["state_shipped"], registry["capabilities"]

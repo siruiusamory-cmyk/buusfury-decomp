@@ -165,7 +165,49 @@ _SKIPPED_TEST_REASONS: dict[str, str] = {}
 _ROOTDIR: Path | None = None
 
 
-def pytest_configure(config: pytest.Config) -> None:
+
+def hand_back_application(application, state) -> None:
+    """Hand the Qt application back as it was, given a state captured earlier.
+
+    The editor's theme is applied to the whole QApplication, so a module that installs it also
+    changes what every other product's window measures in the same process. Measured with one
+    ordinary button: applying it takes the size hint from 20 to 26, which is the application
+    stylesheet, and the editor's proxy style moves it further.
+
+    The stylesheet is cleared first because that is what moves the metrics, then the palette is
+    restored, then the style is put back BY NAME. The old style object is never kept and never
+    handed back: installing a theme lets Qt delete the style the application owned, so passing
+    that wrapper to `setStyle` raises "Internal C++ object already deleted" instead of
+    restoring anything. A wrapper that is already invalid is the case the bare exception below
+    covers, and it is a refusal to touch the application rather than a silent half restore.
+    """
+    from PySide6.QtWidgets import QStyleFactory
+
+    palette, sheet, was = state
+    try:
+        application.setStyleSheet(sheet)
+        application.setPalette(palette)
+        current = application.style().metaObject().className()
+    except RuntimeError:
+        return
+    if current == was:
+        return
+    for key in QStyleFactory.keys():
+        if QStyleFactory.create(key).metaObject().className() == was:
+            application.setStyle(key)
+            return
+
+
+def capture_application(application):
+    """The part of an application's appearance this suite has to hand back.
+
+    `was` is the style's CLASS NAME rather than the object, because the object does not survive
+    the theme it is replaced by.
+    """
+    return (application.palette(), application.styleSheet(),
+            application.style().metaObject().className())
+
+
     """Enable the fault handler, so a crash in a native call names the Python frame.
 
     Measured: a pipeline run reported 5242 passed, then `QObject: shared QObject was

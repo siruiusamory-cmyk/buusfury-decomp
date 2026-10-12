@@ -72,8 +72,9 @@ QAPP = QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(scope="module")
-def qapp():
-    yield QAPP
+def qapp(untouched_application):
+    """The application this module themes, handed back untouched when it ends."""
+    yield untouched_application
 
 
 @pytest.fixture()

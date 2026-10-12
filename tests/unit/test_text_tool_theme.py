@@ -43,9 +43,9 @@ QAPP = QApplication.instance() or QApplication([])
 
 
 @pytest.fixture(scope="module")
-def qapp():
-    app = QApplication.instance() or QApplication([])
-    yield app
+def qapp(untouched_application):
+    """The application this module themes, handed back untouched when it ends."""
+    yield untouched_application
 
 
 def _luminance(color: QColor) -> float:
@@ -691,3 +691,4 @@ def test_the_extra_control_classes_are_painted_in_the_theme_ink(qapp) -> None:
         menu.close()
         combo.hidePopup()
         host.close()
+

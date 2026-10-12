@@ -409,3 +409,27 @@ def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None
     conftest.pytest_sessionfinish(session, 0)
     assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
         "the exit path would carry a status the guard had already overruled")
+
+
+def test_the_session_hooks_are_defined_and_have_run() -> None:
+    """A scripted edit consumed an anchor line once and took ``pytest_configure`` with it.
+
+    The insertion replaced an anchor line that carried
+    ``def pytest_configure(config: pytest.Config) -> None:``, so the definition vanished and
+    its body stayed behind as unreachable code inside ``capture_application``. Everything it
+    did - the temp-root redirect, the fault handler and the rootdir capture - silently
+    stopped running while the rest of the suite passed, and the ``tmp_path`` failures that
+    resulted read like the machine rather than this file. Reading the two things the hook is
+    responsible for makes that deletion fail here instead of there.
+    """
+    from tests import conftest
+
+    assert callable(getattr(conftest, "pytest_configure", None)), (
+        "tests/conftest.py does not define pytest_configure at module level, so pytest "
+        "never calls it and its body is dead code: the temp-root redirect, the fault "
+        "handler and the rootdir capture are all lost"
+    )
+    assert conftest._ROOTDIR == Path(__file__).resolve().parents[2], (
+        f"pytest_configure did not run: _ROOTDIR is {conftest._ROOTDIR!r}, and a collection "
+        "report's node id is resolved against it"
+    )

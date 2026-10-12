@@ -442,6 +442,31 @@ def test_open_exported_says_when_no_handler_is_registered(window, tmp_path,
     assert "No application is registered" in window.statusBar().currentMessage()
 
 
+def test_a_closed_window_does_not_leave_its_export_summary_shown(
+    window, tmp_path, monkeypatch
+) -> None:
+    """The summary is application-modal, so it may not outlive the window that showed it.
+
+    Measured: this module left three shown summaries on the QApplication, every one of them
+    application-modal, and the enemy randomizer's Enter binding - a window shortcut on its
+    own window - then never fired when both modules ran in one process. The hand-back
+    belongs to the window, because the window is what showed it, and the offer that follows
+    a summary answers itself: a window that is closing asks nothing.
+    """
+    dialogs = _Dialogs()
+    monkeypatch.setattr(shell_module, "QMessageBox", dialogs)
+    shrink(window)
+    assert window.export_to(tmp_path / "edited.gba") is not None
+    summary = window.last_export
+    assert summary is not None and summary.isVisible()
+
+    window.close()
+
+    assert not summary.isVisible()
+    assert QApplication.activeModalWidget() is None
+    assert dialogs.questions == []
+
+
 def test_an_open_that_would_drop_edits_asks_first(window, monkeypatch) -> None:
     dialogs = _Dialogs()
     files = _Files()

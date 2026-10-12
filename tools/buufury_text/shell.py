@@ -771,7 +771,7 @@ class Shell(QMainWindow):
 
     def offer_open(self) -> None:
         """Offer the exported image once its summary is closed."""
-        if self._exported is None:
+        if self._closing or self._exported is None:
             return
         answer = QMessageBox.question(self, PRODUCT_NAME, f"Open {self._exported.name} now?")
         if answer == QMessageBox.StandardButton.Yes:
@@ -930,4 +930,11 @@ class Shell(QMainWindow):
     def closeEvent(self, event) -> None:
         self._save_settings()
         self._closing = True
+        # The summary is application-modal, so it blocks every other window in the
+        # process, not only this one: a module whose window closed while its summary was
+        # still shown left one behind, and another product's window shortcut stopped
+        # firing in the same process. Closing it here answers its own offer-open question
+        # with "no", which is the only answer a window that is going away can use.
+        if self.last_export is not None:
+            self.last_export.close()
         super().closeEvent(event)

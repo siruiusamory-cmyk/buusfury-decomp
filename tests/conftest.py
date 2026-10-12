@@ -165,7 +165,6 @@ _SKIPPED_TEST_REASONS: dict[str, str] = {}
 _ROOTDIR: Path | None = None
 
 
-
 def hand_back_application(application, state) -> None:
     """Hand the Qt application back as it was, given a state captured earlier.
 
@@ -208,6 +207,7 @@ def capture_application(application):
             application.style().metaObject().className())
 
 
+def pytest_configure(config: pytest.Config) -> None:
     """Enable the fault handler, so a crash in a native call names the Python frame.
 
     Measured: a pipeline run reported 5242 passed, then `QObject: shared QObject was

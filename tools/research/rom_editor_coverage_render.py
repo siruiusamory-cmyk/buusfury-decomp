@@ -58,6 +58,34 @@ def sentence(text: str) -> str:
     return t if t.endswith(".") else t + "."
 
 
+#: The census row whose prose states the editable-map figure.
+MAP_FIGURE_ROW = "map-layout-chunk-grids"
+
+#: That row states the figure as ``N of M maps expose an editable layer``.
+_MAP_FIGURE = re.compile(r"(\d+) of (\d+) maps expose an editable layer")
+
+
+def map_figure(doc: dict) -> tuple[int, int]:
+    """The editable and total map counts, read from the row that owns them.
+
+    The summary repeats this figure in prose. Reading it from the row is what lets
+    the render check see a row change: a literal here would keep both the renderer
+    and the generated documents on the old number, and the documents would still
+    match the renderer, which is the drift this module's docstring says cannot
+    happen. Fails closed rather than rendering a sentence with no figure.
+    """
+    row = next((r for r in doc["rows"] if r["id"] == MAP_FIGURE_ROW), None)
+    if row is None:
+        raise ValueError("no census row {} to read the map figure from".format(MAP_FIGURE_ROW))
+    match = _MAP_FIGURE.search(row["edit"])
+    if match is None:
+        raise ValueError(
+            "row {} no longer states the editable map figure as "
+            "'N of M maps expose an editable layer'".format(MAP_FIGURE_ROW)
+        )
+    return int(match.group(1)), int(match.group(2))
+
+
 def matrix_row(r: dict) -> str:
     g = r["games"]
     cells = []
@@ -494,12 +522,14 @@ def summary(doc: dict) -> str:
     out.append("Writable cells: **{} of {} measured = {} percent**, and that is a cell count, not a system count. "
                "{}\n".format(t["family_wide"]["writable_cells"], t["family_wide"]["measured_cells"],
                              t["family_wide"]["writable_pct_of_measured"], t["shared_path_caveat"]))
+    editable_maps, total_maps = map_figure(doc)
     out.append("**Zero systems are FULLY EDITABLE at the strict definition, and that is the finding rather than an "
-               "artefact.** Every writable domain carries a boundary that matters to ordinary hacking: 440 of 452 maps "
+               "artefact.** Every writable domain carries a boundary that matters to ordinary hacking: {} of {} maps "
                "for the chunk grid, five of about fourteen map-record fields with no UI, a refused 169-class warp "
                "family and no deletion, no new text ids, clone-only placements, one record per dialogue container, one "
                "palette entry at a time, one added sprite identity per image, and one trigger contract out of the "
-               "engine's set. The product is genuinely useful and it is not yet unrestricted anywhere.\n")
+               "engine's set. The product is genuinely useful and it is not yet unrestricted anywhere.\n".format(
+                   editable_maps, total_maps))
     def unknown_basis(game: str) -> tuple[int, int]:
         cells = [r["games"][game] for r in doc["rows"] if r["games"][game]["state"] == "UNKNOWN_UNMAPPED"]
         return len(cells), sum(1 for c in cells if c["basis"] == "NOT_INVESTIGATED")

@@ -1,6 +1,6 @@
 """The SDK reads the raw byte document the application authors. LOG1-RAW-WRITE-BUILD-001.
 
-Two questions live here and nowhere else.
+Three questions live here and nowhere else.
 
 **Is the document read the same way by both readers?** The document shape is the
 application's to declare (`tools/dragonbyte/rawbytes.py`), and the shipping
@@ -13,6 +13,10 @@ readers agree byte for byte, which is what a divergence has to break.
 write as "this project authors none" emits the canonical bytes and reports
 success, which is the defect class this ticket exists to close. Every malformed
 shape here therefore raises rather than returning an empty document.
+
+**Is the document a value a caller cannot write through?** A build reads the
+document to decide what the emitted image contains, so a frozen document holding a
+mutable mapping would let a caller inject a write no authored document holds.
 """
 
 from __future__ import annotations
@@ -143,3 +147,31 @@ def test_a_write_outside_the_image_is_refused(tmp_path, offset, value):
 
     with pytest.raises(RawByteDocumentError, match="inside the 4096-byte canonical"):
         raw_byte_changes(edits, bytes(0x1000))
+
+
+# --- the document is a value, not a handle ------------------------------------
+
+
+def test_a_caller_cannot_write_through_the_document(tmp_path):
+    """A frozen document that hands out a writable mapping is not frozen.
+
+    An injected entry is a raw write no authored document holds, and the build
+    would apply it: the document is the only thing that says what to write.
+    """
+    edits = _document(tmp_path, '"0x00000020" = "aabb"\n')
+
+    with pytest.raises(TypeError):
+        edits.bytes_by_offset[0x40] = b"\x99"  # type: ignore[index]
+
+    assert edits.bytes_by_offset == {0x20: b"\xaa\xbb"}
+    assert raw_byte_changes(edits, bytes(0x1000))[0].offset == 0x20
+
+
+def test_the_document_holds_a_copy_of_the_mapping_it_was_built_from():
+    """The read-only view wraps a copy, so the caller's own mapping cannot reach it."""
+    source = {0x20: b"\xaa"}
+    edits = RawByteEdits(source)
+
+    source[0x20] = b"\x11"
+
+    assert edits.bytes_by_offset == {0x20: b"\xaa"}

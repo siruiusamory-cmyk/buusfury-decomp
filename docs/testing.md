@@ -16,7 +16,7 @@ marker registry by `tests/unit/test_test_gates.py`.
 | gate | selects | collected | needs |
 |---|---|---|---|
 | `fast` | `tests/unit`, the portable suite | 4,337 | nothing beyond the dev extra, except the six members listed below |
-| `rom` | `tests/integration`, the ROM-gated suite | 1,503 | a canonical local ROM image |
+| `rom` | `tests/integration`, the ROM-gated suite | 1,503 | a canonical local ROM image, except one ROM-free member (see "The CI jobs") |
 | `workbench` | DragonByte Z UI, session and editor regressions | 611 | PySide6 (skips without it; must not skip in CI) |
 | `writer` | authored images, provenance, allocation and output safety | 1,306 | nothing extra |
 | `map` | map reading, placement, rendering and layout | 1,251 | a ROM for its integration members |
@@ -198,6 +198,40 @@ reproducible run to run. Raise the search depth for a deeper sweep with
 `WEBFOOT_PROPERTY_EXAMPLES=500`; a failure always prints the falsifying example
 and the seed that produced it.
 
+## The CI jobs
+
+`.gitlab-ci.yml` runs three test-stage jobs and one deploy job, and each of them
+names what it executes rather than trusting a filter to select it:
+
+- **`test-sdk`** is the `fast` gate: `python -m pytest tests/unit` across xdist
+  workers, then the tree-wide quality gates. It installs the `workbench` and
+  `research` extras and sets a headless Qt platform, because fifteen GUI modules
+  would otherwise collapse to one skip each and leave the job green over a surface
+  it never ran. `tests/unit/test_ci_gui_surface.py` asserts that environment.
+- **`test-integration`** runs
+  `tests/integration/test_container_decode_synthetic.py` by name, and nothing
+  else. That file is the `rom` gate's one ROM-free member: it decodes a committed
+  synthetic container fixture and pins the fixture and both decoded members by
+  sha256, so it needs no `roms/`, no emulator and no network, and it never skips.
+  It stays under `tests/integration` because it is an integration-shaped decode of
+  a whole container, and the directory is what gives the file the name the job
+  selects. No new marker was added for it: a marker carrying one file would need a
+  rule in `tests/gates.py`, an entry in `pyproject.toml` and a row in the table
+  above, and the exception is stated here instead.
+- **`test-site`** validates the built progress site.
+- **`deploy-site`** publishes it, and its non-optional `needs:` names every
+  test-stage job, so a pipeline that excluded one of them by its rules fails to be
+  created instead of publishing without it.
+
+The rest of the `rom` gate needs the canonical image and is not collected in CI:
+`-m rom` without `roms/` reports skips, and a job that collected the directory
+would be green over exactly those skips. The named member above is the exception,
+and selecting it by name is what keeps the exception from becoming the rule:
+
+```bash
+python -m pytest tests/integration/test_container_decode_synthetic.py -q
+```
+
 ## What a normal change runs
 
 The smallest scope that bounds the change, then the portable gate if the
@@ -289,23 +323,24 @@ is genuinely warranted.
   `roms/Dragon Ball Z - Buu's Fury (U).gba`; `WEBFOOT_BUU_ROM` and
   `LOGX_CANONICAL_ROM` override it. `tests/rom_support.py:28` is the shared
   reader, trying `WEBFOOT_BUU_ROM` first and `LOGX_CANONICAL_ROM` second, and
-  accepting a value only when it is a file. Measured by grep under `tests/` in
-  this tree on 2026-10-12:
-  - `LOGX_CANONICAL_ROM`, 34 files: `tests/rom_support.py`; under
-    `tests/integration/`, the eleven `test_logx_*_rom.py`, eleven
-    `test_map_*_rom.py`, four `test_enemy_randomizer_*_rom.py`, two
-    `test_warp_randomizer*_rom.py`, and `test_asset_export_rom.py`,
-    `test_randomizer_combined_rom.py`, `test_thumb_caller_census_rom.py`,
-    `test_ui_graphics_rom.py`, `test_webfoot_lz_strict_rom.py`.
-  - `WEBFOOT_BUU_ROM`, 13 files: `tests/rom_support.py`; under
-    `tests/integration/`, `test_authored_behavior_trigger_rom.py`,
-    `test_authored_scene_rom.py`, `test_combined_allocation_rom.py`,
-    `test_enemy_randomizer_command_rom.py`,
-    `test_enemy_randomizer_profile_gate_rom.py`, `test_enemy_randomizer_rom.py`,
-    `test_map_chunk_authoring_rom.py`, `test_map_render_rom.py`,
-    `test_map_resize_rom.py`, `test_tileset_compositor_rom.py`,
-    `test_workbench_scene_rom.py`, `test_workbench_workspace_rom.py`.
-  - No `tests/unit` file reads either variable.
+  accepting a value only when it is a file. Measured 2026-10-12 in this tree:
+  both names appear in `tests/rom_support.py:28`, the module that owns that lookup
+  order, and in the ROM-gated files under `tests/integration/`, where each file's
+  own guard reads one or both of them before it skips. The per-file list is
+  deliberately not written down: it moves with every ROM-gated file added or
+  removed, and a recorded list or count is a second copy of what one search
+  already answers. Enumerate it instead:
+
+  ```bash
+  git grep -l LOGX_CANONICAL_ROM -- tests
+  git grep -l WEBFOOT_BUU_ROM -- tests
+  ```
+
+  - The one `tests/unit` file that names either variable is
+    `tests/unit/test_ticket_worktree_setup.py`, a documentation guard asserting
+    that this section still names both. It opens no image: that occurrence is the
+    guard matching this file's text, so no `tests/unit` file resolves either
+    variable at run time.
 
   Keep any local `roms/` a real ignored directory: a directory junction there is
   covered by `.gitignore` only because of the bare `roms` rule, and
@@ -335,7 +370,9 @@ is genuinely warranted.
 Gates come from the file's path and name, through the rules in
 `tests/gates.py`:
 
-- `tests/unit/...` is `fast`; `tests/integration/...` is `rom`;
+- `tests/unit/...` is `fast`; `tests/integration/...` is `rom`, with one stated
+  exception: the ROM-free member named under "The CI jobs" carries `rom` from the
+  directory but reads no image;
 - a name that states a concern joins that subsystem's gate, so
   `test_stat_write_rom.py` is `writer` and `test_logx_codec_rom.py` is
   `research`.

@@ -84,6 +84,21 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\block_hits_probe.lua')
     )
+    # Added by FRIEND-V4B-CELL-PALETTE-C: the injected body's chain observer. READ-ONLY: it arms one
+    # breakpoint on the patched veneer, one on the body's first instruction (address passed in
+    # BODY_ADDRESS so the observer does not hard-code a build-time address), one on the resume address and
+    # one on the copy thunk, and logs each arm result and each hit count. Its purpose is to separate "the
+    # body never runs" from "the body runs and clobbers a live register".
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\body_chain_probe.lua')
+    )
+    # Added by FRIEND-V4B-CELL-PALETTE-C: the thunk-target observer. READ-ONLY: it reads the IWRAM window
+    # the copy thunk's literal points at, the thunk's own bytes, and one palette entry, at three frames. It
+    # exists because the injected body runs but its copy does not land, and the thunk's target may not be
+    # installed when the draw loop first calls it.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\iwram_thunk_probe.lua')
+    )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fetch_check_probe.lua')
     )

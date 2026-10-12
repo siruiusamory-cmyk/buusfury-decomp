@@ -24,7 +24,12 @@ instead of silently reducing the suite:
 - the ``test-integration`` job must run the ROM-gated directory's one ROM-free
   member by name rather than collecting the directory, because every other file
   there skips without the canonical image and a job that skipped everything
-  would exit 0 without running anything.
+  would exit 0 without running anything; and its install must stay ``.[dev]``,
+  because that selection imports no PySide6 and no capstone.
+- the ``adjacency`` job must run the fixed app-wide-Qt-state set in both orders,
+  because ``test-sdk``'s ``--dist loadfile`` means no module ever follows
+  another in one process, and module-to-module Qt state is exactly what that
+  hides.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -68,6 +73,11 @@ SITE_JOB = "test-site"
 INTEGRATION_JOB = "test-integration"
 INTEGRATION_MEMBER = "tests/integration/test_container_decode_synthetic.py"
 
+#: The job that runs the app-wide-Qt-state adjacency set in one process per
+#: order. It is the only place the shipping GUI modules follow one another in a
+#: single process, because ``test-sdk`` distributes at module granularity.
+ADJACENCY_JOB = "adjacency"
+
 #: Extras the test job must install for the shipping surface to execute.
 REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
 
@@ -102,17 +112,60 @@ def _cited(needle: str) -> str:
     return f"{location}: {needle}"
 
 
-def _job_step(job: dict, *needles: str) -> str:
-    """The single ``before_script`` step containing every needle."""
+def _job_step(job_name: str, *needles: str) -> str:
+    """The single ``before_script`` step of ``job_name`` containing every needle."""
+    job = _ci_config()[job_name]
     steps = [str(step) for step in job.get("before_script") or []]
     for step in steps:
         if all(needle in step for needle in needles):
             return step
     raise AssertionError(
-        f"{CI_CONFIG}: no {TEST_JOB} before_script step contains "
+        f"{CI_CONFIG}: no {job_name} before_script step contains "
         + " and ".join(repr(needle) for needle in needles)
         + f"; steps are {steps!r}"
     )
+
+
+def _job_line(job_name: str, needle: str) -> int | None:
+    """The 1-based line of ``needle`` inside ``job_name``'s own block.
+
+    A bare ``_line_number`` search can cite another job: several jobs install the
+    project with ``-e``, so the first "pip install -e" line in the file is
+    ``test-sdk``'s. The block is found by the job's ``before_script:`` line and
+    ends at the next top-level key, so a message about one job cites that job.
+    """
+    lines = _ci_config_text().splitlines()
+    start = _line_number(f"{job_name}:")
+    if start is None:
+        return None
+    end = len(lines)
+    for offset in range(start, len(lines)):
+        line = lines[offset]
+        if line and not line[0].isspace() and ":" in line:
+            end = offset
+            break
+    for offset in range(start, end):
+        if needle in lines[offset]:
+            return offset + 1
+    return None
+
+
+def _cited_in(job_name: str, needle: str) -> str:
+    """``.gitlab-ci.yml:<line>`` for ``needle`` inside ``job_name``."""
+    line = _job_line(job_name, needle)
+    location = f"{CI_CONFIG}:{line}" if line else f"{CI_CONFIG} ({job_name})"
+    return f"{location}: {needle}"
+
+
+def _installed_extras(job_name: str) -> set[str]:
+    """The extras of ``job_name``'s one editable install step."""
+    install = _job_step(job_name, "pip install", "-e")
+    match = _EDITABLE_EXTRAS.search(install)
+    assert match, (
+        f"{CI_CONFIG}: {job_name} must install the project with extras, as "
+        '`-e ".[dev]"`; found: ' + _cited(install)
+    )
+    return {extra.strip() for extra in match.group("extras").split(",")}
 
 
 def _in_ci() -> bool:
@@ -171,8 +224,7 @@ def test_the_ci_job_installs_the_shipping_gui_and_research_extras():
     failure this file exists to catch: a green job with the Workbench surface
     never executed.
     """
-    job = _ci_config()[TEST_JOB]
-    install = _job_step(job, "pip install", "-e")
+    install = _job_step(TEST_JOB, "pip install", "-e")
     match = _EDITABLE_EXTRAS.search(install)
     assert match, (
         "the test job must install the project with extras, as "
@@ -215,8 +267,9 @@ def test_the_required_gui_surface_is_installed_in_this_environment():
     if not _in_ci():
         pytest.skip(
             "CI environment contract: PySide6 and capstone must be importable "
-            "in the CI test job, which installs .[dev,workbench,research]; "
-            "outside CI this file only checks the contract text"
+            f"in the {TEST_JOB} job, which installs .[dev,workbench,research]; "
+            f"the {INTEGRATION_JOB} job installs .[dev] only. Outside CI this "
+            "file only checks the contract text"
         )
     missing = [
         name for name in REQUIRED_CI_IMPORTS if not _importable(name)
@@ -350,11 +403,16 @@ def test_the_deploy_job_needs_both_test_jobs():
         if not (isinstance(need, dict) and need.get("optional"))
     }
     # Every job in the test stage, not a fixed pair: a new test job added later
-    # must be waited on too, or `needs` will silently bypass it.
+    # must be waited on too, or `needs` will silently bypass it. GitLab defaults a
+    # job's stage to `test`, so a job with no `stage:` key belongs in this set;
+    # `script`, `trigger` or `extends` is what makes a top-level block a job
+    # rather than a global such as `variables:`.
     test_stage = {
         name
         for name, job in config.items()
-        if isinstance(job, dict) and job.get("stage") == "test"
+        if isinstance(job, dict)
+        and any(key in job for key in ("script", "trigger", "extends"))
+        and job.get("stage", "test") == "test"
     }
     assert test_stage, f"{_cited('stage: test')}: no test-stage job found"
     assert required == test_stage, (
@@ -401,4 +459,74 @@ def test_the_integration_job_runs_the_rom_free_member_by_name():
         f"{_cited('test-integration')}: {INTEGRATION_JOB} must run wherever "
         f"{TEST_JOB} runs, so the ROM-free member cannot be silently excluded "
         "from the pipelines the suite gate runs in"
+    )
+
+
+def test_the_integration_job_installs_only_what_its_selection_imports():
+    """Prevents: paying for PySide6 and capstone on every merge request.
+
+    The four members of ``tests/integration/test_container_decode_synthetic.py``
+    import ``hashlib``, ``json``, ``pathlib``, ``__future__`` and
+    ``tools.webfoot.formats``, and that package imports nothing at all. `pytest`
+    is the only non-stdlib need, and it is the ``dev`` extra. The job used to
+    install ``.[dev,workbench,research]`` - a Qt wheel of about 100 MiB plus
+    capstone - for a selection that imports neither.
+
+    ``workbench`` and ``research`` are asserted *absent* rather than merely not
+    required, so re-adding one is a failing named test and not a quiet cost.
+    ``test-sdk`` keeps them: it runs the shipping GUI and needs them.
+    """
+    installed = _installed_extras(INTEGRATION_JOB)
+    for extra in ("workbench", "research"):
+        assert extra not in installed, (
+            f"{_cited_in(INTEGRATION_JOB, '-e')}: {INTEGRATION_JOB} "
+            f"installs the {extra!r} extra; {INTEGRATION_MEMBER} imports no PySide6 "
+            f"and no capstone, and its install is {sorted(installed)}. Widen the "
+            "test above first if the selection really grew a Qt or capstone member"
+        )
+    assert "dev" in installed, (
+        f"{_cited_in(INTEGRATION_JOB, '-e')}: {INTEGRATION_JOB} must "
+        "install the 'dev' extra, which carries pytest; the slim image ships no "
+        "test runner"
+    )
+
+
+def test_the_adjacency_job_runs_the_fixed_set_in_both_orders():
+    """Prevents: a job that proves Qt state adjacency without exercising it.
+
+    ``test-sdk`` runs the suite under ``--dist loadfile``, so no module ever
+    follows another in the same process. This job is the one place the shipping
+    GUI modules run back to back in a single process, and both orders are named
+    so that neither direction of module-to-module state can be dropped. The set
+    itself, the one-member ROM exclusion and the fail-on-skip rule live in
+    ``scripts/adjacency_run.py`` and are pinned by
+    ``tests/unit/test_adjacency.py``; this test pins the CI half: the job exists,
+    is a ``stage: test`` job (so ``deploy-site`` must wait for it), runs both
+    orders as separate commands, and installs what the set needs.
+    """
+    config = _ci_config()
+    job = config[ADJACENCY_JOB]
+    script = [str(step) for step in job.get("script") or []]
+
+    assert job.get("stage") == "test", (ADJACENCY_JOB, job.get("stage"))
+    for order in ("forward", "reverse"):
+        matching = [step for step in script if f"-Order {order}" in step]
+        assert matching, (
+            f"{_cited('adjacency')}: {ADJACENCY_JOB} must run "
+            f"`-Order {order}`; its script is {script!r}"
+        )
+    assert any(
+        "adjacency_run" in step for step in script
+    ), f"{_cited('adjacency')}: {ADJACENCY_JOB} must run scripts/adjacency_run.py"
+    assert job.get("rules") == config[TEST_JOB].get("rules"), (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must run wherever {TEST_JOB} runs, "
+        "so the adjacency orders cannot be silently excluded from the pipelines "
+        "the suite gate runs in"
+    )
+    installed = _installed_extras(ADJACENCY_JOB)
+    missing = [extra for extra in REQUIRED_CI_EXTRAS if extra not in installed]
+    assert not missing, (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} is missing the {missing} extra(s); "
+        "the set is the shipping GUI surface, so a missing extra turns it into a "
+        "wall of whole-file skips"
     )

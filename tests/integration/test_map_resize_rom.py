@@ -637,6 +637,111 @@ def test_an_ordinal_paint_on_a_canonical_layer_is_unchanged_by_the_structure(
             ]
 
 
+# --- the editor's structural slot offers a chunk a template can name ----------
+
+@pytest.fixture(scope="module")
+def qapp():
+    """One offscreen application for the one test here that builds the tab.
+
+    PySide6 is imported HERE rather than at module scope so a machine without Qt
+    skips this test instead of the whole resize suite.
+    """
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    widgets = pytest.importorskip("PySide6.QtWidgets")
+    return widgets.QApplication.instance() or widgets.QApplication([])
+
+
+def _list_row_for(tab, map_index: int) -> int:
+    from tools.webfoot.workbench.map_browser_tab import _IDENTITY_ROLE
+
+    for row in range(tab._list.count()):
+        if tab._list.item(row).data(_IDENTITY_ROLE) == map_index:
+            return row
+    raise AssertionError(f"map:{map_index:04d} is not in the browser's map list")
+
+
+def test_a_structural_slot_offers_a_template_target_for_every_choice(
+    image: bytes, resizer: mr.MapResizer, rom: Path, catalog: RomProfileCatalog,
+    project_template: Path, tmp_path: Path, qapp, monkeypatch,
+):
+    """Create Chunk on a project-owned grid must not refuse a picked chunk.
+
+    Driven through the production layer selection the user performs -
+    `MapBrowserTab._select_layer`, which is what sets `_structure_slot`
+    (map_browser_tab.py:3706) - over the REAL structural authority, the REAL
+    painter and the REAL chunk author. A hand-built ``LayoutSlot`` cannot see this
+    defect: an empty source list is exactly the state this has to reach.
+
+    Both structural kinds are walked, because they number their ordinals through
+    different records: a resized grid through its own canonical window, and a
+    project-authored layer through the template record `map_resize` resolved when it
+    was created (which is another slot of the map here).
+    """
+    from tools.webfoot.map_chunk import ChunkTemplate, resolve_template
+    from tools.webfoot.rom import identify_rom
+    from tools.webfoot.workbench import map_browser_tab as mbt
+    from tools.webfoot.workbench.session import Session
+
+    structure = _authored_structure(image, resizer)
+    project = _project(project_template, tmp_path)
+    write_map_structure(project, structure)
+    identification = identify_rom(rom, catalog)
+    session = Session(
+        rom_image=image,
+        rom_path=rom,
+        profile=identification.profile_match.profile,
+        project_dir=project,
+        identification=identification,
+    )
+    tab = mbt.MapBrowserTab(session)
+    tab.on_session_changed()
+    tab._edit_toggle.setChecked(True)
+    author = tab.chunk_author()
+    assert author is not None
+
+    # (map, slot, the slot whose own window numbers that grid's ordinals)
+    for map_index, layer_slot, numbering_slot in (
+        (GRAND_KAI, GRAND_KAI_BG1, GRAND_KAI_BG1),
+        (OVERLAY_MAP, OVERLAY_SLOT, 1),
+    ):
+        tab._list.setCurrentRow(_list_row_for(tab, map_index))
+        tab._select_layer(layer_slot)
+        structural = tab._structure_slot
+        assert structural is not None and structural.slot == layer_slot
+        slot = tab._slot
+        assert slot is not None and slot.choices
+        for pointer in slot.choices:
+            target = slot.template_target(pointer)
+            assert target is not None, (
+                f"map:{map_index:04d} BG{layer_slot} offers {pointer:#010x} with no "
+                "template target"
+            )
+            template_slot, ordinal = target
+            assert template_slot == numbering_slot
+            address, _entries = resolve_template(
+                author._view, ChunkTemplate(map_index, template_slot, ordinal)
+            )
+            assert address == pointer, (
+                f"map:{map_index:04d} BG{layer_slot} choice {pointer:#010x} resolved "
+                f"to {address:#010x} through BG{template_slot} ordinal {ordinal}"
+            )
+            # A layer-scoped grid offers only this layer's own chunks, so no row may
+            # claim a borrow even though a template names another slot's record.
+            assert slot.borrowed_note(pointer) == ""
+        # And the action itself: the default brush is a picked chunk, so Create
+        # Chunk must open the editor rather than take the "pick a chunk" branch.
+        monkeypatch.setattr(
+            mbt.QInputDialog,
+            "getText",
+            staticmethod(lambda *a, **k: (f"qa-structural-{map_index}", True)),
+        )
+        tab.create_chunk()
+        assert tab.chunk_is_open(), (
+            f"map:{map_index:04d} BG{layer_slot}: Create Chunk refused a picked chunk"
+        )
+        tab.close_chunk_editor()
+
+
 # --- refusals fail closed ----------------------------------------------------
 
 def test_validation_reports_a_structural_problem_without_building(

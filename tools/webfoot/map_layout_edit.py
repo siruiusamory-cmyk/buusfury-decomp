@@ -165,7 +165,9 @@ class LayoutSlot:
     #: MAP-PAINT-ANY-CHUNK-001. Which slot each choice came from, `self.slot` for a
     #: chunk this layer itself shows and a sibling's slot for a borrowed one. A
     #: chooser needs it because the widened set is the whole map's, so a row that
-    #: only said "Chunk 3" would not say whose record 3 belongs to.
+    #: only said "Chunk 3" would not say whose record 3 belongs to. It is also the
+    #: slot a template must name, which for a project-authored grid is the template
+    #: record whose canonical window numbers that grid's ordinals.
     sources: tuple[int, ...] = ()
     #: MAP-PAINT-ANY-CHUNK-001. Where each choice sits inside its own slot's window,
     #: 1-based, in the same order as ``choices``. A chunk is authored by naming the
@@ -173,8 +175,8 @@ class LayoutSlot:
     #: against the map-wide position. Keeping both stops the two numberings being
     #: confused, which is what a borrowed brush did before this existed.
     owner_ordinals: tuple[int, ...] = ()
-    #: Where the brush set comes from. `MAP_WIDE` for a canonical dominant layer,
-    #: whose cells may borrow any dominant layer's chunk. `LAYER_ONLY` for a
+    #: Where the brush set comes from. `"map"` for a canonical dominant layer,
+    #: whose cells may borrow any dominant layer's chunk. `"layer"` for a
     #: project-authored grid, which persists and builds against the layer's own
     #: first-appearance ordinals, so a chooser there must say the set is the layer's.
     vocabulary_scope: str = "map"
@@ -209,9 +211,13 @@ class LayoutSlot:
         return None
 
     def borrowed_note(self, pointer: int) -> str:
-        """`` · BG2`` when a choice is a sibling's, empty when it is this layer's."""
+        """`` · BG2`` when a choice is a sibling's, empty when it is this layer's.
+
+        A layer-scoped slot borrows nothing by construction, so its choices are this
+        layer's own even when the template record that numbers them is another slot's.
+        """
         source = self.source_of(pointer)
-        if source is None or source == self.slot:
+        if source is None or source == self.slot or self.vocabulary_scope == "layer":
             return ""
         return f" · BG{source}"
 

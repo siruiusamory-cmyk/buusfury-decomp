@@ -5890,13 +5890,27 @@ class MapBrowserTab(QWidget):
             )
             for cell in paint.cells
         )
+        choices = tuple(chunk.pointer for chunk in paint.vocabulary)
+        # MAP-PAINT-ANY-CHUNK-001 (F1): a template names the layer that DRAWS the
+        # chunk and the chunk's position in that layer's own window, so a structural
+        # grid has to say which slot numbers its vocabulary. A resize numbers it
+        # through this slot's own canonical window; a project-authored layer numbers
+        # it through the template record `map_resize` resolved when it was created,
+        # which may be another slot of this map. Over an empty source every choice
+        # had no target and `create_chunk` refused a chunk the user had picked.
+        source = paint.slot
+        authored = self.structure_document().layer_at(index, paint.slot)
+        if authored is not None:
+            source = authored.template_slot
         return LayoutSlot(
             slot=paint.slot,
             classification=paint.classification,
             handler=paint.handler,
             grid=grid,
             cells=cells,
-            choices=tuple(chunk.pointer for chunk in paint.vocabulary),
+            choices=choices,
+            sources=(source,) * len(choices),
+            owner_ordinals=tuple(chunk.owner_ordinal for chunk in paint.vocabulary),
             # A project-authored grid persists and builds against the layer's own
             # ordinals, so its chooser offers only the layer's chunks and says so.
             vocabulary_scope="layer",

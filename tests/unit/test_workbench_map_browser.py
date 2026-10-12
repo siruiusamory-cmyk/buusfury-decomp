@@ -215,6 +215,16 @@ def _edit_slot(
         grid=grid,
         cells=cells,
         choices=choices,
+        # MAP-PAINT-ANY-CHUNK-001. `create_chunk` translates the picked chunk through
+        # `template_target`, so a slot that offers choices must carry both numberings
+        # or the action refuses: over empty tuples every Create Chunk on this fixture
+        # took the "pick a chunk first" branch. This synthetic layer's vocabulary is
+        # its own, in order, with the unheld brush value appended, so the source is
+        # this slot and the ordinals are its own 1-based positions. A real slot's
+        # choices all come from a window, so a value no window holds is this
+        # fixture's fiction and nothing else.
+        sources=(slot,) * len(choices),
+        owner_ordinals=tuple(range(1, len(choices) + 1)),
         read_only_reason=reason,
     )
 

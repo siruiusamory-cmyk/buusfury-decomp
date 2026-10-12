@@ -1097,7 +1097,11 @@ def test_every_choice_template_target_resolves_to_that_exact_chunk(
         target = editor.target(index)
         for slot in target.slots:
             window = tuple(cell.pointer for cell in slot.cells)
-            if len(window) != len(set(window)):
+            # Only NON-NULL repeats count: a window full of empty cells repeats the
+            # null pointer, and counting that made this assertion pass on windows it
+            # was not written about.
+            used = tuple(pointer for pointer in window if pointer)
+            if len(used) != len(set(used)):
                 repeated_windows += 1
             for pointer in slot.choices:
                 target_pair = slot.template_target(pointer)

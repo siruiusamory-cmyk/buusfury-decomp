@@ -42,6 +42,7 @@ def _slot(
     choices: tuple[int, ...] | None = None,
     sources: tuple[int, ...] = (),
     owner_ordinals: tuple[int, ...] = (),
+    vocabulary_scope: str = "map",
     reason: str = "",
 ) -> LayoutSlot:
     grid = LayoutGrid(columns, rows)
@@ -66,6 +67,7 @@ def _slot(
         choices=choices,
         sources=sources,
         owner_ordinals=owner_ordinals,
+        vocabulary_scope=vocabulary_scope,
         read_only_reason=reason,
     )
 
@@ -360,3 +362,22 @@ def test_a_slot_built_without_the_two_numberings_still_answers() -> None:
     assert slot.template_target(0x082928DC) is None
     assert slot.source_of(0x082928DC) is None
     assert slot.borrowed_note(0x082928DC) == ""
+
+
+def test_a_layer_scoped_slot_borrows_nothing_even_when_its_source_is_another_slot() -> None:
+    """A project-authored grid names the template record that numbers its ordinals.
+
+    That record is another slot's, so ``sources`` carries it for the template; the
+    chooser still shows no " · BGn" suffix, because a layer-scoped grid offers only
+    this layer's own chunks and borrows nothing.
+    """
+    slot = _slot(
+        slot=0,
+        choices=(OWN,),
+        sources=(1,),
+        owner_ordinals=(1,),
+        vocabulary_scope="layer",
+    )
+    assert slot.template_target(OWN) == (1, 1)
+    assert slot.source_of(OWN) == 1
+    assert slot.borrowed_note(OWN) == ""

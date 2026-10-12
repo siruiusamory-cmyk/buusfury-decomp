@@ -70,6 +70,7 @@ from .allocation import (
 from .binary import FileOffset
 from .formats import map_graphics as mg
 from .layout import AnchorId, OwnedRegion, RomRange
+from .map_layout_write import window_ordinals
 from .packaged import packaged_profile
 from .write import (
     ByteChange,
@@ -375,7 +376,7 @@ class _CanonicalView:
         cached = self._pointers.get(key)
         if cached is None:
             record = self.layer(map_index, layer_slot)
-            cached = tuple(dict.fromkeys(p for p in record.chunk_addresses if p))
+            cached = tuple(window_ordinals(record.chunk_addresses))
             self._pointers[key] = cached
         return cached
 

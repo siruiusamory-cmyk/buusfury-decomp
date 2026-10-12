@@ -61,12 +61,7 @@ def legal_chunk_pointers(*groups: Iterable[int]) -> tuple[int, ...]:
     Deterministic for a given image, so an ordinal resolves to the same chunk on
     every read.
     """
-    seen: dict[int, None] = {}
-    for group in groups:
-        for pointer in group:
-            if pointer:
-                seen.setdefault(pointer, None)
-    return tuple(seen)
+    return tuple(window_ordinals(p for group in groups for p in group))
 
 
 def validate_chunk_replacement(

@@ -6,7 +6,7 @@ already occur on the same map, so this surface cannot allocate or relocate.
 DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 adds no capability here. It exposes the
 four-byte field's file offset (so an edit session can record and display what one
 change touches) and routes the replacement policy through
-:func:`validate_cell_replacement`, which the preview path uses too, so "what may
+:func:`validate_chunk_replacement`, which the preview path uses too, so "what may
 be written" and "what may be previewed" cannot drift apart.
 
 **CQA-04: this module no longer reads through ``tools.export``.** It used to take

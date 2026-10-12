@@ -81,7 +81,7 @@ def validate_cell_replacement(
     """Whether a value may occupy a dominant-layer chunk-pointer cell.
 
     The whole policy is the SDK's
-    (:func:`tools.webfoot.map_layout_write.validate_cell_replacement`), which the
+    (:func:`tools.webfoot.map_layout_write.validate_chunk_replacement`), which the
     write path calls too, so the preview path and the write path can never
     disagree about what is legal. It is translated into this facade's error
     family here so existing exporters keep catching what they already caught.

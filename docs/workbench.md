@@ -33,7 +33,8 @@ always selectable and show their own empty state until a ROM is loaded.
 read-only; switching to **Layout** mode enables editing. Four shipped operations
 live there, over `tools/webfoot/map_layout_edit.py` and the proven writer in
 `tools/webfoot/map_layout_write.py`: one 256x256 chunk cell of a map's dominant
-layer may be reassigned to another chunk **that same layer already uses**; one of
+layer may be reassigned to another chunk **a dominant layer of the same map
+already uses**; one of
 that layer's existing chunks can be painted onto those chunk cells; a chunk the
 layer did not have can be created and its 32x32 plane painted; and the structure
 section can grow a supported layer's chunk grid or activate an unused layer slot.
@@ -66,7 +67,8 @@ derivative is accepted when - and only when - the manifest names the supported
 canonical image and a configured profile, the file's own SHA-256 matches the
 manifest's declared output, every declared change is a four-byte field of a
 *dominant* chunk window identified by its own `map:NNNN layer S cell C` owner, the
-replacement is a non-null chunk that layer already uses at another of its cells,
+replacement is a non-null chunk a dominant layer of that map uses at another of
+its cells,
 and restoring the declared old values reproduces the canonical image exactly by
 SHA-256. That last check bounds an accepted derivative to the canonical image plus
 exactly its declared fields, and it needs no copy of the canonical file.

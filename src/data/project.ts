@@ -1384,8 +1384,8 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [],
       work: [
-        "Tile painting - SHIPPED: pick a chunk a layer already uses, or a chunk"
-        + " another dominant layer of the same map uses, and paint"
+        "Tile painting - SHIPPED: pick a chunk the layer already uses, or one"
+        + " from another dominant layer of the same map, and paint"
         + " 256x256 map cells with it, saved through the project and proven on screen"
         + " in the retail engine",
         "Chunk creation - SHIPPED: duplicate a chunk a layer already draws, rearrange"

@@ -2844,7 +2844,8 @@ class MapBrowserTab(QWidget):
         empty_layout.addWidget(empty_state)
         self._empty_explanation = QLabel(
             "This map is read-only. Switch Edit Layout on to reassign one "
-            "256\u00d7256 chunk cell to another chunk the same layer already uses."
+            "256\u00d7256 chunk cell to another chunk a dominant layer of the map "
+            "already uses."
         )
         self._empty_explanation.setProperty("dbzRole", "hint")
         self._empty_explanation.setWordWrap(True)
@@ -4352,7 +4353,7 @@ class MapBrowserTab(QWidget):
             return
         authored = self.placeable_authored(self._current.index)
         self._chooser_hint.setText(
-            f"Chunks BG{slot.slot} already uses ({len(slot.choices)})"
+            f"Chunks a dominant layer of this map uses ({len(slot.choices)})"
             + (f", plus {len(authored)} authored here. " if authored else ". ")
             + "Pick the one a click should paint; Create Chunk\u2026 starts from the "
             "selected one."
@@ -4373,7 +4374,10 @@ class MapBrowserTab(QWidget):
                 char_data=char_data,
             )
             for ordinal, image in enumerate(images, start=1):
-                item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
+                item = QListWidgetItem(
+                    QIcon(self._thumbnail(image)),
+                    f"Chunk {ordinal}{slot.borrowed_note(image.address)}",
+                )
                 item.setData(_CHUNK_ROLE, image.address)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
                 item.setSizeHint(self._chooser_cell)

@@ -161,3 +161,43 @@ def test_a_zero_dimension_grid_is_refused_before_the_vocabulary_is_considered():
     for columns, rows, vocabulary in ((0, 1, ()), (1, 0, ()), (0, 0, ())):
         reason = mp.MapPainter._read_only_reason(columns, rows, vocabulary)
         assert "zero dimension" in reason
+
+
+# --- the source record on the editing surface --------------------------------
+
+
+def test_the_layout_slot_carries_the_source_of_each_choice():
+    """A chooser over the widened set must be able to say whose record a row is.
+
+    ``LayoutSlot.choices`` is plain pointers, so the layer each fact comes from
+    rides beside them in the same order. This is what lets the surface show a
+    borrowed chunk's source, which the capability entry publishes.
+    """
+    from tools.webfoot.map_layout_edit import LayoutSlot
+
+    slot = LayoutSlot(
+        slot=1, classification="x", handler=0, grid=None, cells=(),
+        choices=(FIRST, SECOND, THIRD), sources=(1, 2, 2), read_only_reason="",
+    )
+    assert slot.source_of(FIRST) == 1
+    assert slot.source_of(SECOND) == 2
+    assert slot.source_of(FOREIGN) is None
+    # Empty for this layer's own chunk, naming the sibling otherwise, in the same
+    # shape PaintChunk.label uses, so the model and the surface agree.
+    assert slot.borrowed_note(FIRST) == ""
+    assert slot.borrowed_note(SECOND) == " \u00b7 BG2"
+    assert slot.borrowed_note(FOREIGN) == ""
+
+
+def test_a_slot_without_sources_still_answers_without_raising():
+    """Every caller written before this change keeps working."""
+    from tools.webfoot.map_layout_edit import LayoutSlot
+
+    slot = LayoutSlot(
+        slot=0, classification="x", handler=0, grid=None, cells=(),
+        choices=(FIRST,), read_only_reason="a reason",
+    )
+    assert slot.sources == ()
+    assert slot.source_of(FIRST) is None
+    assert slot.borrowed_note(FIRST) == ""
+    assert not slot.editable

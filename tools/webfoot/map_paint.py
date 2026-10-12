@@ -19,10 +19,11 @@ would silently rewrite every other cell that uses the same chunk. This module
 paints chunk cells because that is what the format has, and it refuses to present
 a finer brush than the format supports.
 
-The replacement rule is the one MAP-LAYOUT-WRITE-001 proved and DRAGONBYTE-Z-MAP-
-LAYOUT-EDITOR-001 shipped: a cell may only be given a **non-null chunk pointer
-that the same layer already uses at another of its cells**. That is why the legal
-brush vocabulary is the layer's own existing chunks and why this module cannot
+The replacement rule is the one MAP-LAYOUT-WRITE-001 proved, DRAGONBYTE-Z-MAP-
+LAYOUT-EDITOR-001 shipped and MAP-PAINT-ANY-CHUNK-001 widened: a cell may only be
+given a **non-null chunk pointer a dominant layer of the same map already uses at
+another of its cells**. That is why the legal
+brush vocabulary is the map's existing chunks and why this module cannot
 allocate, relocate, create a chunk, or resize a layer. Creating a brand-new chunk
 is a different capability (Phase 2B) and is deliberately absent here.
 

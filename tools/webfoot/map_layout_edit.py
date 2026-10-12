@@ -160,12 +160,31 @@ class LayoutSlot:
     #: first-appearance order. This is exactly the set of legal replacements for
     #: any of its cells, and it is what a chooser offers.
     choices: tuple[int, ...]
+    #: MAP-PAINT-ANY-CHUNK-001. Which slot each choice came from, `self.slot` for a
+    #: chunk this layer itself shows and a sibling's slot for a borrowed one. A
+    #: chooser needs it because the widened set is the whole map's, so a row that
+    #: only said "Chunk 3" would not say whose record 3 belongs to.
+    sources: tuple[int, ...] = ()
     #: Non-empty when the slot cannot be edited, and why - a reason, not an error.
-    read_only_reason: str
+    read_only_reason: str = ""
 
     @property
     def editable(self) -> bool:
         return not self.read_only_reason
+
+    def source_of(self, pointer: int) -> int | None:
+        """The slot a choice came from, or None for a pointer not offered."""
+        for offered, source in zip(self.choices, self.sources):
+            if offered == pointer:
+                return source
+        return None
+
+    def borrowed_note(self, pointer: int) -> str:
+        """`` · BG2`` when a choice is a sibling's, empty when it is this layer's."""
+        source = self.source_of(pointer)
+        if source is None or source == self.slot:
+            return ""
+        return f" · BG{source}"
 
     @property
     def label(self) -> str:
@@ -393,11 +412,29 @@ class MapLayoutEditor:
                         if sibling.slot != record.slot
                     ),
                 )
+                # Which slot each choice came from, in the same order, so a chooser
+                # can say whose record a borrowed chunk belongs to. The layer's own
+                # pointers answer for `record.slot`; anything else came from the
+                # first sibling that showed it, which is the order `_vocabulary`
+                # uses, so the two spellings of this fact agree.
+                sources = tuple(
+                    record.slot if pointer in record.chunk_addresses else next(
+                        (
+                            sibling.slot
+                            for sibling in records
+                            if sibling.slot != record.slot
+                            and pointer in sibling.chunk_addresses
+                        ),
+                        record.slot,
+                    )
+                    for pointer in choices
+                )
                 reason = self._dominant_read_only_reason(grid, choices)
             else:
                 grid = LayoutGrid(0, 0)
                 cells = ()
                 choices = ()
+                sources = ()
                 reason = _READ_ONLY_FORMS.get(
                     record.classification, "an unclassified layer handler"
                 )
@@ -409,6 +446,7 @@ class MapLayoutEditor:
                     grid=grid,
                     cells=cells,
                     choices=choices,
+                    sources=sources,
                     read_only_reason=reason,
                 )
             )
@@ -870,7 +908,7 @@ class MapLayoutEditor:
                 old=self._base[edit.offset : edit.offset + 4],
                 new=edit.replacement.to_bytes(4, "little"),
                 owner=f"map:{edit.map_index:04d} layer {edit.layer_slot} cell {edit.cell}",
-                reason="existing same-layer chunk replacement",
+                reason="chunk replacement from a dominant layer of the same map",
             )
             for edit in self.edits()
         )

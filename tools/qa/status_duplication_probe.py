@@ -36,6 +36,21 @@ if str(_ROOT) not in sys.path:
 
 from PySide6.QtWidgets import QApplication, QLabel, QStatusBar  # noqa: E402
 
+#: Every screen this probe walks, named here rather than discovered. The claim
+#: being made is coverage of a whole class, so a screen that stops being reachable
+#: has to be a failure rather than a silently shorter list.
+SCREENS: tuple[str, ...] = (
+    "Atlas",
+    "Inspector",
+    "Maps",
+    "Graphics",
+    "Maps/browse",
+    "Maps/layout",
+    "Maps/objects",
+    "Maps/objects (scene action)",
+    "Scene",
+)
+
 
 def drawn_texts(window) -> Counter:
     """Every sentence actually drawn in the window, with its render count."""
@@ -58,6 +73,25 @@ def status_sentences(window) -> list[str]:
         if piece.strip()
     )
     return [part for part in parts if part]
+
+
+def status_vacuity(name: str, sentences: list[str]) -> str | None:
+    """Why a screen with no status sentence is not clean, or None when it is readable.
+
+    An empty list means the bar is not being read, not that the screen is clean:
+    with no sentence to look for, every duplicate is invisible.
+    """
+    if sentences:
+        return None
+    return (
+        f"[{name}] the status bar rendered no sentence, so this screen was not "
+        "measured and is not clean"
+    )
+
+
+def unreached_screens(reached: list[str]) -> list[str]:
+    """The named screens the walk did not reach, in the order they were named."""
+    return [name for name in SCREENS if name not in reached]
 
 
 def screens(harness):
@@ -91,19 +125,28 @@ def main(argv: list[str] | None = None) -> int:
     workspace = Path(tempfile.mkdtemp(prefix="dbz-status-audit-"))
     harness = Harness(Path(tempfile.mkdtemp(prefix="dbz-status-out-")), workspace)
     problems = 0
+    unmeasured = 0
+    reached: list[str] = []
     try:
         bars = len(harness.window.findChildren(QStatusBar))
         print(f"status bars in the window: {bars}")
         if bars != 1:
             problems += 1
         for name in screens(harness):
+            reached.append(name)
             harness.pump(6)
             counts = drawn_texts(harness.window)
             # Re-read the sentences AFTER settling, so the bar's own two labels
             # count once each rather than being compared against stale text.
+            sentences = status_sentences(harness.window)
+            refusal = status_vacuity(name, sentences)
+            if refusal is not None:
+                unmeasured += 1
+                print(refusal)
+                continue
             offenders = {
                 sentence: counts[sentence]
-                for sentence in status_sentences(harness.window)
+                for sentence in sentences
                 if counts[sentence] > 1
             }
             if offenders:
@@ -113,12 +156,20 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"   x{n} {text[:88]!r}")
             else:
                 print(f"[{name}] clean")
-        print(f"\nTOTAL {problems} duplicated status sentence(s)")
+        for name in unreached_screens(reached):
+            unmeasured += 1
+            print(f"[{name}] never reached, so it was not measured")
+        if unmeasured:
+            print(f"UNMEASURED {unmeasured} screen(s): a clean line above is not evidence")
+        print(
+            f"\nTOTAL {problems} duplicated status sentence(s) "
+            f"across {len(SCREENS)} screen(s)"
+        )
     finally:
         harness.window.close()
         shutil.rmtree(workspace, ignore_errors=True)
     del app
-    return 1 if problems else 0
+    return 1 if problems or unmeasured else 0
 
 
 if __name__ == "__main__":

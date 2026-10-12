@@ -85,12 +85,14 @@ from tools.webfoot.map_chunk import (
 )
 from tools.webfoot.map_layout_edit import (
     LayoutCell,
+    LayoutEdit,
     LayoutGrid,
     LayoutSlot,
     LayoutTarget,
     MapLayoutEditError,
     MapLayoutEditor,
 )
+from tools.webfoot.map_layout_session import LayoutSession, PendingWork, staged_changes
 from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.map_paint import (
     MapPaintError,
@@ -1920,6 +1922,9 @@ class MapBrowserTab(QWidget):
         # -- layout editing state, all in-memory -----------------------------
         self._edit_mode = False
         self._editor: MapLayoutEditor | None = None
+        #: The layout domain's session: what a write has published, and what is
+        #: pending on it (CQA-27). The policy is the SDK's; this tab renders it.
+        self._layout = LayoutSession()
         self._editor_error: str | None = None
         self._target: LayoutTarget | None = None
         self._slot = None
@@ -3435,7 +3440,7 @@ class MapBrowserTab(QWidget):
         self._structure_slot = None
         self._selected_cell = None
         self._draft = None
-        self._saved = {}
+        self._layout = LayoutSession()
         self._thumbnails = {}
         self._brush_ordinal = None
         self._brush_pointer = None
@@ -4650,11 +4655,7 @@ class MapBrowserTab(QWidget):
         staged value the project already holds: re-writing it would make a no-op
         apply rewrite an identical document.
         """
-        return {
-            key: identity
-            for key, identity in self._authored_cells.items()
-            if self._authored_committed.get(key) != identity
-        }
+        return staged_changes(self._authored_cells, self._authored_committed)
 
     def apply_to_project(self) -> bool:
         """Commit every staged paint into the project, then re-read it back.
@@ -5498,6 +5499,35 @@ class MapBrowserTab(QWidget):
             parts.append(self._hover_cell)
         self._publish_status("  \u00b7  ".join(parts))
 
+    def _edits(self) -> tuple[LayoutEdit, ...]:
+        """The editor's pending paints, or none while no editor can be built."""
+        return self._editor.edits() if self._editor is not None else ()
+
+    def _pending_work(self) -> PendingWork:
+        """What this session staged and no write has published yet (CQA-27).
+
+        The policy is the SDK session's: it holds the written baseline and decides
+        what counts as a change. This tab contributes only the families it alone
+        knows about - a staged chunk document, an authored placement, a staged
+        resize or new layer - and each is named here rather than sent as one
+        number, so a family that stops being staged cannot be counted by accident.
+        """
+        return self._layout.pending(
+            self._edits(),
+            paints=(len(self._staged_structural_cells()),),
+            changes=(
+                len(self._staged_authored_placements()),
+                len(self._pending_chunk_documents()),
+                # MAP-RESIZE-AND-LAYERS-001: a staged resize or a staged new layer
+                # is work the user has done and would lose, exactly as a staged
+                # cell paint is; a paint of a project-authored grid joins the count
+                # for the same reason, and stays a paint where the wording is
+                # decided.
+                len(self._staged_resize_edits()),
+                len(self._staged_layer_edits()),
+            ),
+        )
+
     def _unsaved_count(self) -> int:
         """Pending changes that no Save As or project apply has written yet.
 
@@ -5507,26 +5537,7 @@ class MapBrowserTab(QWidget):
         user has done and would lose, so a shell that showed only painted cells in
         its title would understate the unsaved state.
         """
-        painted = 0
-        if self._editor is not None:
-            painted = sum(
-                1
-                for edit in self._editor.edits()
-                if self._saved.get((edit.map_index, edit.layer_slot, edit.cell))
-                != edit.replacement
-            )
-        return (
-            painted
-            + len(self._staged_authored_placements())
-            + len(self._pending_chunk_documents())
-            # MAP-RESIZE-AND-LAYERS-001: a staged resize, a staged new layer or a
-            # staged removal is work the user has done and would lose, exactly as a
-            # staged cell paint is; a paint of a project-authored grid joins the
-            # count for the same reason.
-            + len(self._staged_resize_edits())
-            + len(self._staged_layer_edits())
-            + len(self._staged_structural_cells())
-        )
+        return self._pending_work().count
 
     def _staged_noun(self) -> str:
         """What to call the staged work: a paint when that is all there is.
@@ -5537,14 +5548,7 @@ class MapBrowserTab(QWidget):
         saying so. A structural change widens it too, for the same reason: a resize
         is not a paint.
         """
-        if (
-            self._staged_authored_placements()
-            or self._pending_chunk_documents()
-            or self._staged_resize_edits()
-            or self._staged_layer_edits()
-        ):
-            return "change"
-        return "paint"
+        return self._pending_work().noun
 
     def _brush_label(self) -> str:
         """The paint value in words: an authored chunk names itself."""
@@ -6534,28 +6538,19 @@ class MapBrowserTab(QWidget):
     def _staged_resize_edits(self) -> dict[tuple[int, int], "LayerResize | None"]:
         """Staged resizes that would actually change the project."""
         structure = self._structure if self._structure is not None else MapStructure()
-        return {
-            key: edit
-            for key, edit in self._staged_resizes.items()
-            if structure.resize_for(*key) != edit
-        }
+        return staged_changes(
+            self._staged_resizes,
+            {key: structure.resize_for(*key) for key in self._staged_resizes},
+        )
 
     def _staged_layer_edits(self) -> dict[str, "AuthoredLayer | None"]:
         """Staged authored layers that would actually change the project."""
         structure = self._structure if self._structure is not None else MapStructure()
-        return {
-            identity: layer
-            for identity, layer in self._staged_layers.items()
-            if structure.layers.get(identity) != layer
-        }
+        return staged_changes(self._staged_layers, structure.layers)
 
     def _staged_structural_cells(self) -> dict[tuple[int, int, int], int | None]:
         """Staged paints on project-authored grids, as the layout batch spells them."""
-        return {
-            key: value
-            for key, value in self._structural_cells.items()
-            if self._structural_committed.get(key) != value
-        }
+        return staged_changes(self._structural_cells, self._structural_committed)
 
     def _write_staged_structure(self, *, removals: bool) -> bool:
         """Write the staged structural edits through the SDK, in the safe order.
@@ -8247,10 +8242,7 @@ class MapBrowserTab(QWidget):
             QMessageBox.critical(self, "Save As", str(exc))
             self._status.setText(f"Save As failed: {exc}")
             return
-        self._saved = {
-            (edit.map_index, edit.layer_slot, edit.cell): edit.replacement
-            for edit in self._editor.edits()
-        }
+        self._layout = self._layout.note_saved(self._edits())
         self._refresh_editor_state()
         detail = (
             "no layout changes were pending, so the copy is byte-identical to the "

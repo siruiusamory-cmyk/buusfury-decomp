@@ -114,7 +114,7 @@ def patch(image: bytearray, alignment: int = 4):
     # (PC & ~3) + 4 = the site + 6 rounded to a word boundary, so the literal sits at site + 6 and is read
     # from there; the last two bytes are an unreachable nop so the block's length is exactly preserved.
     entry = (bytes.fromhex("014b" "c046" "c046")
-             + struct.pack("<I", stub_address | 1)
+             + struct.pack("<I", (stub_address + ROM_BASE) | 1)
              + bytes.fromhex("1847" "c046"))
     if len(entry) != BLOCK_BYTES:
         raise AssertionError(f"entry must be {BLOCK_BYTES} bytes, got {len(entry)}")

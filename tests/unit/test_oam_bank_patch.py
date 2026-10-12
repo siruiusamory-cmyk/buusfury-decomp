@@ -81,7 +81,9 @@ def test_the_patch_replaces_exactly_the_block_and_points_at_a_stub_before_the_re
     assert entry[0:2] == bytes.fromhex("014b"), "a PC-relative load, so the stub can live above EOF"
     assert entry[10:12] == bytes.fromhex("1847"), "and bx r3, which has full range"
     loaded = struct.unpack_from("<I", image, offset + 6)[0]
-    assert loaded == (stub_address | 1), "the entry loads the stub address with the thumb bit set"
+    assert loaded == ((stub_address + patch.ROM_BASE) | 1), (
+        "the entry loads the stub as a GBA ADDRESS with the thumb bit set: a file offset here jumps into "
+        "unmapped memory and hangs the game, which is how this was caught")
     assert bytes(image[offset + patch.BLOCK_BYTES:offset + patch.BLOCK_BYTES + 4]) == resume_before, (
         "the piece advance at the resume address is untouched")
 

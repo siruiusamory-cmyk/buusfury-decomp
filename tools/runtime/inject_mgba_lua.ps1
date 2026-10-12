@@ -73,6 +73,9 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fetch_check_probe.lua')
     )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\regdump_probe.lua')
+    )
     # Added by the layout-rule work: the INPUT DRIVER that loads the read-only probe above and presses keys
     # on a bounded schedule. Observers stay read-only, so the driving lives in this separate file.
     [System.IO.Path]::GetFullPath(

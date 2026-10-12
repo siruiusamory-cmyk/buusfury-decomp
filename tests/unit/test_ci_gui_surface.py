@@ -8,7 +8,8 @@ in this file therefore do not test the Workbench - they test the *environment CI
 promises the Workbench*, so that breaking that promise fails a named test
 instead of silently reducing the suite:
 
-- the pip install line must name the ``workbench`` and ``research`` extras;
+- the install the job builds its environment from must name the ``workbench``
+  and ``research`` extras;
 - the job must set a headless Qt platform, because the runner has no display;
 - under CI, PySide6 and capstone must actually be importable here;
 - every module in ``REQUIRED_GUI_MODULES`` must exist, carry the ``workbench``
@@ -324,8 +325,8 @@ def test_the_required_gui_surface_is_installed_in_this_environment():
     assert not missing, (
         f"CI installs .[dev,workbench,research] and sets QT_QPA_PLATFORM=offscreen "
         f"so that the shipping GUI surface executes, but {missing} cannot be "
-        f"imported in this environment; {CI_CONFIG} "
-        f"(before_script of {TEST_JOB}) is where that is fixed"
+        f"imported in this environment; {_ci_script_path(TEST_JOB)} is where "
+        "that install is made"
     )
 
 

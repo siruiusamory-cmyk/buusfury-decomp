@@ -1,13 +1,18 @@
-"""Build a runnable Cell image: triple art, a visible placement, and the runtime palette writer.
+"""Build a runnable Cell image: triple art, a visible placement, and the ONE-SHOT runtime palette write.
 
 Steps, all deterministic and printed:
   1. take the triple emitter's image (the only one whose art is pixel-exact);
-  2. redirect one visible placement in map 137 to Cell's id, so he is on screen in the owner's state;
-  3. rewrite the animation record's piece bank bits from the logical 0/1/2 to the physical banks the writer
-     will fill, so a free bank is used rather than bank 0, which the scene's other actors select;
-  4. append the writer's address table and palettes, assemble the writer body, and patch the draw-loop
-     block to jump to it;
-  5. fill the named physical banks with the triple's palettes.
+  2. redirect one visible placement in map 137 to Cell's id, so he is on screen;
+  3. move each piece's logical bank (0/1/2) to palette index 1/2/3, because index 0 means "every retail
+     piece" to the draw-loop body and is left alone;
+  4. append the three 32-byte palette blocks, one per logical bank;
+  5. assemble the one-shot picker/writer just above them and hook the scene palette loader's OBJ copy, so
+     the palettes are written once, after the scene's own 512-byte load;
+  6. assemble the draw-loop body, which resolves a piece's index through the markers the one-shot left, and
+     patch the draw-loop block plus the loop's attr1 clear.
+
+NO BANK IS CHOSEN HERE. The picker chooses the three banks at runtime from the palette indices the visible
+OAM entries paint; this builder only writes down where the palettes are and what the marker looks like.
 
 Read-only with respect to the canonical ROM: it reads a local image and writes a new local image.
 """
@@ -24,6 +29,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 from tools.research import oam_bank_patch as patch  # noqa: E402
+from tools.research import palette_oneshot as oneshot  # noqa: E402
 from tools.research import palette_writer as writer  # noqa: E402
 
 ROM_BASE = 0x08000000
@@ -35,6 +41,7 @@ MAP_STRIDE = 0x38
 MAP = 137
 VISIBLE_IDS = (158, 166, 222)
 FAMILIES = {0x0800FD55: 0x10, 0x080111A9: 0x0C, 0x08017DA3: 0x10}
+BANKS = 3
 
 
 def word(image: bytes, offset: int) -> int:
@@ -63,8 +70,8 @@ def redirect_placement(image: bytearray) -> list[tuple[int, int]]:
     return changed
 
 
-def rewrite_piece_banks(image: bytearray, mapping: dict[int, int]) -> list[tuple[int, int, int]]:
-    """Move each piece's bank bits from the logical bank to the physical bank the writer fills."""
+def raise_piece_indices(image: bytearray) -> list[tuple[int, int, int]]:
+    """Move each piece's logical bank 0/1/2 to the palette index 1/2/3 the body resolves at runtime."""
     definition = word(image, TABLE + 4 * CELL_ID) - ROM_BASE
     slot0 = word(image, definition + HEADER)
     if slot0 == 0:
@@ -80,33 +87,34 @@ def rewrite_piece_banks(image: bytearray, mapping: dict[int, int]) -> list[tuple
             attr_offset = entry + 4
             attr = word(image, attr_offset)
             logical = (attr >> 25) & 7
-            if logical not in mapping:
-                raise SystemExit(f"frame {index} piece {piece}: logical bank {logical} has no physical bank")
-            physical = mapping[logical]
-            struct.pack_into("<I", image, attr_offset, (attr & ~(7 << 25)) | (physical << 25))
-            rewritten.append((index, piece, physical))
+            if logical >= BANKS:
+                raise SystemExit(f"frame {index} piece {piece}: logical bank {logical} is not one of "
+                                 f"the {BANKS} ported banks")
+            struct.pack_into("<I", image, attr_offset, (attr & ~(7 << 25)) | ((logical + 1) << 25))
+            rewritten.append((index, piece, logical + 1))
     return rewritten
+
+
+def palette_block(entries: list[str]) -> bytes:
+    """One 32-byte bank: slot 0 stays transparent, the colours fill slots 1 upward."""
+    block = [0] * writer.BANK_COUNT
+    for slot, entry in enumerate(entries, start=1):
+        block[slot] = int(entry, 16)
+    return b"".join(struct.pack("<H", value) for value in block)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--image", type=Path, default=REPO / "build" / "c1-triple.gba")
     parser.add_argument("--triple", type=Path, default=REPO / "build" / "joint_triple.json")
-    parser.add_argument("--out", type=Path, default=REPO / "build" / "cell-runtime.gba")
-    parser.add_argument("--banks", default="8,10,11",
-                        help="physical bank for logical A,B,C; must be free in the scene")
+    parser.add_argument("--out", type=Path, default=REPO / "build" / "cell-oneshot.gba")
+    parser.add_argument("--minimum-used", type=int, default=oneshot.DEFAULT_MINIMUM_USED,
+                        help="marked banks below which the OAM is treated as not composed (nothing written)")
     args = parser.parse_args()
 
     triple = json.loads(args.triple.read_text(encoding="utf-8"))
-    physical = [int(text) for text in args.banks.split(",")]
-    if len(physical) != 3 or len(triple["palettes"]) != 3:
-        raise SystemExit("three physical banks and three palettes are required")
-    # Index 0 is every retail piece and the writer skips it, so Cell's three logical banks take indices
-    # 1..3 and the table maps each index to the physical bank the writer fills. The piece field is only
-    # three bits wide, so an index above 7 is not encodable; a BANK above 7 is fine, because the writer
-    # sets the OAM palette field from the table rather than from the piece.
-    mapping = {logical: logical + 1 for logical in range(3)}
-    rows = {logical + 1: bank for logical, bank in enumerate(physical)}
+    if len(triple["palettes"]) != BANKS:
+        raise SystemExit(f"the triple names {len(triple['palettes'])} palette(s), expected {BANKS}")
 
     image = bytearray(args.image.read_bytes())
     print(f"source {args.image.name} {len(image)} bytes sha256 "
@@ -118,45 +126,44 @@ def main() -> int:
     print(f"placement redirected to id {CELL_ID} at "
           f"{[f'file 0x{offset:X}' for offset, _ in changed]}")
 
-    rewritten = rewrite_piece_banks(image, mapping)
-    counts = {index: sum(1 for _, _, value in rewritten if value == index) for index in mapping.values()}
-    print(f"piece bank bits rewritten: {len(rewritten)} piece(s) -> indices {counts}, "
-          f"table rows {rows}")
+    rewritten = raise_piece_indices(image)
+    counts = {index: sum(1 for _, _, value in rewritten if value == index) for index in range(1, BANKS + 1)}
+    print(f"piece indices raised to 1..{BANKS}: {len(rewritten)} piece(s) -> {counts}")
 
-    while len(image) % 8:
+    while len(image) % 4:
         image.append(0)
-    table_address = len(image) + ROM_BASE
-    image.extend(writer.build_table(table_address, rows))
+    palettes_address = len(image) + ROM_BASE
+    for index in range(BANKS):
+        image.extend(palette_block(triple["palettes"][index]))
+    print(f"palettes at 0x{palettes_address:08X} ({BANKS} x {writer.BANK_BYTES} bytes)")
+
+    while len(image) % 4:
+        image.append(0)
+    oneshot_address = len(image) + ROM_BASE
+    code = oneshot.assemble(oneshot_address, palettes_address, args.minimum_used)
+    image.extend(code)
+    print(f"one-shot at 0x{oneshot_address:08X} ({len(code)} bytes), "
+          f"minimum marked banks {args.minimum_used}")
+
+    replaced = oneshot.hook(image, oneshot_address)
+    print(f"scene palette loader 0x{oneshot.HOOK_SITE:08X} OBJ copy replaced: {replaced.hex(' ')} "
+          f"-> bl 0x{oneshot_address:08X}")
 
     while len(image) % 4:
         image.append(0)
     body_address = len(image) + ROM_BASE
-    body = writer.assemble(body_address, table_address)
-    print(f"table at 0x{table_address:08X} ({writer.TABLE_BYTES + 16 * 32} bytes), "
-          f"body at 0x{body_address:08X} ({len(body)} bytes)")
+    body = writer.assemble(body_address)
+    print(f"draw-loop body at 0x{body_address:08X} ({len(body)} bytes), marker 0x{writer.MARKER_BASE:04X}")
 
-    # `patch` appends the body itself, so nothing here extends the image with it: the earlier revision did,
-    # and patch then appended a second copy, which the assertion below caught by naming both addresses.
+    # `patch` appends the body itself, so nothing here extends the image with it.
     stub_address, replaced = patch.patch(image, body=body)
     if stub_address + ROM_BASE != body_address:
         raise SystemExit(f"the stub landed at 0x{stub_address + ROM_BASE:08X}, expected the body's "
                          f"0x{body_address:08X}")
     print(f"draw-loop block 0x{patch.BLOCK_SITE:08X} replaced: {replaced.hex(' ')}")
-    # The loop clears the piece's own attr1 bits 9..11 before the block can read them, so without this the
-    # stub always sees index 0 and every piece draws with bank 0 (measured: run build/toolkit031/index-probe-1).
     patch.patch_index_carrier(image)
     print(f"attr1 clear 0x{patch.INDEX_CLEAR_SITE:08X} narrowed: "
           f"{patch.EXPECTED_INDEX_CLEAR.hex(' ')} -> {patch.INDEX_CLEAR_PATCH.hex(' ')}")
-
-    palettes = {}
-    for index, bank in enumerate(physical):
-        block = [0] * 16
-        for slot, entry in enumerate(triple["palettes"][index], start=1):
-            block[slot] = int(entry, 16)
-        palettes[bank] = b"".join(struct.pack("<H", value) for value in block)
-    writer.fill_palettes(image, table_address, palettes)
-    for bank in physical:
-        print(f"  physical bank {bank}: {palettes[bank].hex(' ')}")
 
     args.out.write_bytes(bytes(image))
     print(f"wrote {args.out} ({len(image)} bytes) sha256 {hashlib.sha256(bytes(image)).hexdigest()}")

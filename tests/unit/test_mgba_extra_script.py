@@ -181,6 +181,9 @@ def test_a_dry_run_naming_a_missing_file_says_so(prerequisites) -> None:
 
 
 def _dry_run_args(prerequisites: dict, state: bool) -> list[str]:
+    # The fixture already skipped without a host; this names it here too, so the
+    # skip cannot be lost by a future fixture change.
+    _require_host()
     mgb = prerequisites["mgb"]
     args = [
         prerequisites["shell"], "-NoProfile", "-File", str(CAPTURE),
@@ -219,19 +222,33 @@ def test_a_dry_run_with_a_state_path_still_carries_its_identity(prerequisites) -
     assert identity.get("state_size")
 
 
-@pytest.mark.skipif(shutil.which("pwsh") is None and shutil.which("powershell") is None,
-                    reason="no PowerShell host on PATH")
-def test_omitting_the_state_is_accepted_by_parameter_binding() -> None:
-    """No ROM and no emulator run, so this half runs everywhere a host exists.
+def _require_host() -> str:
+    """The PowerShell host this file's -DryRun checks need, or a named skip.
 
-    `-StatePath` used to be Mandatory, so a caller that omitted it was refused by
-    PowerShell's own binder before any of the launcher's checks ran. The launcher
-    now gets far enough to refuse a ROM path that does not exist, which is the
-    proof that the state is optional. The identity itself is exercised by the
-    `-DryRun` tests above where the canonical image is present.
+    CI is Linux: the launcher is a `.ps1`, so those checks cannot run there and say
+    so. The text checks in this file run everywhere.
     """
     shell = shutil.which("pwsh") or shutil.which("powershell")
-    assert shell is not None
+    if shell is None:
+        pytest.skip(
+            "the launcher is a PowerShell script and this platform has no PowerShell "
+            "host; the text checks in this file hold its invariants in CI"
+        )
+    return shell
+
+
+def test_omitting_the_state_is_accepted_by_parameter_binding() -> None:
+    """The optional state, proved WITHOUT the canonical image.
+
+    `-StatePath` used to be Mandatory, so a caller that omitted it was refused by
+    PowerShell's own binder before any of the launcher's checks ran. PowerShell still
+    parses the full parameter block for -DryRun, so this asserts the binder accepts
+    the omission; where a host exists it also asserts the launcher got as far as its
+    own ROM check, which is the proof that the state is optional.
+    """
+    if shutil.which("pwsh") is None and shutil.which("powershell") is None:
+        return
+    shell = _require_host()
     result = subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CAPTURE),
          "-RomPath", str(ROOT / "no-such-image.gba"),

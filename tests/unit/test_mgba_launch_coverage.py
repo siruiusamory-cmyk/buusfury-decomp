@@ -345,6 +345,70 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs a child PowerShell that dot-sources ci/common.ps1 and asks a grandchild "
         "process what it can see, with the literal review dummy value and no real "
         "credential; it starts no emulator",
+    # The developer tools. Each of these starts this interpreter, a PowerShell host
+    # or git to exercise or audit a developer script; none of them can start an
+    # emulator, and none of them names one.
+    ("tools/dev/merge_mr.py",
+     "_run",
+     "command"):
+        "runs glab to read a merge request and to merge it; it starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_checker_exits_non_zero_for_orphans_only_when_asked",
+     "sys.executable"):
+        "runs the citation checker as a module to prove its exit code; it starts "
+        "no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_checker_requires_an_explicit_target",
+     "sys.executable"):
+        "runs the citation checker with no target to prove it refuses; it starts "
+        "no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "_commit_msg",
+     "shell"):
+        "runs the commit-message writer, which writes a file and calls git commit; "
+        "it starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_no_bom_claim_is_driven_to_failure",
+     "shell"):
+        "runs Windows PowerShell on a scratch script that writes a file with "
+        "Set-Content, to reproduce the byte-order mark the writer avoids; it starts "
+        "no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "_probe",
+     "shell"):
+        "runs the probe-worktree tool, which copies files into a detached git "
+        "worktree and hashes them; it starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "git",
+     "'git'"):
+        "builds a throwaway repository with git for the probe-worktree fixtures; it "
+        "starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_probe_worktree_refuses_a_file_whose_copy_differs",
+     "'git'"):
+        "adds a detached git worktree to hold the corrupted copy with git; it "
+        "starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_probe_worktree_leaves_the_caller_worktree_untouched",
+     "'git'"):
+        "lists the repository's worktrees with git to prove the probe cleaned up; it "
+        "starts no emulator",
+    ("tests/unit/test_worktree_owners.py",
+     "_run",
+     "args"):
+        "runs the one-writer sweep or a synthetic PowerShell script; neither starts "
+        "an emulator",
+    ("tests/unit/test_mgba_extra_script.py",
+     "test_a_dry_run_without_a_state_path_reports_none_and_still_runs",
+     "_dry_run_args(prerequisites, state=False)"):
+        "runs the GDB launcher with -DryRun and no savestate, which prints the "
+        "identity it would write and exits before any emulator starts",
+    ("tests/unit/test_mgba_extra_script.py",
+     "test_omitting_the_state_is_accepted_by_parameter_binding",
+     "shell"):
+        "runs the GDB launcher with a ROM path that does not exist, to prove the "
+        "parameter binder accepts a missing savestate and the launcher refuses "
+        "before any emulator starts",
 }
 
 

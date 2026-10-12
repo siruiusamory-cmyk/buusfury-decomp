@@ -45,8 +45,8 @@ the same data for a script, `-MaxFiles N` bounds the rows shown per worktree, an
 Two measured traps are encoded in it. `git hash-object --stdin` does NOT apply the
 clean filter, so on a CRLF checkout it hashes 14 bytes where the blob is 13 and
 every file looks `authored`; the path form does apply it. And `git worktree list`
-prints some entries as MSYS paths (`/c/Dev/...`) and some as `C:\Dev\...` in the
-same output.
+prints some entries in the MSYS spelling (`/c/<dir>/...`) and others in the native
+Windows spelling, in the same output.
 
 ## `check_citations.py` - does `file:line` still point at what it claims
 

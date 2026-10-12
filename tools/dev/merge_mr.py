@@ -31,23 +31,29 @@ Read the state, never the exit code alone: a `glab` that exits nonzero after a
 successful merge (the push-exits-1 pattern) is a success, and a `glab` that exits 0
 without moving the MR is not.
 
-    python -m tools.dev.merge_mr --mr 240 --sha <signed-off sha> --ticket TICKET-001
+    python -m tools.dev.merge_mr --mr 240 --sha <signed-off sha>
     python -m tools.dev.merge_mr --mr 240 --sha ... --dry-run
 
-Exit codes: 0 merged (or already merged), 3 refused after a retry, 4 the pinned SHA
-is not the MR's head, 2 usage or an unreadable MR.
+Exit codes: 0 merged (or already merged), 2 usage or an unreadable MR, 3 refused
+after a retry or for any merge that did not happen, 4 the pinned SHA is not the
+MR's head.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_PROJECT = "siruiusamory/log1-remake"
+
+#: An HTTP status, not a number that merely appears in error text: "pipeline 4057
+#: failed" is a real failure and must not earn the single retry.
+HTTP_405 = re.compile(r"\b405\b|Method Not Allowed")
 
 #: The two readings of a 405, quoted so a refusal names them rather than guessing.
 FLAKE_READING = (
@@ -109,15 +115,13 @@ def read_state(mr: str, project: str, api) -> dict:
     return json.loads(result.stdout)
 
 
-def had_effect(before: dict, after: dict) -> bool:
-    """A merge happened if the MR left `opened` or gained a merge commit."""
-    if after.get("merge_commit_sha"):
-        return True
-    return after.get("state") != before.get("state") and after.get("state") in (
-        "merged",
-        "closed",
-        "locked",
-    )
+def had_effect(after: dict) -> bool:
+    """A merge happened only when the MR says `merged` AND carries a merge commit.
+
+    A move to `closed` or `locked` is not a merge: reporting it as one is how a
+    refused or abandoned MR would read as landed.
+    """
+    return after.get("state") == "merged" and bool(after.get("merge_commit_sha"))
 
 
 def merge(
@@ -149,9 +153,28 @@ def merge(
     outcome = Outcome(status="refused", detail="no attempt was made")
     for number in (1, 2):
         state_before = read_state(mr, project, api)
-        result = api.merge(mr, project)
+        # The head is re-checked before EVERY attempt, not only before the first:
+        # a rebase under a frozen candidate is exactly how the reviewed SHA moves.
+        if (state_before.get("sha") or "").lower() != sha.lower():
+            attempt = Attempt(
+                command=[],
+                returncode=0,
+                stdout="",
+                stderr="",
+                state_before=state_before,
+                state_after=state_before,
+                had_effect=False,
+                error="the MR's head is no longer the pinned SHA",
+            )
+            outcome.attempts.append(attempt)
+            outcome.detail = (
+                f"the MR is no longer at the signed-off SHA: asked for {sha}, it is at "
+                f"{state_before.get('sha')}. Nothing was merged; re-freeze and re-review."
+            )
+            return outcome
+        result = api.merge(mr, project, sha)
         state_after = read_state(mr, project, api)
-        effect = had_effect(state_before, state_after)
+        effect = had_effect(state_after)
         attempt = Attempt(
             command=list(getattr(result, "args", []) or []),
             returncode=result.returncode,
@@ -177,13 +200,13 @@ def merge(
             attempt.error = "no server-side effect"
             outcome.status = "refused"
             outcome.detail = (
-                "the merge command reported success and the MR never moved: refusing "
+                "the merge command reported success and the MR never merged: refusing "
                 "to report a merge that did not happen"
             )
             return outcome
 
         text = f"{result.stdout}\n{result.stderr}"
-        is_405 = "405" in text or "Method Not Allowed" in text
+        is_405 = bool(HTTP_405.search(text))
         if is_405 and number == 1:
             attempt.error = "405 with no effect"
             continue
@@ -212,10 +235,13 @@ def merge(
 class GlabApi:
     """The real calls: `glab api` for state, `glab mr merge` for the merge."""
 
-    def __init__(self, repository: Path | None = None):
+    def __init__(self, repository: Path | None = None, runner=None):
         self.repository = repository
+        # The one seam a test needs: hand in a runner and read the exact command this
+        # class builds, instead of intercepting subprocess for the whole process.
+        self._run = runner or self._subprocess_run
 
-    def _run(self, command: list[str]) -> subprocess.CompletedProcess:
+    def _subprocess_run(self, command: list[str]) -> subprocess.CompletedProcess:
         return subprocess.run(
             command, capture_output=True, text=True, cwd=self.repository, timeout=300
         )
@@ -223,10 +249,10 @@ class GlabApi:
     def project_api(self, project: str, path: str) -> subprocess.CompletedProcess:
         return self._run(["glab", "api", f"projects/{project.replace('/', '%2F')}/{path}"])
 
-    def merge(self, mr: str, project: str) -> subprocess.CompletedProcess:
-        # No --auto-merge: the pinned-SHA rule is that the request names the SHA
-        # that was signed off, and a merge train's own auto-merge is not that.
-        return self._run(["glab", "mr", "merge", mr, "--yes"])
+    def merge(self, mr: str, project: str, sha: str) -> subprocess.CompletedProcess:
+        # The merge carries the signed-off SHA, and NO --auto-merge: a merge train's
+        # own auto-merge is not the SHA a human signed off, so it is not this rule.
+        return self._run(["glab", "mr", "merge", mr, "--sha", sha, "--yes"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -258,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
                     attempt.had_effect,
                 )
             )
+    if outcome.status == "refused" and "not this MR's head" in outcome.detail:
+        return 4
     return {"merged": 0, "dry-run": 0}.get(outcome.status, 3)
 
 

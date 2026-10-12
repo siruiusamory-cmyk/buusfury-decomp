@@ -76,15 +76,25 @@ function Get-WorktreeEntryClass {
     $present = Test-Path -LiteralPath $absolute -PathType Leaf
 
     if (-not $present) {
+        # A delete is still a delete: `D ` is staged, ` D` is a worktree delete and
+        # `MM`/`AM` are both. Reading one as unreadable was wrong twice over - the
+        # file really is gone, and nothing about it is unreadable.
+        if ($Entry[0] -eq 'D' -or $Entry[1] -eq 'D') { return 'deleted' }
         if (-not $staged) { return 'deleted' }
-        # A staged delete has no file to hash: the blob comparison is still the
-        # question, so hash the content the index holds rather than the file.
+        # Any other staged-but-absent shape has no file to hash: the blob comparison
+        # is still the question, so hash the content the index holds. It goes to a
+        # scratch file first, because `hash-object <path>` is the ONE spelling that
+        # applies the clean filter and `--stdin --path` is not honoured everywhere.
         $stagedContent = Invoke-GitCommand -Repository $WorktreePath -Arguments @('show', (':' + $relative))
         if ($stagedContent.Exit -ne 0) { return 'unreadable' }
-        # Piped through hash-object with `--path`, so the smudge/clean filters the
-        # index applies are applied here too.
-        $thisHash = ($stagedContent.Output | & git -C $WorktreePath hash-object --stdin --path $relative 2>&1 | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0) { return 'unreadable' }
+        $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+        try {
+            [System.IO.File]::WriteAllLines($scratch, [string[]]$stagedContent.Output)
+            $thisHash = (& git -C $WorktreePath hash-object -- $scratch 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) { return 'unreadable' }
+        } finally {
+            [System.IO.File]::Delete($scratch)
+        }
     } else {
         # `hash-object <path>` applies the same conversion `git add` would, which
         # `--stdin` does not: on a CRLF checkout `--stdin` hashed 14 bytes where

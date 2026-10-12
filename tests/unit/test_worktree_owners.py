@@ -251,6 +251,31 @@ def test_a_carrier_is_not_reported_as_a_writer_without_its_blob_match(synthetic)
     assert changed == ["authored"], classes
 
 
+def test_a_deleted_file_is_classified_as_deleted_not_unreadable(tmp_path):
+    """A staged delete has no file to hash; that is a delete, not an unreadable entry."""
+    shell = _powershell()
+    if shell is None:
+        pytest.skip("no PowerShell host on PATH to execute the sweep")
+    root = tmp_path / "repo"
+    root.mkdir()
+
+    def git(*args: str) -> None:
+        result = _git(root, *args)
+        assert result.returncode == 0, f"git {args}: {result.stdout}{result.stderr}"
+
+    git("init", "-q", "--initial-branch=master")
+    git("config", "user.email", "guard@example.invalid")
+    git("config", "user.name", "guard")
+    (root / "gone.txt").write_text("here\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-q", "-m", "base")
+    git("update-ref", "refs/remotes/origin/master", "HEAD")
+    git("rm", "-q", "gone.txt")
+    classes = _classes(_sweep_json(root), root)
+    removed = [v for k, v in classes.items() if "gone.txt" in k]
+    assert removed == ["deleted"], classes
+
+
 def test_a_worktree_file_equal_to_master_is_carrying_not_authored(tmp_path):
     """The same comparison on a tracked file, which is the shape a sweep meets.
 

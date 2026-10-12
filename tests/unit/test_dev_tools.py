@@ -1,24 +1,26 @@
 """The developer tools' guards: citations, commit messages, the probe worktree.
 
-Each of the three tools exists because a measured failure cost a session, so each
-guard drives its own failure rather than asserting that the tool exists:
+Each tool exists because a measured failure cost a session, so each guard drives its
+own failure rather than asserting that the tool exists.
 
-* the citation checker is graded on all three answers it can give, in a fixture
-  tree where the right answer is known, and on the exit code it only spends when
-  asked (`--fail-on-orphan`);
-* the commit-message writer is graded on the byte-level no-BOM claim, on a message
-  carrying quotes and an apostrophe surviving VERBATIM, and on refusing an empty
-  message - the same "write with `-Encoding utf8` and watch it fail" shape the
-  retro used;
-* the probe worktree copies named files into a detached worktree, hash-verifies
-  each, and refuses when a byte differs. `git` and `powershell` are both required
-  for that half; where a host is missing the check skips and names it.
+TWO LAYERS, because CI is Linux and always will be. A `.ps1` tool cannot execute
+there, so its behavioural guard skips on a host without PowerShell and a TEXT guard
+(a pure-Python assertion over the script's own bytes, the pattern RETRO-ENV-001
+established in tests/unit/test_ticket_worktree_setup.py) runs everywhere and pins
+the invariant the behaviour depends on. The behavioural proof for a `.ps1` tool is
+a Windows run, recorded in the ticket's report; the text guard is the regression
+net in CI. The Python tools (check_citations, merge_mr, review_queue_index) keep
+real behaviour tests that run on Linux, and there is no skip in them.
+
+The skip is proved rather than assumed: test_the_behavioural_powershell_tests_skip
+makes the lookup absent and asserts the tests SKIP instead of failing.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,10 +37,45 @@ from tools.dev import merge_mr as mm  # noqa: E402
 
 COMMIT_MSG = REPOSITORY_ROOT / "tools" / "dev" / "commit_msg.ps1"
 PROBE_WORKTREE = REPOSITORY_ROOT / "tools" / "dev" / "probe_worktree.ps1"
+SWEEP = REPOSITORY_ROOT / "tools" / "dev" / "worktree_owners.ps1"
+CUTTER = REPOSITORY_ROOT / "scripts" / "new-ticket-worktree.ps1"
 
 
 def _powershell() -> str | None:
     return shutil.which("pwsh") or shutil.which("powershell")
+
+
+def _require_powershell() -> str:
+    """The host, or a named skip. CI is Linux, where a `.ps1` cannot run."""
+    shell = _powershell()
+    if shell is None:
+        pytest.skip(
+            "no PowerShell host on this platform, so the .ps1 tool cannot be "
+            "executed; the text guards in this file hold its invariants in CI and "
+            "the behaviour is proved on Windows"
+        )
+    return shell
+
+
+def _require_windows_powershell() -> str:
+    """Windows PowerShell 5.1 by name, for the one test about ITS BOM behaviour.
+
+    `pwsh` is not the same shell: it has `-Encoding utf8NoBOM` and its `utf8` writes
+    no byte-order mark, so a probe that preferred `pwsh` would find no failure to
+    reproduce and fail its own assertion on a machine that has it.
+    """
+    shell = shutil.which("powershell.exe") or shutil.which("powershell")
+    if shell is None or "powershell.exe" not in Path(shell).name.lower():
+        pytest.skip(
+            "Windows PowerShell 5.1 is not on this platform; this test asserts the "
+            "BOM behaviour of that shell specifically"
+        )
+    return shell
+
+
+def _require_python() -> None:
+    if not Path(sys.executable).exists():
+        pytest.skip("this interpreter is not on disk, so it cannot be run as a child")
 
 
 # --- B4: check_citations -----------------------------------------------------
@@ -132,6 +169,7 @@ def test_a_release_word_in_backticks_is_not_read_as_a_symbol(cited_tree):
 
 
 def test_the_checker_exits_non_zero_for_orphans_only_when_asked(tmp_path: Path):
+    _require_python()
     document = tmp_path / "prose.md"
     document.write_text("`missing/nothing.py:3` `gone`\n", encoding="utf-8")
     quiet = subprocess.run(
@@ -158,6 +196,7 @@ def test_the_checker_exits_non_zero_for_orphans_only_when_asked(tmp_path: Path):
 
 
 def test_the_checker_requires_an_explicit_target():
+    _require_python()
     result = subprocess.run(
         [sys.executable, "-m", "tools.dev.check_citations"],
         cwd=REPOSITORY_ROOT,
@@ -171,8 +210,7 @@ def test_the_checker_requires_an_explicit_target():
 
 
 def _commit_msg(*args: str) -> subprocess.CompletedProcess:
-    shell = _powershell()
-    assert shell is not None
+    shell = _require_powershell()
     return subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(COMMIT_MSG), *args],
         cwd=REPOSITORY_ROOT,
@@ -183,6 +221,7 @@ def _commit_msg(*args: str) -> subprocess.CompletedProcess:
 
 def test_the_message_writer_writes_no_byte_order_mark():
     """`Set-Content -Encoding utf8` writes one; it has broken line 1 before."""
+    _require_powershell()
     message = 'Subject with "quotes" and an apostrophe: it does not split'
     result = _commit_msg("-Message", message, "-NoCommit")
     assert result.returncode == 0, result.stdout + result.stderr
@@ -197,6 +236,7 @@ def test_the_message_writer_writes_no_byte_order_mark():
 
 
 def test_the_writer_refuses_an_empty_message():
+    _require_powershell()
     for empty in ("", "   "):
         result = _commit_msg("-Message", empty, "-NoCommit")
         assert result.returncode != 0, result.stdout + result.stderr
@@ -206,11 +246,11 @@ def test_the_writer_refuses_an_empty_message():
 def test_the_no_bom_claim_is_driven_to_failure():
     """The premise of the tool, watched failing: `utf8` writes the marker.
 
-    Same shape as the retro's measurement: write the same message the other way
-    and read the first three bytes.
+    Same shape as the retro's measurement: write the same message the other way and
+    read the first three bytes. Windows PowerShell 5.1 by name, because `pwsh`'s
+    `utf8` writes no mark and would find nothing to reproduce.
     """
-    shell = _powershell()
-    assert shell is not None
+    shell = _require_windows_powershell()
     target = Path(tempfile.gettempdir()) / "dev-tools-test-bom.txt"
     script = target.with_suffix(".ps1")
     script.write_text(
@@ -230,6 +270,149 @@ def test_the_no_bom_claim_is_driven_to_failure():
     finally:
         target.unlink(missing_ok=True)
         script.unlink(missing_ok=True)
+
+
+# --- the .ps1 invariants, as TEXT (this is what runs in Linux CI) -------------
+
+
+def test_the_message_writer_keeps_the_no_bom_spelling():
+    """The bytes-level invariant a Linux runner can still check.
+
+    `[System.IO.File]::WriteAllText` with `UTF8Encoding($false)` is the whole
+    mechanism. `Set-Content -Encoding utf8` appears ONCE, in the comment that names
+    the defect: an executable occurrence is what the guard forbids, so the assertion
+    is on the argument form rather than on the words.
+    """
+    text = COMMIT_MSG.read_text(encoding="utf-8")
+    assert "[System.IO.File]::WriteAllText($MessageFile, $Message" in text
+    assert "New-Object System.Text.UTF8Encoding($false)" in text
+    assert "-LiteralPath $MessageFile -Value" not in text
+    assert re.search(r"^\s*Set-Content[^\n]*-Encoding\s+utf8\s*$", text, re.M) is None
+    assert "-Encoding utf8NoBOM" not in text
+    assert "throw 'commit_msg.ps1: the message is empty" in text
+
+
+def test_the_bom_failure_probe_names_the_shell_whose_utf8_writes_a_mark():
+    """`pwsh` is not that shell, so a probe that preferred it would fail itself."""
+    text = Path(__file__).read_text(encoding="utf-8")
+    assert 'shutil.which("powershell.exe")' in text
+
+
+def test_the_sweep_keeps_the_clean_filter_and_the_three_classes():
+    """`--stdin` skips the clean filter and made every file look `authored`."""
+    text = SWEEP.read_text(encoding="utf-8")
+    # The path form applies the clean filter; the piped form does not.
+    assert "hash-object -- $relative" in text
+    assert "hash-object --stdin" not in text
+    for classification in ("carries-master", "authored", "conflicted"):
+        assert f"'{classification}'" in text
+    assert "'cat-file', '-e'" in text
+
+
+def test_the_cutter_ends_with_its_own_exit_code():
+    assert CUTTER.read_text(encoding="utf-8").rstrip().endswith("exit 0")
+
+
+def test_the_probe_refuses_with_both_digests():
+    text = PROBE_WORKTREE.read_text(encoding="utf-8")
+    assert "Get-FileHash -Algorithm SHA256 -LiteralPath" in text
+    assert "source sha256" in text
+    assert "copy   sha256" in text
+    assert "MISMATCH" in text
+    assert "exit 3" in text
+
+
+@pytest.mark.skipif(
+    _powershell() is not None,
+    reason="the skip path is only reachable on a host without PowerShell",
+)
+def test_every_powershell_behavioural_guard_skips_without_a_host(monkeypatch):
+    """Prove the skip, not just write it: remove the lookup and assert SKIP.
+
+    Without this, a wrong edit to the skip helper would fail on Linux CI and pass
+    on this machine, which is the worst direction. With it, the Linux path is
+    exercised here.
+    """
+    monkeypatch.setattr(shutil, "which", lambda name, *args, **kwargs: None)
+    assert _powershell() is None
+    for call in (
+        _require_powershell,
+        _require_windows_powershell,
+    ):
+        with pytest.raises(pytest.skip.Exception) as caught:
+            call()
+        assert "no PowerShell host" in str(caught.value) or "Windows PowerShell" in str(
+            caught.value
+        )
+
+
+def test_the_launcher_file_declares_the_same_skip_shape():
+    """The launcher's guard must skip rather than fail on a host without PowerShell."""
+    text = (REPOSITORY_ROOT / "tests" / "unit" / "test_mgba_extra_script.py").read_text(
+        encoding="utf-8"
+    )
+    assert "def _require_host() -> str:" in text
+    assert "pytest.skip(" in text[text.index("def _require_host") : text.index("def test_omitting")]
+    assert "if shutil.which(\"pwsh\") is None and shutil.which(\"powershell\") is None:" in text
+
+
+SKIP_PLUGIN = """
+import shutil as _shutil
+
+_real_which = _shutil.which
+
+
+def _no_powershell(name, *args, **kwargs):
+    if str(name).lower() in {"pwsh", "powershell", "powershell.exe"}:
+        return None
+    return _real_which(name, *args, **kwargs)
+
+
+_shutil.which = _no_powershell
+"""
+
+
+def test_the_behavioural_powershell_tests_skip_rather_than_fail(tmp_path: Path):
+    """The Linux path, exercised here: make the lookup absent and run them.
+
+    A real subprocess with `shutil.which` neutered is the only way to see the skip
+    happen, because these tests find a host on this machine. Without this, the skip
+    could be broken for months and only Linux CI would know.
+    """
+    _require_python()
+    plugin = tmp_path / "no_powershell.py"
+    plugin.write_text(SKIP_PLUGIN, encoding="utf-8")
+    nodes = [
+        "tests/unit/test_dev_tools.py::test_the_message_writer_writes_no_byte_order_mark",
+        "tests/unit/test_dev_tools.py::test_the_writer_refuses_an_empty_message",
+        "tests/unit/test_dev_tools.py::test_the_probe_worktree_copies_and_verifies_when_the_bytes_match",
+    ]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            *nodes,
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--no-header",
+            "-p",
+            "no_powershell",
+        ],
+        cwd=REPOSITORY_ROOT,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "3 skipped" in output, output
+    # pytest prints "reported, never failed" in every summary, so the check is for a
+    # FAILED node id rather than for the word.
+    assert "FAILED " not in output, output
+    assert "ERROR " not in output, output
+
 
 
 # --- B5: the QA probe's --rom flag -------------------------------------------
@@ -293,7 +476,7 @@ def test_the_review_queue_index_is_read_only_over_the_queue(tmp_path: Path):
                 "review_id": "TICKET-001-20261012-010000",
                 "ticket": "TICKET-001",
                 "review_sha": "a" * 40,
-                "worktree": r"C:\Dev\log1-remake-x",
+                "worktree": r"C:\worktrees\example",
             }
         ),
         encoding="utf-8",
@@ -328,6 +511,38 @@ def test_the_review_queue_index_default_path_is_outside_the_repository():
     assert REPOSITORY_ROOT not in rqi.DEFAULT_QUEUE.parents
 
 
+def test_the_queue_verdict_is_the_last_line_not_the_first_word(tmp_path: Path):
+    """The reviewer's bite: prose saying PASS above a BLOCKED verdict read as PASS.
+
+    Every result file in this project ends with its verdict line, so that line is
+    the answer and nothing above it is.
+    """
+    from tools.dev import review_queue_index as rqi
+
+    result = tmp_path / "TICKET-001-20261012-010000.md"
+    result.write_text(
+        "- SC1: the earlier round PASSed on a different SHA\n"
+        "- SC2: this one did not\n"
+        "\n"
+        "BLOCKED\n",
+        encoding="utf-8",
+    )
+    assert rqi.verdict_of(result) == "BLOCKED"
+    result.write_text("PASS\n", encoding="utf-8")
+    assert rqi.verdict_of(result) == "PASS"
+    assert rqi.verdict_of(None) is None
+
+
+def test_a_negative_age_is_labelled_not_printed_bare():
+    from tools.dev import review_queue_index as rqi
+
+    assert rqi.age_label(2.5) == "2.5h"
+    assert rqi.age_label(None) == "?"
+    label = rqi.age_label(-1.5)
+    assert label.startswith("in the future")
+    assert "-1.5h" not in label
+
+
 # --- B9b: the pinned-SHA merge wrapper ---------------------------------------
 
 
@@ -338,23 +553,48 @@ class _FakeApi:
     state it reports is computed the way GitLab's would be - a merge that lands
     moves the MR to `merged` and fills `merge_commit_sha` - so the wrapper's
     no-effect detection is exercised against a real state transition.
+
+    `closes_on` moves the MR to `closed` instead, which is the shape that must NOT
+    count as a merge, and `moves_head_after` repoints the MR's head after the
+    wrapper's first read, which is what a rebase under a frozen candidate does.
     """
 
-    def __init__(self, sha: str, merges: list[tuple[int, str]], lands_on: list[int]):
+    def __init__(
+        self,
+        sha: str,
+        merges: list[tuple[int, str]],
+        lands_on: list[int],
+        closes_on: list[int] | None = None,
+        moves_head_after: int | None = None,
+    ):
         self.state = {"state": "opened", "sha": sha, "merge_commit_sha": None}
         self.calls: list[list[str]] = []
         self.merges = merges
         self.lands_on = lands_on
+        self.closes_on = closes_on or []
+        self.moves_head_after = moves_head_after
         self.merge_number = 0
+        self.api_calls = 0
 
     def project_api(self, project: str, path: str):
         self.calls.append(["api", path])
+        self.api_calls += 1
+        if self.moves_head_after is not None and self.api_calls == self.moves_head_after:
+            # One-shot: the head moves ON this read and stays moved, which is what a
+            # rebase under a frozen candidate does between two reads.
+            self.state = {**self.state, "sha": "b" * 40}
         return subprocess.CompletedProcess(
             ["glab", "api", path], 0, json.dumps(self.state), ""
         )
 
-    def merge(self, mr: str, project: str):
-        self.calls.append(["merge", mr])
+    def merge(self, mr: str, project: str, sha: str):
+        # The wrapper must carry the pinned SHA into the call, so the stub refuses a
+        # merge for a SHA the MR is not at: a call without the SHA cannot be checked.
+        self.calls.append(["merge", mr, sha])
+        if sha != self.state["sha"]:
+            return subprocess.CompletedProcess(
+                ["glab", "mr", "merge", mr], 1, "", "the head does not match --sha"
+            )
         self.merge_number += 1
         index = self.merge_number - 1
         returncode, text = self.merges[min(index, len(self.merges) - 1)]
@@ -364,14 +604,16 @@ class _FakeApi:
                 "sha": self.state["sha"],
                 "merge_commit_sha": "f" * 40,
             }
+        if self.merge_number in self.closes_on:
+            self.state = {**self.state, "state": "closed"}
         return subprocess.CompletedProcess(["glab", "mr", "merge", mr], returncode, text, text)
 
 
 SHA = "a" * 40
 
 
-def _fake(merges, lands_on) -> _FakeApi:
-    return _FakeApi(SHA, merges, lands_on)
+def _fake(merges, lands_on, **kwargs) -> _FakeApi:
+    return _FakeApi(SHA, merges, lands_on, **kwargs)
 
 
 def test_a_merge_that_lands_is_reported_merged_even_when_glab_exits_non_zero():
@@ -412,12 +654,57 @@ def test_a_real_failure_with_no_effect_is_not_retried():
     assert "no server-side effect" in outcome.detail
 
 
+def test_a_pipeline_number_containing_405_is_not_a_405():
+    """The reviewer's bite: `pipeline 4057 failed` earned a second merge attempt.
+
+    Driven to failure by matching the number as a substring: this error text is a
+    real failure and must be refused after ONE attempt.
+    """
+    api = _fake([(1, "pipeline 4057 failed")] * 3, [])
+    outcome = mm.merge("240", SHA, api)
+    assert outcome.status == "refused", outcome.as_dict()
+    assert len(outcome.attempts) == 1, "a substring is not an HTTP status"
+
+
+def test_a_closed_mr_is_not_a_merge():
+    """A move to closed or locked has no merge commit, so it is not an effect."""
+    api = _fake([(1, "boom")], [], closes_on=[1])
+    outcome = mm.merge("240", SHA, api)
+    assert outcome.status == "refused", outcome.as_dict()
+    assert outcome.attempts[0].had_effect is False
+    assert "no server-side effect" in outcome.detail
+
+
+def test_a_head_that_moved_after_the_check_is_refused_before_the_retry():
+    """The reviewer's bite: the stub moved the head and the wrapper merged anyway.
+
+    The stub moves the head ON the read that follows the first failed attempt, which
+    is the read the wrapper must perform before retrying. The merge call then carries
+    a SHA the MR is not at, so without the re-check the retry lands.
+    """
+    api = _fake([(1, "HTTP 405 Method Not Allowed")] * 2, [], moves_head_after=3)
+    outcome = mm.merge("240", SHA, api)
+    assert outcome.status == "refused", outcome.as_dict()
+    assert len(outcome.attempts) == 2, outcome.as_dict()
+    assert outcome.attempts[1].error == "the MR's head is no longer the pinned SHA"
+    assert "merged" != outcome.status
+
+
+def test_a_head_that_moved_before_the_first_merge_is_refused_without_a_merge():
+    """The same guard before the first attempt, driven from its own side."""
+    api = _fake([(0, "merged")], [1], moves_head_after=2)
+    outcome = mm.merge("240", SHA, api)
+    assert outcome.status == "refused", outcome.as_dict()
+    assert outcome.attempts[0].had_effect is False
+    assert [call[0] for call in api.calls] == ["api", "api"], "no merge was attempted"
+
+
 def test_success_reported_without_moving_the_mr_is_refused():
     """Exit 0 is not evidence: the MR state is."""
     api = _fake([(0, "merged")], [])
     outcome = mm.merge("240", SHA, api)
     assert outcome.status == "refused", outcome.as_dict()
-    assert "never moved" in outcome.detail
+    assert "never merged" in outcome.detail
 
 
 def test_a_sha_that_is_not_the_mr_head_is_refused_before_any_merge():
@@ -434,20 +721,39 @@ def test_the_wrapper_assumes_the_deterministic_reading_in_what_it_reports():
     assert "405" in mm.FLAKE_READING
 
 
-def test_the_wrapper_never_passes_an_unreviewed_sha():
-    """The merge command carries the MR id only: the SHA check is before it."""
-    api = _fake([(0, "merged")], [1])
-    mm.merge("240", SHA, api)
-    merge_calls = [call for call in api.calls if call[0] == "merge"]
-    assert merge_calls == [["merge", "240"]]
+def test_the_merge_call_carries_the_pinned_sha():
+    """The pin is not only a pre-check: the merge request names the SHA too.
+
+    Driven on the real `GlabApi` through its runner seam, because recording on the
+    stub alone cannot fail: the command the wrapper BUILDS is the thing under test.
+    """
+    recorded: list[list[str]] = []
+    api = mm.GlabApi(
+        runner=lambda command: (
+            recorded.append(list(command)) or subprocess.CompletedProcess(command, 0, "", "")
+        )
+    )
+    api.merge("240", mm.DEFAULT_PROJECT, SHA)
+    assert recorded == [["glab", "mr", "merge", "240", "--sha", SHA, "--yes"]], recorded
+
+
+def test_the_docstring_names_the_exit_codes_the_code_returns():
+    source = (
+        REPOSITORY_ROOT / "tools" / "dev" / "merge_mr.py"
+    ).read_text(encoding="utf-8")
+    doc = " ".join(source[: source.index('"""', 3)].split())
+    assert "Exit codes: 0 merged" in doc
+    assert "3 refused" in doc
+    assert "4 the pinned SHA is not the MR's head" in doc
+    assert "--ticket" not in doc
+
 
 
 # --- B8: probe_worktree.ps1 --------------------------------------------------
 
 
 def _probe(*args: str, cwd: Path) -> subprocess.CompletedProcess:
-    shell = _powershell()
-    assert shell is not None
+    shell = _require_powershell()
     return subprocess.run(
         [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(PROBE_WORKTREE), *args],
         cwd=cwd,
@@ -460,6 +766,7 @@ def _probe(*args: str, cwd: Path) -> subprocess.CompletedProcess:
 @pytest.fixture
 def probe_repo(tmp_path: Path) -> dict:
     """A repository whose working tree holds a modified file to probe with."""
+    _require_powershell()
     if shutil.which("git") is None:
         pytest.skip("git is required to build a probe worktree")
     root = tmp_path / "repo"

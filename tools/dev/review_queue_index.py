@@ -48,13 +48,30 @@ def parse_stamp(review_id: str) -> datetime | None:
 
 
 def verdict_of(result: Path | None) -> str | None:
+    """The LAST non-blank line, which is where every result file puts its verdict.
+
+    Scanning the head of the file for the first of PASS/BLOCKED reads a BLOCKED
+    review as PASS whenever the prose above the verdict contains the word, which
+    is exactly what the long form of this queue's results does.
+    """
     if result is None or not result.is_file():
         return None
-    head = result.read_text(encoding="utf-8", errors="replace")[:4000]
-    for state in VERDICT_STATES:
-        if state in head:
-            return state
+    lines = result.read_text(encoding="utf-8", errors="replace").splitlines()
+    for line in reversed(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        return stripped if stripped in VERDICT_STATES else "UNKNOWN"
     return "UNKNOWN"
+
+
+def age_label(hours: float | None) -> str:
+    """A negative age would be a clock skew, so it is labelled, not printed bare."""
+    if hours is None:
+        return "?"
+    if hours < 0:
+        return f"in the future by {abs(hours)}h (the request timestamp is ahead of this clock)"
+    return f"{hours}h"
 
 
 def build(queue: Path, now: datetime | None = None) -> dict:
@@ -119,13 +136,12 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(claimed)} claimed and awaiting one"
     )
     for row in sorted(rows, key=lambda r: r.get("age_hours") or 0, reverse=True):
-        age = row.get("age_hours")
         print(
-            "  {0}  {1}  {2}  age {3}h  {4}".format(
+            "  {0}  {1}  {2}  age {3}  {4}".format(
                 row.get("verdict") or "OPEN",
                 row.get("ticket") or "?",
                 (row.get("review_sha") or "?")[:12],
-                age if age is not None else "?",
+                age_label(row.get("age_hours")),
                 "claimed" if row.get("claimed") else "unclaimed",
             )
         )

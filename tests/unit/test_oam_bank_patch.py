@@ -26,6 +26,7 @@ def test_the_stub_disassembles_to_the_intended_instructions() -> None:
     listing = [(instruction.mnemonic, instruction.op_str)
                for instruction in Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(patch.STUB, patch.ROM_BASE)]
     assert listing == [
+        ("adds", "r0, #2"),
         ("lsrs", "r6, r6, #0xa"),
         ("lsls", "r6, r6, #0xa"),
         ("ldr", "r3, [r1]"),
@@ -68,13 +69,13 @@ def aligned(length: int) -> bytearray:
 def test_the_patch_replaces_exactly_the_block_and_points_at_a_stub_before_the_resume() -> None:
     image = aligned(0x1000 + patch.BLOCK_SITE - patch.ROM_BASE)
     offset = patch.BLOCK_SITE - patch.ROM_BASE
-    image[offset:offset + patch.BLOCK_BYTES] = b"\xaa" * patch.BLOCK_BYTES
+    image[offset:offset + patch.BLOCK_BYTES] = patch.EXPECTED_BLOCK
     resume_before = bytes(image[offset + patch.BLOCK_BYTES:offset + patch.BLOCK_BYTES + 4])
     base_length = len(image)
 
     stub_address, original = patch.patch(image)
-    assert original == b"\xaa" * patch.BLOCK_BYTES
-    assert len(image) == base_length + 50
+    assert original == patch.EXPECTED_BLOCK
+    assert len(image) == base_length + 52
     entry = bytes(image[offset:offset + patch.BLOCK_BYTES])
     assert len(entry) == patch.BLOCK_BYTES
     assert entry[0:2] == bytes.fromhex("014b"), "a PC-relative load, so the stub can live above EOF"
@@ -87,21 +88,28 @@ def test_the_patch_replaces_exactly_the_block_and_points_at_a_stub_before_the_re
 
 def test_the_stub_returns_to_the_resume_address_absolutely() -> None:
     image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)
+    offset = patch.BLOCK_SITE - patch.ROM_BASE
+    image[offset:offset + patch.BLOCK_BYTES] = patch.EXPECTED_BLOCK
     stub_address, _ = patch.patch(image)
-    # The stub body is the instructions plus the ldr/bx pair, so the literal follows at STUB + 4.
-    literal = struct.unpack_from("<I", image, stub_address + len(patch.STUB) + 4)[0]
+    # The body is padded to a multiple of four so the return load's PC-relative base IS the literal.
+    layout = patch.stub_layout(stub_address)
+    literal = struct.unpack_from("<I", image, layout["literal_at"])[0]
     assert literal == patch.RESUME + 1, (
         "an absolute return, because a thumb b cannot reach above EOF from the code region")
 
 
 def test_a_second_patch_is_refused_rather_than_silently_applied_again() -> None:
-    """The first patch grows the image by 50 bytes, so the stub can no longer start word aligned.
-
-    That accident is a useful property: a double patch stops at an assertion instead of appending a second stub
-    and replacing an entry the first run already wrote.
-    """
+    """The guard is the block's own content: a second run finds the entry, not the retail sequence."""
     image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)
+    offset = patch.BLOCK_SITE - patch.ROM_BASE
+    image[offset:offset + patch.BLOCK_BYTES] = patch.EXPECTED_BLOCK
     first_stub, _ = patch.patch(image)
-    with pytest.raises(AssertionError):
-        patch.patch(image)
     assert first_stub % 4 == 0
+    with pytest.raises(AssertionError, match="not the retail sequence"):
+        patch.patch(image)
+
+
+def test_an_image_whose_block_is_unexpected_is_refused() -> None:
+    image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)
+    with pytest.raises(AssertionError, match="not the retail sequence"):
+        patch.patch(image)

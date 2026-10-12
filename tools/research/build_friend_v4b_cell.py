@@ -53,6 +53,10 @@ BF_DEFINITION_TABLE = 0x6B6BB4
 BF_SLOT_COUNT_OFFSET = 0x00
 BF_SLOT_ARRAY_OFFSET = 0x54
 BF_SECONDARY_ARRAY_OFFSET = 0x50
+#: The shared OBJ palette, whose entries are the only colours a 4bpp piece may use, and the source title's OBJ
+#: palette that Cell's own colours come from.
+BF_OBJ_PALETTE_FILE = 0x05652C
+LOG2_OBJ_PALETTE_FILE = 0x1DA6C8
 #: The definition header's length. The character constructor reads fields inside it - the slot count as the
 #: low byte of +0x00, the allocator BYTE SIZE at +0x02, the secondary array pointer at +0x50 - so a
 #: replacement carries the header of the definition it replaces. A zero-filled header is CRASH-ROOT-CAUSE-001:
@@ -153,6 +157,54 @@ def read_log2_cell(image: bytes):
     return slots, payloads
 
 
+def to_four_bpp(slots, payloads, destination: bytes, source: bytes) -> tuple[list, list, dict]:
+    """Rewrite every piece as 4bpp tiles that select an existing destination palette bank.
+
+    Three things change and nothing else does:
+
+    * each piece's pixels are packed to the 1-D 4bpp tile layout, mapped through the bank that fits that piece
+      best, and PADDED to `width*height` bytes because the engine copies that many bytes per piece whatever the
+      depth;
+    * the piece attribute word loses `attr0` bit 13 (so the sprite is 16-colour) and carries the bank in bits
+      25..27, the `attr1` affine-select field that the OAM patch reads and then clears;
+    * a container shared by pieces that chose different banks is emitted once per bank, because the local index
+      mapping differs.
+
+    No palette entry is written anywhere, which is what makes "no other actor changes" true by construction.
+    """
+    from tools.research import cell_4bpp as convert
+    destination_palette = destination[BF_OBJ_PALETTE_FILE:BF_OBJ_PALETTE_FILE + 512]
+    source_palette = source[LOG2_OBJ_PALETTE_FILE:LOG2_OBJ_PALETTE_FILE + 512]
+
+    emitted: list[bytes] = []
+    emitted_at: dict[tuple[int, int], int] = {}
+    banks: dict[int, int] = {}
+    errors: list[int] = []
+    rewritten = []
+    for slot in slots:
+        new_slot = []
+        for x, y, width, height, attr, payload_index in slot:
+            payload = payloads[payload_index]
+            chosen = convert.choose_bank(payload, destination_palette, source_palette)
+            banks[chosen["bank"]] = banks.get(chosen["bank"], 0) + 1
+            errors.append(chosen["worst"])
+            key = (payload_index, chosen["bank"])
+            if key not in emitted_at:
+                packed = convert.pack_4bpp(payload, width, height, chosen["mapping"])
+                emitted_at[key] = len(emitted)
+                emitted.append(convert.pad_to(width * height, packed))
+            new_attr = (attr & ~0x2000) | convert.piece_bank_bits(chosen["bank"])
+            new_slot.append((x, y, width, height, new_attr, emitted_at[key]))
+        rewritten.append(new_slot)
+    errors.sort()
+    report = {"four_bpp": True, "banks": dict(sorted(banks.items())),
+              "containers_emitted": len(emitted),
+              "worst_error_min": errors[0] if errors else 0,
+              "worst_error_median": errors[len(errors) // 2] if errors else 0,
+              "worst_error_max": errors[-1] if errors else 0}
+    return rewritten, emitted, report
+
+
 def build_port(slots, payloads, image: bytes, header: bytes,
                slot_count: int | None = None) -> tuple[bytes, dict]:
     """Append payloads, frames, animations and the definition; fill `slot_count` slots if given.
@@ -240,6 +292,12 @@ def write_name(image: bytes, text: str, slot: int = NAME_TEXT_SLOT) -> tuple[byt
     while end + 1 < len(out) and (out[end] | (out[end + 1] << 8)) != 0:
         end += 2
     existing = end - start
+    existing_text = out[start:end].decode("utf-16-le", "replace")
+    if existing_text == text:
+        # Writing the name that is already there is a no-op, and must not be refused for "not fitting": the
+        # capacity a written slot reports is the string it now holds, not the room it once had.
+        return bytes(out), {"name_slot": slot, "name": text, "name_bytes": 2 * (len(text) + 1),
+                            "name_slot_capacity": existing, "name_unchanged": True}
     needed = 2 * (len(text) + 1)
     if needed > existing:
         raise CellPortError(
@@ -259,6 +317,9 @@ def main() -> int:
     parser.add_argument("--image", required=True, help="the Buu's Fury derivative image to extend")
     parser.add_argument("--expect-sha256", required=True)
     parser.add_argument("--id", type=int, required=True, help="definition id to repoint at the port")
+    parser.add_argument("--four-bpp", action="store_true",
+                        help="emit the art as 16-colour tiles that select an existing palette bank, which "
+                             "needs the OAM bank patch applied to the same image; no palette entry is written")
     parser.add_argument("--name", default="",
                         help="write this name into the name text slot; a LONGER name than what is there "
                              "is refused, because it would overlap the next slot")
@@ -304,6 +365,10 @@ def main() -> int:
             "definition does, so this is not the definition the port should mimic")
 
     out, report = build_port(slots, payloads, image, base_header, args.slots)
+    if args.four_bpp:
+        slots, payloads, conversion = to_four_bpp(slots, payloads, image, log2)
+        out, report = build_port(slots, payloads, image, base_header, args.slots)
+        report.update(conversion)
     report["header_from"] = f"0x{base_pointer:08X}"
     report["header_allocator_bytes"] = base_allocator
     out = bytearray(out)          # the table word is repointed below

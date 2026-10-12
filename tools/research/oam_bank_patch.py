@@ -35,9 +35,15 @@ BLOCK_BYTES = 14
 #: The untouched resume address, the piece advance at 0x0800F2C0.
 RESUME = 0x0800F2C0
 
+#: The retail bytes of the block being replaced, read from the canonical image: `mov r3,lr` / `lsls r3,r3,#0x16`
+#: / `lsrs r6,r6,#0xa` / `lsls r6,r6,#0xa` / `lsrs r3,r3,#0x16` / `orrs r6,r3` / `str r6,[r1,#4]`. The patch
+#: refuses any image whose block differs, so a second run or a wrong image stops instead of corrupting.
+EXPECTED_BLOCK = bytes.fromhex("73469b05b60ab6029b0d1e434e60")
+
 #: The stub, hand-assembled Thumb. Every opcode is asserted against a disassembly in the tests, so a typo
 #: cannot silently become a different instruction.
 STUB = bytes.fromhex(
+    "0230"      # adds r0,#2           the block's own side effect: the loop reads piece w/h from r0 at +0
     "b60a"      # lsrs r6,r6,#0xa      clear attr2 bits 0..9
     "b602"      # lsls r6,r6,#0xa
     "0b68"      # ldr  r3,[r1]         word 0, carrying the piece word
@@ -66,17 +72,37 @@ def word(image: bytes, offset: int) -> int:
     return struct.unpack_from("<I", image, offset)[0]
 
 
-def patch(image: bytearray, alignment: int = 2):
-    """Apply the patch in place. Returns the stub address and the bytes it wrote."""
+def stub_layout(stub_address: int) -> dict:
+    """Where the pieces of the stub live, so nothing has to hardcode an offset.
+
+    The return uses `ldr r3,[pc,#0]`, which reads from `(PC & ~3)` with PC = instruction + 4. The body is
+    therefore padded with nops to a multiple of four, so the load's target IS the literal that follows the
+    `bx`, and the alignment holds by construction rather than by counting instructions.
+    """
+    body = bytearray(STUB)
+    while (len(body) + 4) % 4:
+        body.extend(bytes.fromhex("c046"))            # nop
+    load_at = stub_address + len(body)
+    literal_at = load_at + 4
+    if (load_at + 4) & ~3 != literal_at:
+        raise AssertionError("stub layout: the return load does not point at its literal")
+    return {"body": bytes(body), "load_at": load_at, "literal_at": literal_at,
+            "end": literal_at + 4}
+
+
+def patch(image: bytearray, alignment: int = 4):
+    """Apply the patch in place. Returns the stub address and the bytes it replaced."""
     stub_address = len(image)
     if stub_address % alignment:
         stub_address += alignment - (stub_address % alignment)
         image.extend(b"\x00" * (stub_address - len(image)))
 
-    # The stub, then the absolute return address, then a ldr/bx pair to consume it.
-    body = STUB + bytes.fromhex("4b00" "1847")            # ldr r3,[pc,#0] ; bx r3
-    stub = body + struct.pack("<I", RESUME + 1)
-    image.extend(stub)
+    layout = stub_layout(stub_address)
+    image.extend(layout["body"] + bytes.fromhex("4b00") + bytes.fromhex("1847"))
+    image.extend(struct.pack("<I", RESUME + 1))
+    if len(image) != layout["end"]:
+        raise AssertionError("stub layout disagrees with what was written")
+    stub = layout
 
     # The stub's own return: the `ldr r3,[pc,#0]` at body end reads (PC & ~3) + 0 = the next word, which is
     # the literal, so the read address must be word aligned. The body is an even number of halfwords, so the
@@ -95,6 +121,10 @@ def patch(image: bytearray, alignment: int = 2):
 
     offset = BLOCK_SITE - ROM_BASE
     original = bytes(image[offset:offset + BLOCK_BYTES])
+    if original != EXPECTED_BLOCK:
+        raise AssertionError(
+            f"the attr2 block at 0x{BLOCK_SITE:08X} is not the retail sequence, so this image is either "
+            f"already patched or not the image this patch was written for; refusing. Found {original.hex()}")
     image[offset:offset + BLOCK_BYTES] = entry
     return stub_address, original
 

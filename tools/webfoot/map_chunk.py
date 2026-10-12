@@ -1,8 +1,8 @@
 """MAP-CHUNK-AUTHORING-001 - creating a chunk that did not exist before.
 
 The production authority for *chunk creation*, and nothing else. MAP-TILE-PAINT-001
-taught the editor to point a dominant layer's cell at a chunk **the same layer
-already uses**, which is a fixed-width in-place write. This module owns the step
+taught the editor to point a dominant layer's cell at a chunk **a dominant layer of
+the same map already uses**, which is a fixed-width in-place write. This module owns the step
 past that: a chunk body the canonical image does not contain, composed by the
 author, materialized by the production allocator, and referenced by a map cell.
 

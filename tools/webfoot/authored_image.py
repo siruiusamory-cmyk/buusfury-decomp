@@ -522,13 +522,20 @@ def _field(value: object, name: str, offset: int, field_bytes: int) -> bytes:
 
 
 def _declared_changes(
-    document: dict, field_bytes: int, expected_reason: str
+    document: dict, field_bytes: int, expected_reason: str | tuple[str, ...]
 ) -> tuple[DeclaredChange, ...]:
     """Parse and structurally check the manifest's change list.
 
     Purely structural: an owner string is carried through opaque, because what it
     names is the domain's question, not this module's.
+
+    ``expected_reason`` may name several acceptable strings. A caller widens its
+    accepted set when a reason string changes, so a manifest already written to
+    disk keeps verifying instead of being refused for naming the older wording.
     """
+    accepted = (
+        (expected_reason,) if isinstance(expected_reason, str) else tuple(expected_reason)
+    )
     changes = document.get("changes")
     if not isinstance(changes, list) or not changes:
         raise AuthoredImageError("the manifest declares no changes")
@@ -543,7 +550,7 @@ def _declared_changes(
         owner = change.get("owner")
         if not isinstance(owner, str) or not owner:
             raise AuthoredImageError("malformed provenance manifest: a change names no owner")
-        if change.get("reason") != expected_reason:
+        if change.get("reason") not in accepted:
             raise AuthoredImageError(
                 f"the manifest declares an unsupported change reason: {change.get('reason')!r}"
             )
@@ -663,7 +670,7 @@ def verify_authored_image(
     canonical_sha256: str,
     canonical_size: int,
     field_bytes: int,
-    expected_reason: str,
+    expected_reason: str | tuple[str, ...],
     check_changes: Callable[
         [tuple[DeclaredChange, ...], bytes, bytes], tuple[TARGET, ...]
     ],

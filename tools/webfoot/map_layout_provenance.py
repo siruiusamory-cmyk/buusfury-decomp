@@ -15,8 +15,9 @@ edits:
   declared field must hold the declared new bytes;
 * every declared change must be a four-byte field of a supported map's *dominant*
   chunk window, addressable from its own semantic owner string
-  (``map:NNNN layer S cell C``), and must put a non-null chunk that the layer
-  already uses at another of its cells into that cell - the single write operation
+  (``map:NNNN layer S cell C``), and must put a non-null chunk that a dominant
+  layer of that same map already uses at another of its cells into that cell - the
+  single write operation
   MAP-LAYOUT-WRITE-001 proved; and
 * restoring each declared ``old`` value at its declared span must reproduce the
   canonical image exactly: SHA-256 equal to the supported canonical hash.
@@ -25,7 +26,7 @@ The manifest identity, declared-change structure and canonical reconstruction ar
 not specific to map layouts: they live once in
 :mod:`tools.webfoot.authored_image`, which every authored-image domain shares. What
 stays here is exactly the map-layout half - the owner string this editor writes, the
-one reason it records, the same-layer replacement rule, and the typed
+one reason it records, the map-wide replacement rule, and the typed
 :class:`AuthoredRom`/:class:`AuthoredEdit` the map readers consume.
 
 The canonical image is untouched as the fully trusted baseline: it is accepted by
@@ -68,9 +69,17 @@ MANIFEST_SUFFIX = AUTHORED_MANIFEST_SUFFIX
 #: The semantic owner this editor gives every change it plans.
 _OWNER = re.compile(r"^map:(\d{4}) layer ([0-3]) cell (\d+)$")
 
-#: The reason string the layout editor records; a manifest claiming a different
-#: reason is not this tool's output.
-REASON = "existing same-layer chunk replacement"
+#: The reason string the layout editor records now that a cell may borrow a chunk
+#: from any dominant layer of the same map.
+REASON = "chunk replacement from a dominant layer of the same map"
+
+#: The reason this editor recorded before MAP-PAINT-ANY-CHUNK-001 widened the rule.
+#: Still accepted, because a derivative written by the earlier build carries a
+#: manifest that names it, and a manifest already on disk has to keep verifying.
+LEGACY_REASONS = ("existing same-layer chunk replacement",)
+
+#: Every reason string this editor's manifests may carry, newest first.
+ACCEPTED_REASONS = (REASON,) + LEGACY_REASONS
 
 #: Encoded width of a dominant-layer chunk-pointer field.
 FIELD_BYTES = 4
@@ -250,7 +259,7 @@ def verify_authored_rom(
             canonical_sha256=identity.sha256,
             canonical_size=identity.image_size,
             field_bytes=FIELD_BYTES,
-            expected_reason=REASON,
+            expected_reason=ACCEPTED_REASONS,
             check_changes=_check_layout_changes,
         )
     except AuthoredImageError as exc:

@@ -156,9 +156,9 @@ class LayoutSlot:
     handler: int
     grid: LayoutGrid
     cells: tuple[LayoutCell, ...]
-    #: The distinct non-null chunk pointers this layer already uses, in
-    #: first-appearance order. This is exactly the set of legal replacements for
-    #: any of its cells, and it is what a chooser offers.
+    #: The distinct non-null chunk pointers a dominant layer of this map uses, in
+    #: first-appearance order with this layer's own first. This is exactly the set
+    #: of legal replacements for any of its cells, and it is what a chooser offers.
     choices: tuple[int, ...]
     #: MAP-PAINT-ANY-CHUNK-001. Which slot each choice came from, `self.slot` for a
     #: chunk this layer itself shows and a sibling's slot for a borrowed one. A

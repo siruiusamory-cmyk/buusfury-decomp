@@ -47,8 +47,8 @@ _MAP_MODES = (
     (
         "layout",
         "Layout",
-        "Reassign one 256x256 chunk cell of a supported map to another chunk the "
-        "same layer already uses, then Save As a new ROM.",
+        "Reassign one 256x256 chunk cell of a supported map to another chunk a "
+        "dominant layer of the same map already uses, then Save As a new ROM.",
     ),
     (
         "objects",

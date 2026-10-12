@@ -43,7 +43,9 @@ with three blocking findings and six non-blocking notes.
    `MapLayoutWriter.set_chunk_pointer` validated the replacement before noticing it
    equalled the cell's stored value, so restoring a cell whose canonical pointer is
    null raised `MapLayoutWriteError`. 104 of the 341 editable maps contain such a
-   cell, and the GUI slot caught only `MapLayoutEditError`, so the exception escaped
+   cell (counts as measured in this pass; the editable denominator became 440 of 452
+   when `MAP-PAINT-ANY-CHUNK-001` widened the replacement rule), and the GUI slot
+   caught only `MapLayoutEditError`, so the exception escaped
    the slot.
    **Fixed in `91c859241fad2d7fe52808a0c61f05a0eb8993d1`:** the writer refuses a non-int, then accepts
    `replacement == original` (a restore) before the replacement policy runs; the
@@ -95,7 +97,9 @@ with three blocking findings and six non-blocking notes.
 
 ## What the verification pass confirmed independently (not taken on trust)
 
-- Census: 452 maps readable, 341 with an editable layer, 111 read-only.
+- Census: 452 maps readable, 341 with an editable layer, 111 read-only. This is the
+  count this pass measured, under the rule as it stood then; `MAP-PAINT-ANY-CHUNK-001`
+  re-measured it on the widened rule as 452 readable, 440 editable, 12 read-only.
 - The Grand Kai proof case: `map:0040` dominant layer 1 cell 0
   `0x082928DC` -> `0x08292A54` at file `0x00292CA0`; only bytes `0x292CA0-1`
   changed; 29,208 changed pixels, all inside that cell's 256x256 region, 0 in the

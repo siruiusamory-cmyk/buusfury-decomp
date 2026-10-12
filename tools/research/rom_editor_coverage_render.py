@@ -495,7 +495,7 @@ def summary(doc: dict) -> str:
                "{}\n".format(t["family_wide"]["writable_cells"], t["family_wide"]["measured_cells"],
                              t["family_wide"]["writable_pct_of_measured"], t["shared_path_caveat"]))
     out.append("**Zero systems are FULLY EDITABLE at the strict definition, and that is the finding rather than an "
-               "artefact.** Every writable domain carries a boundary that matters to ordinary hacking: 341 of 452 maps "
+               "artefact.** Every writable domain carries a boundary that matters to ordinary hacking: 440 of 452 maps "
                "for the chunk grid, five of about fourteen map-record fields with no UI, a refused 169-class warp "
                "family and no deletion, no new text ids, clone-only placements, one record per dialogue container, one "
                "palette entry at a time, one added sprite identity per image, and one trigger contract out of the "

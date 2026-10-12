@@ -7,7 +7,7 @@ and lets the user search, zoom, pan and toggle individual graphical layers.
 
 Normal browsing is READ-ONLY. An explicit *Edit Layout* mode adds the first real
 map-editing surface: pick a dominant layer's 256x256 chunk cell, choose another
-chunk that layer already uses, see the result in the map preview immediately (in
+chunk a dominant layer of the same map already uses, see the result in the map preview immediately (in
 memory - never by writing the source ROM), and save the pending edits to a NEW ROM
 copy. Everything the mode can do is decided by the SDK session it drives; this
 widget owns no ROM format, no pointer arithmetic and no write of its own.
@@ -2323,9 +2323,10 @@ class MapBrowserTab(QWidget):
         self._chooser.setFlow(QListWidget.Flow.LeftToRight)
         self._chooser.setWrapping(False)
         self._chooser.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._chooser.setAccessibleName("Chunks this layer already uses")
+        self._chooser.setAccessibleName("Chunks a dominant layer of this map uses")
         self._chooser.setToolTip(
-            "Only chunks this layer already uses can replace a cell's chunk."
+            "Only chunks a dominant layer of this map already uses can replace a "
+            "cell's chunk; a borrowed one names the layer it came from."
         )
         self._chooser.currentItemChanged.connect(self._on_chunk_selected)
         self._chooser_header = PanelHeader("Cell chunks", collapsible=True)
@@ -4333,8 +4334,10 @@ class MapBrowserTab(QWidget):
     def _populate_chooser(self) -> None:
         """Fill the chooser with the layer's own chunks and this map's authored ones.
 
-        MAP-CHUNK-AUTHORING-001. The canonical rows are unchanged: the chunks the
-        layer already uses, in its own 1-based order. The authored rows follow
+        MAP-CHUNK-AUTHORING-001, widened by MAP-PAINT-ANY-CHUNK-001. The canonical
+        rows lead with this layer's own chunks, in their own 1-based order, and the
+        siblings' follow in the same list, each borrowed one labelled with the
+        layer it came from. The authored rows follow
         them, labelled ``Authored: <name>`` so a person can tell a project-authored
         chunk from a retail one at a glance, and drawn from the *resolved* authored
         plane - the arrangement the build would materialize - through the same

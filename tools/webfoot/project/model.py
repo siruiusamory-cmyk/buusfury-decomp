@@ -1004,7 +1004,8 @@ class LayoutEdits:
       the index the engine's loader uses.
 
     A pointer address is deliberately NOT storable. The proven replacement rule
-    is "a chunk this same layer already uses", and an ordinal states exactly
+    is "a chunk a dominant layer of the same map already uses", and an ordinal
+    states exactly
     that; a stored address would additionally pin the edit to one image's layout
     of the bank data, and would be unreadable in a project file.
 

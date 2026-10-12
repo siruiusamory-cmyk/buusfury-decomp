@@ -15,8 +15,9 @@ edits:
   declared field must hold the declared new bytes;
 * every declared change must be a four-byte field of a supported map's *dominant*
   chunk window, addressable from its own semantic owner string
-  (``map:NNNN layer S cell C``), and must put a non-null chunk that the layer
-  already uses at another of its cells into that cell - the single write operation
+  (``map:NNNN layer S cell C``), and must put a non-null chunk that already occurs
+  in a dominant layer of that same map into that cell - the
+  single write operation
   MAP-LAYOUT-WRITE-001 proved; and
 * restoring each declared ``old`` value at its declared span must reproduce the
   canonical image exactly: SHA-256 equal to the supported canonical hash.
@@ -25,7 +26,7 @@ The manifest identity, declared-change structure and canonical reconstruction ar
 not specific to map layouts: they live once in
 :mod:`tools.webfoot.authored_image`, which every authored-image domain shares. What
 stays here is exactly the map-layout half - the owner string this editor writes, the
-one reason it records, the same-layer replacement rule, and the typed
+one reason it records, the map-wide replacement rule, and the typed
 :class:`AuthoredRom`/:class:`AuthoredEdit` the map readers consume.
 
 The canonical image is untouched as the fully trusted baseline: it is accepted by
@@ -42,6 +43,7 @@ from .formats import map_graphics as mg
 from .map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
 )
 from .packaged import packaged_profile
@@ -67,9 +69,17 @@ MANIFEST_SUFFIX = AUTHORED_MANIFEST_SUFFIX
 #: The semantic owner this editor gives every change it plans.
 _OWNER = re.compile(r"^map:(\d{4}) layer ([0-3]) cell (\d+)$")
 
-#: The reason string the layout editor records; a manifest claiming a different
-#: reason is not this tool's output.
-REASON = "existing same-layer chunk replacement"
+#: The reason string the layout editor records now that a cell may borrow a chunk
+#: from any dominant layer of the same map.
+REASON = "chunk replacement from a dominant layer of the same map"
+
+#: The reason this editor recorded before MAP-PAINT-ANY-CHUNK-001 widened the rule.
+#: Still accepted, because a derivative written by the earlier build carries a
+#: manifest that names it, and a manifest already on disk has to keep verifying.
+LEGACY_REASONS = ("existing same-layer chunk replacement",)
+
+#: Every reason string this editor's manifests may carry, newest first.
+ACCEPTED_REASONS = (REASON,) + LEGACY_REASONS
 
 #: Encoded width of a dominant-layer chunk-pointer field.
 FIELD_BYTES = 4
@@ -137,8 +147,8 @@ def _check_layout_changes(
     This is the domain half of provenance verification: the shared layer has
     already proved the image is the canonical image plus exactly these declared
     fields, and it is *this* rule - a four-byte dominant-layer chunk field, whose
-    replacement the same layer already uses elsewhere - that decides whether such
-    a derivative is one this editor could have written.
+    replacement a dominant layer of the same map already uses - that decides
+    whether such a derivative is one this editor could have written.
 
     Checked against the *canonical* window, which is the state the proven writer
     validated its replacements against. One reader and one writer are built for the
@@ -173,7 +183,8 @@ def _check_layout_changes(
     writer = MapLayoutWriter(canonical_image)
     for change, (map_index, layer_slot, cell) in zip(declared, targets):
         entry = entries[map_index]
-        layer = mg.read_layer(rom, entry.root_address, layer_slot)
+        records = mg.read_layers(rom, entry.root_address)
+        layer = records[layer_slot]
         if layer.handler != mg.DOMINANT_LAYER_HANDLER:
             raise ProvenanceError(
                 f"the manifest edits BG{layer_slot} of map:{map_index:04d}, "
@@ -202,24 +213,30 @@ def _check_layout_changes(
         # The image carrying the declared replacement bytes is the shared layer's
         # check, not a second copy here.
         replacement = int.from_bytes(change.new, "little")
+        # The legal set is the map's, the same one the painter offered and the
+        # writer accepted. Checking this layer alone would refuse a derivative
+        # this tool legitimately wrote with a sibling layer's chunk, which is a
+        # worse failure than the limit it would be enforcing. It stays an explicit
+        # check rather than a bare `in legal`: a replacement equal to the chunk the
+        # cell already stores is not a change, so a manifest claiming it is not
+        # this editor's output.
+        legal = legal_chunk_pointers(
+            layer.chunk_addresses,
+            *(record.chunk_addresses for record in records),
+        )
         try:
-            validate_chunk_replacement(layer.chunk_addresses, replacement)
+            if replacement == layer.chunk_addresses[cell]:
+                raise MapLayoutWriteError(
+                    "the replacement is the chunk the cell already stores, which is "
+                    "not a change"
+                )
+            validate_chunk_replacement(legal, replacement)
         except MapLayoutWriteError as exc:
             raise ProvenanceError(
                 f"the manifest's change at 0x{change.offset:08X} is not a supported "
                 f"replacement: {exc}"
             ) from exc
-        others = tuple(
-            address
-            for index, address in enumerate(layer.chunk_addresses)
-            if index != cell
-        )
-        if replacement not in others:
-            raise ProvenanceError(
-                f"the manifest's change at 0x{change.offset:08X} uses a chunk that "
-                f"map:{map_index:04d} BG{layer_slot} does not already use "
-                "elsewhere in that layer"
-            )
+
     return tuple(targets)
 
 
@@ -242,7 +259,7 @@ def verify_authored_rom(
             canonical_sha256=identity.sha256,
             canonical_size=identity.image_size,
             field_bytes=FIELD_BYTES,
-            expected_reason=REASON,
+            expected_reason=ACCEPTED_REASONS,
             check_changes=_check_layout_changes,
         )
     except AuthoredImageError as exc:

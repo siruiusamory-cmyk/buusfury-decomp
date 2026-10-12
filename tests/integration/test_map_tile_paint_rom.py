@@ -60,6 +60,16 @@ GRAND_KAI_CHANGED_PIXELS = 29_208
 OTHER_MAP = 46
 OTHER_LAYER = 3
 
+#: Map:0040's BG0 is the 1x1 grid holding one chunk of its own that the widened
+#: rule makes paintable: its sibling records hold others. This is the wall the
+#: ticket exists to remove, so it is asserted directly rather than assumed.
+ONE_CHUNK_LAYER = 0
+
+#: A map whose dominant layers between them hold a single chunk, so no widening
+#: reaches it: map:0001 is BG3 alone, a 1x1 grid holding one chunk.
+STILL_READ_ONLY_MAP = 1
+STILL_READ_ONLY_LAYER = 3
+
 
 def _other_edit(image: bytes) -> tuple[tuple[int, int, int], int]:
     """One effective paint on a second map: a cell and an ordinal that differs."""
@@ -146,28 +156,47 @@ def _count_differing(a: bytes, b: bytes) -> int:
 # --- what the paint authority reports for a real map -------------------------
 
 
-def test_grand_kai_offers_its_layers_and_their_own_chunk_vocabularies(image: bytes):
+def test_grand_kai_offers_its_layers_and_their_chunk_vocabularies(image: bytes):
     painter = mp.MapPainter(image)
     target = painter.target(GRAND_KAI)
     assert target.name == "Grand Kai's Planet"
     assert target.editable
-    assert [layer.slot for layer in target.editable_layers] == [1, 2, 3]
+    assert [layer.slot for layer in target.editable_layers] == [0, 1, 2, 3]
 
     layer = target.layer(GRAND_KAI_LAYER)
     assert (layer.columns, layer.rows) == (2, 2)
     assert layer.cell_count == 4
     assert layer.width == 2 * mg.CHUNK_PIXELS
-    # The vocabulary is 1-based and ordered by first appearance in the window.
+    # The vocabulary is 1-based and ordered by first appearance: the layer's own
+    # chunks first, then whatever its sibling records add.
     assert len(layer.vocabulary) >= 2
     assert [chunk.ordinal for chunk in layer.vocabulary] == list(
         range(1, len(layer.vocabulary) + 1)
     )
     assert layer.pointer(1) == layer.cells[0].pointer
     assert layer.ordinal_of(layer.cells[1].pointer) == 2
-    # Every vocabulary entry is a chunk the layer already uses, and each knows
-    # how many cells reference it.
-    pointers = {cell.pointer for cell in layer.cells}
-    assert all(chunk.pointer in pointers for chunk in layer.vocabulary)
+    # Every vocabulary entry is a chunk some dominant layer of this map already
+    # uses; the ones this layer does not hold come from a sibling and say so.
+    map_pointers = {
+        pointer
+        for slot in range(4)
+        for cell in painter.target(GRAND_KAI).layer(slot).cells
+        for pointer in (cell.pointer,)
+    }
+    own = {cell.pointer for cell in layer.cells}
+    assert all(chunk.pointer in map_pointers for chunk in layer.vocabulary)
+    for chunk in layer.vocabulary:
+        if chunk.pointer in own:
+            assert chunk.source_slot is None
+        else:
+            assert chunk.source_slot in (0, 2, 3)
+            assert chunk.cell_count == 0
+            assert chunk.label.endswith(f"BG{chunk.source_slot}")
+    # The ordinals of the layer's own chunks are unchanged by the widening: the
+    # first entries are exactly this layer's own pointers, in window order.
+    assert [c.pointer for c in layer.vocabulary[: len(own)]] == list(
+        dict.fromkeys(cell.pointer for cell in layer.cells)
+    )
     assert sum(chunk.cell_count for chunk in layer.vocabulary) == layer.cell_count
 
 
@@ -182,15 +211,42 @@ def test_paint_ordinals_match_the_accepted_grand_kai_proof(image: bytes):
     assert layer.cells[GRAND_KAI_CELL].offset == GRAND_KAI_FIELD_OFFSET
 
 
-def test_a_layer_using_one_chunk_offers_no_paint_and_says_so(image: bytes):
-    """A single-chunk grid has nothing to paint WITH: a state, not an error."""
-    target = mp.MapPainter(image).target(GRAND_KAI)
-    slot0 = target.slots[0]
-    assert not slot0.editable
-    assert slot0.read_only_reason
-    assert "single chunk" in slot0.read_only_reason
+def test_a_layer_using_one_chunk_is_paintable_from_its_siblings(image: bytes):
+    """The wall this ticket removes, shown before and after on the same layer.
+
+    Before the widening map:0040 BG0 - a 1x1 grid holding one chunk of its own -
+    was read-only with "a grid of 1 cell(s) using a single chunk". It is the case
+    the limit existed to describe, and the case the widening has to reach.
+    """
+    layer = mp.MapPainter(image).target(GRAND_KAI).layer(ONE_CHUNK_LAYER)
+    assert (layer.columns, layer.rows) == (1, 1)
+    assert layer.editable, layer.read_only_reason
+    assert layer.read_only_reason == ""
+    # One chunk of its own, plus the chunks its sibling records hold.
+    assert layer.ordinal_of(layer.cells[0].pointer) == 1
+    borrowed = next(
+        chunk for chunk in layer.vocabulary if chunk.pointer != layer.cells[0].pointer
+    )
+    assert borrowed.source_slot in (1, 2, 3)
+    assert borrowed.cell_count == 0
+    # And the paint of it plans one four-byte write at that layer's own field.
+    edit = mp.MapPainter(image).resolve(
+        GRAND_KAI, ONE_CHUNK_LAYER, 0, borrowed.ordinal
+    )
+    assert edit.replacement == borrowed.pointer
+    assert edit.original == layer.cells[0].pointer
+    assert edit.offset == layer.cells[0].offset
+
+
+def test_a_map_whose_layers_share_one_chunk_is_still_read_only(image: bytes):
+    """The refusal that survives widening: nothing on the map offers a second chunk."""
+    layer = mp.MapPainter(image).target(STILL_READ_ONLY_MAP).layer(
+        STILL_READ_ONLY_LAYER
+    )
+    assert not layer.editable
+    assert "single chunk" in layer.read_only_reason
     with pytest.raises(mp.MapPaintError):
-        mp.MapPainter(image).resolve(GRAND_KAI, 0, 0, 1)
+        mp.MapPainter(image).resolve(STILL_READ_ONLY_MAP, STILL_READ_ONLY_LAYER, 0, 1)
 
 
 def test_a_special_handler_map_is_read_only_for_painting(image: bytes):
@@ -288,7 +344,7 @@ def test_a_drag_of_many_cells_plans_one_write_per_changed_cell(image: bytes):
         (GRAND_KAI, GRAND_KAI_LAYER, GRAND_KAI_CELL, "2"),
         (GRAND_KAI, GRAND_KAI_LAYER, 4, 1),                     # cell outside the grid
         (GRAND_KAI, GRAND_KAI_LAYER, -1, 1),
-        (GRAND_KAI, 0, 0, 1),                                   # single-chunk layer
+        (STILL_READ_ONLY_MAP, STILL_READ_ONLY_LAYER, 0, 1),     # one chunk on the map
         (452, GRAND_KAI_LAYER, 0, 1),                           # no such map
         (5, 0, 0, 1),                                           # absent slot
     ],

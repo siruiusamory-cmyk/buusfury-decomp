@@ -21,6 +21,10 @@ instead of silently reducing the suite:
   the default branch while the test job's second rule can exclude it from
   exactly that pipeline, and a rule-excluded job cannot fail anything. Audit
   finding CQA-20 records the hole this asserts shut.
+- the ``test-integration`` job must run the ROM-gated directory's one ROM-free
+  member by name rather than collecting the directory, because every other file
+  there skips without the canonical image and a job that skipped everything
+  would exit 0 without running anything.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -58,6 +62,13 @@ TEST_JOB = "test-sdk"
 #: The job that validates the built site. Named alongside the suite in the deploy
 #: job's dependencies, because `needs` bypasses the stage barrier.
 SITE_JOB = "test-site"
+
+#: The job that runs the one ROM-free member of the ROM-gated directory, and the
+#: member itself. The selection must be that file by name: every other file under
+#: ``tests/integration`` skips without the canonical image, so collecting the
+#: directory would produce a job that exits 0 over a wall of skips.
+INTEGRATION_JOB = "test-integration"
+INTEGRATION_MEMBER = "tests/integration/test_container_decode_synthetic.py"
 
 #: Extras the test job must install for the shipping surface to execute.
 REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
@@ -432,4 +443,43 @@ def test_the_session_hooks_are_defined_and_have_run() -> None:
     assert conftest._ROOTDIR == Path(__file__).resolve().parents[2], (
         f"pytest_configure did not run: _ROOTDIR is {conftest._ROOTDIR!r}, and a collection "
         "report's node id is resolved against it"
+    )
+
+
+def test_the_integration_job_runs_the_rom_free_member_by_name():
+    """Prevents: an integration job that cannot fail because everything skipped.
+
+    Every file under ``tests/integration`` except the one named here carries its
+    own ``roms/...`` guard, so a job whose selection is that directory collects
+    over a thousand members, skips all of them and exits 0: a green pipeline that
+    executed nothing. The named selection is the whole defence, so it is asserted
+    rather than described - against the directory being collected, against the
+    member being renamed away or losing the ``rom`` gate that keeps it in the
+    directory the name points at, and against a rule edit that silently excludes
+    this job from the pipelines its sibling runs in.
+    """
+    config = _ci_config()
+    job = config[INTEGRATION_JOB]
+    tokens = [
+        token for step in job.get("script") or [] for token in str(step).split()
+    ]
+
+    assert job.get("stage") == "test", (INTEGRATION_JOB, job.get("stage"))
+    assert INTEGRATION_MEMBER in tokens, (
+        f"{_cited('test-integration')}: {INTEGRATION_JOB} must run "
+        f"{INTEGRATION_MEMBER} by name; its script is {job.get('script')!r}"
+    )
+    assert (
+        "tests/integration" not in tokens and "tests/integration/" not in tokens
+    ), (
+        f"{_cited('test-integration')}: {INTEGRATION_JOB} must not collect the "
+        "ROM-gated directory; every member of it except the named file skips "
+        "without the canonical image, so the job would exit 0 having run nothing"
+    )
+    assert (REPOSITORY_ROOT / INTEGRATION_MEMBER).is_file(), INTEGRATION_MEMBER
+    assert "rom" in gates_for(INTEGRATION_MEMBER), gates_for(INTEGRATION_MEMBER)
+    assert job.get("rules") == config[TEST_JOB].get("rules"), (
+        f"{_cited('test-integration')}: {INTEGRATION_JOB} must run wherever "
+        f"{TEST_JOB} runs, so the ROM-free member cannot be silently excluded "
+        "from the pipelines the suite gate runs in"
     )

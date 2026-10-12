@@ -1,12 +1,12 @@
 """Narrow, fixed-width dominant-layer chunk-pointer writer for Buu rev0.
 
 The immutable canonical image is the source for every build. A replacement must
-already occur in the same layer, so this surface cannot allocate or relocate.
+already occur on the same map, so this surface cannot allocate or relocate.
 
 DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001 adds no capability here. It exposes the
 four-byte field's file offset (so an edit session can record and display what one
 change touches) and routes the replacement policy through
-:func:`validate_cell_replacement`, which the preview path uses too, so "what may
+:func:`validate_chunk_replacement`, which the preview path uses too, so "what may
 be written" and "what may be previewed" cannot drift apart.
 
 **CQA-04: this module no longer reads through ``tools.export``.** It used to take
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from typing import Iterable
 
 from .formats import map_entry as me
 from .formats import map_graphics as mg
@@ -35,16 +36,51 @@ class MapLayoutWriteError(ValueError):
     """The requested fixed-size map-layout replacement is unsupported."""
 
 
+def window_ordinals(window: Iterable[int]) -> dict[int, int]:
+    """The 1-based ordinal each pointer has in one window, DISTINCT and in order.
+
+    The same numbering as :func:`legal_chunk_pointers`, so a template resolves a
+    chunk and a project stores it through one rule instead of two. Duplicates take
+    the ordinal of their first appearance: a window may reference one chunk many
+    times and a template names the chunk, not the occurrence. Counting occurrences
+    instead is what made 43 choices name the wrong chunk once the sets were widened.
+    """
+    ordinals: dict[int, int] = {}
+    for pointer in window:
+        if pointer and pointer not in ordinals:
+            ordinals[pointer] = len(ordinals) + 1
+    return ordinals
+
+
+def legal_chunk_pointers(*groups: Iterable[int]) -> tuple[int, ...]:
+    """The distinct non-null pointers across pointer groups, in first-appearance order.
+
+    The legal set for one map is the union of its dominant layers' windows - every
+    pointer in it is a chunk the engine already dereferences for that map - and the
+    caller that wants an edited layer's own chunks first passes that window first.
+    Deterministic for a given image, so an ordinal resolves to the same chunk on
+    every read.
+    """
+    return tuple(window_ordinals(p for group in groups for p in group))
+
+
 def validate_chunk_replacement(
-    layer_addresses: tuple[int, ...], replacement: object
+    allowed_addresses: tuple[int, ...], replacement: object
 ) -> int:
     """Whether a value may occupy a dominant-layer chunk-pointer cell.
 
     The whole policy, in one place: a cell of the accepted dominant form may only
-    reference an existing, non-null chunk pointer **the same layer already uses**.
+    reference an existing, non-null chunk pointer **the same map already uses** in
+    one of its dominant layers. The caller supplies that set, built by
+    :func:`legal_chunk_pointers`. A layer that uses a single chunk may therefore
+    still be painted with a sibling layer's chunk, which is what makes such a
+    layer editable at all; the layer's own chunks and its siblings' are legal on
+    the same terms, and neither is privileged.
+
     Nothing else is established - not the null pointer (which the engine's own
-    occupancy test reads as unoccupied), not a chunk from another layer, not a
-    fresh address the layer does not contain (which would be allocation, not a
+    occupancy test reads as unoccupied), not a chunk from another map (which would
+    be a reference this map's records do not support), not a fresh address no
+    dominant layer of this map contains (which would be allocation, not a
     fixed-size replacement), and not a boolean that merely equals an integer.
 
     This is the SDK-side owner of that rule. The export-side preview facade
@@ -58,9 +94,9 @@ def validate_chunk_replacement(
         raise MapLayoutWriteError("a chunk pointer must be an integer address")
     if replacement == 0:
         raise MapLayoutWriteError("the null chunk pointer is not a replacement")
-    if replacement not in layer_addresses:
+    if replacement not in allowed_addresses:
         raise MapLayoutWriteError(
-            "a replacement chunk must already be used by the same dominant layer"
+            "a replacement chunk must already be used by a dominant layer of the same map"
         )
     return replacement
 
@@ -93,8 +129,15 @@ class MapLayoutWriter:
         """The profile this writer's addresses and bounds are resolved through."""
         return self._profile
 
-    def _layer(self, map_index: int, layer_slot: int) -> mg.LayerRecord:
-        """The dominant layer record both the read and write paths address."""
+    def _layer(
+        self, map_index: int, layer_slot: int
+    ) -> tuple[mg.LayerRecord, tuple[mg.LayerRecord, ...]]:
+        """The dominant layer record both the read and write paths address.
+
+        Returns the map's four layer records beside it: the legal replacement set
+        is a property of the whole map, so a caller that only held one layer could
+        not compute it.
+        """
         count = self._reader.map_entry_count()
         if type(map_index) is not int or not 0 <= map_index < count:
             raise MapLayoutWriteError(
@@ -104,12 +147,14 @@ class MapLayoutWriter:
             raise MapLayoutWriteError("layer slot is out of range")
         try:
             entry = mg.read_map_entries(self._reader)[map_index]
-            layer = mg.read_layer(self._reader, entry.root_address, layer_slot)
+            records = mg.read_layers(self._reader, entry.root_address)
+            layer = records[layer_slot]
         except mg.MapGraphicsError as exc:
             raise MapLayoutWriteError(str(exc)) from exc
         if layer.handler != mg.DOMINANT_LAYER_HANDLER:
             raise MapLayoutWriteError("layer is not the dominant chunk form")
-        return layer
+        return layer, records
+
 
     @staticmethod
     def _cell_index(layer: mg.LayerRecord, cell: object) -> int:
@@ -119,7 +164,7 @@ class MapLayoutWriter:
 
     def chunk_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
         """Read a dominant layer's row-major chunk pointer from source bytes."""
-        layer = self._layer(map_index, layer_slot)
+        layer, _records = self._layer(map_index, layer_slot)
         return layer.chunk_addresses[self._cell_index(layer, cell)]
 
     def chunk_pointer_offset(self, map_index: int, layer_slot: int, cell: int) -> int:
@@ -129,7 +174,7 @@ class MapLayoutWriter:
         it is what an edit session records as the ROM offset of a pending change.
         It is the same arithmetic the write path uses, not a second copy of it.
         """
-        layer = self._layer(map_index, layer_slot)
+        layer, _records = self._layer(map_index, layer_slot)
         self._cell_index(layer, cell)
         address = layer.address + mg.LAYER_CHUNK_WINDOW_OFFSET + 4 * cell
         return self._reader.span(address, 4)
@@ -144,7 +189,7 @@ class MapLayoutWriter:
         null must be put back to null by the same call the editor uses to undo
         filling it, and the null pointer is never a legal *replacement*.
         """
-        layer = self._layer(map_index, layer_slot)
+        layer, records = self._layer(map_index, layer_slot)
         cell = self._cell_index(layer, cell)
         original = layer.chunk_addresses[cell]
         offset = self.chunk_pointer_offset(map_index, layer_slot, cell)
@@ -155,7 +200,10 @@ class MapLayoutWriter:
         if replacement == original:
             self._edits.pop(offset, None)
             return
-        validate_chunk_replacement(layer.chunk_addresses, replacement)
+        validate_chunk_replacement(
+            legal_chunk_pointers(*(record.chunk_addresses for record in records)),
+            replacement,
+        )
         try:
             mg.dominant_chunk_words(self._reader, replacement)
         except mg.MapGraphicsError as exc:
@@ -164,7 +212,8 @@ class MapLayoutWriter:
 
     def read_layer(self, map_index: int, layer_slot: int) -> mg.LayerRecord:
         """One map's dominant layer record, through this writer's reader."""
-        return self._layer(map_index, layer_slot)
+        return self._layer(map_index, layer_slot)[0]
+
 
     @property
     def pending_offsets(self) -> tuple[int, ...]:

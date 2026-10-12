@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 from ..binary import GBA_ROM_BASE
 from ..write import ByteChange
@@ -54,9 +56,21 @@ class RawByteEdits:
 
     A mapping rather than a list of pairs, because the document is one and
     because a second write to one offset is a contradiction with one answer.
+
+    The mapping is read-only, for the reason the application's own document is:
+    the class is frozen because the document is a value, and a frozen value a
+    caller can write through is not frozen. A build reads this document to decide
+    what the emitted image contains, so an injected entry would make the build
+    write a byte no authored document holds. The proxy wraps a copy, so mutating
+    the mapping a caller constructed this from cannot reach the document either.
     """
 
-    bytes_by_offset: dict[int, bytes] = field(default_factory=dict)
+    bytes_by_offset: Mapping[int, bytes] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "bytes_by_offset", MappingProxyType(dict(self.bytes_by_offset))
+        )
 
     def __bool__(self) -> bool:
         return bool(self.bytes_by_offset)

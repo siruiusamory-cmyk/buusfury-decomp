@@ -393,6 +393,8 @@ def test_a_partial_overlap_with_a_pending_raw_write_is_refused(tmp_path, base):
 
     message = str(refusal.value)
     assert "overlaps without replacing" in message
+    assert "undo it first" in message
+    assert "project's own raw byte document" not in message
     assert "0x001000" in message
     assert len(session.journal.edits()) == 1
     assert session.journal.raw_edits().bytes_by_offset == {
@@ -505,6 +507,119 @@ def test_the_document_holds_a_copy_of_the_mapping_it_was_built_from():
     assert document.bytes_by_offset == {FREE_OFFSET: b"\x11"}
 
 
+def _reopened_session(tmp_path: Path, base: bytes, authored: dict) -> Session:
+    """A session opened on a project that already authors these raw bytes."""
+    project_dir = _write_project(tmp_path / "proj")
+    write_raw_document(project_dir, RawEdits(authored))
+    session = Session()
+    session.base_image = base
+    session.profile = load_catalog(None).profiles[0]
+    session.open_project(project_dir)
+    return session
+
+
+def test_an_overlap_with_the_projects_own_raw_bytes_names_the_real_route(
+    tmp_path, base
+):
+    """N2: an entry read from disk has no undo, so the refusal must not offer one.
+
+    A project that saved an authored raw write carries it in its own document, and
+    the next session reads that document as the base it replays onto. Overlapping
+    it is refused for the same reason any overlap is, but "undo it first" is not a
+    route a person can take here: no entry in this session's history holds those
+    bytes. The route that does exist is the project's own document.
+    """
+    session = _reopened_session(
+        tmp_path, base, {FREE_OFFSET: b"\x11\x22\x33\x44"}
+    )
+
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(FREE_OFFSET + 2, b"\x55\x66", confirmed=True)
+
+    message = str(refusal.value)
+    assert "overlaps without replacing" in message
+    assert "project's own raw byte document" in message
+    assert RAW_DOCUMENT.as_posix() in message
+    assert "reopen" in message
+    assert "undo it first" not in message
+    # The refusal committed nothing: the authored document is still the project's.
+    assert session.journal.edits() == ()
+    assert session.journal.raw_edits().bytes_by_offset == {
+        FREE_OFFSET: b"\x11\x22\x33\x44"
+    }
+
+
+def test_the_route_a_reopened_entry_refusal_offers_is_a_real_one(tmp_path, base):
+    """The offered route has to work: replacing the whole range is accepted.
+
+    A route a refusal names that the journal then refuses would be worse than the
+    wrong route it replaced, so the same session that refuses the overlap above
+    has to accept the whole-range write.
+    """
+    session = _reopened_session(
+        tmp_path, base, {FREE_OFFSET: b"\x11\x22\x33\x44"}
+    )
+
+    session.apply_raw_edit(FREE_OFFSET, b"\x55\x66\x77\x88", confirmed=True)
+
+    assert session.journal.raw_edits().bytes_by_offset == {
+        FREE_OFFSET: b"\x55\x66\x77\x88"
+    }
+    session.save_project()
+    assert read_raw_document(session.project_dir / RAW_DOCUMENT).bytes_by_offset == {
+        FREE_OFFSET: b"\x55\x66\x77\x88"
+    }
+
+
+def test_an_overlap_with_this_sessions_own_write_still_offers_undo(tmp_path, base):
+    """The other route is unchanged where it is real: this session wrote it.
+
+    Nothing is underneath in this case, so the message must not promise a second
+    refusal after the undo: the write was into a range the project does not author.
+    """
+    session = _session(tmp_path, base)
+    session.apply_raw_edit(FREE_OFFSET, b"\x11\x22\x33\x44", confirmed=True)
+
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(FREE_OFFSET + 2, b"\x55\x66", confirmed=True)
+
+    message = str(refusal.value)
+    assert "overlaps without replacing" in message
+    assert "undo it first" in message
+    assert "project's own raw byte document" not in message
+    assert "will still apply" not in message
+
+
+def test_replacing_a_project_entry_leaves_that_entry_underneath(tmp_path, base):
+    """A session replacement is accepted, and the project's bytes are still under it.
+
+    A write at the same offset and length replaces the entry there, so the conflict
+    the next partial write meets is this session's and "undo it first" is real. It
+    is not the end of it: the undo replays the project's own document back, so the
+    range is refused again, and the message has to say so rather than send a person
+    round the loop twice.
+    """
+    session = _reopened_session(tmp_path, base, {FREE_OFFSET: b"\x11\x22\x33\x44"})
+    session.apply_raw_edit(FREE_OFFSET, b"\x55\x66\x77\x88", confirmed=True)
+
+    with pytest.raises(SessionError) as refusal:
+        session.apply_raw_edit(FREE_OFFSET + 2, b"\x99\xAA", confirmed=True)
+
+    message = str(refusal.value)
+    assert "undo it first" in message
+    assert "project's own entry at this range will still apply" in message
+
+    # The claim is true rather than decorative: the undo brings the document's own
+    # bytes back, and the next refusal is the document's.
+    session.undo_edit()
+    assert session.journal.raw_edits().bytes_by_offset == {
+        FREE_OFFSET: b"\x11\x22\x33\x44"
+    }
+    with pytest.raises(SessionError) as again:
+        session.apply_raw_edit(FREE_OFFSET + 2, b"\x99\xAA", confirmed=True)
+    assert "project's own raw byte document" in str(again.value)
+
+
 def test_an_undone_semantic_edit_stops_claiming_its_bytes(tmp_path, base):
     """Only the applied prefix claims bytes. A redo tail claims nothing."""
     session = _session(tmp_path, base)
@@ -579,6 +694,8 @@ def test_a_same_offset_write_of_another_length_gets_the_overlap_refusal(
 
     message = str(refusal.value)
     assert "overlaps without replacing" in message
+    assert "undo it first" in message
+    assert "project's own raw byte document" not in message
     assert "resize" not in message
     assert len(session.journal.edits()) == 1
 

@@ -252,7 +252,7 @@
       "name": "Map layout chunk grids",
       "area": "MAP/WORLD",
       "description": "A map's layers and the fixed-size grid of four-byte chunk references inside each layer record, which is what the engine draws as the map's visible layout.",
-      "evidence_authority": "tools/webfoot/map_layout_edit.py:63-76; tests/integration/test_map_layout_editor_rom.py:56-58 (452/341/111); runtime observation recorded in src/data/capabilities.json:185 (tiles) and :219 (resize)",
+      "evidence_authority": "tools/webfoot/map_layout_edit.py:63-76; tests/integration/test_map_layout_editor_rom.py:55-62 (452/440/12); runtime observation recorded in src/data/capabilities.json:185 (tiles) and :219 (resize)",
       "games": {
         "buus_fury": {
           "state": "PARTIALLY_EDITABLE",
@@ -277,13 +277,13 @@
         }
       },
       "read": "All 452 maps and 1,808 layer slots enumerate; 1,516 slots are the dominant chunk-grid form. Cell values, layer pointers and classification are read and rendered.",
-      "edit": "341 of 452 maps expose an editable layer; a cell is reassigned in place to another chunk the same layer already uses. Painting, undo and eyedropper are one history. 111 maps are refused for three named reasons: single-chunk dominant grids, absent dominant layers, forms outside the proven grid (screen-entry layers, the terrain-field form used by map 19, zero-dimension records).",
+      "edit": "440 of 452 maps expose an editable layer; a cell is reassigned in place to another chunk a dominant layer of the same map already uses. Painting, undo and eyedropper are one history. 12 maps are refused for three named reasons: single-chunk dominant grids, absent dominant layers, forms outside the proven grid (screen-entry layers, the terrain-field form used by map 19, zero-dimension records).",
       "author": "Growth only: a supported layer's grid may be enlarged and re-emitted above the original end with the layer-slot pointer repointed, and the map extent word raised. Shrinking is refused. One unused layer slot may be activated with a new supported visual layer.",
       "xref": "Map identity to layer records to chunk containers; Atlas lists the layer and cell owners; the renderer resolves cells through the map's assembled character block.",
       "raw_range": "Layer records and their grids are addressed per layer from the map root; no single table. The chunk-container table reached from the grid is row map-chunk-containers.",
       "validation_rebuild": "Validate plus build; the application round-trip reopens the emitted image through its own manifest. Emulator validation of the layout-write capability itself was not performed; the painting and resize capabilities were.",
       "ui": "Maps editor Layout mode: grid view, cell replacement, chunk chooser, resize form, layer list, Create Chunk.",
-      "restrictions": "The writable unit is a four-byte chunk reference, not a hardware tile. A layer that draws one chunk has nothing to paint with. No new graphics reach a layer: only arrangements of chunks the layer already draws. Authored grids are map-scoped. The runtime evidence on this row comes from the painted-cell authority, which writes the same four-byte cell and was observed after leaving and re-entering the area; the registry's layout capability separately records that emulator validation of its own single-operation write was not performed, so the two records must not be quoted as one.",
+      "restrictions": "The writable unit is a four-byte chunk reference, not a hardware tile. A map whose dominant layers between them hold a single chunk has nothing to paint with; a layer that draws one chunk on its own is editable from a sibling's. No new graphics reach a layer: only arrangements of chunks the layer already draws. Authored grids are map-scoped. The runtime evidence on this row comes from the painted-cell authority, which writes the same four-byte cell and was observed after leaving and re-entering the area; the registry's layout capability separately records that emulator validation of its own single-operation write was not performed, so the two records must not be quoted as one.",
       "external_tool": "tile editor plus a custom decoder for anything below the chunk: tileset entries, tile bits 12-15 and palettes outside the shared object palette.",
       "open_questions": [
         "What do tile-map bits 12-15 mean (they are zero in all 3,834,880 canonical entries and are preserve-only)?",
@@ -331,7 +331,7 @@
       "author": "A new chunk may be created from one a dominant layer already draws: its 32x32 plane is rearranged using only screen entries that same layer already displays, it gets its own project identity, and the build materialises it above the original ROM end. Runtime-observed: the engine's loaded BG1 tilemap carries the authored arrangement while BG0, BG2 and BG3 stay byte-identical.",
       "xref": "Layer grid cell to chunk address; chunk to the map's assembled character block that resolves its tile ordinals.",
       "raw_range": "Chunk bodies are addressed per map; a new body is emitted above the original ROM end through the allocator.",
-      "validation_rebuild": "Validate refuses an entry outside the layer's own vocabulary; build allocates and resolves the cell. Runtime-proven for the authored case.",
+      "validation_rebuild": "Validate refuses an entry outside the map's accepted chunk set; build allocates and resolves the cell. Runtime-proven for the authored case.",
       "ui": "Maps editor Layout mode: Create Chunk, chunk editor, chunk brush.",
       "restrictions": "An authored chunk adds no tiles and no palettes: it is a new arrangement of graphics the map already draws. Chunks are map-scoped because their tile ordinals only resolve through one map's character block. Creation depends on generated expansion, since the canonical image declares 256 bytes of free space.",
       "external_tool": "tile editor and a graphics codec writer for genuinely new artwork.",

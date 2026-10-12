@@ -215,6 +215,16 @@ def _edit_slot(
         grid=grid,
         cells=cells,
         choices=choices,
+        # MAP-PAINT-ANY-CHUNK-001. `create_chunk` translates the picked chunk through
+        # `template_target`, so a slot that offers choices must carry both numberings
+        # or the action refuses: over empty tuples every Create Chunk on this fixture
+        # took the "pick a chunk first" branch. This synthetic layer's vocabulary is
+        # its own, in order, with the unheld brush value appended, so the source is
+        # this slot and the ordinals are its own 1-based positions. A real slot's
+        # choices all come from a window, so a value no window holds is this
+        # fixture's fiction and nothing else.
+        sources=(slot,) * len(choices),
+        owner_ordinals=tuple(range(1, len(choices) + 1)),
         read_only_reason=reason,
     )
 
@@ -1038,11 +1048,11 @@ def test_a_rejected_replacement_is_a_message_not_a_crash(edit_tab, monkeypatch):
     edit_tab._edit_toggle.setChecked(True)
     _choose(edit_tab, 2)
     edit_tab.editor.reject = MapLayoutEditError(
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     )
     _paint_cells(edit_tab, 0)
     assert errors == [
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     ]
     assert edit_tab.editor.edits_for(MAP) == ()
     assert edit_tab._undo_stack.count() == 0

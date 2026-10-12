@@ -2,7 +2,7 @@
 
 Two modes over one map selection. `Layout` renders the chunk-window cells of one
 layer of the selected map, and the one editable field of a cell is its chunk,
-chosen from that layer's own vocabulary. `Warps` renders the transitions the
+chosen from the map's accepted set of dominant-layer chunks. `Warps` renders the transitions the
 image carries out of the selected map, and the one editable field of a warp is
 the map it leads to.
 

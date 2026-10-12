@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -18,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[2]
 JSON_PATH = ROOT / "docs" / "research" / "rom_editor_coverage.json"
 CAPABILITIES = ROOT / "src" / "data" / "capabilities.json"
 GAMES = ("buus_fury", "logii", "log1")
+
+#: The census row whose prose owns the editable-map figure.
+MAP_ROW = "map-layout-chunk-grids"
 
 
 def load() -> dict:
@@ -128,3 +132,53 @@ def test_each_document_is_exactly_what_the_renderer_produces(path, builder):
     expected = getattr(render, builder)(load())
     actual = io.open(ROOT / "docs" / "research" / path, encoding="utf-8", newline="").read()
     assert actual == expected, "{} has drifted from rom_editor_coverage.json".format(path)
+
+
+def test_the_summary_map_figure_is_read_from_the_census_row():
+    """A row change must move the sentence, not only the three documents.
+
+    The render check above compares the documents with this renderer, so a figure
+    written twice keeps the renderer and the documents on the old number together
+    and the check passes over a stale census. This test moves the row and requires
+    the summary sentence to move with it, which a literal cannot do.
+    """
+    doc = load()
+    row = next(r for r in doc["rows"] if r["id"] == MAP_ROW)
+    match = re.search(r"(\d+) of (\d+) maps expose an editable layer", row["edit"])
+    assert match, "the census row no longer states the editable map figure"
+    before = "{} of {} maps".format(match.group(1), match.group(2))
+    moved = "{} of {} maps".format(int(match.group(1)) + 1, int(match.group(2)) + 1)
+    assert before in render.summary(doc)
+
+    row["edit"] = row["edit"].replace(before, moved)
+
+    assert moved in render.summary(doc), (
+        "the summary restates the map figure instead of reading it from the census row")
+    assert before not in render.summary(doc)
+
+
+def test_the_registry_pair_and_facility_count_are_read_from_the_json():
+    """A baseline or facility change must move the sentences that state them.
+
+    The registry pair is named twice in the summary and the facility count once.
+    Each source is moved here and must move in the rendered text, which a literal
+    cannot do.
+    """
+    doc = load()
+    baseline = doc["baseline"]["capability_registry"]
+    before = "{}/{}".format(baseline["state_shipped"], baseline["capabilities"])
+    assert render.summary(doc).count(before) == 2
+
+    baseline["state_shipped"] += 1
+    baseline["capabilities"] += 1
+    moved = "{}/{}".format(baseline["state_shipped"], baseline["capabilities"])
+
+    assert render.summary(doc).count(moved) == 2, (
+        "the summary restates the registry pair instead of reading the census baseline")
+    assert before not in render.summary(doc)
+
+    facilities = len(doc["facilities"])
+    assert "The {} generic editor facilities".format(facilities) in render.summary(doc)
+    doc["facilities"].append(dict(doc["facilities"][0]))
+    assert "The {} generic editor facilities".format(facilities + 1) in render.summary(doc), (
+        "the summary restates the facility count instead of counting the JSON's list")

@@ -4,17 +4,17 @@ This is the product-layer session the Map Browser's EDIT LAYOUT mode drives. It
 answers three questions and owns no binary format of its own:
 
 * which maps and layer slots the *proven* writer may touch (the accepted dominant
-  chunk-grid form, and only where the layer already contains a second non-null
+  chunk-grid form, and only where the map already contains a second non-null
   chunk to substitute);
-* which replacement chunks a selected layer offers - the layer's own existing
-  non-null pointers, numbered for a human, never a raw address as the primary
+* which replacement chunks a selected layer offers - the map's non-null pointers,
+  the layer's own first, numbered for a human, never a raw address as the primary
   identity; and
 * what a pending edit set would render as, in memory, without touching a byte.
 
 Every write goes through :class:`tools.webfoot.map_layout_write.MapLayoutWriter`,
-which accepts only an existing, non-null chunk pointer already used by the same
-dominant layer. This module adds no capability beyond that: no new chunks, no
-relocation, no resizing, no tile painting, no other layer form.
+which accepts only an existing, non-null chunk pointer already used by a dominant
+layer of the same map. This module adds no capability beyond that: no new chunks,
+no relocation, no resizing, no tile painting, no other layer form.
 
 Saving follows the project's ROM-safety flow - verified base, generated output,
 never the input - through the shared authored-image transaction in
@@ -35,8 +35,11 @@ from .formats import map_graphics as mg
 from .map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
+    window_ordinals,
 )
+from .map_layout_provenance import REASON as MANIFEST_REASON
 from .packaged import packaged_profile
 
 from . import write as write_sdk
@@ -155,16 +158,68 @@ class LayoutSlot:
     handler: int
     grid: LayoutGrid
     cells: tuple[LayoutCell, ...]
-    #: The distinct non-null chunk pointers this layer already uses, in
-    #: first-appearance order. This is exactly the set of legal replacements for
-    #: any of its cells, and it is what a chooser offers.
+    #: The distinct non-null chunk pointers a dominant layer of this map uses, in
+    #: first-appearance order with this layer's own first. This is exactly the set
+    #: of legal replacements for any of its cells, and it is what a chooser offers.
     choices: tuple[int, ...]
+    #: MAP-PAINT-ANY-CHUNK-001. Which slot each choice came from, `self.slot` for a
+    #: chunk this layer itself shows and a sibling's slot for a borrowed one. A
+    #: chooser needs it because the widened set is the whole map's, so a row that
+    #: only said "Chunk 3" would not say whose record 3 belongs to. It is also the
+    #: slot a template must name, which for a project-authored grid is the template
+    #: record whose canonical window numbers that grid's ordinals.
+    sources: tuple[int, ...] = ()
+    #: MAP-PAINT-ANY-CHUNK-001. Where each choice sits inside its own slot's window,
+    #: 1-based, in the same order as ``choices``. A chunk is authored by naming the
+    #: layer that draws it, so a template resolves against this number and not
+    #: against the map-wide position. Keeping both stops the two numberings being
+    #: confused, which is what a borrowed brush did before this existed.
+    owner_ordinals: tuple[int, ...] = ()
+    #: Where the brush set comes from. `"map"` for a canonical dominant layer,
+    #: whose cells may borrow any dominant layer's chunk. `"layer"` for a
+    #: project-authored grid, which persists and builds against the layer's own
+    #: first-appearance ordinals, so a chooser there must say the set is the layer's.
+    vocabulary_scope: str = "map"
     #: Non-empty when the slot cannot be edited, and why - a reason, not an error.
-    read_only_reason: str
+    read_only_reason: str = ""
 
     @property
     def editable(self) -> bool:
         return not self.read_only_reason
+
+    def source_of(self, pointer: int) -> int | None:
+        """The slot a choice came from, or None for a pointer not offered."""
+        for offered, source in zip(self.choices, self.sources):
+            if offered == pointer:
+                return source
+        return None
+
+    def template_target(self, pointer: int) -> tuple[int, int] | None:
+        """``(slot, ordinal)`` a template must name to author from ``pointer``.
+
+        The slot is the layer that actually draws the chunk and the ordinal is its
+        1-based position in that layer's own window, which is what
+        :func:`tools.webfoot.map_chunk.resolve_template` resolves against. None when
+        the pointer is not offered, so a caller cannot silently author from a chunk
+        this map does not use.
+        """
+        for offered, slot, ordinal in zip(
+            self.choices, self.sources, self.owner_ordinals
+        ):
+            if offered == pointer:
+                return slot, ordinal
+        return None
+
+    def borrowed_note(self, pointer: int) -> str:
+        """`` · BG2`` when a choice is a sibling's, empty when it is this layer's.
+
+        A layer-scoped slot borrows nothing by construction, so its choices are this
+        layer's own even when the template record that numbers them is another slot's.
+        """
+        source = self.source_of(pointer)
+        if source is None or source == self.slot or self.vocabulary_scope == "layer":
+            return ""
+        return f" · BG{source}"
 
     @property
     def label(self) -> str:
@@ -174,7 +229,12 @@ class LayoutSlot:
         return f"BG{self.slot} · {self.classification}"
 
     def ordinal_of(self, pointer: int) -> int | None:
-        """The 1-based position of a chunk in this layer's own list, or None."""
+        """The 1-based position of a chunk in this map's accepted set, or None.
+
+        This is the ordinal a project persists, so it is the map-wide position and
+        not a layer-local count: ``choices`` leads with the layer's own chunks and
+        continues with its siblings', which is the order ``PaintChunk`` numbers too.
+        """
         try:
             return self.choices.index(pointer) + 1
         except ValueError:
@@ -362,8 +422,9 @@ class MapLayoutEditor:
 
     def _build_target(self, map_index: int) -> LayoutTarget:
         entry = self._entries[map_index]
+        records = mg.read_layers(self._rom, entry.root_address)
         slots: list[LayoutSlot] = []
-        for record in mg.read_layers(self._rom, entry.root_address):
+        for record in records:
             if record.classification == _EDITABLE_CLASSIFICATION:
                 grid = LayoutGrid(record.chunk_x, record.chunk_y)
                 cells = tuple(
@@ -378,14 +439,52 @@ class MapLayoutEditor:
                     )
                     for index, pointer in enumerate(record.chunk_addresses)
                 )
-                choices = tuple(
-                    dict.fromkeys(pointer for pointer in record.chunk_addresses if pointer)
+                # The chooser offers the map's accepted replacement set: this
+                # layer's own chunks in first-appearance order, then whatever its
+                # sibling records add. A layer that uses a single chunk is
+                # therefore editable when a sibling holds another, which is the
+                # case the ability to choose is for.
+                choices = legal_chunk_pointers(
+                    record.chunk_addresses,
+                    *(
+                        sibling.chunk_addresses
+                        for sibling in records
+                        if sibling.slot != record.slot
+                    ),
                 )
+                # The edited layer's window first, then its siblings', once, in the
+                # order the legal set uses. One mapping rather than a tuple rebuilt
+                # here, so the set and the ordinals cannot be built from different
+                # orderings.
+                all_windows: dict[int, tuple[int, ...]] = {}
+                all_windows.setdefault(record.slot, record.chunk_addresses)
+                for sibling in records:
+                    if sibling.slot != record.slot:
+                        all_windows.setdefault(sibling.slot, sibling.chunk_addresses)
+                # Which slot each choice came from and its 1-based position inside
+                # that slot's own window, in the same order as `choices`. The
+                # position is the number a template resolves against, because
+                # chunk authoring names a chunk by the layer that draws it; the
+                # choice's own index is the map-wide one a project stores. Both are
+                # kept so a caller never has to assume the two numberings agree,
+                # which is exactly what went wrong when the set was widened.
+                #
+                # The ordinal is per DISTINCT pointer, through the same helper the
+                # legal set uses. Counting every non-null entry instead made a layer
+                # whose window repeats a chunk report an ordinal past its own end.
+                owners: dict[int, tuple[int, int]] = {}
+                for group_slot in all_windows:
+                    for pointer, ordinal in window_ordinals(all_windows[group_slot]).items():
+                        owners.setdefault(pointer, (group_slot, ordinal))
+                sources = tuple(owners[pointer][0] for pointer in choices)
+                owner_ordinals = tuple(owners[pointer][1] for pointer in choices)
                 reason = self._dominant_read_only_reason(grid, choices)
             else:
                 grid = LayoutGrid(0, 0)
                 cells = ()
                 choices = ()
+                sources = ()
+                owner_ordinals = ()
                 reason = _READ_ONLY_FORMS.get(
                     record.classification, "an unclassified layer handler"
                 )
@@ -397,6 +496,8 @@ class MapLayoutEditor:
                     grid=grid,
                     cells=cells,
                     choices=choices,
+                    sources=sources,
+                    owner_ordinals=owner_ordinals,
                     read_only_reason=reason,
                 )
             )
@@ -412,9 +513,10 @@ class MapLayoutEditor:
     ) -> str:
         """Why a dominant slot has nothing to substitute, or "" when it has.
 
-        The proven write may only put a chunk the *same layer already uses* into a
-        cell, so a layer that uses a single chunk - a 1x1 grid, or a larger grid
-        repeating one chunk - has no legal replacement at all. That is a read-only
+        The proven write may only put a chunk a dominant layer of this map already
+        uses into a cell, so a map whose dominant layers between them hold a single
+        chunk - a 1x1 grid, or a larger grid repeating one chunk with no sibling
+        offering another - has no legal replacement at all. That is a read-only
         state, not a failure.
         """
         if not grid.cell_count:
@@ -433,7 +535,7 @@ class MapLayoutEditor:
         return target.slots[layer_slot]
 
     def choices(self, map_index: int, layer_slot: int) -> tuple[int, ...]:
-        """The legal replacement chunks for one layer: existing, non-null, its own."""
+        """The legal replacement chunks for one layer: existing, non-null, this map's."""
         return self.slot(map_index, layer_slot).choices
 
     def pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
@@ -857,7 +959,7 @@ class MapLayoutEditor:
                 old=self._base[edit.offset : edit.offset + 4],
                 new=edit.replacement.to_bytes(4, "little"),
                 owner=f"map:{edit.map_index:04d} layer {edit.layer_slot} cell {edit.cell}",
-                reason="existing same-layer chunk replacement",
+                reason=MANIFEST_REASON,
             )
             for edit in self.edits()
         )

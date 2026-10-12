@@ -25,6 +25,7 @@ from tools.webfoot.map_layout_edit import (
 from tools.webfoot.map_layout_write import (
     MapLayoutWriteError,
     MapLayoutWriter,
+    legal_chunk_pointers,
     validate_chunk_replacement,
 )
 
@@ -39,6 +40,9 @@ def _slot(
     rows: int = 2,
     pointers: tuple[int, ...] = (0x082928DC, 0x08292A54, 0x082928DC, 0x08292AFC),
     choices: tuple[int, ...] | None = None,
+    sources: tuple[int, ...] = (),
+    owner_ordinals: tuple[int, ...] = (),
+    vocabulary_scope: str = "map",
     reason: str = "",
 ) -> LayoutSlot:
     grid = LayoutGrid(columns, rows)
@@ -61,6 +65,9 @@ def _slot(
         grid=grid,
         cells=cells,
         choices=choices,
+        sources=sources,
+        owner_ordinals=owner_ordinals,
+        vocabulary_scope=vocabulary_scope,
         read_only_reason=reason,
     )
 
@@ -110,17 +117,22 @@ def test_grid_covers_a_row_major_window_exactly() -> None:
 # --- replacement policy ------------------------------------------------------
 
 
-def test_replacement_policy_accepts_only_this_layers_existing_chunks() -> None:
+def test_replacement_policy_accepts_any_chunk_of_the_maps_dominant_layers() -> None:
+    # The caller supplies the legal set, which is the map's dominant windows:
+    # a layer's own chunks and its siblings' are legal on the same terms.
     layer = (0x082928DC, 0x08292A54, 0, 0x082928DC)
-    assert mb.validate_cell_replacement(layer, 0x08292A54) == 0x08292A54
-    assert validate_chunk_replacement(layer, 0x082928DC) == 0x082928DC
+    sibling = (0x08292884,)
+    legal = legal_chunk_pointers(layer, sibling)
+    assert mb.validate_cell_replacement(legal, 0x08292A54) == 0x08292A54
+    assert validate_chunk_replacement(legal, 0x082928DC) == 0x082928DC
+    assert validate_chunk_replacement(legal, 0x08292884) == 0x08292884
 
 
 @pytest.mark.parametrize(
     "bad",
     [
         0,           # the null pointer
-        0x08292884,  # a real chunk, but not one this layer uses
+        0x08299999,  # a real chunk, but not one any layer of this map uses
         True,        # a bool is not an address, even when it equals an int
         1,
         -1,
@@ -141,6 +153,24 @@ def test_writer_refuses_a_null_replaceable_and_a_null_replacement() -> None:
     # A layer whose window is entirely null accepts no replacement at all.
     with pytest.raises(MapLayoutWriteError):
         validate_chunk_replacement((0, 0), 0)
+
+
+def test_widening_a_layer_vocabulary_is_what_keeps_the_writer_accepting() -> None:
+    """The refusal a single-chunk layer sees is the SET, not the predicate.
+
+    Given only its own window the predicate refuses a sibling chunk, which is why
+    the paint and editor surfaces have to hand it the map's set; handed that set,
+    the same call accepts. This is the one place the widening could silently stop
+    reaching the case it exists for.
+    """
+    own = (0x08292884, 0x08292A54)
+    sibling = 0x082928DC
+    with pytest.raises(MapLayoutWriteError):
+        validate_chunk_replacement(own, sibling)
+    assert validate_chunk_replacement(
+        legal_chunk_pointers(own, (sibling,)), sibling
+    ) == sibling
+
 
 
 # --- slot and target classification -----------------------------------------
@@ -273,3 +303,81 @@ def test_editor_refuses_any_non_canonical_image() -> None:
 def test_writer_refuses_a_truncated_image() -> None:
     with pytest.raises(MapLayoutWriteError):
         MapLayoutWriter(b"\x00" * 1024)
+
+
+# --- the two numberings, and the translation between them ---------------------
+#
+# MAP-PAINT-ANY-CHUNK-001 widened the replacement set to the whole map, so a choice
+# has two different numbers: its index in the map-wide set, which a project stores,
+# and its position inside the window of the layer that draws it, which is what chunk
+# authoring resolves a template against. Create Chunk from a borrowed brush handed
+# the first where the second was needed and was refused. These pin the translation.
+
+OWN = 0x082928DC
+BORROWED = 0x08292AFC
+SIBLING_ONLY = 0x08292C50
+
+
+def _two_numbering_slot() -> LayoutSlot:
+    """One layer whose set is its own chunk plus two its sibling draws.
+
+    Built through the real helper so the numbers under test are the ones
+    ``_build_target`` computes: ``pointers`` is this layer's own window, and the
+    siblings contribute the rest.
+    """
+    return _slot(
+        pointers=(OWN,),
+        choices=(OWN, BORROWED, SIBLING_ONLY),
+        sources=(1, 2, 2),
+        owner_ordinals=(1, 1, 2),
+    )
+
+
+def test_a_borrowed_chunk_reports_both_of_its_numbers() -> None:
+    slot = _two_numbering_slot()
+    # The map-wide number is the position a project stores.
+    assert slot.ordinal_of(OWN) == 1
+    assert slot.ordinal_of(BORROWED) == 2
+    assert slot.ordinal_of(SIBLING_ONLY) == 3
+    # The template target is the LAYER that draws it and its position there, which is
+    # not the map-wide number once a sibling's chunk is involved.
+    assert slot.template_target(OWN) == (1, 1)
+    assert slot.template_target(BORROWED) == (2, 1)
+    assert slot.template_target(SIBLING_ONLY) == (2, 2)
+    assert slot.source_of(BORROWED) == 2
+    assert slot.borrowed_note(BORROWED) == " \u00b7 BG2"
+    assert slot.borrowed_note(OWN) == ""
+
+
+def test_a_pointer_outside_the_set_has_no_template_target() -> None:
+    slot = _two_numbering_slot()
+    assert slot.template_target(0x08299999) is None
+    assert slot.source_of(0x08299999) is None
+
+
+def test_a_slot_built_without_the_two_numberings_still_answers() -> None:
+    """Every construction written before they existed keeps working unchanged."""
+    slot = _slot()
+    assert slot.owner_ordinals == ()
+    assert slot.template_target(0x082928DC) is None
+    assert slot.source_of(0x082928DC) is None
+    assert slot.borrowed_note(0x082928DC) == ""
+
+
+def test_a_layer_scoped_slot_borrows_nothing_even_when_its_source_is_another_slot() -> None:
+    """A project-authored grid names the template record that numbers its ordinals.
+
+    That record is another slot's, so ``sources`` carries it for the template; the
+    chooser still shows no " · BGn" suffix, because a layer-scoped grid offers only
+    this layer's own chunks and borrows nothing.
+    """
+    slot = _slot(
+        slot=0,
+        choices=(OWN,),
+        sources=(1,),
+        owner_ordinals=(1,),
+        vocabulary_scope="layer",
+    )
+    assert slot.template_target(OWN) == (1, 1)
+    assert slot.source_of(OWN) == 1
+    assert slot.borrowed_note(OWN) == ""

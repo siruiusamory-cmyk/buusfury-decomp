@@ -6,7 +6,7 @@ reconstruction are no longer this module's code - they live once in
 against a synthetic domain. What is pinned *here* is what stays specific to a
 map-layout derivative: the owner vocabulary this editor writes, and the public
 error type and document path the rest of the product uses. The end-to-end
-accept/reject behaviour against a real emitted ROM, including the same-layer
+accept/reject behaviour against a real emitted ROM, including the map-wide
 replacement rule, is pinned in ``tests/integration/test_map_layout_editor_rom.py``.
 """
 

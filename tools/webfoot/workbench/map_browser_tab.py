@@ -7,7 +7,7 @@ and lets the user search, zoom, pan and toggle individual graphical layers.
 
 Normal browsing is READ-ONLY. An explicit *Edit Layout* mode adds the first real
 map-editing surface: pick a dominant layer's 256x256 chunk cell, choose another
-chunk that layer already uses, see the result in the map preview immediately (in
+chunk a dominant layer of the same map already uses, see the result in the map preview immediately (in
 memory - never by writing the source ROM), and save the pending edits to a NEW ROM
 copy. Everything the mode can do is decided by the SDK session it drives; this
 widget owns no ROM format, no pointer arithmetic and no write of its own.
@@ -1975,8 +1975,8 @@ class MapBrowserTab(QWidget):
         # -- MAP-CHUNK-AUTHORING-001 state, all in-memory ---------------------
         #
         # The map paint path is pointer-based - `MapLayoutEditor.set_cell` takes a
-        # 4-byte chunk address and `LayoutSlot.choices` only holds chunks the
-        # layer already uses - so an authored chunk, which has no address until a
+        # 4-byte chunk address and `LayoutSlot.choices` holds every chunk a
+        # dominant layer of this map uses - so an authored chunk, which has no address until a
         # build allocates one, cannot travel through it. It is staged here instead
         # and persisted by its own SDK authority.
         #: Staged authored placements: ``(map, layer, cell) -> chunk identity``.
@@ -2323,9 +2323,10 @@ class MapBrowserTab(QWidget):
         self._chooser.setFlow(QListWidget.Flow.LeftToRight)
         self._chooser.setWrapping(False)
         self._chooser.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._chooser.setAccessibleName("Chunks this layer already uses")
+        self._chooser.setAccessibleName("Chunks a dominant layer of this map uses")
         self._chooser.setToolTip(
-            "Only chunks this layer already uses can replace a cell's chunk."
+            "Only chunks a dominant layer of this map already uses can replace a "
+            "cell's chunk; a borrowed one names the layer it came from."
         )
         self._chooser.currentItemChanged.connect(self._on_chunk_selected)
         self._chooser_header = PanelHeader("Cell chunks", collapsible=True)
@@ -2844,7 +2845,8 @@ class MapBrowserTab(QWidget):
         empty_layout.addWidget(empty_state)
         self._empty_explanation = QLabel(
             "This map is read-only. Switch Edit Layout on to reassign one "
-            "256\u00d7256 chunk cell to another chunk the same layer already uses."
+            "256\u00d7256 chunk cell to another chunk a dominant layer of the map "
+            "already uses."
         )
         self._empty_explanation.setProperty("dbzRole", "hint")
         self._empty_explanation.setWordWrap(True)
@@ -3947,7 +3949,7 @@ class MapBrowserTab(QWidget):
 
         MAP-CHUNK-AUTHORING-001: a cell may hold an authored placement rather than
         a pointer, and picking it must give the authored chunk back - otherwise the
-        eyedropper would report "no chunk this layer uses" over a cell the author
+        eyedropper would report "no chunk this map uses" over a cell the author
         can plainly see holds one.
         """
         if self._slot is None:
@@ -3966,7 +3968,8 @@ class MapBrowserTab(QWidget):
         ordinal = self._slot.ordinal_of(pointer)
         if ordinal is None:
             self._publish_status(
-                "That cell holds no chunk this layer uses, so it is not a brush value."
+                "That cell holds no chunk a dominant layer of this map uses, so it "
+                "is not a brush value."
             )
             return
         self._brush_authored = None
@@ -4330,10 +4333,12 @@ class MapBrowserTab(QWidget):
     # -- layout editing: chunk chooser ---------------------------------------
 
     def _populate_chooser(self) -> None:
-        """Fill the chooser with the layer's own chunks and this map's authored ones.
+        """Fill the chooser with this map's dominant-layer chunks and its authored ones.
 
-        MAP-CHUNK-AUTHORING-001. The canonical rows are unchanged: the chunks the
-        layer already uses, in its own 1-based order. The authored rows follow
+        MAP-CHUNK-AUTHORING-001, widened by MAP-PAINT-ANY-CHUNK-001. The canonical
+        rows lead with this layer's own chunks, in their own 1-based order, and the
+        siblings' follow in the same list, each borrowed one labelled with the
+        layer it came from. The authored rows follow
         them, labelled ``Authored: <name>`` so a person can tell a project-authored
         chunk from a retail one at a glance, and drawn from the *resolved* authored
         plane - the arrangement the build would materialize - through the same
@@ -4352,10 +4357,15 @@ class MapBrowserTab(QWidget):
             return
         authored = self.placeable_authored(self._current.index)
         self._chooser_hint.setText(
-            f"Chunks BG{slot.slot} already uses ({len(slot.choices)})"
+            f"Chunks a dominant layer of this map uses ({len(slot.choices)})"
             + (f", plus {len(authored)} authored here. " if authored else ". ")
             + "Pick the one a click should paint; Create Chunk\u2026 starts from the "
             "selected one."
+            if slot.vocabulary_scope != "layer"
+            else f"Chunks this layer uses ({len(slot.choices)})"
+            + (f", plus {len(authored)} authored here. " if authored else ". ")
+            + "A project-authored grid paints with this layer's own chunks, so the "
+            "brush does not borrow from a sibling layer here."
         )
         char_data = (
             self._editor.character_block(self._current.index)
@@ -4373,7 +4383,10 @@ class MapBrowserTab(QWidget):
                 char_data=char_data,
             )
             for ordinal, image in enumerate(images, start=1):
-                item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
+                item = QListWidgetItem(
+                    QIcon(self._thumbnail(image)),
+                    f"Chunk {ordinal}{slot.borrowed_note(image.address)}",
+                )
                 item.setData(_CHUNK_ROLE, image.address)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
                 item.setSizeHint(self._chooser_cell)
@@ -4633,8 +4646,8 @@ class MapBrowserTab(QWidget):
         spelled ``None`` (remove the authored paint) rather than re-written,
         because re-writing it would make an undo that returns a cell to its
         committed value rewrite an identical document. A cell whose value
-        differs is spelled with its ordinal, resolved through the layer's own
-        vocabulary so the persisted form is the one a build resolves.
+        differs is spelled with its ordinal, resolved through the map's accepted
+        set so the persisted form is the one a build resolves.
         """
         if self._editor is None:
             return {}
@@ -4645,7 +4658,7 @@ class MapBrowserTab(QWidget):
             if ordinal is None:
                 raise MapPaintError(
                     f"BG{edit.layer_slot} of map:{edit.map_index:04d} cannot store "
-                    f"{edit.replacement:#010x}: it is not a chunk this layer uses"
+                    f"{edit.replacement:#010x}: it is not a chunk this map uses"
                 )
             committed = self._editor.committed_pointer(
                 edit.map_index, edit.layer_slot, edit.cell
@@ -5877,13 +5890,30 @@ class MapBrowserTab(QWidget):
             )
             for cell in paint.cells
         )
+        choices = tuple(chunk.pointer for chunk in paint.vocabulary)
+        # MAP-PAINT-ANY-CHUNK-001 (F1): a template names the layer that DRAWS the
+        # chunk and the chunk's position in that layer's own window, so a structural
+        # grid has to say which slot numbers its vocabulary. A resize numbers it
+        # through this slot's own canonical window; a project-authored layer numbers
+        # it through the template record `map_resize` resolved when it was created,
+        # which may be another slot of this map. Over an empty source every choice
+        # had no target and `create_chunk` refused a chunk the user had picked.
+        source = paint.slot
+        authored = self.structure_document().layer_at(index, paint.slot)
+        if authored is not None:
+            source = authored.template_slot
         return LayoutSlot(
             slot=paint.slot,
             classification=paint.classification,
             handler=paint.handler,
             grid=grid,
             cells=cells,
-            choices=tuple(chunk.pointer for chunk in paint.vocabulary),
+            choices=choices,
+            sources=(source,) * len(choices),
+            owner_ordinals=tuple(chunk.owner_ordinal for chunk in paint.vocabulary),
+            # A project-authored grid persists and builds against the layer's own
+            # ordinals, so its chooser offers only the layer's chunks and says so.
+            vocabulary_scope="layer",
             read_only_reason=paint.read_only_reason,
         )
 
@@ -7282,7 +7312,7 @@ class MapBrowserTab(QWidget):
             return
         if self._brush_authored is not None:
             self._publish_status(
-                "Pick one of this layer's own chunks in the palette first: a new "
+                "Pick one of this map's chunks in the palette first: a new "
                 "chunk is created from an existing one."
             )
             return
@@ -7297,6 +7327,21 @@ class MapBrowserTab(QWidget):
                 "chunk is created from an existing one."
             )
             return
+        # A chunk is authored by naming the LAYER that draws it, so the template needs
+        # that layer and the chunk's position inside that layer's own window. The
+        # brush ordinal counts across the map now that a cell may borrow from a
+        # sibling, so handing it to a template would resolve it against the wrong set
+        # and refuse a legal choice. `template_target` is the translation: it names the
+        # owning layer and that layer's own ordinal.
+        pointer = self._lookup_pointer(ordinal)
+        target = None if pointer is None else self._slot.template_target(pointer)
+        if target is None:
+            self._publish_status(
+                "Pick one of this map's chunks in the palette first: a new chunk is "
+                "created from an existing one."
+            )
+            return
+        template_slot, template_ordinal = target
         author = self.chunk_author()
         if author is None:
             QMessageBox.warning(
@@ -7326,7 +7371,7 @@ class MapBrowserTab(QWidget):
             )
             return
         try:
-            template = ChunkTemplate(self._current.index, self._slot.slot, ordinal)
+            template = ChunkTemplate(self._current.index, template_slot, template_ordinal)
             # The vocabulary is read before the editor opens, so a layer whose
             # permitted entries cannot be read refuses here - with the reason -
             # rather than opening an editor whose palette is empty.
@@ -7336,9 +7381,10 @@ class MapBrowserTab(QWidget):
             QMessageBox.warning(self, "Create chunk", str(exc))
             return
         self.open_chunk_editor(identity, template, plane, plane)
+        borrowed = self._slot.borrowed_note(pointer)
         self._publish_status(
-            f"Created {self._authored_name(identity)} from Chunk {ordinal}. Paint its "
-            "screen entries, then Apply chunk."
+            f"Created {self._authored_name(identity)} from Chunk {ordinal}{borrowed}. "
+            "Paint its screen entries, then Apply chunk."
         )
 
     def open_chunk_editor(

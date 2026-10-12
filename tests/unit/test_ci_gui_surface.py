@@ -628,6 +628,32 @@ def test_the_adjacency_job_runs_the_fixed_set_in_both_orders():
     )
 
 
+def test_the_suite_job_clears_a_leftover_site_artifact_before_it_runs():
+    """Prevents: the suite job judging a site build that belongs to another commit.
+
+    The Linux job runs in a fresh container checkout with no `dist/`. The Windows
+    runner is a shell executor whose checkout persists, so `dist/` from an
+    earlier `test-site` job can survive into the next `test-sdk` job. The six
+    artifact-dependent modules then run against an artifact that may belong to
+    another commit instead of skipping, which is measured: with `dist/` present,
+    `test_site_consistency.py`, `test_capability_registry.py` and
+    `test_questline_rail.py` gave 46 passed and 1 skipped, against 6 skips
+    without it. The suite job removes the artifact first, and `test-site` stays
+    the job that builds the site and validates it.
+    """
+    script = _ci_script_text(TEST_JOB)
+    removal = "Remove-Item -LiteralPath (Join-Path $CiProjectRoot 'dist')"
+    assert removal in script, (
+        f"{_ci_script_path(TEST_JOB)}: {TEST_JOB} must remove a leftover `dist/` "
+        "before the suite, or the artifact-dependent modules judge another "
+        "commit's build instead of skipping"
+    )
+    assert script.index(removal) < script.index("-m pytest tests/unit"), (
+        f"{_ci_script_path(TEST_JOB)}: the `dist/` removal must come before the "
+        "pytest step; running it afterwards changes nothing"
+    )
+
+
 def test_every_routed_test_job_declares_an_explicit_timeout():
     """Prevents: a hung job holding the owner's machine until the project default.
 

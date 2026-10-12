@@ -37,6 +37,14 @@ Get-CimInstance Win32_OperatingSystem | ForEach-Object {
     Write-Host ("memory: {0:N1} GB total, {1:N1} GB free" -f ($_.TotalVisibleMemorySize / 1MB), ($_.FreePhysicalMemory / 1MB))
 }
 
+# A shell runner's checkout persists, so a `dist/` left behind by an earlier
+# `test-site` job would survive into this one. Six artifact-dependent modules
+# then run against an artifact that may belong to another commit, instead of
+# skipping the way they do in the Linux job's fresh container: measured, 46
+# passed with `dist/` present against 6 skips without it. They must skip here.
+# `test-site` is the job that builds the site and validates the artifact.
+Remove-Item -LiteralPath (Join-Path $CiProjectRoot 'dist') -Recurse -Force -ErrorAction SilentlyContinue
+
 # The JUnit report is what makes a failure legible in the merge request without
 # downloading the raw job log, and xdist merges every worker's results into this
 # one file. It is written to the repository root, where the job's

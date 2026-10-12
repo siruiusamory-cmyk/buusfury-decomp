@@ -228,10 +228,9 @@ class EditorProxyStyle(QProxyStyle):
     """A deliberate set of overrides over Fusion; everything else defers to it."""
 
     def __init__(self, shape: Metrics | None = None, app: QApplication | None = None) -> None:
-        # The base style is named rather than handed over as an object: a style created by
-        # `QStyleFactory` is one PySide owns, and `setBaseStyle` would own it too, so the
-        # process tears it down twice at exit. Measured, that is `QObject: shared QObject
-        # was deleted directly` and a segmentation fault after a full green run.
+        # The base style is named rather than handed over as an object, because a style from
+        # `QStyleFactory` is one PySide owns as well. The crash this avoids is recorded, with
+        # its pipelines and the instrument, in docs/research/RETRO_QT_SHUTDOWN_001.md.
         super().__init__("Fusion")
         self._metrics = shape
         self._app = app

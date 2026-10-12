@@ -438,6 +438,41 @@ def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None
         f"the exit path carried {captured} instead of the status the guard decided")
 
 
+def test_a_clean_session_exits_zero_through_the_hook(monkeypatch) -> None:
+    """The other direction: a session that finished cleanly must still exit SUCCESS.
+
+    The two seeded and decided assertions above only prove the exit path can be non-zero,
+    which a constant non-zero status would also satisfy while turning every green pipeline
+    red. This runs the real hook over a clean session and requires the zero to reach the
+    process.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", conftest._SESSION_EXIT_STATUS)
+    session = types.SimpleNamespace(exitstatus=pytest.ExitCode.OK, config=None)
+    conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.OK, (
+        f"a clean session left the status at {conftest._SESSION_EXIT_STATUS!r}")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a clean session exited {captured} under CI instead of SUCCESS")
+
+
 def test_the_ci_exit_path_carries_the_runs_status(monkeypatch) -> None:
     """The exit path carries a status that is not SUCCESS when no session finished.
 

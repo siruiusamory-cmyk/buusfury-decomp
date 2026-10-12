@@ -435,7 +435,7 @@
   "researchOnly": [
     {
       "id": "map-layout-chunk-pointer-structure",
-      "statement": "A dominant layer's layout cell is a four-byte chunk-pointer field in a fixed-size, in-place record, and redirecting it to another same-layer chunk changes exactly two ROM bytes.",
+      "statement": "A dominant layer's layout cell is a four-byte chunk-pointer field in a fixed-size, in-place record, and redirecting it to another chunk a dominant layer of the same map uses changes exactly two ROM bytes.",
       "contributesTo": ["layout"],
       "doesNotConfer": "It does not make tile painting, new chunks, resizing, relocation or arbitrary map formats available; the shipped editor performs exactly one operation."
     },

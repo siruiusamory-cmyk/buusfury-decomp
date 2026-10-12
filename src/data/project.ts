@@ -847,7 +847,7 @@ export const project: ProjectStatus = {
       title: "Paint a map's layout and see it in the real game",
       summary:
         "You can now repaint the visible layout of an existing map in DragonByte Z -"
-        + " choose a chunk the layer already uses, then click or drag it onto the map."
+        + " choose a chunk from the same map, then click or drag it onto the map."
         + " The change is stored in the project, survives closing and reopening, builds"
         + " into a new game file, and shows up in the actual game.",
       technical:
@@ -876,16 +876,19 @@ export const project: ProjectStatus = {
       title: "Map layout editing is a usable feature",
       summary:
         "A retail map's layout can now be edited from DragonByte Z: swap one chunk cell" +
-        " for another chunk the same layer already uses, preview it, and save a new" +
+        " for another chunk the same map already uses, preview it, and save a new" +
         " game file that re-renders with the change.",
       technical:
         "On Buu's Fury map:0040, dominant layer 1 cell 0 was redirected to another" +
-        " chunk already used by that layer. Exactly two ROM bytes changed within its" +
+        " chunk already used by a dominant layer of that map. Exactly two ROM bytes changed within its" +
         " four-byte pointer; the changed 256-by-256-pixel region re-rendered through" +
         " the accepted map pipeline with 29,208 changed pixels, all inside that cell," +
         " while the layer's other three regions stayed pixel-identical. No-op and" +
         " inverse builds matched all 8,388,608 canonical bytes. The source ROM was not" +
-        " modified. The Map Browser drives this over 341 of the 452 maps. Emulator" +
+        " modified. The Map Browser drives this over 440 of the 452 maps now that a" +
+        " dominant layer may borrow a chunk from another dominant layer of the same" +
+        " map, which leaves the twelve whose grids hold a single chunk between them" +
+        " and the one with no dominant layer. Emulator" +
         " validation of the layout write itself was not performed; the application" +
         " round-trip was, by reopening its own emitted ROM through the provenance" +
         " manifest it wrote beside it.",
@@ -1381,7 +1384,8 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [],
       work: [
-        "Tile painting - SHIPPED: pick a chunk a layer already uses and paint"
+        "Tile painting - SHIPPED: pick a chunk a layer already uses, or a chunk"
+        + " another dominant layer of the same map uses, and paint"
         + " 256x256 map cells with it, saved through the project and proven on screen"
         + " in the retail engine",
         "Chunk creation - SHIPPED: duplicate a chunk a layer already draws, rearrange"

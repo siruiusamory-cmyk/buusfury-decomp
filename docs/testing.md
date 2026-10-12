@@ -80,6 +80,46 @@ markers are the complete set in `pyproject.toml`, the expression collects the sa
 (`-m "not (fast or rom or workbench or writer or map or research)"`) collects zero.
 Every test carries at least one of them.
 
+### The interpreter, and cutting a worktree
+
+`.\scripts\test.ps1` finds its own interpreter and says which one it chose, so a
+ticket worktree needs no hand setup. It tries, in order:
+
+1. the worktree's own `.venv\Scripts\python.exe`;
+2. the shared test venv, the sibling directory
+   `log1-remake-test-speed-003\build\test-speed-003\venv` (python 3.12.10,
+   pytest 8.4.2, pytest-xdist 3.8.0, hypothesis, capstone), printing
+   `test.ps1: interpreter <path> (the worktree .venv)` or `(the shared test venv)`
+   so the chosen environment is never a guess.
+
+The shared venv is named as that sibling path and searched for upward from the
+checkout root rather than written as one machine's absolute path, because
+`tools.quality.public_surface` forbids a machine-specific absolute path in
+tracked text, and because worktrees here are cut at three depths: straight under
+the checkout parent, one level deeper under a ticket directory, and nested under
+`build\worktrees`. When nothing is found the script fails and names the sibling
+to junction instead.
+
+Measured 2026-10-12 in a scratch copy of the tree that mirrors the layout above:
+with a `.venv` present the script printed its own path and `(the worktree .venv)`;
+with the `.venv` removed it printed the shared venv path and `(the shared test
+venv)`; with a `.venv` directory holding no `Scripts\python.exe` it printed the
+shared path as well; and a copy nested three levels deep under `build\worktrees`
+printed the shared path too. Every state was read off `-ResolveOnly`, which stops
+after that line, so no gate was run to measure them. The primary checkout's venv
+is deliberately not a candidate: it is read-only and has no pytest-xdist.
+
+`.\scripts\new-ticket-worktree.ps1 -Ticket <id> -Branch <name>` cuts a worktree
+in one command: it fetches `origin`, prints the frozen base SHA it read from
+`origin/master`, adds `log1-remake-<id>` next to the checkout, junctions `.venv`
+to the shared venv, and prints the ownership sweep, every sibling worktree with
+its branch and its uncommitted file count plus up to eight of those paths, so a
+writer can see which surface is already held before claiming it. `-Parent <dir>`
+puts the worktree somewhere else. `-SiteGates` additionally runs `npm ci`, about
+four minutes, because the site's own commands (`npm run check`, `npm run build`)
+read `node_modules`; the `test-site` and `deploy-site` jobs in `.gitlab-ci.yml`
+run it for the same reason, and the Python gates do not need it.
+
 ### Parallel runs
 
 The entry point and the `test-sdk` CI job both run the gate across pytest-xdist
@@ -96,6 +136,13 @@ everything in one process:
 .\scripts\test.ps1 -n 0                                        # serial
 .\scripts\test.ps1 tests\unit\test_relocation.py -n 0          # serial, one file
 ```
+
+**Serial is the fallback when the parallel default runs out of room.** Each
+worker is a separate Python process with this tree's modules imported, so the
+default four workers hold four of those at once. A failure that disappears under
+`-n 0` is a statement about worker processes rather than about the change, and
+the serial run of the same node ids is what says which; report both counts before
+concluding anything.
 
 The `-n 0` check comes first and matches that exact spelling. Windows PowerShell
 5.1 splits the pair before the script sees it, which is why the check looks for
@@ -188,6 +235,21 @@ is genuinely warranted.
   cleanup-after-a-green-run, and keeps two concurrent runs in one checkout from
   deleting each other's temporary directories. A `--basetemp` inside the
   repository is honoured, with a warning.
+- **When pytest cannot use its own `pytest-of-<user>` root.** The failure to look
+  for is `PermissionError: [WinError 5] Access is denied` on the directory
+  pytest builds under the process temp root. The escape hatch is
+  `PYTEST_DEBUG_TEMPROOT`, which pytest 8.4.2 reads as the temp root itself
+  rather than as a debug flag (`_pytest/tmpdir.py:155`, `temproot =
+  Path(from_env or tempfile.gettempdir()).resolve()`, with the
+  `pytest-of-<user>` basetemp created under it). Point it at a directory you own
+  outside the repository and the session header prints that root:
+  `$env:PYTEST_DEBUG_TEMPROOT = '<a directory you own>'`. Measured 2026-10-12:
+  the default root under this machine's temp directory already carries ACEs for
+  several sandbox SIDs (`Caleputer\CodexSandboxUsers` among them), yet a shell in
+  this session created and removed a directory inside it without error, so the
+  denial is a property of the process, or of a root another process left behind,
+  not a permanent state of the directory. The conftest redirect above covers the
+  case where the variable is not set.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
   skip cleanly rather than erroring; `.\scripts\setup.ps1` installs it, and
   `uv sync --locked --extra workbench` adds it to an existing environment. CI
@@ -225,10 +287,48 @@ is genuinely warranted.
   canonical image is never written. The header reports which image, if any,
   the session found. The default location is
   `roms/Dragon Ball Z - Buu's Fury (U).gba`; `WEBFOOT_BUU_ROM` and
-  `LOGX_CANONICAL_ROM` override it. Keep any local `roms/` a real ignored
-  directory: a directory junction there is covered by `.gitignore` only
-  because of the bare `roms` rule, and `git check-ignore` refuses to answer
-  about a path *beyond* a link.
+  `LOGX_CANONICAL_ROM` override it. `tests/rom_support.py:28` is the shared
+  reader, trying `WEBFOOT_BUU_ROM` first and `LOGX_CANONICAL_ROM` second, and
+  accepting a value only when it is a file. Measured by grep under `tests/` in
+  this tree on 2026-10-12:
+  - `LOGX_CANONICAL_ROM`, 34 files: `tests/rom_support.py`; under
+    `tests/integration/`, the eleven `test_logx_*_rom.py`, eleven
+    `test_map_*_rom.py`, four `test_enemy_randomizer_*_rom.py`, two
+    `test_warp_randomizer*_rom.py`, and `test_asset_export_rom.py`,
+    `test_randomizer_combined_rom.py`, `test_thumb_caller_census_rom.py`,
+    `test_ui_graphics_rom.py`, `test_webfoot_lz_strict_rom.py`.
+  - `WEBFOOT_BUU_ROM`, 13 files: `tests/rom_support.py`; under
+    `tests/integration/`, `test_authored_behavior_trigger_rom.py`,
+    `test_authored_scene_rom.py`, `test_combined_allocation_rom.py`,
+    `test_enemy_randomizer_command_rom.py`,
+    `test_enemy_randomizer_profile_gate_rom.py`, `test_enemy_randomizer_rom.py`,
+    `test_map_chunk_authoring_rom.py`, `test_map_render_rom.py`,
+    `test_map_resize_rom.py`, `test_tileset_compositor_rom.py`,
+    `test_workbench_scene_rom.py`, `test_workbench_workspace_rom.py`.
+  - No `tests/unit` file reads either variable.
+
+  Keep any local `roms/` a real ignored directory: a directory junction there is
+  covered by `.gitignore` only because of the bare `roms` rule, and
+  `git check-ignore` refuses to answer about a path *beyond* a link.
+- **Running a ROM-gated file with no local `roms/`.** Point the variable at a
+  byte-identical scratch copy outside the work tree, never at the canonical
+  input, and check the digest on both sides: the copy must hash to
+  `940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e`
+  (`tests/rom_support.py:30`), a file that does not is skipped
+  (`canonical_rom_bytes`), and a test that could have written re-hashes the input
+  afterwards (`assert_canonical_unchanged`). `mutable_rom_copy` is the only write
+  path, and it proves the copy is a distinct file from every protected
+  repository input before handing it over. `docs/ROM_SAFETY.md` states the same
+  rule: preserve the original read-only and experiment on an ignored copy.
+
+  ```powershell
+  $copy = "$env:TEMP\buu-scratch.gba"
+  Copy-Item 'roms\Dragon Ball Z - Buu''s Fury (U).gba' $copy
+  (Get-FileHash $copy -Algorithm SHA256).Hash.ToLower()   # 940ad5f0...
+  $env:WEBFOOT_BUU_ROM = $copy
+  python -m pytest -m rom tests\integration\test_map_render_rom.py -q
+  (Get-FileHash $copy -Algorithm SHA256).Hash.ToLower()   # unchanged
+  ```
 
 ## How a test gets its gates
 

@@ -1,10 +1,53 @@
+param(
+    # Resolve and print the interpreter, then stop before running any gate.
+    [switch]$ResolveOnly
+)
+
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$Python = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
 
-if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
-    throw 'Missing .venv. Run scripts\setup.ps1 first.'
+# Interpreter resolution. A worktree's own `.venv` wins; a lane that cut a
+# worktree without one gets the shared test venv instead of a hand setup. The
+# choice is printed because the two environments do not skip the same tests. The
+# primary checkout's venv is deliberately not a candidate: it is read-only and
+# has no pytest-xdist, so no lane may run it by accident. `-ResolveOnly` stops
+# after this block, which is how the fallback is measured without paying for a
+# gate run.
+#
+# The shared venv is the sibling worktree named below, so it is searched for
+# upward from this checkout rather than written as one machine's path: worktrees
+# cut straight under the checkout parent, one level deeper under a ticket
+# directory, and nested under `build\worktrees` all find it. When the search
+# finds nothing the loop below fails, and the message names the sibling to
+# junction instead.
+$SharedSibling = 'log1-remake-test-speed-003\build\test-speed-003\venv'
+$SharedVenv = $null
+$search = $ProjectRoot
+while ($search) {
+    $probe = Join-Path $search $SharedSibling
+    if (Test-Path -LiteralPath (Join-Path $probe 'Scripts\python.exe') -PathType Leaf) { $SharedVenv = $probe; break }
+    $up = Split-Path $search -Parent
+    if (-not $up -or $up -eq $search) { break }
+    $search = $up
 }
+if (-not $SharedVenv) { $SharedVenv = Join-Path (Split-Path $ProjectRoot -Parent) $SharedSibling }
+
+$candidates = @(
+    @{ Python = (Join-Path $ProjectRoot '.venv\Scripts\python.exe'); Why = 'the worktree .venv' }
+    @{ Python = (Join-Path $SharedVenv 'Scripts\python.exe'); Why = 'the shared test venv' }
+)
+$Python = $null
+foreach ($candidate in $candidates) {
+    if (Test-Path -LiteralPath $candidate.Python -PathType Leaf) {
+        $Python = $candidate.Python
+        Write-Host "test.ps1: interpreter $Python ($($candidate.Why))"
+        break
+    }
+}
+if (-not $Python) {
+    throw "No test interpreter. Tried: $(($candidates | ForEach-Object { $_.Python }) -join '; '). Run scripts\setup.ps1, or junction .venv to $SharedSibling."
+}
+if ($ResolveOnly) { exit 0 }
 
 # Parallel by default: worker processes at module granularity, because the
 # suite's slowest modules are dominated by per-module decode setup. `-n 0` is

@@ -416,6 +416,7 @@ def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None
     monkeypatch.setattr(conftest, "_required_gui_surface_is_enforced", lambda: True)
     monkeypatch.setattr(conftest, "_report_collapsed_modules", lambda *a, **k: None)
     monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", int(pytest.ExitCode.INTERNAL_ERROR))
     session = types.SimpleNamespace(exitstatus=0, config=None)
     conftest.pytest_sessionfinish(session, 0)
     assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
@@ -437,26 +438,23 @@ def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None
         f"the exit path carried {captured} instead of the status the guard decided")
 
 
-def test_a_run_that_errors_before_the_session_finishes_still_exits_non_zero(monkeypatch) -> None:
-    """Under CI the exit path must not report SUCCESS for a session that never finished.
+def test_the_ci_exit_path_carries_the_runs_status(monkeypatch) -> None:
+    """The exit path carries a status that is not SUCCESS when no session finished.
 
-    ``pytest_unconfigure`` leaves through ``os._exit(_SESSION_EXIT_STATUS)`` before the
-    interpreter tears the Qt extensions down, and ``pytest_sessionfinish`` is what decides
-    that status. The hook does not run when the session dies before it: a raising
-    ``pytest_sessionstart``, or an earlier ``sessionfinish`` hook doing the same, as an
-    xdist worker that cannot start would. Seeded with ``pytest.ExitCode.OK`` that path
-    exits 0 over an errored run, so the mitigation meant to hide a crash would instead
-    publish a green pipeline over a failure.
-
-    The exit is captured rather than taken, so the status the hook hands the process is
-    read directly. Measured with the seed at 0: no exception is raised, which is the
-    silent green. The end-to-end shape is a real session that dies in ``sessionstart``;
-    this asserts the exact code that shape would carry.
+    The status is a module global that only ``pytest_sessionfinish`` overwrites, and the
+    hook does not run when the session dies before it: a raising ``pytest_sessionstart``,
+    or an earlier ``sessionfinish`` hook doing the same, as an xdist worker that cannot
+    start would. Seeded with ``pytest.ExitCode.OK`` the exit path would then publish a
+    green pipeline over an errored run, which is worse than the crash it hides. The exit
+    is captured rather than taken, so the status handed to the process is read directly.
     """
     import types
 
     from tests import conftest
 
+    assert conftest._SESSION_EXIT_STATUS == int(pytest.ExitCode.INTERNAL_ERROR), (
+        f"the seed is {conftest._SESSION_EXIT_STATUS!r}, so a session that never reached "
+        "pytest_sessionfinish would be reported with that status")
     monkeypatch.setenv("CI", "1")
     monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
     captured: list[int] = []
@@ -466,18 +464,10 @@ def test_a_run_that_errors_before_the_session_finishes_still_exits_non_zero(monk
         raise SystemExit(code)
 
     monkeypatch.setattr(conftest.os, "_exit", capture)
-    try:
+    with pytest.raises(SystemExit):
         conftest.pytest_unconfigure(types.SimpleNamespace())
-    except SystemExit as exit_call:
-        assert exit_call.code != pytest.ExitCode.OK, (
-            "the session never reached sessionfinish, so the exit path must not report "
-            "SUCCESS over a run that errored")
-        assert captured and captured[0] != pytest.ExitCode.OK, (
-            f"the exit path carried {captured} for a run that never reached sessionfinish")
-    else:
-        raise AssertionError(
-            "pytest_unconfigure did not leave through os._exit under CI, so a run that "
-            "never reached sessionfinish would be reported by pytest's own exit path")
+    assert captured and captured[0] != pytest.ExitCode.OK, (
+        f"the exit path carried {captured} for a run that never reached sessionfinish")
 
 
 def test_the_session_hooks_are_defined_and_have_run() -> None:

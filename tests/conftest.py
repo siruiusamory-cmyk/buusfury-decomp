@@ -216,11 +216,11 @@ def capture_application(application):
 def pytest_configure(config: pytest.Config) -> None:
     """Enable the fault handler, so a crash in a native call names the Python frame.
 
-    Measured: a pipeline run reported 5242 passed, then `QObject: shared QObject was
-    deleted directly`, then a segmentation fault, and nothing in the log said which frame
-    was executing. The handler is stdlib and prints that frame when a fatal signal arrives.
-    It writes to the interpreter's own stderr, which pytest's capture does not own, because
-    the crash happens after the last test when capture is being torn down itself.
+    The crash it was added for, and what the handler did and did not answer, are recorded in
+    ``docs/research/RETRO_QT_SHUTDOWN_001.md``. The handler is stdlib and prints the frame
+    that was executing when a fatal signal arrives. It writes to the interpreter's own
+    stderr, which pytest's capture does not own, because the crash happens after the last
+    test when capture is being torn down itself.
     """
     faulthandler.enable(file=sys.__stderr__)
 
@@ -549,19 +549,15 @@ def _required_gui_surface_is_enforced() -> bool:
 def pytest_unconfigure(config: pytest.Config) -> None:
     """In CI only, leave before CPython tears the loaded Qt extensions down.
 
-    Measured on the pipeline job: every test passes, the summary prints, the JUnit artifact
-    is written, and then the process dies of a segmentation fault. With the fault handler
-    enabled the crash reports `QObject: shared QObject was deleted directly` and then `<no
-    Python frame>`, so the fault is inside native Qt teardown during interpreter
-    finalization. No Python frame exists to name, and no test result can depend on it,
-    because the results are final and the artifacts are written before this hook runs.
+    The crash this path exists for, the pipelines that carry it and the instrument that can
+    name it are recorded in ``docs/research/RETRO_QT_SHUTDOWN_001.md``: one definition of
+    that fact rather than a second telling here.
 
     This is a mitigation, not a fix. It runs only under CI, so a local run keeps the
-    interpreter's own exit path, and the native fault stays recorded as unfixed in
-    ``docs/research/TEXT_TOOL_UI_REPORT.md``. ``os._exit`` is deliberate where ``sys.exit``
-    would not do: the point is to skip the finalizers. Streams are flushed first, because
-    ``os._exit`` does not flush them. ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary
-    exit so the crash can still be observed from CI by whoever works on it.
+    interpreter's own exit path. ``os._exit`` is deliberate where ``sys.exit`` would not do:
+    the point is to skip the finalizers. Streams are flushed first, because ``os._exit``
+    does not flush them. ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary exit so the
+    crash can still be observed from CI by whoever works on it.
     """
     if os.environ.get("WEBFOOT_KEEP_INTERPRETER_EXIT") == "1":
         return
@@ -729,6 +725,3 @@ def _rom_status() -> str:
         + " or ".join(_ROM_ENVIRONMENT_VARIABLES)
         + f", or place {_ROM_DEFAULT}"
     )
-
-
-

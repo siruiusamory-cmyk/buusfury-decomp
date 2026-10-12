@@ -315,6 +315,101 @@ names what it executes rather than trusting a filter to select it:
   test-stage job, so a pipeline that excluded one of them by its rules fails to be
   created instead of publishing without it.
 
+### Where each job runs, and why
+
+Since 2026-10-12 the four test-stage jobs run on a **self-hosted runner on the
+owner's PC** (tag `local-ci`, runner id `57332524`), not on the shared GitLab
+runners, because the shared runners' free monthly quota is spent. `deploy-site`
+is the one exception: it stays on the shared runners with its `image: node:22`
+and its rules, so **publishing the public site pauses while the quota is spent**.
+A merge to the default branch still runs the whole test gate on the owner's
+machine; what stops is the deploy at the end of it.
+
+That runner is a **shell executor on Windows**, which is the fact the rest of
+this section follows from:
+
+- `image:` does nothing on a shell executor, so the four routed jobs carry no
+  `image:` at all. A leftover one would read like a claim rather than being
+  honoured, which is why `tests/unit/test_ci_gui_surface.py` asserts their
+  absence.
+- Each job body is a PowerShell script under `ci\`, and the YAML names the file
+  it runs. The same script runs by hand for a measurement, which is how the
+  numbers below were taken, and the guard reads the install and selection claims
+  from the script rather than from a YAML step. That is the only reason the job
+  bodies are not inline in `.gitlab-ci.yml`.
+- The interpreter is the machine's own **Python 3.12.10**, the version the
+  Linux job's `python:3.12-slim` image carried. Node is v24.16.0 where the
+  `test-site` image was `node:22`: a version difference, not parity, and the
+  site job states it in its log.
+
+**One job at a time.** The runner takes a single concurrent job, and the machine
+is the owner's working PC: 8 logical cores and 31.8 GB of RAM, of which about
+8.7 GB was free when this was measured. `test-sdk` still runs the suite across
+`-n auto` xdist worker processes, which is that same 8, and prints both the core
+count and the free memory into the job log.
+
+**The environment is built fresh, per job, outside every repository.**
+`ci\common.ps1` creates one venv per job name under
+`$CI_BUILDS_DIR\log1-ci\venv-<job>` when GitLab supplies a build directory, and
+under `log1-ci\venv-<job>` in the user's local app data for a hand run, so a CI
+venv and a hand venv are never the same directory. Measured 2026-10-12 on this machine with
+a warm pip cache: 23.7 s to create the venv plus 123.5 s to install
+`.[dev,workbench,research]`, 696 MB on disk. The alternative, a venv created
+with `--system-site-packages`, was measured too: it would inherit the machine's
+162 installed packages. It is **rejected**, because the job is a gate on the
+project's own declared environment and a package the project does not declare
+would then be importable in CI and missing for a user. Reusing one venv across
+runs is rejected for the mirror-image reason: `pip install -e` reconciles
+versions but never removes a package the project stopped declaring, so a reused
+venv can silently differ from a fresh install.
+
+`adjacency` carries `needs: ["test-sdk"]` and, on this runner, opens that job's
+venv by name (`ci\adjacency.ps1` uses `Use-CiVenv -Name 'test-sdk'`) instead of
+paying a second copy of the same install. `tests/unit/test_ci_gui_surface.py`
+pins both halves of that link, so cutting either one fails a named test.
+
+**What the owner should know about that machine.** The runner runs as Cale's
+user, and it dies at logoff: a pipeline queued while the machine is logged out
+waits. It executes whatever is on **any branch of this project**, not only the
+default one, so a branch push is code execution on that PC. It is an
+*unprotected* runner (`access_level: not_protected`), which is acceptable
+because the project's one CI variable, `CLOUDFLARE_API_TOKEN`, is `protected:
+true`: an unprotected ref cannot see it. The deploy job keeps the credential and
+stays on the shared runners, which is why it was not moved.
+
+The old protected runner (tag `rom-local`) is untouched by this routing: it
+still owns the ROM-gated jobs that need the canonical image.
+
+**What Windows runs that Linux skipped.** The same tree ran on the shared Linux
+runners as `test-sdk` job `17122705022` (tree `d634213d`, the tree this routing
+was cut from) for 5194 passed and 314 skipped. On the owner's machine the same
+job ran 5412 passed and 97 skipped, 0 failed, in 869.16 s of pytest. 219 of
+those 314 skipped tests executed and passed here. Twenty-four of them for a
+reason this machine provides and the container did not:
+
+- 9 in `tests/unit/test_pre_merge_check.py`, which skip on a host with no
+  PowerShell;
+- 10 `test_a_case_variation_of_a_missing_name_is_refused[...]` parameters in
+  `tests/unit/test_rom_destination_safety.py`, which skip on a case-sensitive
+  filesystem;
+- 4 in `tests/unit/test_mgba_instrumented_identity.py` and 1 in
+  `tests/unit/test_project_safety.py`, which read instrumented build trees and
+  a clone's own local git exclude, and neither is in a fresh checkout.
+
+The other 195 are the DragonByte acceptance modules: their canonical-image
+fixture looks in a *sibling* checkout's `roms/`
+(`tests/unit/dragonbyte_acceptance_support.py:45`), which on a developer machine
+is the primary checkout and on a CI checkout is that checkout itself. A job on
+the runner therefore skips them, and the runner-equivalent counts are about 5212
+passed and about 297 skipped. Those two numbers are derived from the comparison
+above rather than measured on the runner, and they are stated as such.
+
+That last point is worth knowing before staging an image near the runner: a
+`roms/` directory inside the runner's own checkout would silently move 195
+ROM-gated acceptance tests into CI, which the project's policy says CI must not
+require. No test failed on either side of the comparison; the difference is
+which tests ran.
+
 The rest of the `rom` gate needs the canonical image and is not collected in CI:
 `-m rom` without `roms/` reports skips, and a job that collected the directory
 would be green over exactly those skips. The named member above is the exception,
@@ -378,10 +473,11 @@ is genuinely warranted.
   case where the variable is not set.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
   skip cleanly rather than erroring; `.\scripts\setup.ps1` installs it, and
-  `uv sync --locked --extra workbench` adds it to an existing environment. CI
-  installs `.[dev,workbench,research]` and sets `QT_QPA_PLATFORM=offscreen`,
-  because the runner has no display while several of those modules construct a
-  real `QApplication` and real widgets.
+  `uv sync --locked --extra workbench` adds it to an existing environment. The
+  `test-sdk` job builds a fresh venv with `.[dev,workbench,research]` and sets
+  `QT_QPA_PLATFORM=offscreen` (see "Where each job runs"), because the job must
+  not depend on a display or on a logged-in desktop while several of those
+  modules construct a real `QApplication` and real widgets.
 - **capstone** is needed by the three `research` modules that sweep the Thumb
   decoder with it (`test_thumb_caller_census.py`,
   `test_thumb_disasm_field_extraction.py`, `test_ui_graphics_probe.py`); without

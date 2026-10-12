@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from tools.webfoot.map_layout_edit import LayoutEdit
 from tools.webfoot.map_layout_session import (
+    ChunkAuthoring,
     LayoutSession,
     PendingWork,
     staged_changes,
 )
+from tools.webfoot.project import AuthoredChunk, AuthoredChunkEntry
 
 
 def _edit(
@@ -154,3 +156,59 @@ def test_a_written_paint_leaves_the_other_families_staged():
 
     assert pending.count == 1
     assert pending.noun == "change"
+
+
+# --- the authored-chunk family (CQA-27 slice A) -------------------------------
+
+
+def _document(identity: str = "chunk:qa-chunk") -> AuthoredChunk:
+    return AuthoredChunk(
+        identity=identity,
+        template="map:0000/layer:0/chunk:1",
+        entries=(AuthoredChunkEntry(row=0, column=0, prior=1, entry=2),),
+    )
+
+
+def test_an_authored_placement_the_project_already_holds_is_not_a_change():
+    """The same no-op rule as the ordinal batch, in the family's own object."""
+    chunks = ChunkAuthoring(cells={(0, 0, 1): "A"}, committed={(0, 0, 1): "A"})
+
+    assert chunks.placements() == {}
+
+    chunks.committed[(0, 0, 1)] = "B"
+    assert chunks.placements() == {(0, 0, 1): "A"}
+
+
+def test_pending_documents_is_a_copy_a_caller_cannot_stage_through():
+    document = _document()
+    chunks = ChunkAuthoring(documents={"chunk:qa-chunk": document})
+
+    answer = chunks.pending_documents()
+    answer.clear()
+
+    assert chunks.documents == {"chunk:qa-chunk": document}
+
+
+def test_authored_work_is_changes_and_never_paints():
+    """A placement and a chunk body are work, and the wording widens for both."""
+    chunks = ChunkAuthoring(
+        cells={(0, 0, 1): "A"},
+        committed={(0, 0, 1): "A"},
+        documents={"chunk:qa-chunk": _document()},
+    )
+
+    pending = chunks.pending_work()
+
+    assert pending.paints == 0
+    assert pending.changes == 1
+    assert pending.noun == "change"
+
+
+def test_two_families_sum_in_one_definition_and_keep_the_noun_rule():
+    """`__add__` is the one sum: the widget adds its structural half to this one."""
+    paints = PendingWork(paints=2)
+    authored = PendingWork(changes=1)
+
+    assert paints + authored == PendingWork(paints=2, changes=1)
+    assert (paints + authored).noun == "change"
+    assert (paints + PendingWork()).noun == "paint"

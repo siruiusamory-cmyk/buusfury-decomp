@@ -728,6 +728,35 @@ def test_apply_to_project_writes_the_chunk_before_the_placement(chunk_tab):
     assert "authored placement(s)" in chunk_tab.status_text()
 
 
+def test_the_authored_family_stages_and_clears_through_the_layout_session(chunk_tab):
+    """CQA-27 slice A: the widget's own path, held by the session object.
+
+    The three mappings and the pending classification moved out of the widget, so
+    this drives the gestures the user makes and asserts the session object holds
+    exactly what the gesture staged, that the pending total names it a change, and
+    that one Apply clears the staging because the project now holds it.
+    """
+    _open_new_chunk(chunk_tab)
+    _select_entry(chunk_tab, VOCAB[1])
+    _chunk_stroke(chunk_tab, 0)
+    chunk_tab.use_chunk_as_brush()
+    _paint_cells(chunk_tab, 3)
+
+    assert chunk_tab._chunks.cells == {(MAP, SLOT, 3): CHUNK_IDENTITY}
+    assert set(chunk_tab._chunks.documents) == {CHUNK_IDENTITY}
+    assert chunk_tab.unsaved_edit_count() == 2, "one chunk + one placement"
+    assert chunk_tab._pending_work().changes == 2
+    assert chunk_tab._pending_work().paints == 0, "an authored placement is no paint"
+    assert chunk_tab._staged_noun() == "change", "the wording widens with authored work"
+
+    assert chunk_tab.apply_to_project() is True
+
+    assert chunk_tab._chunks.cells == {}
+    assert chunk_tab._chunks.documents == {}
+    assert chunk_tab._chunks.committed == {(MAP, SLOT, 3): CHUNK_IDENTITY}
+    assert chunk_tab.unsaved_edit_count() == 0
+
+
 def test_the_eyedropper_reads_back_an_authored_placement(chunk_tab):
     _open_new_chunk(chunk_tab)
     _select_entry(chunk_tab, VOCAB[1])

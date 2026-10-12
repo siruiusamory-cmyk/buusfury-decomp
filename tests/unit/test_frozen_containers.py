@@ -42,10 +42,10 @@ Two ceilings of the rule itself, stated rather than implied:
   (``Mapping[str, dict]``) is not inspected.
 * A rebind passes when its outermost call is ``MappingProxyType``, ``tuple`` or
   ``frozenset``, or when the right-hand side is a name or attribute rather than
-  a call. The guard cannot follow a local or a helper's return type, so
-  ``copy.copy(self.items)``, ``sorted(self.items)`` and a rebind to
-  ``self.items`` itself all pass. That is why the annotation, not the rebind, is
-  what a reader should trust.
+  a call. An unknown outer call fails, so ``copy.copy(self.items)`` and
+  ``sorted(self.items)`` are flagged, not accepted; only a prebuilt name or
+  attribute, such as ``self.items`` or ``self._built``, passes. That is why the
+  annotation, not the rebind, is what a reader should trust.
 """
 
 from __future__ import annotations

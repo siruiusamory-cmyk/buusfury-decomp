@@ -16,21 +16,36 @@ mutable container. ``Mapping``, ``Sequence``, ``tuple`` and ``frozenset`` are
 accepted as written.
 
 The allowlist below is the legacy set measured at
-``c3fc145c2f7f0c15b60dbcd8f1e2271b430f39ec``: 27 classes, 49 fields. An ast
-store-sweep of the same tree (subscript stores, mutator calls, deletes) finds
-exactly two places where such a class writes into its own container field:
-``RecordEdits.edits`` (``enemy_randomizer/records.py:85``, a deliberate
-accumulator) and ``TextSurface._inventory_cache`` (``dragonbyte/textsurface.py``
-:459, a documented cache). Every other entry is read-only in practice and carries
-the reason it is not wrapped.
+``c3fc145c2f7f0c15b60dbcd8f1e2271b430f39ee``: 27 classes, 49 fields. This rule
+is about the annotation, not about behaviour: it does not prove that nothing
+writes into a container it accepts. What was measured, and what the reasons
+below rest on, is a write census over the same tree.
 
-Two ceilings, stated rather than implied:
+* An ast store-sweep (subscript stores, mutator calls, deletes) of a class
+  writing into its own container field finds exactly two: ``RecordEdits.edits``
+  (``enemy_randomizer/records.py:85``, a deliberate accumulator) and
+  ``TextSurface._inventory_cache`` (``dragonbyte/textsurface.py:445-459``, a
+  documented cache).
+* A cross-class sweep that also follows a local alias of another object's field
+  finds one more: ``webfoot/project/placements.py:203-204`` writes into a nested
+  table of ``StatProject.maps`` on the project it has just loaded.
+* That census cannot see a store through an alias of an alias, through a
+  copied container, or through a helper the field is passed to, so it is a
+  measurement with a stated ceiling and not a proof.
 
-* A field NAME added to an allowlisted class is not covered, so the allowlist
-  cannot hide a new one; a field whose containers are only nested inside an
-  accepted annotation (``Mapping[str, dict]``) is not inspected.
-* An allowlist entry for a class that no longer exists is not an error, so a
-  rename fails loudly at the renamed class instead of silently.
+Two ceilings of the rule itself, stated rather than implied:
+
+* A field NAME added to an allowlisted class is flagged: the allowlist covers
+  exactly the names it lists, and
+  ``test_every_allowlisted_field_is_still_a_hit`` fails once one stops being a
+  hit. A container nested inside an accepted annotation
+  (``Mapping[str, dict]``) is not inspected.
+* A rebind passes when its outermost call is ``MappingProxyType``, ``tuple`` or
+  ``frozenset``, or when the right-hand side is a name or attribute rather than
+  a call. The guard cannot follow a local or a helper's return type, so
+  ``copy.copy(self.items)``, ``sorted(self.items)`` and a rebind to
+  ``self.items`` itself all pass. That is why the annotation, not the rebind, is
+  what a reader should trust.
 """
 
 from __future__ import annotations
@@ -81,16 +96,19 @@ _CACHE = (
 _DOCUMENT = (
     "the authored project document's own record tables (model.py:286-322): the loader "
     "builds a new document and the writers read these tables, so the freeze stops a "
-    "field swap and not a table edit; reading the tables as immutable is a separate "
-    "change with its own callers"
+    "field swap and not a table edit. One route does write into a nested table through "
+    "a local alias, placements.py:203-204, on a project it has just loaded; reading the "
+    "tables as immutable is a separate change with its own callers"
 )
 _PAYLOAD = (
-    "the record's own published document: to_json() returns these mappings directly "
-    "(enemy_randomizer/manifest.py:86-118, write.py:966-979)"
+    "the record's own published payload: to_json() reads these tables and copies the ones "
+    "it sorts (module_seeds at manifest.py:97 and :149), and the write.py payloads are "
+    "returned as they are (write.py:978-979)"
 )
 _RESULT = (
-    "a run or render result record whose mapping is read, never written by its own "
-    "class: the ast store-sweep over tools/ reports no write site for it"
+    "a run or render result record whose mapping is read rather than written: the write "
+    "census over tools/ reports no store into it, from its own class or from a local "
+    "alias elsewhere"
 )
 _ACCUMULATOR = (
     "an accumulator, not a value: set() writes into edits (records.py:78-85), the one "
@@ -99,7 +117,9 @@ _ACCUMULATOR = (
     "ticket"
 )
 _RESEARCH = (
-    "a research script's in-process result object; no other module reads it"
+    "a research script's in-process result object, read by sibling research scripts "
+    "rather than by shipping code (sprite_new_behavior_registration.py:247, "
+    "sprite_new_record_run.py:245, check_token_dictionary.py:25)"
 )
 
 #: (path relative to the repository root, class name) -> (field names, reason).
@@ -256,13 +276,24 @@ def _is_frozen(cls: ast.ClassDef) -> bool:
     return False
 
 
-def _rebinds_immutably(post_init: ast.FunctionDef | None) -> set[str]:
-    """Field names ``__post_init__`` rebuilds from something that is not mutable.
+def _is_immutable_rebind(value: ast.expr) -> bool:
+    """Whether a rebind's right-hand side is not a fresh mutable container.
 
-    A rebind to a name the reader cannot see into (a tuple built a few lines up)
-    counts: the guard's question is whether the class rebuilds the container, and
-    the annotation is what states the type a reader may rely on.
+    Only the outermost call is read. A wrapper nested inside a mutable call
+    (``dict(zip(tuple(...), ...))``) still leaves a dict in the field, so an
+    inner ``tuple`` proves nothing. An unknown outer call fails too, and a
+    prebuilt name or attribute passes: the guard cannot follow a local or a
+    helper's return type, which the module docstring states as a ceiling.
     """
+    if isinstance(value, MUTABLE_RHS):
+        return False
+    if isinstance(value, ast.Call):
+        return _name_of(value.func) in IMMUTABLE_WRAPPERS
+    return True
+
+
+def _rebinds_immutably(post_init: ast.FunctionDef | None) -> set[str]:
+    """Field names ``__post_init__`` rebuilds from something that is not mutable."""
     wrapped: set[str] = set()
     if post_init is None:
         return wrapped
@@ -273,14 +304,8 @@ def _rebinds_immutably(post_init: ast.FunctionDef | None) -> set[str]:
             continue
         if len(call.args) < 3 or not isinstance(call.args[1], ast.Constant):
             continue
-        field, value = call.args[1].value, call.args[2]
-        if isinstance(value, MUTABLE_RHS):
-            continue
-        called = {_name_of(inner.func) for inner in ast.walk(value) if isinstance(inner, ast.Call)}
-        if called & IMMUTABLE_WRAPPERS:
-            wrapped.add(field)
-        elif not called & MUTABLE_CONTAINERS:
-            wrapped.add(field)
+        if _is_immutable_rebind(call.args[2]):
+            wrapped.add(call.args[1].value)
     return wrapped
 
 
@@ -347,6 +372,29 @@ def test_every_allowlist_entry_states_a_reason() -> None:
         assert reason.strip(), f"{entry} states no reason"
 
 
+def test_every_allowlisted_field_is_still_a_hit() -> None:
+    """The allowlist is a subset of today's hits, so it cannot rot into an exemption.
+
+    A field that is wrapped and then regresses, or a class deleted and re-created
+    under the same path and name, would otherwise stay exempt behind an entry
+    nobody re-read.
+    """
+    hits: dict[tuple[str, str], set[str]] = {}
+    for path, cls, field, _ in _tools_hits():
+        hits.setdefault((path, cls), set()).add(field)
+    stale = {
+        entry: sorted(fields - hits.get(entry, set()))
+        for entry, (fields, _) in ALLOWLIST.items()
+        if fields - hits.get(entry, set())
+    }
+    assert not stale, (
+        "these allowlist entries no longer name a field the walk flags, so they "
+        "exempt nothing and must be deleted:\n  "
+        + "\n  ".join(f"{path} {cls}: {', '.join(fields)}"
+                      for (path, cls), fields in stale.items())
+    )
+
+
 def test_the_walk_flags_a_field_that_hands_out_a_dict() -> None:
     assert mutable_container_fields(
         "from dataclasses import dataclass, field\n"
@@ -383,7 +431,7 @@ def test_the_walk_accepts_an_immutable_annotation() -> None:
 
 def test_the_walk_accepts_a_post_init_that_wraps() -> None:
     for wrapped in ("MappingProxyType(dict(self.items))", "tuple(self.items)",
-                    "frozenset(self.items)", "built"):
+                    "frozenset(self.items)", "built", "self._built"):
         assert mutable_container_fields(
             "from dataclasses import dataclass, field\n"
             "from types import MappingProxyType\n"
@@ -406,6 +454,34 @@ def test_the_walk_rejects_a_rebind_to_a_fresh_mutable_container() -> None:
             "    def __post_init__(self) -> None:\n"
             f"        object.__setattr__(self, 'items', {rebind})\n"
         ) == [("Sample", "items", 4)], rebind
+
+
+def test_the_walk_reads_only_the_outermost_call_of_a_rebind() -> None:
+    """A wrapper inside a mutable call proves nothing: the outer dict is what lands.
+
+    An unknown outer call fails as well, so a helper that happens to return a
+    tuple has to be annotated rather than assumed. The two acceptances at the end
+    are the stated ceiling: a name or an attribute cannot be followed.
+    """
+    for rebind in ("dict(zip(tuple(self.items), ()))", "copy.copy(self.items)",
+                   "sorted(self.items)", "list(self.items)"):
+        assert mutable_container_fields(
+            "from dataclasses import dataclass, field\n"
+            "@dataclass(frozen=True)\n"
+            "class Sample:\n"
+            "    items: dict[str, int] = field(default_factory=dict)\n"
+            "    def __post_init__(self) -> None:\n"
+            f"        object.__setattr__(self, 'items', {rebind})\n"
+        ) == [("Sample", "items", 4)], rebind
+    for accepted in ("self.items", "self._built"):
+        assert mutable_container_fields(
+            "from dataclasses import dataclass, field\n"
+            "@dataclass(frozen=True)\n"
+            "class Sample:\n"
+            "    items: dict[str, int] = field(default_factory=dict)\n"
+            "    def __post_init__(self) -> None:\n"
+            f"        object.__setattr__(self, 'items', {accepted})\n"
+        ) == [], accepted
 
 
 def test_the_walk_ignores_a_dataclass_that_is_not_frozen() -> None:

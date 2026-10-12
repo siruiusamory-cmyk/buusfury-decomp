@@ -4653,7 +4653,7 @@ class MapBrowserTab(QWidget):
             if ordinal is None:
                 raise MapPaintError(
                     f"BG{edit.layer_slot} of map:{edit.map_index:04d} cannot store "
-                    f"{edit.replacement:#010x}: it is not a chunk this layer uses"
+                    f"{edit.replacement:#010x}: it is not a chunk this map uses"
                 )
             committed = self._editor.committed_pointer(
                 edit.map_index, edit.layer_slot, edit.cell
@@ -7290,7 +7290,7 @@ class MapBrowserTab(QWidget):
             return
         if self._brush_authored is not None:
             self._publish_status(
-                "Pick one of this layer's own chunks in the palette first: a new "
+                "Pick one of this map's chunks in the palette first: a new "
                 "chunk is created from an existing one."
             )
             return

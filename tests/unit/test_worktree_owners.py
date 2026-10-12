@@ -126,6 +126,45 @@ def test_the_sweep_names_the_three_classifications():
     assert "cat-file" in text
 
 
+def test_the_sweep_pins_the_classification_branches():
+    """The four branch CONDITIONS, as text, because the branches skip in CI.
+
+    `test_the_sweep_names_the_three_classifications` pins the literals; a branch
+    whose condition is inverted or deleted keeps those literals and passes. This
+    pins the conditions themselves, which is the part the Windows-only tests observe.
+    """
+    text = SWEEP.read_text(encoding="utf-8")
+
+    # The conflict arm, on the unmerged porcelain codes.
+    assert re.search(
+        r"if \(\$Entry -match '\^\(DD\|AU\|UD\|UA\|DU\|AA\|UU\) '\) \{ return 'conflicted' \}",
+        text,
+    ), "the conflict arm is not the unmerged-code match it was"
+    # The clean-filter spelling and its fallback.
+    assert "hash-object -- $relative" in text
+    assert "hash-object --stdin" not in text
+    # The branch that needs a baseline comparison, and both of its answers.
+    assert "if (-not $inBranch) { return 'new-in-branch' }" in text
+    assert "if ($baseHash -eq $thisHash) { return 'carries-master' }" in text
+    assert "return 'authored'" in text
+    assert "git -C $WorktreePath rev-parse ($reference + ':' + $relative)" in text
+
+
+def test_the_sweep_pins_the_delete_branch_as_text():
+    """The staged-delete invariant, as TEXT, because its test skips in CI.
+
+    Measured by the reviewer: removing `if ($Entry[0] -eq 'D' ...) { return 'deleted' }`
+    left every other text guard passing and only the skipped test failing, so the
+    sweep silently went back to printing `D  gone.txt` as `unreadable` on Linux CI.
+    """
+    text = SWEEP.read_text(encoding="utf-8")
+
+    assert "if ($Entry[0] -eq 'D' -or $Entry[1] -eq 'D') { return 'deleted' }" in text
+    # Both columns of the porcelain code: `D ` is staged, ` D` is a worktree delete.
+    assert "if (-not $present) {" in text
+    assert "if (-not $staged) { return 'deleted' }" in text
+
+
 def test_the_msys_path_git_prints_is_normalised():
     """`git worktree list` prints /c/Dev/... for some entries; that is not a path."""
     text = SWEEP.read_text(encoding="utf-8")

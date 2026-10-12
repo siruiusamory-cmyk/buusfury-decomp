@@ -28,13 +28,21 @@ def palette_of(entries: list[tuple[int, int, int]]) -> bytes:
     return bytes(out)
 
 
-def test_the_packing_is_tile_order_with_the_low_nibble_first() -> None:
-    # A 16x8 piece: two tiles side by side, the left one all index 1 and the right one all index 2.
-    pixels = bytes([1] * 8 + [2] * 8) * 8
-    packed = convert.pack_4bpp(pixels, 16, 8, {1: 1, 2: 2})
-    assert len(packed) == 64, "16x8 at 4bpp is 64 bytes"
-    assert packed[0:32] == bytes([0x11] * 32), "the left tile is all local index 1"
-    assert packed[32:64] == bytes([0x22] * 32), "the right tile is all local index 2"
+def test_the_packing_is_a_straight_nibble_pack_because_the_source_is_already_tiled() -> None:
+    """The source containers are in 8x8 TILE order, so packing must not re-tile them.
+
+    Re-tiling an already-tiled image produced horizontal bands with blank rows in the engine, which is how this
+    was found: the same bytes rendered row-major showed bands and rendered tile-major showed a silhouette.
+    """
+    pixels = bytes(range(0, 16)) + bytes(48)          # 32 source pixels, distinct low indices
+    packed = convert.pack_4bpp(pixels, 8, 8, {index: index for index in range(256)})
+    assert len(packed) == len(pixels) // 2, "two pixels per byte"
+    assert packed[0] == 0x10, "the first pixel is the LOW nibble of the first byte"
+    assert packed[1] == 0x32
+    assert packed[7] == 0xFE
+    for index in range(8):
+        assert packed[index] == (pixels[2 * index] | (pixels[2 * index + 1] << 4)), (
+            "every byte is consecutive source pixels, in the source's own order")
 
 
 def test_two_pixels_share_a_byte_with_the_first_pixel_in_the_low_nibble() -> None:

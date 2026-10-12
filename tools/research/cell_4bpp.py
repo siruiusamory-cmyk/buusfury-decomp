@@ -1,8 +1,9 @@
 """Convert indexed 8bpp art into 4bpp tiles that select an existing palette bank.
 
 The destination is the GBA's 1-D OBJ tile layout: tiles in raster order, each tile eight rows of four bytes,
-two pixels per byte, low nibble first. The source containers in The Legacy of Goku II are one byte per pixel in
-ROW-MAJOR order, which is why this reorders rather than copying.
+two pixels per byte, low nibble first. The Legacy of Goku II containers are one byte per pixel in the SAME 8x8
+tile order, so this is a nibble pack and not a reordering. Measured, not assumed: the same container bytes
+rendered row-major show horizontal bands and rendered tile-major show a Cell silhouette.
 
 The palette bank is chosen PER PIECE from the banks the destination image already has, so no palette entry is
 written anywhere and no other sprite's colours can change. Everything here is pure: bytes in, bytes out.
@@ -81,19 +82,21 @@ def choose_bank(pixels: bytes, palette: bytes, source_palette: bytes,
 
 
 def pack_4bpp(pixels: bytes, width: int, height: int, mapping: dict[int, int]) -> bytes:
-    """Row-major indexed pixels to the 1-D 4bpp tile layout, local indices, low nibble first."""
+    """Indexed pixels to 4bpp tiles, low nibble first.
+
+    THE SOURCE IS ALREADY TILED. Its containers store one byte per pixel in 8x8 TILE order, the same order the
+    destination needs, so this is a straight nibble pack and NOT a re-tiling. Assuming a row-major source and
+    re-tiling produced horizontal bands with blank rows, in the engine and in a render of the packed bytes alike,
+    which is how the mistake was found: two renderings of the same bytes, one row-major and one tile-major, and
+    only the tile-major one showed a silhouette.
+    """
     if width % TILE or height % TILE:
         raise ValueError(f"{width}x{height} is not a whole number of 8x8 tiles")
     out = bytearray()
-    for tile_y in range(0, height, TILE):
-        for tile_x in range(0, width, TILE):
-            for row in range(TILE):
-                source = (tile_y + row) * width + tile_x
-                line = pixels[source:source + TILE]
-                for pair in range(0, TILE, 2):
-                    low = mapping.get(line[pair], 0) & 0xF
-                    high = mapping.get(line[pair + 1], 0) & 0xF
-                    out.append(low | (high << 4))
+    for index in range(0, len(pixels) - 1, 2):
+        low = mapping.get(pixels[index], 0) & 0xF
+        high = mapping.get(pixels[index + 1], 0) & 0xF
+        out.append(low | (high << 4))
     return bytes(out)
 
 

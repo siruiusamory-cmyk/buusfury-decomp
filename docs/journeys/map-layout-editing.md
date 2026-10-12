@@ -21,8 +21,9 @@ tests:
 
 # Journey - map layout editing
 
-**The bounded operation.** Reassigning one **existing same-layer dominant-layer
-chunk cell** to another **non-null chunk that same layer already uses**. Nothing
+**The bounded operation.** Reassigning one **existing dominant-layer
+chunk cell** to another **non-null chunk a dominant layer of the same map already
+uses**. Nothing
 else is implied or available: no tile painting, no new or edited chunks, no
 resizing, no layer changes, no relocation, no arbitrary map formats. A journey
 that reads as more than that is wrong.
@@ -33,11 +34,12 @@ that reads as more than that is wrong.
    enabled until an image is open, and the image must match a configured
    profile identity.
 2. Open the Map Browser tab.
-3. Select a map that exposes an editable layer. 341 of the 452 maps do; the
-   other 111 state why they are read-only.
+3. Select a map that exposes an editable layer. 440 of the 452 maps do; the
+   other 12 state why they are read-only.
 4. Switch on **Edit Layout**.
 5. Click a chunk cell of the map's dominant layer.
-6. Choose another chunk **from that same layer** in the chooser.
+6. Choose another chunk **from the same map** in the chooser; a chunk borrowed
+   from a sibling layer of the map is labelled with the layer it came from.
 7. Observe the live preview. The swap is previewed in memory; no ROM file is
    opened to preview it.
 8. **Apply** the pending edit.
@@ -68,11 +70,12 @@ original engine having run the edited layout.
 
 ## Limits
 
-- 111 of the 452 maps are read-only: 110 dominant grids use a single chunk and
-  so have nothing to substitute, and `map:0008` has no dominant layer.
-- 156 of the 4,274 dominant cells are null; a null cell can be filled from its
-  own layer and reverted to null, but it cannot be pointed at a chunk the layer
-  does not already use.
+- 12 of the 452 maps are read-only: 11 dominant grids hold a single chunk across
+  all four of their layers and so have nothing to substitute, and `map:0008` has
+  no dominant layer.
+- 156 of the 4,274 dominant cells are null; a null cell can be filled from any
+  chunk a dominant layer of the same map uses, and reverted to null. The null
+  pointer itself is never a replacement.
 - Map 19's terrain field is outside the proven form and stays view-only.
 - A reopened derivative is read-only: further layout editing belongs to the
   canonical image it derives from.

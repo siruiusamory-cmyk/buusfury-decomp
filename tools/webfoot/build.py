@@ -1661,8 +1661,9 @@ def build_project(
 
     # MAP-TILE-PAINT-001: authored chunk-cell paints contribute ByteChanges the
     # same way every other subsystem does. Each painted cell is a four-byte
-    # in-place replacement of a dominant layer's chunk pointer with a chunk that
-    # same layer already uses, planned through the ONE paint authority
+    # in-place replacement of a dominant layer's chunk pointer with a chunk a
+    # dominant layer of the same map already uses, planned through the ONE paint
+    # authority
     # (`map_paint.MapPainter`), so it merges into the single plan below where an
     # overlap with another owner is a hard error rather than a silent
     # last-writer-wins. A non-canonical profile cannot be painted at all, and

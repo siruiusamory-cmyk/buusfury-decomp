@@ -1124,9 +1124,9 @@ production map-ID branches and match the retained VRAM oracle exactly after the
 proven circular transform and pinned runtime-state normalization.
 
 Map viewability and editability on canonical Buu's Fury USA rev0: **452 maps
-viewable, 341 editable, 111 read-only** (110 dominant grids that use a single
-chunk and so have nothing to substitute; 1 map, `map:0008`, with no dominant
-layer); 1,516 dominant slots of which 1,093 offer at least two chunks; 4,274
+viewable, 440 editable, 12 read-only** (11 dominant grids whose four layers hold
+a single chunk between them and so have nothing to substitute; 1 map, `map:0008`,
+with no dominant layer); 1,516 dominant slots of which 1,093 offer at least two chunks; 4,274
 dominant cells of which 156 are null. A semantic Maps workspace spans all 452
 known maps as 3 Editable, 265 Partial and 184 Read-only, composes retail and
 project-authored placements, exposes known placement to entity to behavior/script
@@ -1135,7 +1135,8 @@ project-level Revert. Builds use the normal `validate_project` / `build_project`
 path with shared build-scoped reservations and one merged plan.
 
 The Map Browser's Layout mode reassigns one 256x256 chunk cell of a compatible
-map's dominant layer to another existing non-null chunk from the same layer,
+map's dominant layer to another existing non-null chunk a dominant layer of the
+same map uses,
 previews the swap in memory, and saves pending edits to a new ROM. The Grand Kai
 proof case (`map:0040` BG1 cell 0, `0x082928DC` to `0x08292A54` at file
 `0x00292CA0`) changes exactly two bytes and re-renders with **29,208** changed
@@ -1147,7 +1148,8 @@ image, and the Atlas open accepts a modified image only when that provenance
 proves it is the canonical image plus declared, policy-legal layout edits
 (canonical base SHA-256 and the profile of that image, a matching emitted digest
 and byte count, four-byte dominant-layer fields named by their own
-`map:NNNN layer S cell C` owner whose replacement the layer already uses
+`map:NNNN layer S cell C` owner whose replacement a dominant layer of that map
+uses
 elsewhere, and a reconstruction of the declared old values that hashes back to the
 canonical image). Arbitrary modified images, provenance mismatches and manifests
 claiming unsupported edits are refused with the reason stated; the canonical image
@@ -1182,15 +1184,16 @@ growth emitting one record, one root-slot write and one reservation. Special
 handlers, the terrain-field form, unused slots and zero-dimension records are
 refused, and a shared root is refused.
 
-Tile painting ships: in the Map Browser's Layout mode, pick a chunk the current
-dominant layer already uses and click or drag it onto a 256x256 chunk cell.
+Tile painting ships: in the Map Browser's Layout mode, pick a chunk a dominant
+layer of the map already uses and click or drag it onto a 256x256 chunk cell.
 Single-cell paint, drag paint, eyedropper, undo, redo, no-op handling, Apply and
 Revert, save and reopen, and build are all delivered on one undo history where a
 stroke is one gesture. The editable unit is one four-byte chunk-cell reference
 (`record + 0x18`) to an existing 256x256 chunk, a 32x32 plane of 16-bit screen
 entries; it is not an individual 8x8 hardware tile, and no surface pretends
-otherwise. A cell may only receive a chunk the same layer already uses at another
-of its cells, so a single-chunk layer is read-only. The replacement is a fixed
+otherwise. A cell may only receive a chunk that already occurs in a dominant
+layer of the same map, so a layer whose grid
+holds a single chunk is paintable from its siblings'. The replacement is a fixed
 four-byte in-place write, so a build changes only the painted cells, measured at
 exactly two bytes over the whole 8 MiB image; no allocation or relocation is
 required for it. The retail engine displays the authored cell, proven by a matched

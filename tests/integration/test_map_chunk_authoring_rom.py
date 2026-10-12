@@ -805,3 +805,82 @@ def test_a_project_cannot_name_an_undeclared_chunk_across_documents(project):
     write_layout_edits(project, LayoutEdits(maps={"map:0040": {1: {0: "chunk:ghost"}}}))
     with pytest.raises(ProjectValidationError, match="chunk:ghost"):
         read_project(project)
+
+
+def test_a_borrowed_brush_ordinal_must_be_translated_before_a_template(author):
+    """Create Chunk from a borrowed brush: the map-wide ordinal is the wrong number.
+
+    MAP-PAINT-ANY-CHUNK-001 lets a cell borrow a chunk from any dominant layer of the
+    map, so the brush ordinal counts across the map while ``resolve_template`` counts
+    inside one layer. Handing the first to the second, which is what Create Chunk did,
+    asked the layer about a chunk it does not draw and refused a chunk the map does
+    use. This drives both halves: the untranslated ordinal is refused, and the same
+    chunk resolves once the ordinal is translated to the layer that draws it.
+    """
+    from tools.webfoot.map_layout_edit import LayoutSlot
+
+    own = author._view.pointers(GRAND_KAI, GRAND_KAI_LAYER)
+    others: list[tuple[int, tuple[int, ...]]] = [
+        (slot, author._view.pointers(GRAND_KAI, slot))
+        for slot in (0, 2, 3)
+        if slot != GRAND_KAI_LAYER
+    ]
+    borrowed_slot, borrowed_window = next(
+        (slot, window)
+        for slot, window in others
+        if any(pointer not in own for pointer in window)
+    )
+    borrowed = next(pointer for pointer in borrowed_window if pointer not in own)
+
+    # The map-wide set: this layer's own pointers first, then its siblings'.
+    choices = tuple(dict.fromkeys(
+        pointer for _slot, window in ((GRAND_KAI_LAYER, own), *others) for pointer in window
+    ))
+    sources = tuple(
+        next(
+            slot
+            for slot, window in ((GRAND_KAI_LAYER, own), *others)
+            if pointer in window
+        )
+        for pointer in choices
+    )
+    owner_ordinals = tuple(
+        next(
+            position
+            for slot, window in ((GRAND_KAI_LAYER, own), *others)
+            if pointer in window
+            for position, candidate in enumerate(
+                tuple(dict.fromkeys(p for p in window if p)), start=1
+            )
+            if candidate == pointer
+        )
+        for pointer in choices
+    )
+    slot_view = LayoutSlot(
+        slot=GRAND_KAI_LAYER,
+        classification="dominant",
+        handler=0,
+        grid=None,
+        cells=(),
+        choices=choices,
+        sources=sources,
+        owner_ordinals=owner_ordinals,
+        read_only_reason="",
+    )
+    map_wide = slot_view.ordinal_of(borrowed)
+    template_slot, template_ordinal = slot_view.template_target(borrowed)
+    assert template_slot == borrowed_slot
+
+    # OLD SHAPE: the map-wide ordinal against the layer the user is standing on.
+    with pytest.raises(mc.ChunkAuthoringError, match="distinct chunk"):
+        mc.resolve_template(
+            author._view,
+            mc.ChunkTemplate(GRAND_KAI, GRAND_KAI_LAYER, map_wide),
+        )
+
+    # FIXED SHAPE: the owning layer and the ordinal inside that layer's window.
+    address, _entries = mc.resolve_template(
+        author._view,
+        mc.ChunkTemplate(GRAND_KAI, template_slot, template_ordinal),
+    )
+    assert address == borrowed

@@ -786,7 +786,14 @@ def chunk_authoring_qa(
     harness.select_map(PROOF_MAP)
     tab = harness.browser
     harness.choose_chunk_row(0)
-    template = ChunkTemplate(PROOF_MAP, tab._slot.slot, tab._brush_ordinal)
+    # The template names the layer that DRAWS the chunk and the chunk's position in
+    # that layer's own window, which is not the map-wide ordinal the brush stores.
+    # Row 0 is this layer's own first chunk, so the two agree here; translate anyway
+    # so the script stays correct if the chosen row ever becomes a borrowed one.
+    _pointer = tab._lookup_pointer(tab._brush_ordinal)
+    _target = None if _pointer is None else tab._slot.template_target(_pointer)
+    assert _target is not None, "the chosen row must name a chunk this map uses"
+    template = ChunkTemplate(PROOF_MAP, _target[0], _target[1])
     print(
         f"  template: {template.text}  vocabulary: "
         f"{len(tab.chunk_author().vocabulary(PROOF_MAP, tab._slot.slot))} entries"

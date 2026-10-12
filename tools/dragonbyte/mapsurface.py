@@ -127,7 +127,8 @@ class LayerRow:
 class CellRow:
     """One chunk-window cell of one paintable layer.
 
-    ``ordinal`` is the layer's own 1-based chunk number - the value a project
+    ``ordinal`` is the chunk's 1-based position in the map's accepted set - the
+    value a project
     stores and the SDK resolves - or None for a cell whose pointer is the null
     pointer, which is the one cell state with no chunk to name.
     """

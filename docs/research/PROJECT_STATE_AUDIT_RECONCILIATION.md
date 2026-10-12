@@ -231,6 +231,24 @@ which items are actually outstanding.
   `CQA-11` was recorded open while its two concrete defects had already been fixed, those rows
   should be re-measured before any of them is worked.
 
+
+**Refresh 2026-10-11, after the backlog was worked directly. Six rows above are now out of date and
+are corrected here rather than in place, because this is a record of what was true when written.**
+`CQA-13` is ALREADY FIXED: the atlas write stages through `project/atomic.py` and `os.replace`.
+`CQA-20` is CLOSED: the deploy job now requires both test-stage jobs, verified end to end on master.
+`CQA-26` is ALREADY FIXED: the unread sentinel is `_UNREAD_POINTER = -1` with the reason that `0` is
+the engine's own null chunk. `CQA-27` is genuinely OPEN, and its size note is stale twice over: the
+widget is 7,589 lines, not 1,986 as this table says and not 8,282 as one recon reported. `CQA-35` is
+REFUTED on its data-placement half and fixed on its arithmetic half, with the real defect being a
+profile-blind registry read tracked separately. `CQA-23` is CLOSED as already-fixed-superseded on two
+of three halves, with the duplicate-binding half merged; only CQA-27 remains of that finding.
+
+**The lesson this pass produced, recorded because it caused a wasted lane:** a brief must be sourced
+from MEASUREMENT, not from this table or from the audit's prose. Three separate lanes measured a
+brief and found the defect already fixed, the destination closed, or the two candidate fixes not
+equivalent. This table closed CQA-23's layout-history half on 2026-10-07 and a later brief still sent
+a lane to fix it, because the brief read the audit's older paragraph and not this row.
+
 ### B.2 Findings
 
 `Original status` is the severity and the claim as recorded, compressed. `Source`

@@ -1266,7 +1266,21 @@ attributed to a separate probe.
   have none.
 - **Before ROM-capacity/allocation work?** no.
 
-#### CQA-24 [MEDIUM] "Revert unapplied" discards pending colours but leaves Apply enabled and the pending list on screen; Apply then silently does nothing
+#### CQA-24 [MEDIUM] "Revert unapplied" discards pending colours
+> **RE-MEASURED 2026-10-11, ticket CLOSED AS ALREADY-FIXED-SUPERSEDED.** Two of this finding's three
+> halves were already fixed before the work was attempted, and a lane stopped rather than invent a
+> second mechanism. The mode-blind half is gone: `_active_undo_stack` resolves the active host and
+> the Maps host routes by mode. The layout-history half is ALSO already fixed and was fixed from the
+> start: the staging write at `map_browser_tab.py:4082` is covered by the push at `:4183`, the
+> command that carries it was introduced together with the surface, and five existing tests in
+> `tests/unit/test_workbench_resize_and_layers.py` already pin the structural undo and redo round
+> trip. The sentence above about the layout edit session having no history describes an older
+> revision. The one half that was genuinely open, the two duplicate Ctrl+Z bindings, is closed and
+> merged on both the Graphics and the Maps surfaces. What remains of this finding is CQA-27.
+> A note for any future reader: the comment at `map_browser_tab.py:4077-4079` reads as if the whole
+> staging path enters no history when it describes only the no-op branch, so that wording, not the
+> behaviour, is the residue worth correcting.
+ but leaves Apply enabled and the pending list on screen; Apply then silently does nothing
 
 - **Location:** `workbench/graphics_tab.py:1400-1403` (`_on_revert`).
 - **Observed:** the pending changes are cleared without refreshing the pending
@@ -1386,6 +1400,19 @@ and none is currently worth dedicated work.
 > forbidden bare full suite". This note sits BELOW the C.4 table rather than beside the
 > CQA-42 row, because a blockquote directly under a table row ends the table there and the
 > ten findings after it lose their header and render as plain text.
+> **RE-MEASURED 2026-10-11, and the finding is PARTLY FIXED and PARTLY REFUTED.** The GBA-window
+> arithmetic half is fixed: the file no longer contains the base literal and goes through
+> `GBA_ROM_BASE` with `FileOffset`. The data-placement half is REFUTED rather than deferred: the
+> project's own classification at `docs/research/ROM_ATLAS_IDENTITY_AND_EXTENTS.md:214` places
+> per-game dicts keyed by profile id in `tools/webfoot/data/*.py`, which is the shape
+> `AUTHORED_DIALOGUE_TARGETS` already has, and the profile schema is closed
+> (`_ALLOWED_KEYS`, `_ALLOWED_TABLES`, unexpected-key and unexpected-table refusal,
+> `schema_version == 1`), so moving one tuple would mean inventing a table kind, a dataclass, a
+> loader and two byte-pinned YAML copies. The tuple is where it belongs and the citation above is
+> stale. The real defect found underneath is that the same offset is read without reference to the
+> active profile at `tools/dragonbyte/textsurface.py:819-824`, which takes the FIRST registry entry
+> for whatever profile is active; with one entry it is latent, and it is tracked separately.
+
 
 ### C.5 INFO
 

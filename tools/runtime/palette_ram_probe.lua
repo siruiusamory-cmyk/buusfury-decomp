@@ -58,10 +58,9 @@ callbacks:add("frame", function()
   for _, sample in ipairs(SAMPLES) do
     if frames == sample then measure(frames) end
   end
-  if frames >= 960 then
-    note("PALDUMP done")
-    emu:exit()
-  end
+  -- A cold boot reaches the scene far past the old 960-frame window, so keep sampling instead of ending
+  -- the observer; the operator ends the run by closing the window.
+  if frames > 900 and frames % 300 == 0 then measure(frames) end
 end)
 
 note("PALDUMP armed")

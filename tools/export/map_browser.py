@@ -13,7 +13,7 @@ every reader and tile primitive under it, into the SDK:
 * the classified render, the chunk chooser and the pixel composition are
   :mod:`tools.webfoot.map_view`;
 * the chunk-replacement policy is
-  :func:`tools.webfoot.map_layout_write.validate_cell_replacement`.
+  :func:`tools.webfoot.map_layout_write.validate_chunk_replacement`.
 
 What is left here is a **facade**: the same names, over the SDK implementation,
 for the resource exporter's own consumers. Nothing in this file decodes a ROM

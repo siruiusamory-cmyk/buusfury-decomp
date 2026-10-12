@@ -15,8 +15,8 @@ edits:
   declared field must hold the declared new bytes;
 * every declared change must be a four-byte field of a supported map's *dominant*
   chunk window, addressable from its own semantic owner string
-  (``map:NNNN layer S cell C``), and must put a non-null chunk that a dominant
-  layer of that same map already uses at another of its cells into that cell - the
+  (``map:NNNN layer S cell C``), and must put a non-null chunk that already occurs
+  in a dominant layer of that same map into that cell - the
   single write operation
   MAP-LAYOUT-WRITE-001 proved; and
 * restoring each declared ``old`` value at its declared span must reproduce the

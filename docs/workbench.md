@@ -34,8 +34,8 @@ read-only; switching to **Layout** mode enables editing. Four shipped operations
 live there, over `tools/webfoot/map_layout_edit.py` and the proven writer in
 `tools/webfoot/map_layout_write.py`: one 256x256 chunk cell of a map's dominant
 layer may be reassigned to another chunk **a dominant layer of the same map
-already uses**; one of
-that layer's existing chunks can be painted onto those chunk cells; a chunk the
+already uses**; any of the map's dominant layers' chunks can be painted onto those
+chunk cells; a chunk the
 layer did not have can be created and its 32x32 plane painted; and the structure
 section can grow a supported layer's chunk grid or activate an unused layer slot.
 The

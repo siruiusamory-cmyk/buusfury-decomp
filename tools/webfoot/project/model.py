@@ -993,11 +993,12 @@ class LayoutEdits:
     * the map is named by its durable identity (``map:NNNN``, the same key
       ``maps/maps.toml`` uses), and the layer by BG slot, so nothing points at a
       file offset or a raw address;
-    * the replacement is the chunk's **1-based ordinal inside that layer's own
-      existing chunk vocabulary** - the same "Chunk N" a person reads in the map
+    * the replacement is the chunk's **1-based ordinal inside the map's accepted
+      brush vocabulary** - the same "Chunk N" a person reads in the map
       editor - not the pointer address. The ordinal is resolved against the base
       image at build time, and because the vocabulary is the first-appearance
-      order of the layer's own non-null pointers it is a deterministic property
+      order of the map's dominant layers' non-null pointers, with the edited
+      layer's own first, it is a deterministic property
       of that image, so the same project file resolves identically on every
       machine and after any reopen;
     * the cell is a row-major index into the layer's own chunk window, which is

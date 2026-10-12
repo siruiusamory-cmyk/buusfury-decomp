@@ -179,7 +179,7 @@ The reviewer's first finding was that the draft's totals did not match its own r
 - **New-record authoring:** A new chunk may be created from one a dominant layer already draws: its 32x32 plane is rearranged using only screen entries that same layer already displays, it gets its own project identity, and the build materialises it above the original ROM end. Runtime-observed: the engine's loaded BG1 tilemap carries the authored arrangement while BG0, BG2 and BG3 stay byte-identical.
 - **Cross-reference and navigation:** Layer grid cell to chunk address; chunk to the map's assembled character block that resolves its tile ordinals.
 - **Raw backing range:** Chunk bodies are addressed per map; a new body is emitted above the original ROM end through the allocator.
-- **Validation and rebuild:** Validate refuses an entry outside the layer's own vocabulary; build allocates and resolves the cell. Runtime-proven for the authored case.
+- **Validation and rebuild:** Validate refuses an entry outside the map's accepted chunk set; build allocates and resolves the cell. Runtime-proven for the authored case.
 - **Current product and UI exposure:** Maps editor Layout mode: Create Chunk, chunk editor, chunk brush.
 - **Known restrictions:** An authored chunk adds no tiles and no palettes: it is a new arrangement of graphics the map already draws. Chunks are map-scoped because their tile ordinals only resolve through one map's character block. Creation depends on generated expansion, since the canonical image declares 256 bytes of free space.
 - **External tool currently required:** tile editor and a graphics codec writer for genuinely new artwork.

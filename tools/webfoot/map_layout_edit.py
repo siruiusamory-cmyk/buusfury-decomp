@@ -38,6 +38,7 @@ from .map_layout_write import (
     legal_chunk_pointers,
     validate_chunk_replacement,
 )
+from .map_layout_provenance import REASON as MANIFEST_REASON
 from .packaged import packaged_profile
 
 from . import write as write_sdk
@@ -194,7 +195,12 @@ class LayoutSlot:
         return f"BG{self.slot} · {self.classification}"
 
     def ordinal_of(self, pointer: int) -> int | None:
-        """The 1-based position of a chunk in this layer's own list, or None."""
+        """The 1-based position of a chunk in this map's accepted set, or None.
+
+        This is the ordinal a project persists, so it is the map-wide position and
+        not a layer-local count: ``choices`` leads with the layer's own chunks and
+        continues with its siblings', which is the order ``PaintChunk`` numbers too.
+        """
         try:
             return self.choices.index(pointer) + 1
         except ValueError:
@@ -908,7 +914,7 @@ class MapLayoutEditor:
                 old=self._base[edit.offset : edit.offset + 4],
                 new=edit.replacement.to_bytes(4, "little"),
                 owner=f"map:{edit.map_index:04d} layer {edit.layer_slot} cell {edit.cell}",
-                reason="chunk replacement from a dominant layer of the same map",
+                reason=MANIFEST_REASON,
             )
             for edit in self.edits()
         )

@@ -1184,15 +1184,15 @@ growth emitting one record, one root-slot write and one reservation. Special
 handlers, the terrain-field form, unused slots and zero-dimension records are
 refused, and a shared root is refused.
 
-Tile painting ships: in the Map Browser's Layout mode, pick a chunk the current
-dominant layer already uses and click or drag it onto a 256x256 chunk cell.
+Tile painting ships: in the Map Browser's Layout mode, pick a chunk a dominant
+layer of the map already uses and click or drag it onto a 256x256 chunk cell.
 Single-cell paint, drag paint, eyedropper, undo, redo, no-op handling, Apply and
 Revert, save and reopen, and build are all delivered on one undo history where a
 stroke is one gesture. The editable unit is one four-byte chunk-cell reference
 (`record + 0x18`) to an existing 256x256 chunk, a 32x32 plane of 16-bit screen
 entries; it is not an individual 8x8 hardware tile, and no surface pretends
-otherwise. A cell may only receive a chunk a dominant layer of the same map
-already uses at another of its cells, so a layer whose grid
+otherwise. A cell may only receive a chunk that already occurs in a dominant
+layer of the same map, so a layer whose grid
 holds a single chunk is paintable from its siblings'. The replacement is a fixed
 four-byte in-place write, so a build changes only the painted cells, measured at
 exactly two bytes over the whole 8 MiB image; no allocation or relocation is

@@ -1975,8 +1975,8 @@ class MapBrowserTab(QWidget):
         # -- MAP-CHUNK-AUTHORING-001 state, all in-memory ---------------------
         #
         # The map paint path is pointer-based - `MapLayoutEditor.set_cell` takes a
-        # 4-byte chunk address and `LayoutSlot.choices` only holds chunks the
-        # layer already uses - so an authored chunk, which has no address until a
+        # 4-byte chunk address and `LayoutSlot.choices` holds every chunk a
+        # dominant layer of this map uses - so an authored chunk, which has no address until a
         # build allocates one, cannot travel through it. It is staged here instead
         # and persisted by its own SDK authority.
         #: Staged authored placements: ``(map, layer, cell) -> chunk identity``.
@@ -3949,7 +3949,7 @@ class MapBrowserTab(QWidget):
 
         MAP-CHUNK-AUTHORING-001: a cell may hold an authored placement rather than
         a pointer, and picking it must give the authored chunk back - otherwise the
-        eyedropper would report "no chunk this layer uses" over a cell the author
+        eyedropper would report "no chunk this map uses" over a cell the author
         can plainly see holds one.
         """
         if self._slot is None:
@@ -3968,7 +3968,8 @@ class MapBrowserTab(QWidget):
         ordinal = self._slot.ordinal_of(pointer)
         if ordinal is None:
             self._publish_status(
-                "That cell holds no chunk this layer uses, so it is not a brush value."
+                "That cell holds no chunk a dominant layer of this map uses, so it "
+                "is not a brush value."
             )
             return
         self._brush_authored = None

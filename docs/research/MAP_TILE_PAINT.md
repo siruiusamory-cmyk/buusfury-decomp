@@ -21,10 +21,11 @@ chunk (`CHUNK_SIDE_TILES`, `CHUNK_ENTRY_COUNT`, `CHUNK_PIXELS`). The innermost
 unit the format lets an author choose between is therefore the chunk, and the
 layer's own chunk grid is squared by `CHUNK_SIDE_TILES` for the logical map size.
 
-The replacement rule is the one MAP-LAYOUT-WRITE-001 proved and this record
-reuses unchanged: a cell may only be given a non-null chunk pointer **the same
-layer already uses at another of its cells**. That is why the legal brush
-vocabulary is the layer's own existing chunks, and why this record cannot
+The replacement rule is the one MAP-LAYOUT-WRITE-001 proved, which this record
+reused and `MAP-PAINT-ANY-CHUNK-001` later widened: a cell may only be given a
+non-null chunk pointer **that already occurs in a dominant layer of the same
+map**. That is why the legal brush
+vocabulary is the map's dominant layers' existing chunks, and why this record cannot
 allocate, relocate, create a chunk, resize a layer, or create a map.
 
 Painting in this record is therefore **chunk-cell painting on an existing
@@ -40,7 +41,8 @@ MAP-LAYOUT-WRITE-001 measured at 29,208 changed pixels. Ordinary dominant maps
 are supported wherever a layer offers at least two existing chunks. Special
 forms fail closed with a stated reason: a screen-entry plane, a terrain-field
 layer (Map 19), an absent slot, a zero-dimension dominant grid, an unclassified
-handler, and a dominant grid that uses a single chunk (nothing to paint *with*).
+handler, and a map whose dominant layers between them use a single chunk (nothing
+to paint *with*).
 
 ## What was proven
 

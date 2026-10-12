@@ -21,8 +21,8 @@ a finer brush than the format supports.
 
 The replacement rule is the one MAP-LAYOUT-WRITE-001 proved, DRAGONBYTE-Z-MAP-
 LAYOUT-EDITOR-001 shipped and MAP-PAINT-ANY-CHUNK-001 widened: a cell may only be
-given a **non-null chunk pointer a dominant layer of the same map already uses at
-another of its cells**. That is why the legal
+given a **non-null chunk pointer that already occurs in a dominant layer of the
+same map**. That is why the legal
 brush vocabulary is the map's existing chunks and why this module cannot
 allocate, relocate, create a chunk, or resize a layer. Creating a brand-new chunk
 is a different capability (Phase 2B) and is deliberately absent here.
@@ -76,7 +76,7 @@ CHUNK_SIDE_TILES = mg.CHUNK_SIDE_TILES
 class PaintChunk:
     """One selectable brush value: a chunk a dominant layer of this map uses.
 
-    ``ordinal`` is the 1-based position in this layer's brush vocabulary, and it is
+    ``ordinal`` is the 1-based position in this map's brush vocabulary, and it is
     the value an authored project stores - not ``pointer``. The pointer is
     published because a renderer needs it and because it is the honest identity
     of the value; the ordinal is published because it is the only form that
@@ -205,7 +205,7 @@ class PaintLayer:
         return self.vocabulary[ordinal - 1]
 
     def ordinal_of(self, pointer: int) -> int | None:
-        """The 1-based ordinal of a pointer in this layer's vocabulary."""
+        """The 1-based ordinal of a pointer in this map's vocabulary."""
         for entry in self.vocabulary:
             if entry.pointer == pointer:
                 return entry.ordinal
@@ -780,7 +780,7 @@ def set_layout_cells(
     """Validate and persist a whole batch of chunk-cell paints in ONE write.
 
     ``edits`` maps ``(map index, layer slot, cell)`` to the 1-based ordinal of a
-    chunk the layer already uses, or to ``None`` meaning "this cell carries no
+    chunk a dominant layer of the same map uses, or to ``None`` meaning "this cell carries no
     authored paint" (which is how an undo of a cell that was never painted
     reverses, and how the palette batch spells a removal).
 

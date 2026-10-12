@@ -97,7 +97,7 @@ class ChunkSubstitution:
     MAP-CHUNK-AUTHORING-001. A project-authored chunk has no address in the
     canonical image - a build has not run yet, and choosing the address is the
     build's job - so the ordinary ``chunk_overrides`` form, which names an address
-    the layer already uses, cannot express it. This carries the authored 32x32
+    a dominant layer of the map already uses, cannot express it. This carries the authored 32x32
     plane instead, so a preview draws exactly the entries a build would
     materialize, through the same stitch and the same renderer the retail layout
     uses rather than through a second rendering path.

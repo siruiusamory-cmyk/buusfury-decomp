@@ -47,16 +47,25 @@ local-ci-hello:
 # and reports green over a Workbench surface that collapsed to skips, which is
 # what it did before.
 #
+# The job body is `ci\test_sdk.ps1`, because the runner is a shell executor on
+# Windows: `image:` does nothing there, the interpreter is the machine's own
+# Python 3.12, and the venv is built outside every repository
+# (`ci\common.ps1`). The same script can be run by hand for a measurement, which
+# is how the port was timed. `docs/testing.md` owns what runs where and why.
+#
 # The whole unit suite runs unmodified, including the git-backed
-# repository-safety tests, hence the git install below.
+# repository-safety tests, which shell out to the machine's own git.
 test-sdk:
   stage: test
-  image: python:3.12-slim
+  tags: ["local-ci"]
   variables:
-    # Do not inherit the deployment credential into a test job.
+    # Do not inherit the deployment credential into a test job. It is a
+    # protected variable, so an unprotected ref cannot see it either way, and
+    # this says so at the job.
     CLOUDFLARE_API_TOKEN: ""
-    # The runner has no display. Twelve of the fifteen PySide6 modules the job
-    # must execute set this themselves; tests/unit/test_build_panel_guard.py,
+    # The runner is a desktop session and the job must not depend on one.
+    # Twelve of the fifteen PySide6 modules the job must execute set this
+    # themselves; tests/unit/test_build_panel_guard.py,
     # tests/unit/test_build_panel_overwrite.py and
     # tests/unit/test_workbench_build_manifest.py do not. The last two build a
     # real QApplication in a module-scoped fixture, so the job-level setting is
@@ -64,91 +73,8 @@ test-sdk:
     # plugin; the first only imports a module that imports PySide6 at module
     # scope, so it needs the dependency but constructs no widget.
     QT_QPA_PLATFORM: "offscreen"
-  before_script:
-    # test_project_safety.py shells out to git to prove no proprietary path is
-    # tracked and that the ignore rules hold. The slim image has no git.
-    #
-    # PySide6 ships Qt's own shared libraries inside the wheel but not the system
-    # sonames Qt links against, so the [workbench] extra imports on this image
-    # only when those runtime libraries are present. THIS LIST IS THE ONE PLACE
-    # TO CORRECT: if a Workbench module fails in CI with "libFoo.so.N: cannot
-    # open shared object file", add the Debian package that provides that soname
-    # here, with the soname in the comment. Each entry below names the DT_NEEDED
-    # soname that requires it:
-    #   libglib2.0-0t64   <- libglib-2.0.so.0   (libQt6Core)
-    #   libgl1            <- libGL.so.1         (libQt6Gui, libQt6OpenGL)
-    #   libegl1           <- libEGL.so.1        (libQt6Gui)
-    #   libx11-6          <- libX11.so.6       (libQt6Gui, and libqoffscreen.so itself)
-    #   libxkbcommon0     <- libxkbcommon.so.0  (libQt6Gui)
-    #   libfontconfig1    <- libfontconfig.so.1 (libQt6Gui; pulls libfreetype6)
-    #   libfreetype6      <- libfreetype.so.6  (libQt6Gui, libqminimal; libfontconfig1 hard-depends it, named here so the soname is explicit)
-    #   libdbus-1-3       <- libdbus-1.so.3     (libQt6DBus/libQt6Core)
-    # Evidence for the list above, so that it is not read as a guess. The three
-    # Linux PySide6 wheels were downloaded and inspected:
-    # `pyside6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`,
-    # `pyside6_essentials-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl` (93 MiB -
-    # this is the one that ships Qt) and
-    # `shiboken6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`. Every entry above
-    # was derived by parsing the ELF `DT_NEEDED` entries of
-    # `PySide6/Qt/lib/libQt6Core.so.6`, `libQt6Gui.so.6`, `libQt6Widgets.so.6`,
-    # `libQt6DBus.so.6`, the platform plugins
-    # `plugins/platforms/libqoffscreen.so` and `libqminimal.so`, and the
-    # `QtCore/QtGui/QtWidgets.abi3.so` extension modules, verified three
-    # independent ways - program headers, section headers, and a raw dynstr
-    # dump - with identical results.
-    # The wheels bundle `libQt6*`, `libicu*`, `libpyside6*` and `libshiboken6*`
-    # only. Everything listed here is a system soname they link against and the
-    # image does not already provide. `libc6`, `libstdc++6`, `libgcc-s1`,
-    # `zlib1g` and `libzstd1` are already in `python:3.12-slim` and are
-    # deliberately not listed.
-    # Notably `libqoffscreen.so` itself links `libX11.so.6`, `libGL.so.1` and
-    # `libxkbcommon.so.0`: the offscreen platform avoids the **xcb plugin** and
-    # its fifteen `libxcb-*` sonames, not libX11 or libxkbcommon.
-    # Fonts, `xkb-data`, `libglvnd0`/`libglx0` and `libexpat1`/`libpng16-16` are
-    # deliberately NOT listed: they arrive as apt hard dependencies.
-    # `libglib2.0-0t64` is the Debian trixie name: `python:3.12-slim` currently
-    # resolves to trixie (verified 2026-09-25 by digest identity with
-    # `3.12-slim-trixie`), where the t64 transition renamed `libglib2.0-0`, and
-    # installing the old name fails the job. The base image tag is deliberately
-    # not pinned to a digest, like `node:22` below: if the tag later moves to a
-    # suite with different package names, the job fails loudly instead of
-    # silently skipping the surface it is here to execute.
-    # `ca-certificates` is not added: the official python slim image already
-    # installs it, and pip verifies HTTPS against its own bundled CA store.
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends
-      git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
-    - python -m pip install --quiet --upgrade pip
-    # `workbench` is the shipping GUI surface and `research` is capstone: without
-    # them fifteen modules under tests/unit skip as a whole.
-    - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
-    # Size the worker count from what THIS runner actually has, because the
-    # shared small runner reports 2 cores and four workers on two cores bought
-    # nothing: measured 2026-10-11, the job took 237s and 252s under `-n 4`
-    # against 216s to 287s for the serial master baseline, which is inside the
-    # noise. `-n auto` is pytest-xdist's own reading of the core count, so the
-    # sizing cannot drift from this comment. The count is printed explicitly
-    # because the job runs pytest with `-q`, which suppresses the header where
-    # xdist would otherwise report it. The core and memory readings stay as
-    # evidence: the interpreter is used because `nproc` is not guaranteed on this
-    # slim image and printed nothing when it was tried, and `/proc/meminfo` is
-    # read because `free` does not exist here at all.
-    - python -c "import os; print('cores:', os.cpu_count())"
-    - grep -E '^(MemTotal|MemAvailable)' /proc/meminfo
-    - python -c "import os; print('xdist workers (auto):', os.cpu_count())"
-    # The JUnit report is what makes a failure legible in the merge request
-    # without downloading the raw job log, and xdist merges every worker's
-    # results into this one file.
-    - python -m pytest tests/unit -q -n auto --dist loadfile --junitxml=report.xml
-    # The gates a reviewer is told to run, run here as well. The unit suite does
-    # exercise the public-surface and purity checks through their tests, but the
-    # readability gate is only asserted over the shipping package there, so the
-    # tree-wide form has to be its own step or a hard finding outside
-    # `tools/webfoot/` would pass CI.
-    - python -m tools.quality.public_surface --all
-    - python -m tools.quality.architecture
-    - python -m tools.quality.public_release
-    - python -m tools.quality.readability --all
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_sdk.ps1; exit $LASTEXITCODE'
   artifacts:
     when: always
     reports:
@@ -187,22 +113,15 @@ test-sdk:
 # failing the job for a reason nobody sees.
 test-integration:
   stage: test
-  image: python:3.12-slim
+  tags: ["local-ci"]
   # A bounded runtime, so a hung test cannot hold a runner until the project
   # default. The file itself takes about a second; the install dominates.
   timeout: 10 minutes
   variables:
     # Do not inherit the deployment credential into a test job.
     CLOUDFLARE_API_TOKEN: ""
-  before_script:
-    # No apt step and no headless Qt platform, unlike `test-sdk`: this selection
-    # imports no PySide6, needs no system soname Qt links against, and shells out
-    # to no git. `QT_QPA_PLATFORM` stays deliberately absent for the same reason -
-    # the selection imports no Qt, so there is no platform plugin to select.
-    - python -m pip install --quiet --upgrade pip
-    - python -m pip install --quiet -e ".[dev]"
   script:
-    - python -m pytest tests/integration/test_container_decode_synthetic.py -q
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_integration.ps1; exit $LASTEXITCODE'
   rules:
     # The sibling test job's rules, for the same reason: run on merge requests,
     # and on branch pushes that have no open merge request, so the branch
@@ -228,35 +147,27 @@ test-integration:
 # job log, the one set member that needs the canonical image that `test-sdk`
 # installs no ROM for.
 #
-# `needs: ["test-sdk"]` rather than the implicit stage barrier, because every
-# install this job needs is already in that job's install and its
-# `before_script` is therefore one line. It does not start until `test-sdk` is
-# green, so the adjacency orders never run alongside the parallel suite.
+# `needs: ["test-sdk"]` rather than the implicit stage barrier, because the
+# environment this job needs is the one that job already built: it runs in
+# `test-sdk`'s venv (`ci\adjacency.ps1`) instead of paying a second 700 MB
+# install of the same extras. It does not start until `test-sdk` is green, so the
+# adjacency orders never run alongside the parallel suite.
 adjacency:
   stage: test
-  image: python:3.12-slim
+  tags: ["local-ci"]
   timeout: 20 minutes
   needs: ["test-sdk"]
   variables:
     # Do not inherit the deployment credential into a test job.
     CLOUDFLARE_API_TOKEN: ""
     QT_QPA_PLATFORM: "offscreen"
-  before_script:
-    # The same install line as `test-sdk`, for the same reason: the set is the
-    # shipping Workbench surface, so it needs the same sonames the comment in
-    # `test-sdk` names, the same git install, and both extras. This job does not
-    # invent a second install: it waits for the job that already proves it.
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends
-      git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
-    - python -m pip install --quiet --upgrade pip
-    - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
     # Each order is one pytest process across the whole set, forward and
     # reversed, so module-to-module Qt state is exercised in both directions.
     # The script exits non-zero on a skip, a failure, an error, or a member that
     # did not run.
-    - python -m scripts.adjacency_run -Order forward
-    - python -m scripts.adjacency_run -Order reverse
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order forward; exit $LASTEXITCODE'
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order reverse; exit $LASTEXITCODE'
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
@@ -271,20 +182,16 @@ adjacency:
 # assumed to agree. `tools/quality/site_check.py` is the same implementation a
 # developer runs locally, so the two cannot drift apart.
 #
-# python3 is installed because the checker is standard-library Python; no
-# packages are needed, and the site's own dependencies come from `npm ci`.
+# The job body is `ci\test_site.ps1`: it uses the machine's own node (v24.16.0
+# where this project's CI image was node:22 - a difference, not parity) and the
+# machine's `python` for the checker, which is standard-library only.
 test-site:
   stage: test
-  image: node:22
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
-    - npm ci
+  tags: ["local-ci"]
   script:
-    # `astro check` type-checks the site source, `astro build` produces the
+    # `npm run check` type-checks the site source, `npm run build` produces the
     # artifact, and the checker validates both the data and the artifact.
-    - npm run check
-    - npm run build
-    - python3 tools/quality/site_check.py
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_site.ps1; exit $LASTEXITCODE'
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
@@ -299,6 +206,10 @@ deploy-site:
   # deploy job had before this dependency existed, since `needs` bypasses the
   # barrier. `tests/unit/test_ci_gui_surface.py` fails if any `stage: test` job is
   # missing from this list.
+  #
+  # This job stays on the shared runners with its `image:`, and it does not run
+  # while the free monthly quota is spent: publishing the site pauses, which is
+  # the accepted cost of moving the test jobs to the self-hosted runner.
   needs: ["test-sdk", "test-integration", "test-site", "adjacency"]
   image: node:22
   variables:

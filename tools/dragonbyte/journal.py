@@ -30,6 +30,7 @@ from tools.webfoot.project import StatProject, write_dialogue_replacements
 from tools.webfoot.token_dictionary import authored_window_problem
 
 from .rawbytes import (
+    RAW_DOCUMENT,
     RAW_TARGET,
     RawEdits,
     RawRefusal,
@@ -351,9 +352,9 @@ class EditJournal:
 
         The ONE judgment a raw write passes, called by the commit and by a caller
         that has to decide whether to ask a person at all. It is ordered by what
-        the answer costs: the bytes' owner, then this session's own pending
-        writes, then the confirmation last, so an owned range is refused without
-        ever asking.
+        the answer costs: the bytes' owner, then the bytes already set at this
+        range - this session's own writes or the project's authored document - then
+        the confirmation last, so an owned range is refused without ever asking.
         """
         if not isinstance(after, RawRequest) or not isinstance(after.write, RawWrite):
             return RawRefusal("a raw byte edit carries a RawRequest holding a RawWrite.")
@@ -372,16 +373,30 @@ class EditJournal:
                 owner=owner,
                 claimed=extent,
             )
-        # This session's own pending raw writes are the third source beside the
-        # profile extents and the atlas, and the only one that can see a write
-        # made here. A write at one offset and length replaces the write already
-        # pending there, because one field has one owner; any other overlap is a
-        # contradiction the plan would refuse, so it is refused here instead.
+        # The document at the cursor is the project's authored bytes with this
+        # session's applied raw writes replayed over them, so an entry here is
+        # either one of THIS session's own writes or one the project already
+        # carried on disk. Both are consulted, because both are bytes no model
+        # explains, and the route the refusal offers depends on which it is: only a
+        # session entry has an undo behind it, and an authored one has to be
+        # changed in the project's own document. A write at one offset and length
+        # replaces the write already set there, because one field has one owner;
+        # any other overlap is a contradiction the plan would refuse, so it is
+        # refused here instead.
         for offset, pending in sorted(self._raw_applied.bytes_by_offset.items()):
             if not self._overlaps_pending(write, offset, pending):
                 continue
             if offset == write.offset and len(pending) == len(write.new):
                 continue
+            if not self._a_session_entry_set_this_offset(offset):
+                return RawRefusal(
+                    f"{write.owner}: 0x{offset:06X} is set by the project's own raw "
+                    f"byte document for {len(pending)} byte(s), which this "
+                    f"{len(write.new)}-byte write at 0x{write.offset:06X} overlaps "
+                    f"without replacing. Write that whole range instead, or change "
+                    f"the entry in {RAW_DOCUMENT.as_posix()}.",
+                    owner=write.owner,
+                )
             return RawRefusal(
                 f"{write.owner}: the pending write at 0x{offset:06X} covers "
                 f"{len(pending)} byte(s), which this {len(write.new)}-byte write at "
@@ -442,6 +457,21 @@ class EditJournal:
     @staticmethod
     def _overlaps_pending(write: RawWrite, offset: int, pending: bytes) -> bool:
         return offset < write.span.end and write.offset < offset + len(pending)
+
+    def _a_session_entry_set_this_offset(self, offset: int) -> bool:
+        """Whether one of this session's own applied raw writes set `offset`.
+
+        The document at the cursor is the project's authored bytes with this
+        session's raw writes replayed over them, so an offset it holds came from
+        one of the two. Only the session's own write has an undo behind it, which
+        is what decides the route the overlap refusal may offer.
+        """
+        return any(
+            entry.target == RAW_TARGET
+            and bool(entry.claimed)
+            and self._offset_of(entry) == offset
+            for entry in self._entries[: self._cursor]
+        )
 
     def _authority_for(self, project: StatProject) -> str:
         authority = project_authority(project)

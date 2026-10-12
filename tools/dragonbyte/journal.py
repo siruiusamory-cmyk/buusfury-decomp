@@ -394,13 +394,23 @@ class EditJournal:
                     f"byte document for {len(pending)} byte(s), which this "
                     f"{len(write.new)}-byte write at 0x{write.offset:06X} overlaps "
                     f"without replacing. Write that whole range instead, or change "
-                    f"the entry in {RAW_DOCUMENT.as_posix()}.",
+                    f"the entry in {RAW_DOCUMENT.as_posix()} and reopen the project, "
+                    "which is when this session reads that document.",
                     owner=write.owner,
                 )
+            # The undo route is real, and it is sometimes not the end of it: where
+            # the project's own document covers the same bytes, undoing this
+            # session's entry replays that document back and the refusal returns.
+            underneath = (
+                " The project's own entry at this range will still apply."
+                if self._the_project_authored_this_range(write)
+                else ""
+            )
             return RawRefusal(
                 f"{write.owner}: the pending write at 0x{offset:06X} covers "
                 f"{len(pending)} byte(s), which this {len(write.new)}-byte write at "
-                f"0x{write.offset:06X} overlaps without replacing; undo it first.",
+                f"0x{write.offset:06X} overlaps without replacing; undo it first."
+                + underneath,
                 owner=write.owner,
             )
         # The applied semantic entries are the journal's own answer, and they are
@@ -471,6 +481,18 @@ class EditJournal:
             and bool(entry.claimed)
             and self._offset_of(entry) == offset
             for entry in self._entries[: self._cursor]
+        )
+
+    def _the_project_authored_this_range(self, write: RawWrite) -> bool:
+        """Whether the project's own document covers bytes this write targets.
+
+        An undo replays that document back under this session's entries, so a range
+        the project authored is refused again once the session's entry over it is
+        gone. The overlap rule is the same one the refusing loop uses.
+        """
+        return any(
+            self._overlaps_pending(write, offset, value)
+            for offset, value in self._raw_base.bytes_by_offset.items()
         )
 
     def _authority_for(self, project: StatProject) -> str:

@@ -100,6 +100,32 @@ def test_the_stub_returns_to_the_resume_address_absolutely() -> None:
         "an absolute return, because a thumb b cannot reach above EOF from the code region")
 
 
+def test_the_return_pair_is_a_literal_load_and_a_bx_not_a_reversed_halfword() -> None:
+    """The glue around the stub is hand-written too, so the test disassembles it as well as the body."""
+    decoder = pytest.importorskip("capstone", reason="the project disassembler needs capstone")
+    from capstone import CS_ARCH_ARM, CS_MODE_THUMB, Cs
+    listing = [(instruction.mnemonic, instruction.op_str)
+               for instruction in Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(patch.RETURN_PAIR, patch.ROM_BASE)]
+    assert listing == [("ldr", "r3, [pc, #0]"), ("bx", "r3")], (
+        "writing the halfword 0x4B00 as the hex string '4b00' reverses it to 0x004B = lsls r3,r1,#0, and the "
+        "stub then falls through into its own literal: that one reversal hung every bisect variant")
+
+
+def test_the_appended_stub_decodes_from_its_first_byte_through_its_return() -> None:
+    decoder = pytest.importorskip("capstone", reason="the project disassembler needs capstone")
+    from capstone import CS_ARCH_ARM, CS_MODE_THUMB, Cs
+    image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)
+    offset = patch.BLOCK_SITE - patch.ROM_BASE
+    image[offset:offset + patch.BLOCK_BYTES] = patch.EXPECTED_BLOCK
+    stub_address, _ = patch.patch(image)
+    layout = patch.stub_layout(stub_address)
+    body = bytes(image[stub_address:stub_address + len(layout["body"])])
+    listing = list(Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(body, stub_address))
+    consumed = sum(len(instruction.bytes) for instruction in listing)
+    assert consumed == len(body), "every byte of the body is a complete instruction"
+    tail = bytes(image[layout["load_at"]:layout["load_at"] + 4])
+    assert tail == patch.RETURN_PAIR
+    assert listing[-1].mnemonic == "str", "the body ends with the store, and the return follows it"
 def test_a_second_patch_is_refused_rather_than_silently_applied_again() -> None:
     """The guard is the block's own content: a second run finds the entry, not the retail sequence."""
     image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)

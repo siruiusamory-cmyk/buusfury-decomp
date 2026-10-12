@@ -72,6 +72,12 @@ def word(image: bytes, offset: int) -> int:
     return struct.unpack_from("<I", image, offset)[0]
 
 
+#: The return sequence, as BYTES: `ldr r3,[pc,#0]` then `bx r3`. The halfword is 0x4B00, so its bytes are
+#: `00 4b`, and writing the hex string as "4b00" reverses them into 0x004B = `lsls r3,r1,#0`, which falls
+#: through into the literal. That single reversal hung every variant until it was read back at runtime.
+RETURN_PAIR = bytes.fromhex("004b" "1847")
+
+
 def stub_layout(stub_address: int, body: bytes | None = None) -> dict:
     """Where the pieces of the stub live, so nothing has to hardcode an offset.
 
@@ -103,7 +109,7 @@ def patch(image: bytearray, body: bytes | None = None, padding: int = 0):
     stub_address = len(image)
 
     layout = stub_layout(stub_address, body)
-    image.extend(layout["body"] + bytes.fromhex("4b00") + bytes.fromhex("1847"))
+    image.extend(layout["body"] + RETURN_PAIR)
     image.extend(struct.pack("<I", RESUME + 1))
     if len(image) != layout["end"]:
         raise AssertionError("stub layout disagrees with what was written")

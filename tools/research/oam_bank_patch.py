@@ -85,6 +85,33 @@ RETURN_PAIR = bytes.fromhex("004b" "1847")
 #: read, which the resynchronising sweep over the loop recorded.
 RETURN_VIA_R7 = bytes.fromhex("004f" "3847")
 
+#: The draw loop's OWN attr1 clear at 0x0800F1C8: `movs r3,#0x1f` / `lsls r3,r3,#0x19`, then `bics r6,r3` and
+#: `orrs r6,r3` from the drawer's word at [sp+0x1038]. It wipes the piece word's bits 25..29 (attr1 bits 9..13)
+#: BEFORE the patched block reads them, so the block saw index 0 for every piece it drew: measured, the index
+#: probe's OR-accumulator still read 0x0001 after 240 frames (run build/toolkit031/index-probe-1) while the
+#: emitted image's own pieces carry 1/2/3.
+INDEX_CLEAR_SITE = 0x0800F1C8
+INDEX_CLEAR_BYTES = 4
+EXPECTED_INDEX_CLEAR = bytes.fromhex("1f235b06")
+#: The same two instructions with the mask narrowed to bits 28..29: the drawer's size bits still arrive from the
+#: stack word, and the piece's own three bits survive to OAM word 0, which is what the stub reads.
+INDEX_CLEAR_PATCH = bytes.fromhex("03231b07")
+
+
+def patch_index_carrier(image: bytearray) -> None:
+    """Narrow the loop's attr1 clear so a piece's own bits 25..27 reach OAM word 0.
+
+    SAFE FOR EVERY OTHER ACTOR, argued from measurement: retail sets attr1 bits 9..11 on 0 of 11,005 pieces, so
+    preserving them changes no pixel; only bits 28..29 are still replaced by the drawer's word.
+    """
+    offset = INDEX_CLEAR_SITE - ROM_BASE
+    found = bytes(image[offset:offset + INDEX_CLEAR_BYTES])
+    if found != EXPECTED_INDEX_CLEAR:
+        raise AssertionError(
+            f"the attr1 clear at 0x{INDEX_CLEAR_SITE:08X} is not the retail sequence, so this image is either "
+            f"already patched or not the image this patch was written for; refusing. Found {found.hex()}")
+    image[offset:offset + INDEX_CLEAR_BYTES] = INDEX_CLEAR_PATCH
+
 
 def stub_layout(stub_address: int, body: bytes | None = None) -> dict:
     """Where the pieces of the stub live, so nothing has to hardcode an offset.

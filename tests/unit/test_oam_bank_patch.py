@@ -142,3 +142,25 @@ def test_an_image_whose_block_is_unexpected_is_refused() -> None:
     image = aligned(patch.BLOCK_SITE - patch.ROM_BASE + 0x100)
     with pytest.raises(AssertionError, match="not the retail sequence"):
         patch.patch(image)
+
+
+def test_the_index_carrier_clear_is_narrowed_to_the_drawer_size_bits() -> None:
+    """The loop clears the piece's own attr1 bits 9..13 before the stub can read them: measured."""
+    decoder = pytest.importorskip("capstone", reason="the project disassembler needs capstone")
+    from capstone import CS_ARCH_ARM, CS_MODE_THUMB, Cs
+    listing = [(instruction.mnemonic, instruction.op_str)
+               for instruction in Cs(CS_ARCH_ARM, CS_MODE_THUMB).disasm(patch.INDEX_CLEAR_PATCH,
+                                                                        patch.INDEX_CLEAR_SITE)]
+    assert listing == [("movs", "r3, #3"), ("lsls", "r3, r3, #0x1c")], (
+        "bits 25..27 must survive, so only the size bits 28..29 may be cleared")
+    assert patch.INDEX_CLEAR_PATCH != patch.EXPECTED_INDEX_CLEAR
+
+
+def test_the_index_carrier_patch_refuses_an_image_without_the_retail_clear() -> None:
+    image = aligned(patch.INDEX_CLEAR_SITE - patch.ROM_BASE + 0x100)
+    offset = patch.INDEX_CLEAR_SITE - patch.ROM_BASE
+    image[offset:offset + patch.INDEX_CLEAR_BYTES] = patch.EXPECTED_INDEX_CLEAR
+    patch.patch_index_carrier(image)
+    assert bytes(image[offset:offset + patch.INDEX_CLEAR_BYTES]) == patch.INDEX_CLEAR_PATCH
+    with pytest.raises(AssertionError, match="not the retail sequence"):
+        patch.patch_index_carrier(image)

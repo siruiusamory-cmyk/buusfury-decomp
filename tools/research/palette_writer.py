@@ -1,14 +1,23 @@
 """Assemble the runtime palette writer as the draw-loop stub's BODY, verified by a disassembler.
 
 Where it runs: in place of the seven instructions at 0x0800F2B2, after the bank-select half of the body,
-with r1 = the OAM entry and r7 = the piece's palette bank (0..7). It copies that bank's 32-byte palette
-from the appended table into OBJ palette RAM at `0x05000200 + 32*bank`, then resumes the draw loop.
+with r1 = the OAM entry and r7 = the piece's palette index (0..7). It copies that index's 32-byte palette
+from the appended table into OBJ palette RAM and into the OAM entry's palette field, then resumes the draw
+loop. Index 0 is every retail piece, so it is left completely alone.
 
-Two measured facts this file encodes, each learned from a failed run:
+Three measured facts this file encodes, each learned from a failed run:
 
-* the copy routine at 0x08049144 is a THUMB-TO-ARM THUNK (`bx pc` + `ldr pc,[pc,#-4]` -> an IWRAM ARM
-  routine). It must be reached with a Thumb `bl`; a `blx` with the even address switches to ARM before
-  executing and hangs the engine (`probe` run `cell-runtime-2`, which stopped at frame 2).
+* the write is an INLINE Thumb loop, not a call to the engine's own copy routine at 0x030007FC (veneer
+  0x08049144). That routine is real - it copies r2 bytes, 16 at a time, and it is what the engine's own
+  palette load calls - but an earlier revision reached it with `blx r7`, the ARMv5T register form, on an
+  ARM7TDMI that has only `bx`; the copy never landed (run `build/toolkit031/copy-body-1`). The same call
+  would also have to spend `lr` on a return address, and `lr` is LIVE draw-loop state at the resume address
+  0x0800F2C0 (the loop does `add lr,r0` there and reads it as the tile cursor). With the loop inline both
+  faults are gone: run `build/toolkit031/copy-body-inline-1` shows the test ramp in palette RAM bank 11.
+* the OAM palette field is four bits wide, but a piece record only carries three (attr1 bits 9..11), so the
+  bank-select half can address banks 0..7 only. The body therefore takes the physical bank from the TABLE
+  destination address - `bank = (dest >> 5) & 0xf` - and writes it into OAM word 1 itself, which is what
+  makes the five banks measured free in the owner's scene (8, 10, 11, 14, 15) reachable at all.
 * the body must carry its OWN literals. An earlier revision kept them outside the body at offsets derived
   from a separate blob, so the block jumped to code that was not the writer at all (`probe-pal-1`).
 
@@ -25,12 +34,47 @@ ROM_BASE = 0x08000000
 PALETTE_RAM = 0x05000200
 BANK_BYTES = 32
 BANK_COUNT = 16
-COPY_THUNK = 0x08049144
 RESUME = 0x0800F2C0
+#: One row per index: two words, (destination palette RAM, source palette), read at 8*index.
 TABLE_BYTES = BANK_COUNT * 8
-#: The instruction region of the body: the bank-select prefix plus the palette write's halfwords. The
-#: prefix (20 halfwords) is `oam_bank_patch.STUB`; the write is 17 halfwords.
-INSTRUCTION_BYTES = 40 + 17 * 2
+
+#: Branch targets by label, resolved to entries rather than to numbers.
+LOOP = "loop"
+EXIT = "exit"
+
+#: (kind, halfword, mnemonic, operands, label). `kind` is "word" or "branch"; the two `ldr ...,[pc,#0]`
+#: entries get their imm8 patched, and a branch gets its imm8 from its label.
+ENTRIES: list[tuple[str, int, str, str, str]] = [
+    ("word", 0x2F00, "cmp", "r7,#0", ""),                  # index 0 is every retail piece
+    ("branch", 0xD000, "beq", "", EXIT),
+    ("word", 0xB43F, "push", "{r0,r1,r2,r3,r4,r5}", ""),    # r0 and r4 are live at RESUME
+    ("word", 0x460D, "mov", "r5,r1", ""),                  # the OAM entry, before r1 becomes the source
+    ("word", 0x4C00, "ldr", "r4,[pc,#0]", ""),             # the address table
+    ("word", 0x00FB, "lsls", "r3,r7,#3", ""),
+    ("word", 0x18E4, "adds", "r4,r4,r3", ""),
+    ("word", 0x6820, "ldr", "r0,[r4,#0]", ""),             # destination palette RAM
+    ("word", 0x6861, "ldr", "r1,[r4,#4]", ""),             # source palette
+    ("word", 0x220F, "movs", "r2,#0xf", ""),
+    ("word", 0x0943, "lsrs", "r3,r0,#5", ""),
+    ("word", 0x401A, "ands", "r2,r3", ""),                 # bank = (dest >> 5) & 0xf
+    ("word", 0x0312, "lsls", "r2,r2,#0xc", ""),
+    ("word", 0x686B, "ldr", "r3,[r5,#4]", ""),             # OAM word 1
+    ("word", 0x24F0, "movs", "r4,#0xf0", ""),
+    ("word", 0x0224, "lsls", "r4,r4,#8", ""),              # 0xf000
+    ("word", 0x43A3, "bics", "r3,r4", ""),
+    ("word", 0x4313, "orrs", "r3,r2", ""),
+    ("word", 0x606B, "str", "r3,[r5,#4]", ""),             # a bank above 7 is now reachable
+    ("word", 0x2210, "movs", "r2,#0x10", ""),              # 16 halfwords = one bank
+    ("word", 0x880B, "ldrh", "r3,[r1]", LOOP),
+    ("word", 0x8003, "strh", "r3,[r0]", ""),
+    ("word", 0x3102, "adds", "r1,#2", ""),
+    ("word", 0x3002, "adds", "r0,#2", ""),
+    ("word", 0x3A01, "subs", "r2,#1", ""),
+    ("branch", 0xD100, "bne", "", LOOP),
+    ("word", 0xBC3F, "pop", "{r0,r1,r2,r3,r4,r5}", ""),
+    ("word", 0x4C00, "ldr", "r4,[pc,#0]", ""),             # resume
+    ("word", 0x4720, "bx", "r4", ""),
+]
 
 try:
     import capstone
@@ -60,24 +104,12 @@ def ldr_field(instruction_offset: int, literal_offset: int) -> int:
     return gap // 4
 
 
-def bl_words(from_address: int, target: int) -> bytes:
-    """A Thumb `bl` to `target` from the instruction at `from_address`, as two halfwords."""
-    offset = target - (from_address + 4)
-    if offset % 2 or not -(1 << 22) <= offset < (1 << 22):
-        raise ValueError(f"bl from {from_address:#x} to {target:#x} is out of range: {offset}")
-    sign = (offset >> 23) & 1
-    imm10 = (offset >> 12) & 0x3FF
-    imm11 = (offset >> 1) & 0x7FF
-    j1 = 1 if (offset >> 22) & 1 else 0
-    j2 = 1 if (offset >> 21) & 1 else 0
-    high = 0xF000 | (sign << 10) | imm10
-    low = 0xF800 | (j1 << 13) | (j2 << 11) | imm11
-    return struct.pack("<HH", high, low)
-
-
-def normalise(operands: str) -> str:
-    """Capstone prints `ldr r3, [r4]` for `ldr r3,[r4,#0]`: compare register/memory form."""
-    return re.sub(r"\[(\w+)\]", r"[\1,#0]", operands.replace(" ", "")).lower()
+def branch_field(from_offset: int, to_offset: int) -> int:
+    """The `imm8` of a Thumb conditional branch from `from_offset` to `to_offset`, both body-relative."""
+    gap = to_offset - (from_offset + 4)
+    if gap % 2 or not -256 <= gap <= 254:
+        raise ValueError(f"branch from {from_offset:#x} to {to_offset:#x} is out of range: {gap}")
+    return (gap // 2) & 0xFF
 
 
 def assemble(body_address: int, table_address: int) -> bytes:
@@ -85,73 +117,48 @@ def assemble(body_address: int, table_address: int) -> bytes:
 
     The body is the bank-select stub's own sequence FOLLOWED BY the palette write. That order is required,
     not cosmetic: `oam_bank_patch.patch` installs this body as the whole stub, so if the bank-select half
-    were left out, r7 would never hold a bank and the palette write would copy whatever happened to be in
-    it. A run with only the write half showed exactly that (`cell-runtime-2`: no bank changed).
+    were left out, r7 would never hold an index and the write would copy whatever happened to be in it.
     """
     from tools.research import oam_bank_patch
 
-    entries: list[tuple[str, int, str, str]] = []
-    # The bank-select half, byte for byte as the committed stub carries it.
     prefix = oam_bank_patch.STUB
     if len(prefix) % 2:
         raise AssertionError("the bank-select body must be a whole number of halfwords")
-    entries.append(("raw", len(prefix), "PRESET", ""))
-    entries += [
-        ("h", 0x680B, "ldr", "r3,[r1]"),        # re-read OAM word 0: the bank-select half used r3/r7
-        ("h", 0x0E5F, "lsrs", "r7,r3,#0x19"),   # attr1 bits 9..11 -> 0..2, the physical bank
-        ("h", 0x2507, "movs", "r5,#7"),
-        ("h", 0x402F, "ands", "r7,r5"),         # r7 = bank 0..7
-        ("h", 0x4800, "ldr", "r0,[pc,#0]"),     # the address table's absolute address
-        ("h", 0x00FC, "lsls", "r4,r7,#3"),      # r4 = bank * 8 (two words per bank)
-        ("h", 0x1824, "adds", "r4,r4,r0"),      # r4 = this bank's table row
-        ("h", 0x6823, "ldr", "r3,[r4,#0]"),     # destination palette RAM for this bank
-        ("h", 0x68A1, "ldr", "r1,[r4,#8]"),     # source palette for this bank
-        ("h", 0x1C18, "adds", "r0,r3,#0"),      # destination into r0
-        ("h", 0x2220, "movs", "r2,#0x20"),      # 32 bytes, one bank's worth
-        ("h", 0xB408, "push", "{r3}"),
-        ("h", 0x4F00, "ldr", "r7,[pc,#0]"),     # the copy thunk, WITH bit 0 set: see COPY_THUNK
-        ("h", 0x47B8, "blx", "r7"),
-        ("h", 0xBC08, "pop", "{r3}"),
-        ("h", 0x4C00, "ldr", "r4,[pc,#0]"),     # the resume address
-        ("h", 0x4720, "bx", "r4"),
-    ]
 
-    offsets = []
-    cursor = 0
-    for kind, payload, _, _ in entries:
-        offsets.append(cursor)
-        cursor += payload if kind == "raw" else 2
-    literal_table = (cursor + 3) & ~3
-    literal_veneer = literal_table + 4
-    literal_resume = literal_veneer + 4
+    start = len(prefix)
+    offsets = {label: start + 2 * index
+               for index, (_, _, _, _, label) in enumerate(ENTRIES) if label == LOOP}
+    offsets[EXIT] = start + 2 * len(ENTRIES) - 4
+    literal_table = (start + 2 * len(ENTRIES) + 3) & ~3
+    literal_resume = literal_table + 4
     size = literal_resume + 4
 
     blob = bytearray(size)
-    for (kind, payload, _, _), offset in zip(entries, offsets):
-        if kind == "raw":
-            blob[offset:offset + payload] = prefix
-        else:
-            struct.pack_into("<H", blob, offset, payload)
+    blob[0:start] = prefix
+    for index, (kind, halfword, _, _, label) in enumerate(ENTRIES):
+        offset = start + 2 * index
+        if kind == "branch":
+            halfword = (halfword & 0xFF00) | branch_field(offset, offsets[label])
+        struct.pack_into("<H", blob, offset, halfword)
+    for index, literal in ((4, literal_table), (len(ENTRIES) - 2, literal_resume)):
+        offset = start + 2 * index
+        halfword = struct.unpack_from("<H", blob, offset)[0]
+        struct.pack_into("<H", blob, offset, (halfword & 0xFF00) | ldr_field(offset, literal))
     struct.pack_into("<I", blob, literal_table, table_address)
-    struct.pack_into("<I", blob, literal_veneer, COPY_THUNK | 1)
     struct.pack_into("<I", blob, literal_resume, RESUME | 1)
 
-    for index, base_halfword, literal in (
-            (5, 0x4800, literal_table), (13, 0x4F00, literal_veneer), (16, 0x4C00, literal_resume)):
-        offset = offsets[index]
-        struct.pack_into("<H", blob, offset, base_halfword | ldr_field(offset, literal))
     verify(bytes(blob), body_address, prefix_halfwords=len(prefix) // 2)
+    got = disassemble(bytes(blob[start:start + len(ENTRIES) * 2]), body_address + start)
+    for (kind, _, _, _, label), (at, _, operands) in zip(ENTRIES, got):
+        if kind == "branch" and int(operands.split("#")[1], 16) != body_address + offsets[label]:
+            raise AssertionError(f"at 0x{at:08X}: branch lands on 0x{int(operands.split('#')[1], 16):08X}, "
+                                 f"expected 0x{body_address + offsets[label]:08X} ({label})")
     return bytes(blob)
 
 
-def body_size() -> int:
-    """The assembled body's size, so callers can place the table before knowing the body's bytes."""
-    cursor = sum(4 if kind == "bl" else 2 for kind, *_ in _entries_placeholder())
-    return ((cursor + 3) & ~3) + 8
-
-
-def _entries_placeholder():
-    return [("h", 0, "", "")] * 10 + [("bl", 0, "", "")] + [("h", 0, "", "")] * 3
+def normalise(operands: str) -> str:
+    """Capstone prints `ldr r3, [r4]` for `ldr r3,[r4,#0]`: compare register/memory form."""
+    return re.sub(r"\[(\w+)\]", r"[\1,#0]", operands.replace(" ", "")).lower()
 
 
 def verify(body: bytes, body_address: int, prefix_halfwords: int = 0) -> list[tuple[int, str, str]]:
@@ -161,14 +168,16 @@ def verify(body: bytes, body_address: int, prefix_halfwords: int = 0) -> list[tu
     covers byte for byte).
     """
     start = prefix_halfwords * 2
-    wanted = [f"{mnemonic} {operands}" for _, _, mnemonic, operands in _text_entries()]
-    got = disassemble(body[start:start + len(wanted) * 2], body_address + start)
-    if len(got) != len(wanted):
-        raise AssertionError(f"disassembled {len(got)} instruction(s), expected {len(wanted)}: {got}")
-    for want, (at, mnemonic, operands) in zip(wanted, got):
-        want_mnemonic, _, want_operands = want.partition(" ")
+    got = disassemble(body[start:start + len(ENTRIES) * 2], body_address + start)
+    if len(got) != len(ENTRIES):
+        raise AssertionError(f"disassembled {len(got)} instruction(s), expected {len(ENTRIES)}: {got}")
+    for (kind, _, want_mnemonic, want_operands, label), (at, mnemonic, operands) in zip(ENTRIES, got):
         if mnemonic != want_mnemonic:
             raise AssertionError(f"at 0x{at:08X}: expected `{want_mnemonic}`, got `{mnemonic} {operands}`")
+        if kind == "branch":                        # check where it lands, not how it reads
+            if not operands.startswith("#"):
+                raise AssertionError(f"at 0x{at:08X}: expected a branch target, got `{operands}`")
+            continue
         if want_operands.endswith("[pc,#0]"):
             if "[pc," not in operands:
                 raise AssertionError(f"at 0x{at:08X}: expected a PC-relative load, got `{operands}`")
@@ -179,27 +188,20 @@ def verify(body: bytes, body_address: int, prefix_halfwords: int = 0) -> list[tu
     return got
 
 
-def _text_entries() -> list[tuple[str, int, str, str]]:
-    """The body's own instruction text, in order, matching the `("h", ...)` entries of `assemble`."""
-    return [
-        ("h", 0, "ldr", "r3,[r1]"), ("h", 0, "lsrs", "r7,r3,#0x19"), ("h", 0, "movs", "r5,#7"),
-        ("h", 0, "ands", "r7,r5"), ("h", 0, "ldr", "r0,[pc,#0]"), ("h", 0, "lsls", "r4,r7,#3"),
-        ("h", 0, "adds", "r4,r4,r0"), ("h", 0, "ldr", "r3,[r4,#0]"), ("h", 0, "ldr", "r1,[r4,#8]"),
-        ("h", 0, "adds", "r0,r3,#0"), ("h", 0, "movs", "r2,#0x20"), ("h", 0, "push", "{r3}"),
-        ("h", 0, "ldr", "r7,[pc,#0]"), ("h", 0, "blx", "r7"), ("h", 0, "pop", "{r3}"),
-        ("h", 0, "ldr", "r4,[pc,#0]"), ("h", 0, "bx", "r4"),
-    ]
-
-
-def build_table(table_address: int) -> bytes:
+def build_table(table_address: int, rows: dict[int, int] | None = None) -> bytes:
     """The 16-row address table plus 16 zeroed palette blocks, at `table_address` in ROM space.
 
-    Row `bank` is `(0x05000200 + 32*bank, table_address + TABLE_BYTES + 32*bank)`: both absolute, so the
-    body needs no arithmetic beyond `base + 8*bank`.
+    Row `index` is `(0x05000200 + 32*bank, table_address + TABLE_BYTES + 32*bank)`, with `bank` taken from
+    `rows` and equal to the index otherwise. The body recovers the bank from the destination address, so a
+    row may name any of the 16 banks and the piece's three-bit index only has to be distinct and non-zero.
     """
+    chosen = {index: index for index in range(BANK_COUNT)}
+    if rows:
+        chosen.update(rows)
     table = bytearray(TABLE_BYTES + BANK_COUNT * BANK_BYTES)
-    for bank in range(BANK_COUNT):
-        struct.pack_into("<II", table, 8 * bank,
+    for index in range(BANK_COUNT):
+        bank = chosen[index]
+        struct.pack_into("<II", table, 8 * index,
                          PALETTE_RAM + BANK_BYTES * bank,
                          table_address + TABLE_BYTES + BANK_BYTES * bank)
     return bytes(table)

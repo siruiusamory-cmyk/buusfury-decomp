@@ -101,7 +101,12 @@ def main() -> int:
     physical = [int(text) for text in args.banks.split(",")]
     if len(physical) != 3 or len(triple["palettes"]) != 3:
         raise SystemExit("three physical banks and three palettes are required")
-    mapping = {0: physical[0], 1: physical[1], 2: physical[2]}
+    # Index 0 is every retail piece and the writer skips it, so Cell's three logical banks take indices
+    # 1..3 and the table maps each index to the physical bank the writer fills. The piece field is only
+    # three bits wide, so an index above 7 is not encodable; a BANK above 7 is fine, because the writer
+    # sets the OAM palette field from the table rather than from the piece.
+    mapping = {logical: logical + 1 for logical in range(3)}
+    rows = {logical + 1: bank for logical, bank in enumerate(physical)}
 
     image = bytearray(args.image.read_bytes())
     print(f"source {args.image.name} {len(image)} bytes sha256 "
@@ -114,13 +119,14 @@ def main() -> int:
           f"{[f'file 0x{offset:X}' for offset, _ in changed]}")
 
     rewritten = rewrite_piece_banks(image, mapping)
-    counts = {bank: sum(1 for _, _, value in rewritten if value == bank) for bank in physical}
-    print(f"piece bank bits rewritten: {len(rewritten)} piece(s) -> {counts}")
+    counts = {index: sum(1 for _, _, value in rewritten if value == index) for index in mapping.values()}
+    print(f"piece bank bits rewritten: {len(rewritten)} piece(s) -> indices {counts}, "
+          f"table rows {rows}")
 
     while len(image) % 8:
         image.append(0)
     table_address = len(image) + ROM_BASE
-    image.extend(writer.build_table(table_address))
+    image.extend(writer.build_table(table_address, rows))
 
     while len(image) % 4:
         image.append(0)
@@ -136,6 +142,11 @@ def main() -> int:
         raise SystemExit(f"the stub landed at 0x{stub_address + ROM_BASE:08X}, expected the body's "
                          f"0x{body_address:08X}")
     print(f"draw-loop block 0x{patch.BLOCK_SITE:08X} replaced: {replaced.hex(' ')}")
+    # The loop clears the piece's own attr1 bits 9..11 before the block can read them, so without this the
+    # stub always sees index 0 and every piece draws with bank 0 (measured: run build/toolkit031/index-probe-1).
+    patch.patch_index_carrier(image)
+    print(f"attr1 clear 0x{patch.INDEX_CLEAR_SITE:08X} narrowed: "
+          f"{patch.EXPECTED_INDEX_CLEAR.hex(' ')} -> {patch.INDEX_CLEAR_PATCH.hex(' ')}")
 
     palettes = {}
     for index, bank in enumerate(physical):

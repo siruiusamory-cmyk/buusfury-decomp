@@ -349,9 +349,15 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
     # or git to exercise or audit a developer script; none of them can start an
     # emulator, and none of them names one.
     ("tools/dev/merge_mr.py",
-     "_run",
+     "_subprocess_run",
      "command"):
-        "runs glab to read a merge request and to merge it; it starts no emulator",
+        "the one place this wrapper runs glab to read a merge request and to merge "
+        "it; it starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_behavioural_powershell_tests_skip_rather_than_fail",
+     "sys.executable"):
+        "reruns three of this file's own tests in a subprocess with the PowerShell "
+        "lookup disabled, to prove they skip instead of failing; it starts no emulator",
     ("tests/unit/test_dev_tools.py",
      "test_the_checker_exits_non_zero_for_orphans_only_when_asked",
      "sys.executable"):

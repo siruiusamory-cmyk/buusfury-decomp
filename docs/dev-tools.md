@@ -18,6 +18,35 @@ own copy: one definition per compared fact (freeze checklist line 14). A cut now
 also exits 0 on success. It used to inherit the exit code of the last native call, so
 a stale worktree entry made a fully successful cut report 128.
 
+## Where each guard runs, and where the behaviour is proved
+
+CI is Linux, where no `.ps1` can execute. A behavioural guard for a PowerShell tool
+therefore SKIPS there with a named reason, and a pure-Python TEXT guard over the
+script's own bytes runs everywhere and pins the invariant the behaviour rests on.
+Both layers exist on purpose: an acceptance that rests only on a test that skips in
+CI proves nothing there.
+
+| Tool | Text guard (runs in CI) | Behavioural guard (skips without PowerShell) |
+| --- | --- | --- |
+| `commit_msg.ps1` | the `WriteAllText` + `UTF8Encoding($false)` spelling, and no executable `Set-Content -Encoding utf8` | writes a message with quotes and an apostrophe and reads the bytes back |
+| `worktree_owners.ps1` | `hash-object -- <path>` and the three class literals | the sweep's classifications, on a repository built for each case |
+| `probe_worktree.ps1` | `Get-FileHash`, `source sha256`, `copy sha256`, `MISMATCH`, `exit 3` | copies, refuses a changed byte, cleans up |
+| the cutter | it ends with its own `exit 0` | the sweep's exit code, on a stale registration |
+
+The behavioural proof is a Windows run, recorded in the ticket's report; the same
+tools were used to cut and commit that ticket, which is the strongest form of it.
+The `rom-local` GitLab runner is Windows too, but it only takes protected refs, so it
+cannot run a feature-branch job: the Linux text guards are the regression net for
+every branch, and a Windows run is a deliberate act.
+
+The skip path itself is proved twice: one test neuters the lookup and asserts the
+helpers raise `pytest.skip`, and a second reruns three of the behavioural tests in a
+subprocess with `shutil.which` disabled and asserts three skips and no failure.
+
+`test_mgba_extra_script.py`'s launcher guards follow the same rule: the four `-DryRun`
+checks need the canonical image and skip without it, one check proves the optional
+`-StatePath` needs neither image nor emulator, and the text guards run everywhere.
+
 ## `worktree_owners.ps1` - who holds which file
 
 ```powershell
@@ -35,7 +64,7 @@ classification from a `git hash-object` comparison against
 | `authored` | the bytes exist only here: a lane is holding this file |
 | `conflicted` | an unmerged path (`UU` and friends) |
 | `new-in-branch` | untracked, or not in the baseline at all |
-| `deleted` | tracked and absent |
+| `deleted` | tracked and absent, staged delete included |
 | `unreadable` | git refused the entry (a stale worktree registration) |
 
 `-Markdown` prints the same rows as a table for a check-in comment, `-Json` prints
@@ -105,8 +134,12 @@ the change rather than the process that produced it.
 
 Reads the MR, refuses unless `<sha>` is its current head, merges, reads the MR
 again, and spends at most ONE retry - only when there was no server-side effect.
-It never trusts an exit code: a `glab` that exits non-zero after a merge that landed
-is reported merged, and a `glab` that exits 0 without moving the MR is refused.
+The pin is checked before EVERY attempt, including the retry, and the merge call
+itself carries `--sha <sha>`: a rebase under a frozen candidate is refused rather
+than merged. It never trusts an exit code: a `glab` that exits non-zero after a merge
+that landed is reported merged, and a `glab` that exits 0 without moving the MR is
+refused. Only an MR whose state is `merged` AND which carries a merge commit counts
+as an effect, so a move to `closed` or `locked` is never reported as a merge.
 
 **The 405 contradiction, resolved.** The memory store records 405 as a flake
 ("immediate retry merged", MRs !233 and !236); GitLab documents it as deterministic
@@ -114,7 +147,8 @@ when merge-train enforcement is on and the request omits `auto_merge=true`. This
 wrapper assumes the DETERMINISTIC reading, because that is the one where a blind
 retry masks a real failure, and it stays safe under the flake reading too: a 405
 with no effect is retried once, a 405 that recurs is refused with both readings
-quoted.
+quoted. The match is on an HTTP status, never on the substring `405`, so an error
+text like `pipeline 4057 failed` is a real failure and is not retried.
 
 ## `review_queue_index.py` - what is open
 
@@ -124,7 +158,10 @@ quoted.
 
 Lists the requests in `~/.dsh/review-queue/requests`, each with the ticket, the
 review SHA, the age in hours, whether a claim exists, and the verdict read from the
-matching result file. It prints the open count and the claimed-and-awaiting count.
-It is strictly read-only over the queue and its `build()` is a pure function over a
-queue directory, which is what the guard exercises: the real queue belongs to other
-lanes and a test must not read or write it.
+matching result file. The verdict is the LAST line of that file, where every result
+in this queue puts it, so prose above it cannot turn a BLOCKED review into a pass. A
+negative age is labelled as clock skew rather than printed as a bare negative
+number. It prints the open count and the claimed-and-awaiting count. It is strictly
+read-only over the queue and its `build()` is a pure function over a queue
+directory, which is what the guard exercises: the real queue belongs to other lanes
+and a test must not read or write it.

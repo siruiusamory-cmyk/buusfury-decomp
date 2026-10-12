@@ -8,7 +8,7 @@ local log_file = os.getenv("TOOLKIT031_OUT")
 local frames = 0
 local PALETTE = 0x05000200
 local OAM = 0x07000000
-local SAMPLES = { 2, 30, 90, 180 }
+local SAMPLES = { 2, 30, 90, 180, 300, 480, 660, 900 }
 local BANK = 16
 
 local function note(text)
@@ -48,6 +48,9 @@ local function measure(frame)
     if selected[bank] then list[#list + 1] = string.format("%d:%d", bank, selected[bank]) end
   end
   note(string.format("OAM frame=%d visible_banks=%s", frame, table.concat(list, ",")))
+  -- KEYINPUT: 0 means pressed. A liveness channel for the input bridge, so "nothing moved" cannot be
+  -- confused with "no input arrived".
+  note(string.format("KEY frame=%d [%04X]", frame, halfword(emu:readRange(0x04000130, 2), 0)))
 end
 
 callbacks:add("frame", function()
@@ -55,7 +58,7 @@ callbacks:add("frame", function()
   for _, sample in ipairs(SAMPLES) do
     if frames == sample then measure(frames) end
   end
-  if frames >= 240 then
+  if frames >= 960 then
     note("PALDUMP done")
     emu:exit()
   end

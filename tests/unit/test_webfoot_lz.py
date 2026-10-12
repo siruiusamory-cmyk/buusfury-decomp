@@ -259,7 +259,7 @@ def test_gamma_encoder_and_decoder_agree_over_a_wide_range() -> None:
         writer = wl._WordBitWriter()
         writer.gamma(value)
         reader = wl._WordBitReader(writer.finish(), 0)
-        assert wl._gamma(reader, wl._GAMMA_LIMIT) == value
+        assert wl._gamma(reader, wl._gamma_ceiling(wl.DEFAULT_MAX_OUTPUT)) == value
 
 
 def test_gamma_cannot_encode_below_two() -> None:
@@ -340,8 +340,9 @@ def test_the_gamma_bound_cannot_fire_on_a_valid_corpus(
     (:func:`_termination_corpus`), replayed here with every gamma value the decode
     actually produces recorded, so the ceiling is checked against measurement
     rather than against the derivation alone. Every payload here declares a size
-    within the default bound, whose derived ceiling is `_GAMMA_LIMIT`, so a corpus
-    value above it fails here before the decoder ever refuses one; the per-call
+    within the default bound, whose derived ceiling is
+    `_gamma_ceiling(DEFAULT_MAX_OUTPUT)`, so a corpus value above it fails here
+    before the decoder ever refuses one; the per-call
     derivation itself is pinned by the tests that follow.
     """
     largest = 0
@@ -360,13 +361,15 @@ def test_the_gamma_bound_cannot_fire_on_a_valid_corpus(
         encoded = wl.pack(payload)
         assert wl.unpack(encoded, 0).data == payload, f"A: {name}"
         assert wl.validate_retail_termination(encoded).data == payload, f"B: {name}"
-    assert 0 < largest < wl._GAMMA_LIMIT, f"largest corpus gamma value: {largest}"
+    assert 0 < largest < wl._gamma_ceiling(wl.DEFAULT_MAX_OUTPUT), (
+        f"largest corpus gamma value: {largest}"
+    )
 
 
 # --- the ceiling follows the call's own bound ---------------------------------
 #
-# `_GAMMA_LIMIT` is derived from the 64 KiB default output bound and the 16-bit
-# distance window, but `maximum_output` is a parameter of the decode entry points.
+# The ceiling is derived from the call's own declared bound, not from one value,
+# because `maximum_output` is a parameter of the decode entry points.
 # A caller that declares a larger output can carry a legitimately larger gamma
 # field, and one that declares a smaller output deserves a ceiling no looser than
 # its own bound, so the ceiling is derived per call from the bound that call

@@ -666,6 +666,18 @@ def test_a_pipeline_number_containing_405_is_not_a_405():
     assert len(outcome.attempts) == 1, "a substring is not an HTTP status"
 
 
+def test_an_mr_reference_containing_405_is_not_a_405():
+    """The reviewer's second bite: `MR !405` earned a second merge attempt.
+
+    Driven to failure by matching a bare number: a merge request number is not an
+    HTTP status, so this real failure is refused after ONE attempt.
+    """
+    api = _fake([(1, "MR !405 is closed, so it cannot be merged")] * 3, [])
+    outcome = mm.merge("240", SHA, api)
+    assert outcome.status == "refused", outcome.as_dict()
+    assert len(outcome.attempts) == 1, "an MR number is not an HTTP status"
+
+
 def test_a_closed_mr_is_not_a_merge():
     """A move to closed or locked has no merge commit, so it is not an effect."""
     api = _fake([(1, "boom")], [], closes_on=[1])
@@ -688,6 +700,26 @@ def test_a_head_that_moved_after_the_check_is_refused_before_the_retry():
     assert len(outcome.attempts) == 2, outcome.as_dict()
     assert outcome.attempts[1].error == "the MR's head is no longer the pinned SHA"
     assert "merged" != outcome.status
+    assert outcome.sha_mismatch is True
+
+
+def test_the_exit_code_is_four_for_a_head_that_is_not_the_pinned_sha():
+    """The docstring's exit 4, for BOTH ways the head can stop being the pin.
+
+    The reviewer measured the mid-loop refusal returning 3 because `main` sniffed the
+    message text; the refusal now carries the reason itself.
+    """
+    before_any_merge = _fake([(0, "merged")], [1])
+    assert mm.main(["--mr", "240", "--sha", "b" * 40], api=before_any_merge) == 4
+
+    moved_before_the_retry = _fake(
+        [(1, "HTTP 405 Method Not Allowed")] * 2, [], moves_head_after=3
+    )
+    assert mm.main(["--mr", "240", "--sha", SHA], api=moved_before_the_retry) == 4
+
+    # Every other refusal is the documented 3, so the exit code still means something.
+    real_failure = _fake([(1, "remote: something went wrong")] * 2, [])
+    assert mm.main(["--mr", "240", "--sha", SHA], api=real_failure) == 3
 
 
 def test_a_head_that_moved_before_the_first_merge_is_refused_without_a_merge():

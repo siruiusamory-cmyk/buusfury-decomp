@@ -52,8 +52,9 @@ from pathlib import Path
 DEFAULT_PROJECT = "siruiusamory/log1-remake"
 
 #: An HTTP status, not a number that merely appears in error text: "pipeline 4057
-#: failed" is a real failure and must not earn the single retry.
-HTTP_405 = re.compile(r"\b405\b|Method Not Allowed")
+#: failed" and "MR !405" are real failures and must not earn the single retry. The
+#: status is matched by its own name, or by 405 in an HTTP/status context.
+HTTP_405 = re.compile(r"Method Not Allowed|\b(?:HTTP|status)[ /:]*405\b", re.IGNORECASE)
 
 #: The two readings of a 405, quoted so a refusal names them rather than guessing.
 FLAKE_READING = (
@@ -98,12 +99,16 @@ class Outcome:
     detail: str
     attempts: list[Attempt] = field(default_factory=list)
     reading_assumed: str = DETERMINISTIC_READING
+    #: True only for the documented exit 4: the pinned SHA is not the MR's head.
+    #: Set by the refusal itself rather than sniffed back out of `detail`.
+    sha_mismatch: bool = False
 
     def as_dict(self) -> dict:
         return {
             "status": self.status,
             "detail": self.detail,
             "reading_assumed": self.reading_assumed,
+            "sha_mismatch": self.sha_mismatch,
             "attempts": [attempt.as_dict() for attempt in self.attempts],
         }
 
@@ -136,6 +141,7 @@ def merge(
     if sha.lower() != head:
         return Outcome(
             status="refused",
+            sha_mismatch=True,
             detail=(
                 f"the pinned SHA is not this MR's head: asked for {sha}, the MR is at "
                 f"{head or '(no sha)'}. Re-freeze and re-review, or merge the reviewed "
@@ -167,6 +173,7 @@ def merge(
                 error="the MR's head is no longer the pinned SHA",
             )
             outcome.attempts.append(attempt)
+            outcome.sha_mismatch = True
             outcome.detail = (
                 f"the MR is no longer at the signed-off SHA: asked for {sha}, it is at "
                 f"{state_before.get('sha')}. Nothing was merged; re-freeze and re-review."
@@ -255,7 +262,7 @@ class GlabApi:
         return self._run(["glab", "mr", "merge", mr, "--sha", sha, "--yes"])
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, api=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--mr", required=True, help="merge request iid")
     parser.add_argument("--sha", required=True, help="the signed-off candidate SHA")
@@ -265,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        outcome = merge(args.mr, args.sha, GlabApi(), args.project, args.dry_run)
+        outcome = merge(args.mr, args.sha, api or GlabApi(), args.project, args.dry_run)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 2
@@ -284,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                     attempt.had_effect,
                 )
             )
-    if outcome.status == "refused" and "not this MR's head" in outcome.detail:
+    if outcome.sha_mismatch:
         return 4
     return {"merged": 0, "dry-run": 0}.get(outcome.status, 3)
 

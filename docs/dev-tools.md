@@ -24,14 +24,46 @@ CI is Linux, where no `.ps1` can execute. A behavioural guard for a PowerShell t
 therefore SKIPS there with a named reason, and a pure-Python TEXT guard over the
 script's own bytes runs everywhere and pins the invariant the behaviour rests on.
 Both layers exist on purpose: an acceptance that rests only on a test that skips in
-CI proves nothing there.
+CI proves nothing there. The table below is GENERATED from
+`tests/unit/test_skip_coverage_guard.py`, which derives which nodes skip from the
+AST of the two test modules and fails when this block and the code disagree. Do not
+edit it by hand; regenerate it.
 
-| Tool | Text guard (runs in CI) | Behavioural guard (skips without PowerShell) |
-| --- | --- | --- |
-| `commit_msg.ps1` | the `WriteAllText` + `UTF8Encoding($false)` spelling, and no executable `Set-Content -Encoding utf8` | writes a message with quotes and an apostrophe and reads the bytes back |
-| `worktree_owners.ps1` | `hash-object -- <path>` and the three class literals | the sweep's classifications, on a repository built for each case |
-| `probe_worktree.ps1` | `Get-FileHash`, `source sha256`, `copy sha256`, `MISMATCH`, `exit 3` | copies, refuses a changed byte, cleans up |
-| the cutter | it ends with its own `exit 0` | the sweep's exit code, on a stale registration |
+<!-- BEGIN skip-guard-table -->
+`13` nodes skip on a runner without PowerShell: 6 in `tests/unit/test_dev_tools.py`, 7 in `tests/unit/test_worktree_owners.py`.
+Counted from the test-sdk trace of job `17121704860` at `9c34f1ae`; on Windows these nodes run, so no local run can produce the number.
+
+| Test file | Nodes that skip without PowerShell |
+| --- | --- |
+| `tests/unit/test_dev_tools.py` | 6 |
+| `tests/unit/test_worktree_owners.py` | 7 |
+
+Each one names the text guard that holds its invariant:
+
+| Node that skips | Text guard that runs in CI |
+| --- | --- |
+| `tests/unit/test_dev_tools.py::test_the_message_writer_writes_no_byte_order_mark` | `tests/unit/test_dev_tools.py::test_the_message_writer_keeps_the_no_bom_spelling` |
+| `tests/unit/test_dev_tools.py::test_the_no_bom_claim_is_driven_to_failure` | `tests/unit/test_dev_tools.py::test_the_bom_failure_probe_names_the_shell_whose_utf8_writes_a_mark` |
+| `tests/unit/test_dev_tools.py::test_the_probe_worktree_copies_and_verifies_when_the_bytes_match` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
+| `tests/unit/test_dev_tools.py::test_the_probe_worktree_leaves_the_caller_worktree_untouched` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
+| `tests/unit/test_dev_tools.py::test_the_probe_worktree_refuses_a_file_whose_copy_differs` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
+| `tests/unit/test_dev_tools.py::test_the_writer_refuses_an_empty_message` | `tests/unit/test_dev_tools.py::test_the_message_writer_keeps_the_no_bom_spelling` |
+| `tests/unit/test_worktree_owners.py::test_a_carrier_is_not_reported_as_a_writer_without_its_blob_match` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
+| `tests/unit/test_worktree_owners.py::test_a_deleted_file_is_classified_as_deleted_not_unreadable` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_delete_branch_as_text` |
+| `tests/unit/test_worktree_owners.py::test_a_file_that_differs_from_master_is_classified_as_authored` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
+| `tests/unit/test_worktree_owners.py::test_a_staged_blob_equal_to_masters_is_classified_as_carrying_master` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
+| `tests/unit/test_worktree_owners.py::test_a_worktree_file_equal_to_master_is_carrying_not_authored` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
+| `tests/unit/test_worktree_owners.py::test_an_unmerged_file_is_classified_as_conflicted` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
+| `tests/unit/test_worktree_owners.py::test_the_sweep_exits_zero_when_a_worktree_entry_is_unreadable` | `tests/unit/test_worktree_owners.py::test_the_sweep_sets_its_own_exit_code` |
+
+Proven on Windows only, because the check needs a host that can run the script:
+
+| Invariant | Why it cannot be asserted as text |
+| --- | --- |
+| a message file's first three bytes | the writer's own self-check reads the file it just wrote, and the BOM the probe reproduces is Windows PowerShell 5.1's, which only exists on Windows |
+| the committed identity of a copy | a probe copy is verified by hashing it; that the destination really holds the source's bytes needs a filesystem and a PowerShell host |
+| the sweep's classification branches | the four branch conditions are pinned as text by test_the_sweep_pins_the_classification_branches and the delete branch by test_the_sweep_pins_the_delete_branch_as_text, but which ONE fires for a given `git status` entry is decided by git at run time and can only be observed on a host that can execute the script |
+<!-- END skip-guard-table -->
 
 The behavioural proof is a Windows run, recorded in the ticket's report; the same
 tools were used to cut and commit that ticket, which is the strongest form of it.

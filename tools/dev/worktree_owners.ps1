@@ -66,7 +66,6 @@ function Get-WorktreeEntryClass {
     $relative = ($Entry -replace '^.. ', '').Trim()
     if ($relative -match ' -> ') { $relative = ($relative -split ' -> ')[-1].Trim('"') }
     $absolute = Join-Path $WorktreePath $relative
-    $staged = $Entry[0] -ne '?' -and $Entry[0] -ne ' '
     # git reports an untracked directory with a trailing slash and no mtime of its
     # own; it is new to the branch by definition, and treating it as a missing file
     # printed it as [deleted] in the first measurement of this sweep.

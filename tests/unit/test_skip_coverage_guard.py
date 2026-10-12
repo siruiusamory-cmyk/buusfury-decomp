@@ -1,6 +1,6 @@
 """The CI-runnable/locally-proved split, made mechanical and self-policing.
 
-Seven guard nodes in this suite need a PowerShell host, which the Linux CI runner
+Thirteen guard nodes in this suite need a PowerShell host, which the Linux CI runner
 does not have. That is deliberate: a `.ps1` cannot execute there. What is NOT
 acceptable is the state the first version of this ticket shipped - a load-bearing
 behaviour guarded ONLY by a test that skips in CI, with a prose table claiming
@@ -8,11 +8,13 @@ otherwise. This file makes the claim checkable.
 
 Three things are derived, never typed from memory:
 
-1. WHICH NODES SKIP. Every node of the scanned test files is AST-parsed, and a node
-   is a skip node when it calls a guard helper that can raise `pytest.skip`, either
-   directly or through the one fixture that does (its parameters are followed).
-   Adding a new `pytest.skip` to a node puts it in the set automatically, so a new
-   skip cannot be forgotten.
+1. WHICH NODES SKIP. Every function of the scanned test files is AST-parsed. A
+   function reaches the platform skip when it calls a helper that does
+   (`PLATFORM_SKIP_HELPERS`) or calls something that does, so the two fixtures are
+   reached through their own bodies rather than named here. A test node skips when
+   it reaches one of those, or calls `pytest.skip` in its own body, or requests a
+   fixture that does either. Adding a new `pytest.skip` to a node puts it in the
+   set automatically, so a new skip cannot be forgotten.
 
 2. WHICH TEXT GUARD PROTECTS EACH ONE. `SKIP_GUARD` is the block: one row per skip
    node naming the pure-Python guard node that holds the invariant it asserts. A
@@ -24,6 +26,11 @@ Three things are derived, never typed from memory:
    rendered into `docs/dev-tools.md` between markers, and this guard fails when the
    document and the table disagree - so the document cannot drift away from the code
    it describes.
+
+The counts are the CI runner's, not this machine's. On Windows these nodes RUN, so a
+local run cannot see them at all: `CI_TRACE_SKIPS` is what the test-sdk trace of job
+17121704860 at 9c34f1ae reported, and the per-file counts below are reconciled
+against it rather than against anything measured here.
 """
 
 from __future__ import annotations
@@ -31,8 +38,6 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
-
-import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -42,15 +47,23 @@ SCANNED = (
     "tests/unit/test_worktree_owners.py",
 )
 
-#: The helper a node calls when it cannot run without PowerShell. A node is a skip
-#: node when it calls one of these, or calls a function that does (the fixture), so
-#: the set is derived from the code and cannot be forgotten.
-SKIP_HELPERS = ("_require_powershell", "_require_windows_powershell")
+#: The helpers whose skip condition is the PLATFORM and not the data: no PowerShell
+#: host. Declared, because no call graph can tell a condition that fires on Linux
+#: from one that never fires - `_require_python` also raises `pytest.skip`, and CI
+#: has a Python.
+PLATFORM_SKIP_HELPERS = ("_require_powershell", "_require_windows_powershell")
 
-#: Fixtures that skip, and the file that defines them: their parameters are followed
-#: so a node that requests this fixture counts as a skip node even without calling a
-#: helper itself.
-SKIPPING_FIXTURES = {"synthetic": "tests/unit/test_worktree_owners.py"}
+#: The trace the count comes from: test-sdk job 17121704860, commit 9c34f1ae,
+#: "8 failed, 5234 passed, 320 skipped". The 320 include every other skip in the
+#: suite; these 13 are the ones this file polices. The trace's own lines are
+#: test_dev_tools.py :52 x2, :69, :792, :818, :834 and test_worktree_owners.py
+#: :235, :263, :272, :279, :297, :327, :364.
+CI_TRACE_JOB = "17121704860"
+CI_TRACE_COMMIT = "9c34f1aebba6f9a4b158d91726f0f816840a8f4b"
+CI_TRACE_SKIPS: dict[str, int] = {
+    "tests/unit/test_dev_tools.py": 6,
+    "tests/unit/test_worktree_owners.py": 7,
+}
 
 #: BEGIN SKIP_GUARD - the mapping this guard reads.
 #:
@@ -81,7 +94,7 @@ SKIP_GUARD: dict[str, str] = {
     "tests/unit/test_worktree_owners.py::test_a_worktree_file_equal_to_master_is_carrying_not_authored":
         "tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches",
     "tests/unit/test_worktree_owners.py::test_the_sweep_exits_zero_when_a_worktree_entry_is_unreadable":
-        "tests/unit/test_worktree_owners.py::test_the_cutter_ends_with_its_own_exit_code",
+        "tests/unit/test_worktree_owners.py::test_the_sweep_sets_its_own_exit_code",
 }
 #: END SKIP_GUARD
 
@@ -110,54 +123,123 @@ def _module(relative: str) -> ast.Module:
     return ast.parse((REPOSITORY_ROOT / relative).read_text(encoding="utf-8"))
 
 
-def _call_names(tree: ast.AST) -> set[str]:
+def _call_names(node: ast.AST) -> set[str]:
     found: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            found.add(node.func.id)
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
+            found.add(child.func.id)
     return found
 
 
-def _scan(relative: str) -> dict[str, dict]:
-    """Every node of one test module, with what the guard needs from it."""
-    tree = _module(relative)
-    nodes: dict[str, dict] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+def _calls_pytest_skip(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
             continue
-        arguments = {
-            arg.arg for arg in node.args.args + node.args.kwonlyargs
-        }
-        calls = _call_names(node)
-        nodes[node.name] = {
-            "path": relative,
-            "id": f"{relative}::{node.name}",
-            "calls_skip_helper": bool(calls & set(SKIP_HELPERS)),
-            "asks_skipping_fixture": bool(arguments & set(SKIPPING_FIXTURES)),
-        }
-    return nodes
+        func = child.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "skip"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "pytest"
+        ):
+            return True
+    return False
+
+
+def _is_fixture(node: ast.FunctionDef) -> bool:
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if (
+            isinstance(target, ast.Attribute)
+            and target.attr == "fixture"
+            and isinstance(target.value, ast.Name)
+            and target.value.id == "pytest"
+        ):
+            return True
+    return False
+
+
+def _functions() -> dict[str, dict]:
+    """Every function of the scanned modules, keyed by its node id."""
+    found: dict[str, dict] = {}
+    for relative in SCANNED:
+        for node in ast.walk(_module(relative)):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            found[f"{relative}::{node.name}"] = {
+                "path": relative,
+                "id": f"{relative}::{node.name}",
+                "name": node.name,
+                "is_test": node.name.startswith("test_"),
+                "fixture": _is_fixture(node),
+                "calls": _call_names(node),
+                "calls_pytest_skip": _calls_pytest_skip(node),
+                "arguments": {arg.arg for arg in node.args.args + node.args.kwonlyargs},
+            }
+    return found
+
+
+def platform_reaching(functions: dict[str, dict]) -> set[str]:
+    """Function NAMES that reach a platform skip, from their own call graph."""
+    reaching = set(PLATFORM_SKIP_HELPERS)
+    changed = True
+    while changed:
+        changed = False
+        for info in functions.values():
+            if info["name"] in reaching:
+                continue
+            if info["calls"] & reaching:
+                reaching.add(info["name"])
+                changed = True
+    return reaching
+
+
+def all_nodes() -> dict[str, dict]:
+    return _functions()
 
 
 def skip_nodes() -> set[str]:
     """Node ids that cannot run on a Linux runner, derived from the code."""
+    functions = _functions()
+    platform = platform_reaching(functions)
+    skipping_fixtures = {
+        info["name"]
+        for info in functions.values()
+        if info["fixture"]
+        and (info["calls_pytest_skip"] or info["calls"] & platform)
+    }
     found: set[str] = set()
-    for relative in SCANNED:
-        for node in _scan(relative).values():
-            if node["calls_skip_helper"] or node["asks_skipping_fixture"]:
-                found.add(node["id"])
+    for info in functions.values():
+        if not info["is_test"]:
+            continue
+        if (
+            info["calls"] & platform
+            or info["calls_pytest_skip"]
+            or info["arguments"] & skipping_fixtures
+        ):
+            found.add(info["id"])
     return found
 
 
-def all_nodes() -> dict[str, dict]:
-    found: dict[str, dict] = {}
-    for relative in SCANNED:
-        found.update(_scan(relative))
-    return found
+def unmapped_skips(skip: set[str]) -> list[str]:
+    """The guard's own check, callable with an injected set so it can be driven."""
+    return sorted(skip - set(SKIP_GUARD))
+
+
+def broken_guards(nodes: dict[str, dict], skip: set[str]) -> list[str]:
+    """Rows whose named text guard is missing, or itself skips in CI."""
+    problems: list[str] = []
+    for node, guard in sorted(SKIP_GUARD.items()):
+        if guard not in nodes:
+            problems.append(f"{node} -> {guard}: no such test node")
+        elif guard in skip:
+            problems.append(f"{node} -> {guard}: the guard itself skips in CI")
+    return problems
 
 
 def test_every_skip_node_is_in_the_mapping():
     """A new `pytest.skip` cannot be added without naming what covers it."""
-    missing = sorted(skip_nodes() - set(SKIP_GUARD))
+    missing = unmapped_skips(skip_nodes())
     assert missing == [], (
         "these nodes skip on a Linux runner and no text guard is named for them:\n"
         + "\n".join(missing)
@@ -174,32 +256,21 @@ def test_the_mapping_names_no_node_that_runs_in_ci():
 
 def test_every_protecting_guard_exists_and_runs_in_ci():
     """The guard may not itself be a skip node, or the pair proves nothing."""
-    nodes = all_nodes()
-    problems: list[str] = []
-    for node, guard in sorted(SKIP_GUARD.items()):
-        if guard not in nodes:
-            problems.append(f"{node} -> {guard}: no such test node")
-            continue
-        if guard in skip_nodes():
-            problems.append(f"{node} -> {guard}: the guard itself skips in CI")
-    assert problems == [], "\n".join(problems)
+    assert broken_guards(all_nodes(), skip_nodes()) == []
 
 
 def test_the_counts_agree_with_the_ci_trace():
-    """13 nodes, which is what the test-sdk trace listed.
+    """The per-file counts are the test-sdk trace's, not this machine's.
 
-    The trace is the authority: at b5f80ed it names 6 nodes in test_dev_tools.py
-    and 7 in test_worktree_owners.py. The line numbers it gives are checked here
-    too, so a node cannot be swapped for another and keep the count right.
+    On Windows these nodes run, so no local run can produce these numbers at all.
     """
-    nodes = all_nodes()
     per_file: dict[str, int] = {}
     for node in skip_nodes():
-        per_file[node.split("::")[0]] = per_file.get(node.split("::")[0], 0) + 1
-    assert sum(per_file.values()) == 13, per_file
-    assert per_file.get("tests/unit/test_dev_tools.py") == 6, per_file
-    assert per_file.get("tests/unit/test_worktree_owners.py") == 7, per_file
-    assert len(nodes) > len(SKIP_GUARD)
+        path = node.split("::")[0]
+        per_file[path] = per_file.get(path, 0) + 1
+    assert per_file == CI_TRACE_SKIPS, (
+        f"job {CI_TRACE_JOB} at {CI_TRACE_COMMIT[:8]} listed {CI_TRACE_SKIPS}, "
+        f"the AST derives {per_file}")
 
 
 def test_the_document_table_matches_this_files_tables():
@@ -219,11 +290,14 @@ def render_table() -> str:
     """The two tables, as the document carries them."""
     by_file: dict[str, int] = {}
     for node in sorted(skip_nodes()):
-        by_file[node.split("::")[0]] = by_file.get(node.split("::")[0], 0) + 1
+        path = node.split("::")[0]
+        by_file[path] = by_file.get(path, 0) + 1
+    counted = ", ".join(f"{count} in `{path}`" for path, count in sorted(by_file.items()))
     lines = [
-        f"Generated from `tests/unit/test_skip_coverage_guard.py`. "
-        f"{len(SKIP_GUARD)} nodes skip on a runner without PowerShell, "
-        f"{len(skip_nodes())} in total:",
+        f"`{len(skip_nodes())}` nodes skip on a runner without PowerShell: {counted}.",
+        f"Counted from the test-sdk trace of job `{CI_TRACE_JOB}` at "
+        f"`{CI_TRACE_COMMIT[:8]}`; on Windows these nodes run, so no local run can "
+        "produce the number.",
         "",
         "| Test file | Nodes that skip without PowerShell |",
         "| --- | --- |",
@@ -252,41 +326,37 @@ def test_the_locally_proved_table_keeps_every_invariant_it_claims():
         assert len(reason) > 40, f"{invariant}'s reason says nothing"
 
 
-def _fake_scan(monkeypatch, extra_node: str) -> None:
-    """Inject one more skip node, the way a future edit would."""
-    real = skip_nodes()
-    monkeypatch.setattr(
-        "tests.unit.test_skip_coverage_guard.skip_nodes",
-        lambda: real | {extra_node},
-    )
+# --- the two failure drives ---------------------------------------------------
 
 
-def test_a_new_skip_without_a_mapping_fails(monkeypatch):
-    """Failure drive one: a skip added with no row fails this file."""
-    _fake_scan(monkeypatch, "tests/unit/test_dev_tools.py::test_a_future_skip")
-    with pytest.raises(AssertionError) as caught:
-        test_every_skip_node_is_in_the_mapping()
-    assert "test_a_future_skip" in str(caught.value)
+def test_a_new_skip_without_a_mapping_fails():
+    """Failure drive one: a skip added with no row is reported by name.
+
+    Driven through the same function the real check calls, with the set the future
+    edit would produce - a `monkeypatch` of this module's own globals would patch a
+    second import of it and prove nothing.
+    """
+    future = "tests/unit/test_dev_tools.py::test_a_future_skip"
+    missing = unmapped_skips(skip_nodes() | {future})
+    assert missing == [future], missing
 
 
-def test_a_deleted_text_guard_fails_for_its_skip_nodes(monkeypatch):
-    """Failure drive two: removing a named guard fails this file."""
-    nodes = dict(all_nodes())
+def test_a_deleted_text_guard_fails_for_its_skip_nodes():
+    """Failure drive two: removing a named guard is reported for its skip nodes."""
     guard = SKIP_GUARD[
         "tests/unit/test_worktree_owners.py::test_a_deleted_file_is_classified_as_deleted_not_unreadable"
     ]
+    nodes = dict(all_nodes())
     nodes.pop(guard)
-    monkeypatch.setattr(
-        "tests.unit.test_skip_coverage_guard.all_nodes", lambda: nodes
-    )
-    with pytest.raises(AssertionError) as caught:
-        test_every_protecting_guard_exists_and_runs_in_ci()
-    assert "no such test node" in str(caught.value)
+    problems = broken_guards(nodes, skip_nodes())
+    assert any("no such test node" in problem and guard in problem for problem in problems), (
+        problems)
 
 
 def test_the_rendered_table_is_reproducible():
     """The document's block is exactly what this file renders, byte for byte."""
     first = render_table()
     assert render_table() == first
-    assert re.search(r"\| `tests/unit/test_dev_tools.py` \| 6 \|", first), first
-    assert re.search(r"\| `tests/unit/test_worktree_owners.py` \| 7 \|", first), first
+    for path, count in CI_TRACE_SKIPS.items():
+        assert re.search(rf"\| `{re.escape(path)}` \| {count} \|", first), first
+    assert f"job `{CI_TRACE_JOB}`" in first, first

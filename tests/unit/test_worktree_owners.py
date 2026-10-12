@@ -159,10 +159,14 @@ def test_the_sweep_pins_the_delete_branch_as_text():
     """
     text = SWEEP.read_text(encoding="utf-8")
 
-    assert "if ($Entry[0] -eq 'D' -or $Entry[1] -eq 'D') { return 'deleted' }" in text
-    # Both columns of the porcelain code: `D ` is staged, ` D` is a worktree delete.
-    assert "if (-not $present) {" in text
-    assert "if (-not $staged) { return 'deleted' }" in text
+    # The delete arm and the unreadable fallback, both INSIDE the absent-file
+    # branch: a staged delete has no file to hash, so it is a delete and not an
+    # unreadable entry. Both columns of the porcelain code are read there, so `D `
+    # (staged) and ` D` (worktree) are the same answer.
+    absent_arm = text[text.index("if (-not $present) {") :]
+    absent_arm = absent_arm[: absent_arm.index("\n    }")]
+    assert "if ($Entry[0] -eq 'D' -or $Entry[1] -eq 'D') { return 'deleted' }" in absent_arm
+    assert "return 'unreadable'" in absent_arm
 
 
 def test_the_msys_path_git_prints_is_normalised():
@@ -399,6 +403,16 @@ def test_the_sweep_exits_zero_when_a_worktree_entry_is_unreadable(tmp_path):
         "a success must not be reported as failure because a stale entry is "
         "unreadable:\n" + result.stdout + result.stderr)
     assert "unreadable: git status exited" in result.stdout, result.stdout
+
+
+def test_the_sweep_sets_its_own_exit_code():
+    """The sweep's `exit 0`, as TEXT: the run that proves it skips in CI.
+
+    A registered worktree git cannot read makes `git status` exit nonzero, and the
+    process used to inherit that code. The behaviour needs a host that can execute
+    the script; that it sets its own code is a property of its bytes.
+    """
+    assert re.search(r"^\s+exit 0\s*$", SWEEP.read_text(encoding="utf-8"), re.M)
 
 
 def test_the_cutter_ends_with_its_own_exit_code():

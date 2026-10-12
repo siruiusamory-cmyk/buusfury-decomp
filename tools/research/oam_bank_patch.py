@@ -79,6 +79,12 @@ def word(image: bytes, offset: int) -> int:
 #: through into the literal. That single reversal hung every variant until it was read back at runtime.
 RETURN_PAIR = bytes.fromhex("004b" "1847")
 
+#: A return that leaves r3 holding the tile: `ldr r7,[pc,#0]` then `bx r7`. Halfwords 0x4F00 and 0x4738, so the
+#: bytes are `00 4f` and `38 47`. It is used where r3's value at exit matters, because the plain pair loads the
+#: return address INTO r3 and leaves it there. r7 is dead after the block: the loop writes it again before any
+#: read, which the resynchronising sweep over the loop recorded.
+RETURN_VIA_R7 = bytes.fromhex("004f" "3847")
+
 
 def stub_layout(stub_address: int, body: bytes | None = None) -> dict:
     """Where the pieces of the stub live, so nothing has to hardcode an offset.
@@ -98,7 +104,7 @@ def stub_layout(stub_address: int, body: bytes | None = None) -> dict:
             "end": literal_at + 4}
 
 
-def patch(image: bytearray, body: bytes | None = None, padding: int = 0):
+def patch(image: bytearray, body: bytes | None = None, padding: int = 0, return_pair: bytes | None = None):
     """Apply the patch in place. Returns the stub address and the bytes it replaced.
 
     `body` overrides the stub, which the bisect uses to test the entry and return path on its own; `padding`
@@ -111,7 +117,7 @@ def patch(image: bytearray, body: bytes | None = None, padding: int = 0):
     stub_address = len(image)
 
     layout = stub_layout(stub_address, body)
-    image.extend(layout["body"] + RETURN_PAIR)
+    image.extend(layout["body"] + (return_pair or RETURN_PAIR))
     image.extend(struct.pack("<I", RESUME + 1))
     if len(image) != layout["end"]:
         raise AssertionError("stub layout disagrees with what was written")

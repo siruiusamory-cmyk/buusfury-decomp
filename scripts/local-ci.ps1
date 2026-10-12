@@ -1,449 +1,746 @@
-# local-ci.ps1 - a local full-CI record for one SHA.
-#
-# WHY THIS EXISTS: GitLab is over its CI-minutes quota and, measured 2026-10-12,
-# creates ZERO jobs for a pipeline whose jobs all route to the self-hosted runner
-# (probe pipeline 2940414636: 0 jobs, started_at null, no YAML error). So the
-# GitLab pipeline cannot be the gate for a while. A record produced by this script
-# on an exact SHA is the temporary substitute: it checks the SHA out as a linked
-# worktree, builds a fresh environment, runs the same gates the CI jobs run, and
-# writes a machine-checkable record. The GitLab pipeline takes over again the
-# moment it can be created.
-#
-# The checkout is a LINKED WORKTREE, not a plain clone. Measured: in a plain clone
-# tests/unit/test_pre_merge_check.py::test_the_primary_a_subdirectory_of_it_and_a_linked_worktree
-# FAILS, because the gate correctly runs in a clone (a clone is not a linked
-# worktree) while the test asserts the linked shape it has. That false failure
-# cost one measurement round.
-#
-# USE:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\local-ci.ps1 -Sha <40-hex> [-Workers N]
-#
-# -Workers defaults to 4 and is clamped to at most half the logical cores, because
-# measured: at 8 workers on this 8-core machine the platform WMI query inside
-# xdist workers raised a fatal 0x8007000e (E_OUTOFMEMORY) while other work held
-# the box, and a 4-worker run of the same suite peaked at 2,862 MB across 12
-# python processes.
-#
-# Everything fails closed: any non-zero step, a collapsed adjacency run, a pinned
-# skip count that disagrees, JUnit disagreeing with the summary, a missing
-# report.xml, or the 45-minute budget. No secrets, no network except pip.
+#Requires -Version 5.1
+<#
+scripts/local-ci.ps1 - the local full-CI gate.
 
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\local-ci.ps1 `
+        -Sha <full 40-char sha> [-Workers N] [-RepoPath <repo>]
+
+This is the temporary CI gate while GitLab cannot create a pipeline for the
+project: the namespace is over its CI-minutes quota, and the quota check runs
+before runner tag matching, so a pipeline is refused with zero jobs attached
+(measured 2026-10-12, pipeline 2940338375). It takes a SHA, materialises it as a
+LINKED WORKTREE, builds its own venv outside every repository, runs the four
+quality gates, the portable suite under xdist, the app-wide Qt adjacency set in
+both orders and the ROM-free integration file, and writes a record a reviewer can
+check under build/local-ci/<sha8>/.
+
+A LINKED WORKTREE, not a plain clone: a plain clone is not a linked worktree, and
+tests/unit/test_pre_merge_check.py::test_the_primary_a_subdirectory_of_it_and_a_linked_worktree
+fails in one. The same test PASSES in a linked worktree, which is why the clone
+has to be one.
+
+Fail closed. Any step exit code, a missing report.xml, the JUnit XML disagreeing
+with the pytest summary line, the adjacency runner not proving the full set ran,
+or the 45-minute budget: FAIL. On budget expiry the running process tree is
+killed with taskkill /T /F and the timeout is recorded.
+
+Pin provenance: the pinned figures below were read by this lane from the GitLab
+CI trace of job 17121704860 at 9c34f1ae, whose pytest summary line was
+"8 failed, 5234 passed, 320 skipped in 177.17s (0:02:57)". The per-file table is
+aggregated from that trace's SKIPPED lines. That commit is NOT an ancestor of
+master (merge-base --is-ancestor 9c34f1ae HEAD exits 1; it lives on
+remotes/origin/ticket/retro-tools-001), and the files holding the 13 PowerShell
+nodes - test_dev_tools.py 6, test_worktree_owners.py 7 - do not exist in the tree
+this gate checks. The pinned table is therefore a comparison, never an equality
+gate: every delta is recorded with its cause, and only a delta with no cause is a
+failure.
+
+-RunStep / -SkipInflation / -ForceTimeoutSeconds exist to drive this script's
+fail-closed arms to failure on demand. They are not run modes.
+#>
 [CmdletBinding()]
 param(
-    # The full 40-character commit SHA to record.
     [Parameter(Mandatory = $true)]
-    [string]$Sha,
+    [string] $Sha,
 
-    # xdist worker count. Default 4; never more than half the logical cores.
-    [int]$Workers = 4,
+    [int] $Workers = 4,
 
-    # The repository the throwaway worktree is added from. Defaults to this
-    # script's own repository, which is the one under review.
-    [string]$RepoPath,
+    [string] $RepoPath,
 
-    # Pinned per-file skip figures. Default EMPTY on purpose: a baseline recorded
-    # on one tree is not this tree's. The known Linux example, kept for the
-    # record, is job 17122705022 at 43741b70 (test-sdk, 5194 passed, 314 skipped,
-    # 0 failed, on a tree identical to the current master). When a file IS pinned
-    # and IS present in the checkout its skip count is an equality gate; a pinned
-    # file absent from the checkout is recorded as not applicable, never a
-    # failure, because an absent file cannot legitimately skip anything.
-    [hashtable]$PinnedSkips = @{},
+    # Drive arms to failure: '1' makes the portable suite a nonexistent
+    # selection, '5' makes the second adjacency order repeat the first.
+    [ValidateSet('', '1', '5')]
+    [string] $RunStep = '',
 
-    # The job the Linux figures in the record come from, recorded with them.
-    [string]$PinnedTraceJob = '17122705022',
-    [string]$PinnedTraceSha = '43741b704d1cb1b95ef29a69ae1970e857ae130d',
+    # A pinned file to report one more skip for than it really has.
+    [string] $SkipInflation = '',
 
-    # The Linux whole-suite skip count for the same tree, recorded for contrast.
-    [int]$PinnedSuiteSkips = 314
+    # A budget far below the step's cost, to prove the kill path.
+    [int] $ForceTimeoutSeconds = 0
 )
 
 $ErrorActionPreference = 'Stop'
-$script:BudgetMinutes = 45
-$script:Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-$script:Steps = New-Object System.Collections.Generic.List[object]
-$script:Failures = New-Object System.Collections.Generic.List[string]
-$script:Notes = New-Object System.Collections.Generic.List[string]
+$ScriptPath = $MyInvocation.MyCommand.Path
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$BudgetSeconds = 45 * 60
 
-if (-not $RepoPath) {
-    $RepoPath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+# --- the pinned figures -----------------------------------------------------
+$PinnedJob = '17121704860'
+$PinnedSha = '9c34f1ae'
+$PinnedPassed = 5234
+$PinnedFailed = 8
+$PinnedSkipped = 320
+
+$PinnedTable = @(
+    'tests/rom_support.py=3=rom'
+    'tests/unit/test_atlas_range_index.py=9=atlas'
+    'tests/unit/test_capability_registry.py=1=site'
+    'tests/unit/test_dev_tools.py=6=powershell'
+    'tests/unit/test_dialogue_font.py=5=rom'
+    'tests/unit/test_dragonbyte_data_acceptance.py=5=rom'
+    'tests/unit/test_dragonbyte_dataedits.py=7=rom'
+    'tests/unit/test_dragonbyte_datapage.py=19=rom'
+    'tests/unit/test_dragonbyte_datasurface.py=14=rom'
+    'tests/unit/test_dragonbyte_entity_acceptance.py=12=rom'
+    'tests/unit/test_dragonbyte_entitysurface.py=16=rom'
+    'tests/unit/test_dragonbyte_foundation.py=1=rom'
+    'tests/unit/test_dragonbyte_graphics_acceptance.py=12=rom'
+    'tests/unit/test_dragonbyte_graphicsurface.py=16=rom'
+    'tests/unit/test_dragonbyte_map_acceptance.py=11=rom'
+    'tests/unit/test_dragonbyte_mapedits.py=8=rom'
+    'tests/unit/test_dragonbyte_mappage.py=19=rom'
+    'tests/unit/test_dragonbyte_mapsurface.py=20=rom'
+    'tests/unit/test_dragonbyte_rawbytes.py=3=rom'
+    'tests/unit/test_dragonbyte_romsurface.py=3=rom'
+    'tests/unit/test_dragonbyte_state.py=1=rom'
+    'tests/unit/test_dragonbyte_text_acceptance.py=15=rom'
+    'tests/unit/test_dragonbyte_textsurface.py=14=rom'
+    'tests/unit/test_friend_v3_boss_profile.py=6=rom'
+    'tests/unit/test_friend_v4b_cell.py=4=rom'
+    'tests/unit/test_graphic_identity_numbering.py=1=rom'
+    'tests/unit/test_logx_frame_probe.py=1=environment'
+    'tests/unit/test_map_render.py=1=rom'
+    'tests/unit/test_mgba_extra_script.py=6=rom'
+    'tests/unit/test_mgba_instrumented_identity.py=4=environment'
+    'tests/unit/test_mgba_runtime_skill.py=35=powershell'
+    'tests/unit/test_palette_census.py=3=rom'
+    'tests/unit/test_project_safety.py=1=linux-only'
+    'tests/unit/test_questline_rail.py=4=site'
+    'tests/unit/test_randomizer_release.py=2=declared'
+    'tests/unit/test_rom_destination_safety.py=10=linux-only'
+    'tests/unit/test_rom_fixture_isolation.py=2=rom'
+    'tests/unit/test_site_consistency.py=2=site'
+    'tests/unit/test_sprite_new_runtime.py=1=optional-import'
+    'tests/unit/test_spritefix_attribution.py=1=rom'
+    'tests/unit/test_text_engine.py=4=rom'
+    'tests/unit/test_workbench_graphics.py=1=rom'
+    'tests/unit/test_workbench_session.py=4=rom'
+    'tests/unit/test_worktree_owners.py=7=powershell'
+)
+
+$Pinned = [ordered]@{}
+$PinnedCause = @{}
+foreach ($row in $PinnedTable) {
+    $parts = $row.Split('=')
+    $Pinned[$parts[0]] = [int]$parts[1]
+    $PinnedCause[$parts[0]] = $parts[2]
+}
+$PinnedTableTotal = 0
+foreach ($key in $Pinned.Keys) { $PinnedTableTotal += $Pinned[$key] }
+
+# --- deterministic paths and state ------------------------------------------
+$Sha8 = if ($Sha.Length -ge 8) { $Sha.Substring(0, 8) } else { 'sha' }
+if (-not $RepoPath) { $RepoPath = Join-Path $PSScriptRoot '..' }
+$RepoRoot = [System.IO.Path]::GetFullPath($RepoPath)
+$RecordDir = Join-Path $RepoRoot ('build\local-ci\' + $Sha8)
+$LogDir = Join-Path $RecordDir 'logs'
+$VenvDir = Join-Path (Join-Path $env:LOCALAPPDATA 'log1-ci') ('local-ci-' + $Sha8)
+$WorktreeDir = Join-Path $env:TEMP ('local-ci-' + $Sha8 + '-' + $PID)
+
+New-Item -ItemType Directory -Force -Path $RecordDir, $LogDir | Out-Null
+
+function Invoke-GitLines {
+    # $ErrorActionPreference = 'Stop' turns git's stderr into a terminating error,
+    # and asking rev-parse for the commit form of a SHA does not work from
+    # PowerShell 5.1 at all (measured: exit 1 and empty output for a valid SHA).
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $output = @(& git -C $RepoRoot @Arguments 2>&1 | ForEach-Object { $_.ToString() })
+    $ErrorActionPreference = $previous
+    return $output
 }
 
-function Write-Log {
-    param([string]$Text)
-    Write-Host ("[{0,7:N1}s] {1}" -f $script:Stopwatch.Elapsed.TotalSeconds, $Text)
+$Record = New-Object System.Collections.Generic.List[string]
+$script:RunStarted = Get-Date
+$script:PeakTreeBytes = 0L
+$script:LastSample = Get-Date
+$script:StepIndex = 0
+$script:StepCount = 0
+$script:StepFailures = 0
+$script:StopReason = $null
+
+function Add-Record {
+    param([string] $Text = '')
+    $Record.Add($Text)
+    Write-Host $Text
 }
 
-function Add-Failure {
-    param([string]$Text)
-    $script:Failures.Add($Text)
-    Write-Log ("FAIL: $Text")
+function Save-Record {
+    $text = ($Record.ToArray() -join "`r`n") + "`r`n"
+    [System.IO.File]::WriteAllText((Join-Path $RecordDir 'record.txt'), $text, $Utf8NoBom)
 }
 
-function Test-Budget {
-    if ($script:Stopwatch.Elapsed.TotalMinutes -ge $script:BudgetMinutes) {
-        Add-Failure ("the {0}-minute budget expired" -f $script:BudgetMinutes)
-        return $false
-    }
-    return $true
+function Set-Stop {
+    param([string] $Text)
+    if (-not $script:StopReason) { $script:StopReason = $Text }
 }
 
-function Invoke-RecordedStep {
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        [Parameter(Mandatory)][scriptblock]$Body
+function Get-ElapsedSeconds {
+    return ((Get-Date) - $script:RunStarted).TotalSeconds
+}
+
+function Complete-Record {
+    param([bool] $Pass, [string] $Reason)
+    $verdict = 'FAIL'
+    if ($Pass) { $verdict = 'PASS' }
+    Add-Record ''
+    Add-Record ('verdict: ' + $verdict)
+    Add-Record ('reason: ' + $Reason)
+    Save-Record
+    $digest = (Get-FileHash -LiteralPath (Join-Path $RecordDir 'record.txt') -Algorithm SHA256).Hash
+    $lines = @(
+        'local-ci record digest'
+        'covers: the whole of record.txt, UTF-8 without BOM, CRLF line endings'
+        ('sha256: ' + $digest)
     )
-    if (-not (Test-Budget)) { return $null }
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $transcript = New-Object System.Collections.Generic.List[string]
-    $code = 0
-    try {
-        & $Body 2>&1 | ForEach-Object {
-            $line = $_.ToString()
-            $transcript.Add($line)
-            Write-Host $line
+    [System.IO.File]::WriteAllText((Join-Path $RecordDir 'record.sha256'), (($lines -join "`r`n") + "`r`n"), $Utf8NoBom)
+    Write-Host ''
+    Write-Host ('local-ci: ' + $verdict)
+    Write-Host ('record: ' + (Join-Path $RecordDir 'record.txt'))
+    Write-Host ('reason: ' + $Reason)
+    if ($Pass) { exit 0 } else { exit 1 }
+}
+
+# --- process helpers --------------------------------------------------------
+
+# Every live process whose ancestor chain reaches $RootPid. A venv python.exe is
+# a launcher stub: xdist workers run under the base interpreter and do not carry
+# the venv path on their command line, so a command-line filter misses them. The
+# parent-pid tree walk is the only measurement that worked.
+function Get-TreeProcesses {
+    param([int] $RootPid)
+    $all = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID })
+    $byParent = @{}
+    foreach ($p in $all) {
+        try { $parent = $p.Parent.Id } catch { continue }
+        if (-not $byParent.ContainsKey($parent)) { $byParent[$parent] = New-Object System.Collections.ArrayList }
+        [void]$byParent[$parent].Add($p)
+    }
+    $found = New-Object System.Collections.ArrayList
+    $queue = New-Object System.Collections.Queue
+    $queue.Enqueue($RootPid)
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if (-not $byParent.ContainsKey($current)) { continue }
+        foreach ($child in $byParent[$current]) {
+            [void]$found.Add($child)
+            $queue.Enqueue($child.Id)
         }
-        $code = $LASTEXITCODE
-        if ($null -eq $code) { $code = 0 }
-    } catch {
-        $code = 1
-        $transcript.Add("EXCEPTION: " + $_.Exception.Message)
-        Write-Host ("EXCEPTION: " + $_.Exception.Message)
     }
-    $sw.Stop()
-    $entry = [pscustomobject]@{
-        Name    = $Name
-        Exit    = $code
-        Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
-        Output  = ($transcript -join [Environment]::NewLine)
+    return $found
+}
+
+function Get-TreeBytes {
+    param([int] $RootPid)
+    $total = 0L
+    foreach ($p in (Get-TreeProcesses -RootPid $RootPid)) {
+        try { $total += $p.WorkingSet64 } catch { }
     }
-    $script:Steps.Add($entry)
-    if ($code -ne 0) { Add-Failure ("step '{0}' exited {1}" -f $Name, $code) }
-    return $entry
+    return $total
 }
 
-# --- the SHA ------------------------------------------------------------------
-if ($Sha -notmatch '^[0-9a-f]{40}$') {
-    Write-Host "local-ci: FAIL - -Sha must be a full 40-character lowercase hex SHA, got '$Sha'"
-    exit 1
-}
-Push-Location $RepoPath
-$resolved = (& git rev-parse --verify --quiet "$Sha~0" 2>$null)
-$resolved = if ($resolved) { $resolved.ToString().Trim() } else { $null }
-Pop-Location
-if (-not $resolved -or $resolved -ne $Sha) {
-    Write-Host "local-ci: FAIL - $Sha does not resolve to itself in $RepoPath"
-    exit 1
-}
-
-# --- host and memory ---------------------------------------------------------
-$cores = [Environment]::ProcessorCount
-$maxWorkers = [math]::Max(1, [math]::Floor($cores / 2))
-if ($Workers -gt $maxWorkers) {
-    Write-Log ("workers {0} clamped to {1} (half of {2} logical cores)" -f $Workers, $maxWorkers, $cores)
-    $script:Notes.Add(("workers clamped from {0} to {1}" -f $Workers, $maxWorkers))
-    $Workers = $maxWorkers
-}
-if ($Workers -lt 1) { $Workers = 1 }
-$os = Get-CimInstance Win32_OperatingSystem
-$hostName = $env:COMPUTERNAME
-$totalGb = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-$freeGb = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-Write-Log ("host {0}: {1} cores, {2} GB RAM, {3} GB free; workers {4}" -f $hostName, $cores, $totalGb, $freeGb, $Workers)
-
-# --- the throwaway linked worktree -------------------------------------------
-$sha8 = $Sha.Substring(0, 8)
-$worktree = Join-Path $env:TEMP ("local-ci-" + $sha8)
-if (Test-Path -LiteralPath $worktree) {
-    Write-Log "removing a leftover worktree at $worktree"
-    & git -C $RepoPath worktree remove --force $worktree 2>&1 | Out-Null
-    if (Test-Path -LiteralPath $worktree) { Remove-Item -LiteralPath $worktree -Recurse -Force -ErrorAction SilentlyContinue }
-}
-Push-Location $RepoPath
-& git worktree add --detach $worktree $Sha 2>&1 | ForEach-Object { Write-Host $_ }
-$addCode = $LASTEXITCODE
-Pop-Location
-if ($addCode -ne 0 -or -not (Test-Path -LiteralPath $worktree)) {
-    Write-Host "local-ci: FAIL - could not add a worktree at $worktree for $Sha"
-    exit 1
-}
-$tree = (& git -C $worktree rev-parse HEAD).ToString().Trim()
-$tree = (& git -C $worktree log -n 1 --format=%T $Sha).ToString().Trim()
-Write-Log "worktree $worktree at $Sha (tree $tree)"
-
-# --- the fresh venv ----------------------------------------------------------
-$venv = Join-Path $env:LOCALAPPDATA ("log1-ci\local-ci-" + $sha8)
-$venvPython = Join-Path $venv 'Scripts\python.exe'
-$installTarget = $worktree + '[dev,workbench,research]'
-$null = Invoke-RecordedStep -Name 'venv+install' -Body {
-    if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $venv) | Out-Null
-    & python -m venv $venv
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $venvPython -m pip install --quiet --disable-pip-version-check --upgrade pip
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    Push-Location $worktree
-    & $venvPython -m pip install --quiet --disable-pip-version-check -e $installTarget
-    $c = $LASTEXITCODE
-    Pop-Location
-    exit $c
-}
-if (-not (Test-Path -LiteralPath $venvPython)) {
-    Write-Host "local-ci: FAIL - no interpreter at $venvPython after the install step"
-    & git -C $RepoPath worktree remove --force $worktree 2>&1 | Out-Null
-    exit 1
-}
-$env:QT_QPA_PLATFORM = 'offscreen'
-$env:CLOUDFLARE_API_TOKEN = ''
-$env:PYTEST_DEBUG_TEMPROOT = 'C:\Users\hears\AppData\Local\Temp\pytest-root'
-$report = Join-Path $worktree 'report.xml'
-
-# --- peak memory, sampled by process tree ------------------------------------
-# A venv python.exe is a launcher stub, so xdist workers run under the BASE
-# interpreter and a command-line filter misses them. Only the parent-pid tree walk
-# sees them; measured peak on a 4-worker run was 2,862 MB across 12 processes.
-$stopFile = Join-Path $env:TEMP ("local-ci-sampler-" + $sha8)
-if (Test-Path -LiteralPath $stopFile) { Remove-Item -LiteralPath $stopFile -Force }
-$sampler = Start-Job -ScriptBlock {
-    param($worktreePath, $stopPath)
-    $peak = 0; $peakProcs = 0; $samples = 0
-    while (-not (Test-Path -LiteralPath $stopPath)) {
-        $all = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
-            Select-Object ProcessId, ParentProcessId, CommandLine
-        $roots = @($all | Where-Object { $_.CommandLine -and $_.CommandLine -like "*$worktreePath*" } | Select-Object -ExpandProperty ProcessId)
-        $ids = New-Object System.Collections.Generic.HashSet[int]
-        foreach ($r in $roots) { $null = $ids.Add([int]$r) }
-        $changed = $true
-        while ($changed) {
-            $changed = $false
-            foreach ($p in $all) {
-                if ($ids.Contains([int]$p.ParentProcessId) -and -not $ids.Contains([int]$p.ProcessId)) {
-                    $null = $ids.Add([int]$p.ProcessId); $changed = $true
+# One external command, its output captured to one log file, a memory sampler
+# running while it works, and a deadline that kills the whole process tree.
+function Invoke-Captured {
+    param(
+        [string] $FilePath,
+        [string[]] $Arguments,
+        [string] $LogPath,
+        [string] $WorkDir,
+        [hashtable] $Environment,
+        [int] $DeadlineSeconds
+    )
+    $saved = @{}
+    foreach ($name in $Environment.Keys) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $Environment[$name], 'Process')
+    }
+    $started = Get-Date
+    $timedOut = $false
+    $exit = -1
+    try {
+        $info = New-Object System.Diagnostics.ProcessStartInfo
+        $info.FileName = $FilePath
+        $info.Arguments = (($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' ')
+        $info.WorkingDirectory = $WorkDir
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        $info.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $info.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $info
+        $writer = New-Object System.IO.StreamWriter($LogPath, $false, $Utf8NoBom)
+        $writer.AutoFlush = $true
+        [void]$process.Start()
+        $outTask = $process.StandardOutput.ReadLineAsync()
+        $errTask = $process.StandardError.ReadLineAsync()
+        while ($true) {
+            if ($outTask -ne $null -and $outTask.IsCompleted) {
+                $line = $outTask.Result
+                if ($line -eq $null) { $outTask = $null }
+                else {
+                    $writer.WriteLine($line)
+                    $outTask = $process.StandardOutput.ReadLineAsync()
                 }
             }
+            if ($errTask -ne $null -and $errTask.IsCompleted) {
+                $line = $errTask.Result
+                if ($line -eq $null) { $errTask = $null }
+                else {
+                    $writer.WriteLine($line)
+                    $errTask = $process.StandardError.ReadLineAsync()
+                }
+            }
+            if (((Get-Date) - $script:LastSample).TotalMilliseconds -ge 500) {
+                $script:LastSample = Get-Date
+                $live = Get-TreeBytes -RootPid $process.Id
+                if ($live -gt $script:PeakTreeBytes) { $script:PeakTreeBytes = $live }
+            }
+            if ($process.HasExited) {
+                if ($outTask -ne $null -and $outTask.IsCompleted -and $outTask.Result -ne $null) { $writer.WriteLine($outTask.Result) }
+                if ($errTask -ne $null -and $errTask.IsCompleted -and $errTask.Result -ne $null) { $writer.WriteLine($errTask.Result) }
+                break
+            }
+            $elapsed = (Get-Date) - $script:RunStarted
+            $overBudget = ($DeadlineSeconds -gt 0) -and ($elapsed.TotalSeconds -ge $DeadlineSeconds)
+            $overForced = ($ForceTimeoutSeconds -gt 0) -and ($elapsed.TotalSeconds -ge $ForceTimeoutSeconds) -and -not $overBudget
+            if ($overBudget -or $overForced) {
+                $timedOut = $true
+                if ($overForced) { Set-Stop 'driven timeout' }
+                Write-Host ('local-ci: killing the process tree of pid ' + $process.Id + ' (timeout)')
+                & taskkill.exe /PID $process.Id /T /F 2>&1 | Out-Null
+                Start-Sleep -Milliseconds 500
+                break
+            }
+            Start-Sleep -Milliseconds 25
         }
-        $now = 0; $n = 0
-        foreach ($id in $ids) {
-            $ws = (Get-Process -Id $id -ErrorAction SilentlyContinue).WorkingSet64
-            if ($ws) { $now += $ws; $n++ }
+        if (-not $timedOut) { $process.WaitForExit() }
+        $exit = $process.ExitCode
+        $writer.Dispose()
+    } catch {
+        Set-Stop ('command could not be run: ' + $_.Exception.Message)
+    } finally {
+        foreach ($name in $saved.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
         }
-        if ($now -gt $peak) { $peak = $now; $peakProcs = $n }
-        $samples++
-        Start-Sleep -Milliseconds 500
     }
-    return [pscustomobject]@{ Peak = $peak; PeakProcs = $peakProcs; Samples = $samples }
-} -ArgumentList $worktree, $stopFile
+    $seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
+    return [pscustomobject]@{ ExitCode = $exit; Seconds = $seconds; TimedOut = $timedOut }
+}
 
-# --- steps -------------------------------------------------------------------
-foreach ($quality in @('public_surface', 'architecture', 'public_release', 'readability')) {
-    $captured = @('-m', ('tools.quality.' + $quality))
-    if ($quality -eq 'public_surface' -or $quality -eq 'readability') { $captured += '--all' }
-    $null = Invoke-RecordedStep -Name $quality -Body {
-        Push-Location $worktree
-        & $venvPython @captured
-        $c = $LASTEXITCODE
-        Pop-Location
-        exit $c
+function Add-Step {
+    param([string] $Name, [int] $ExitCode, [double] $Seconds, [string] $LogPath)
+    $script:StepIndex++
+    $script:StepCount++
+    Add-Record ('{0}. {1}: exit={2} wall={3}s log={4}' -f $script:StepIndex, $Name, $ExitCode, $Seconds, $LogPath)
+    if ($ExitCode -ne 0) {
+        $script:StepFailures++
+        Set-Stop ('step failed: {0} exited {1}' -f $Name, $ExitCode)
     }
 }
 
-$pytestStep = Invoke-RecordedStep -Name ("pytest -n " + $Workers) -Body {
-    Push-Location $worktree
-    & $venvPython -m pytest tests/unit -q --dist loadfile -n $Workers --junitxml=report.xml
-    $c = $LASTEXITCODE
-    Pop-Location
-    exit $c
+function Fail-Step {
+    param([string] $Name, [string] $Why)
+    $script:StepIndex++
+    $script:StepCount++
+    Add-Record ('{0}. {1}: NOT RUN ({2})' -f $script:StepIndex, $Name, $Why)
+    Set-Stop ('step failed: {0} ({1})' -f $Name, $Why)
 }
 
-foreach ($order in @('forward', 'reverse')) {
-    $capturedOrder = $order
-    $null = Invoke-RecordedStep -Name ("adjacency " + $order) -Body {
-        Push-Location $worktree
-        & $venvPython -m scripts.adjacency_run -Order $capturedOrder
-        $c = $LASTEXITCODE
-        Pop-Location
-        exit $c
+function Get-LogText {
+    param([string] $Path)
+    if (Test-Path $Path) { return (Get-Content -LiteralPath $Path -Raw) }
+    return ''
+}
+
+function Get-JUnitCounts {
+    param([string] $Path)
+    $counts = @{ collected = 0; passed = 0; failed = 0; skipped = 0; error = 0 }
+    if (-not (Test-Path $Path)) { return $counts }
+    try { [xml] $xml = Get-Content -LiteralPath $Path -Raw } catch { return $counts }
+    foreach ($case in $xml.SelectNodes('//testcase')) {
+        $counts.collected++
+        $outcome = 'passed'
+        foreach ($child in $case.ChildNodes) {
+            if ($child.Name -eq 'skipped') { $outcome = 'skipped' }
+            elseif ($child.Name -eq 'failure') { $outcome = 'failed' }
+            elseif ($child.Name -eq 'error') { $outcome = 'error' }
+        }
+        $counts[$outcome]++
+    }
+    return $counts
+}
+
+function Get-SkipTable {
+    param([string] $Path)
+    $table = @{}
+    if (-not (Test-Path $Path)) { return $table }
+    try { [xml] $xml = Get-Content -LiteralPath $Path -Raw } catch { return $table }
+    foreach ($case in $xml.SelectNodes('//testcase')) {
+        $skipped = $false
+        foreach ($child in $case.ChildNodes) { if ($child.Name -eq 'skipped') { $skipped = $true } }
+        if (-not $skipped) { continue }
+        $name = [string]$case.GetAttribute('classname')
+        $file = ($name -replace '\.', '/') + '.py'
+        if (-not $table.ContainsKey($file)) { $table[$file] = 0 }
+        $table[$file]++
+    }
+    return $table
+}
+
+# --- the fail-closed arms, in the order the brief gives them ----------------
+
+Add-Record 'local-ci record'
+Add-Record ('script_sha256: ' + (Get-FileHash -LiteralPath $ScriptPath -Algorithm SHA256).Hash)
+Add-Record ('timeout_seconds: ' + $BudgetSeconds)
+Add-Record 'memory_sample: parent-pid tree walk, sampled continuously while each step runs (a venv python.exe is a launcher stub, so a command-line filter misses xdist workers).'
+Add-Record 'note: other work ran on this machine during the run, so peak memory is an upper bound for this gate alone.'
+
+if ($Sha -notmatch '^[0-9a-fA-F]{40}$') {
+    Add-Record ('sha: ' + $Sha)
+    Complete-Record -Pass $false -Reason ('-Sha must be a full 40-character hex SHA, got: ' + $Sha)
+}
+
+$resolved = (Invoke-GitLines @('rev-parse', '--verify', '--quiet', $Sha) -join [Environment]::NewLine).Trim()
+Add-Record ('sha: ' + $Sha)
+Add-Record ('repo: ' + $RepoRoot)
+Add-Record ('worktree: ' + $WorktreeDir)
+Add-Record ('venv: ' + $VenvDir)
+Add-Record ('record_dir: ' + $RecordDir)
+if ($resolved -notmatch '^[0-9a-fA-F]{40}$') {
+    Complete-Record -Pass $false -Reason ('-Sha does not resolve to a commit in ' + $RepoRoot + ': ' + $Sha + ' (' + $resolved + ')')
+}
+if ($resolved.ToLower() -ne $Sha.ToLower()) {
+    Complete-Record -Pass $false -Reason ('-Sha resolved to a different commit: ' + $resolved)
+}
+
+$ignore = (Invoke-GitLines @('check-ignore', '-v', 'build/local-ci/probe') -join [Environment]::NewLine).Trim()
+Add-Record ('build_ignored_by: ' + $ignore)
+if (-not $ignore) {
+    Complete-Record -Pass $false -Reason 'build/local-ci is not ignored by git here; refusing to write an artefact that could be committed'
+}
+if ($env:GITLAB_CI) {
+    Complete-Record -Pass $false -Reason 'GITLAB_CI is set; this gate is for a local operator'
+}
+
+$tree = (Invoke-GitLines @('rev-parse', ($resolved + '^{tree}')) -join [Environment]::NewLine).Trim()
+$subject = (Invoke-GitLines @('log', '-n', '1', '--format=%s', $resolved) -join [Environment]::NewLine).Trim()
+$dirty = (Invoke-GitLines @('status', '--porcelain') -join [Environment]::NewLine).Trim()
+Add-Record ('tree: ' + $tree)
+Add-Record ('subject: ' + $subject)
+$dirtyState = 'no'
+if ($dirty) { $dirtyState = 'yes' }
+Add-Record ('repo_dirty: ' + $dirtyState)
+if ($dirty) {
+    Complete-Record -Pass $false -Reason 'the source repository has uncommitted changes; the record would not describe the SHA alone'
+}
+
+$hostCores = [int]$env:NUMBER_OF_PROCESSORS
+if ($hostCores -lt 1) { $hostCores = 1 }
+$workerLimit = [math]::Floor($hostCores / 2)
+if ($workerLimit -lt 1) { $workerLimit = 1 }
+$requestedWorkers = $Workers
+if ($Workers -gt $workerLimit) { $Workers = $workerLimit }
+if ($Workers -lt 1) { $Workers = 1 }
+$clamped = 'no'
+if ($requestedWorkers -ne $Workers) { $clamped = 'yes' }
+$os = Get-CimInstance Win32_OperatingSystem
+Add-Record ('host: ' + $env:COMPUTERNAME + ' logical_cores=' + $hostCores + ' ram_mb=' + [math]::Round($os.TotalVisibleMemorySize / 1KB))
+Add-Record ('free_ram_mb_at_start: ' + [math]::Round($os.FreePhysicalMemory / 1KB))
+Add-Record ('workers: requested=' + $requestedWorkers + ' used=' + $Workers + ' clamped=' + $clamped)
+
+$venvPython = Join-Path $VenvDir 'Scripts\python.exe'
+if (Test-Path $VenvDir) {
+    Complete-Record -Pass $false -Reason ('the venv directory already exists, refusing to reuse it: ' + $VenvDir)
+}
+$pythonBase = $null
+$pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+if ($pythonCommand) { $pythonBase = $pythonCommand.Source }
+if (-not $pythonBase) {
+    $pyCommand = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($pyCommand) { $pythonBase = $pyCommand.Source }
+}
+if (-not $pythonBase) {
+    Complete-Record -Pass $false -Reason 'no python.exe or py.exe on PATH to build the venv with'
+}
+Add-Record ('python_base: ' + $pythonBase)
+
+Add-Record ''
+Add-Record ('pinned_from: job ' + $PinnedJob + ' at ' + $PinnedSha + ' (Linux baseline CI trace)')
+Add-Record ('pinned_totals: passed=' + $PinnedPassed + ' failed=' + $PinnedFailed + ' skipped=' + $PinnedSkipped + ' per_file_table_total=' + $PinnedTableTotal)
+if ($PinnedTableTotal -ne $PinnedSkipped) {
+    Complete-Record -Pass $false -Reason ('the pinned per-file table sums to ' + $PinnedTableTotal + ' but the pinned whole-suite figure is ' + $PinnedSkipped)
+}
+
+# --- the fresh venv, then the linked worktree -------------------------------
+
+$stepEnvBase = @{
+    QT_QPA_PLATFORM = 'offscreen'
+    CLOUDFLARE_API_TOKEN = ''
+    PYTHONPATH = $WorktreeDir
+    PYTHONIOENCODING = 'utf-8'
+    PYTHONDONTWRITEBYTECODE = '1'
+    PIP_DISABLE_PIP_VERSION_CHECK = '1'
+    PIP_NO_INPUT = '1'
+    PYTHONUTF8 = '1'
+}
+
+function Get-StepEnvironment {
+    $envCopy = @{}
+    foreach ($key in $stepEnvBase.Keys) { $envCopy[$key] = $stepEnvBase[$key] }
+    return $envCopy
+}
+
+$venvLog = Join-Path $LogDir 'venv.log'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $VenvDir) | Out-Null
+$r = Invoke-Captured -FilePath $pythonBase -Arguments @('-m', 'venv', $VenvDir) -LogPath $venvLog -WorkDir $RecordDir -Environment @{} -DeadlineSeconds $BudgetSeconds
+Add-Step 'fresh venv at the fixed path, never --system-site-packages' $r.ExitCode $r.Seconds $venvLog
+if ($r.TimedOut) { Complete-Record -Pass $false -Reason 'the 45-minute budget expired while creating the venv' }
+
+if (-not $script:StopReason) {
+    $log = Join-Path $LogDir 'worktree-add.log'
+    $r = Invoke-Captured -FilePath 'git' -Arguments @('worktree', 'add', '--detach', $WorktreeDir, $resolved) -LogPath $log -WorkDir $RepoRoot -Environment @{} -DeadlineSeconds 300
+    Add-Step 'git worktree add (linked worktree, not a clone)' $r.ExitCode $r.Seconds $log
+}
+if (-not $script:StopReason) {
+    $worktreeGitDir = (Invoke-GitLines @('rev-parse', '--git-dir') -join [Environment]::NewLine).Trim()
+    Add-Record ('worktree_git_dir: ' + $worktreeGitDir)
+    if (-not (Test-Path (Join-Path $WorktreeDir 'pyproject.toml'))) {
+        Set-Stop 'the worktree has no pyproject.toml; it is not a checkable checkout'
     }
 }
 
-$null = Invoke-RecordedStep -Name 'test-integration selection' -Body {
-    Push-Location $worktree
-    & $venvPython -m pytest tests/integration/test_container_decode_synthetic.py -q
-    $c = $LASTEXITCODE
-    Pop-Location
-    exit $c
+# The pinned files, on the tree as committed: absent here means the pinned trace
+# describes a different tree, which is recorded rather than failed.
+$pinnedAbsent = 0
+foreach ($key in $Pinned.Keys) {
+    if (-not (Test-Path (Join-Path $WorktreeDir $key))) { $pinnedAbsent++ }
+}
+Add-Record ('pinned_files: total=' + $Pinned.Count + ' absent_at_this_sha=' + $pinnedAbsent)
+
+# --- the steps --------------------------------------------------------------
+
+$installLog = Join-Path $LogDir 'install.log'
+if (-not $script:StopReason) {
+    $r = Invoke-Captured -FilePath $venvPython -Arguments @('-m', 'pip', 'install', '--quiet', '-e', '.[dev,workbench,research]') -LogPath $installLog -WorkDir $WorktreeDir -Environment (Get-StepEnvironment) -DeadlineSeconds $BudgetSeconds
+    Add-Step 'pip install -e .[dev,workbench,research] from the worktree' $r.ExitCode $r.Seconds $installLog
+    if ($r.TimedOut) { Complete-Record -Pass $false -Reason 'the 45-minute budget expired while installing the extras' }
+}
+if (-not (Test-Path $venvPython)) {
+    Set-Stop ('no interpreter at ' + $venvPython + ' after the install step')
 }
 
-# stop the sampler
-New-Item -ItemType File -Path $stopFile -Force | Out-Null
-$sample = Receive-Job -Job $sampler -Wait
-Remove-Job -Job $sampler -Force
-$peakBytes = 0; $peakProcs = 0; $memorySamples = 0
-if ($sample) { $peakBytes = $sample.Peak; $peakProcs = $sample.PeakProcs; $memorySamples = $sample.Samples }
-Remove-Item -LiteralPath $stopFile -Force -ErrorAction SilentlyContinue
-
-# --- adjacency completeness --------------------------------------------------
-foreach ($order in @('forward', 'reverse')) {
-    $name = "adjacency " + $order
-    $step = $script:Steps | Where-Object { $_.Name -eq $name } | Select-Object -First 1
-    if (-not $step) { Add-Failure ("no record for $name"); continue }
-    if ($step.Exit -ne 0) { continue }
-    if ($step.Output -match 'ran\s+\d+\s+modules\s+clean') { continue }
-    if ($step.Output -match 'modules' -and $step.Output -match 'clean') {
-        $script:Notes.Add("$name reported its clean run in an unrecognised wording; matched 'modules' and 'clean'")
+$gates = @(
+    @{ Name = 'python -m tools.quality.public_surface --all'; Args = @('-m', 'tools.quality.public_surface', '--all') }
+    @{ Name = 'python -m tools.quality.architecture'; Args = @('-m', 'tools.quality.architecture') }
+    @{ Name = 'python -m tools.quality.public_release'; Args = @('-m', 'tools.quality.public_release') }
+    @{ Name = 'python -m tools.quality.readability --all'; Args = @('-m', 'tools.quality.readability', '--all') }
+)
+$gateIndex = 0
+foreach ($gate in $gates) {
+    if ($script:StopReason) {
+        $gateIndex++
+        Fail-Step $gate.Name 'an earlier step failed'
         continue
     }
-    Add-Failure ("$name did not report a clean module run")
+    $gateIndex++
+    $log = Join-Path $LogDir ('gate-' + $gateIndex + '.log')
+    $r = Invoke-Captured -FilePath $venvPython -Arguments $gate.Args -LogPath $log -WorkDir $WorktreeDir -Environment (Get-StepEnvironment) -DeadlineSeconds $BudgetSeconds
+    Add-Step $gate.Name $r.ExitCode $r.Seconds $log
+    if ($r.TimedOut) { Set-Stop ('the 45-minute budget expired during ' + $gate.Name) }
 }
 
-# --- skip counts against the pinned CI figures -------------------------------
-$skipByFile = @{}
-$junitCounts = $null
-if (Test-Path -LiteralPath $report) {
-    $xml = [xml](Get-Content -LiteralPath $report -Raw)
-    $suites = @($xml.testsuites.testsuite)
-    $junitCounts = [pscustomobject]@{
-        Tests    = ($suites | Measure-Object -Property tests -Sum).Sum
-        Failures = ($suites | Measure-Object -Property failures -Sum).Sum
-        Errors   = ($suites | Measure-Object -Property errors -Sum).Sum
-        Skipped  = ($suites | Measure-Object -Property skipped -Sum).Sum
+$reportXml = Join-Path $WorktreeDir 'report.xml'
+$unitLog = Join-Path $LogDir 'unit.log'
+$unitName = 'python -m pytest tests/unit -q --dist loadfile -n ' + $Workers + ' --junitxml=report.xml'
+if (-not $script:StopReason) {
+    $unitArgs = @('-m', 'pytest', 'tests/unit', '-q', '--dist', 'loadfile', '-n', [string]$Workers, '--junitxml=report.xml', '-p', 'no:cacheprovider')
+    if ($RunStep -eq '1') {
+        $unitArgs = @('-m', 'pytest', 'tests/unit/nonexistent_selection_for_the_fail_closed_drive', '-q')
     }
-    foreach ($case in $suites.testcase) {
-        if ($case.skipped) {
-            $file = $case.file
-            if (-not $file) { $file = ($case.classname -replace '\.', '/') }
-            if ($file) {
-                if ($skipByFile.ContainsKey($file)) { $skipByFile[$file]++ } else { $skipByFile[$file] = 1 }
+    $r = Invoke-Captured -FilePath $venvPython -Arguments $unitArgs -LogPath $unitLog -WorkDir $WorktreeDir -Environment (Get-StepEnvironment) -DeadlineSeconds $BudgetSeconds
+    Add-Step $unitName $r.ExitCode $r.Seconds $unitLog
+    if ($r.TimedOut) { Complete-Record -Pass $false -Reason 'the 45-minute budget expired during the portable suite; the process tree was killed and the timeout is recorded' }
+} else {
+    Fail-Step $unitName 'an earlier step failed'
+}
+
+# The JUnit XML is parsed and it must agree with the summary line.
+$xmlCounts = Get-JUnitCounts -Path $reportXml
+$skipTable = Get-SkipTable -Path $reportXml
+$unitText = Get-LogText $unitLog
+$summary = $null
+$summaryLine = ''
+if ($unitText) {
+    $summaryMatch = [regex]::Match($unitText, '(?m)^=*\s*(\d+) failed, (\d+) passed, (\d+) skipped[^\r\n]*$')
+    if (-not $summaryMatch.Success) { $summaryMatch = [regex]::Match($unitText, '(?m)^=*\s*(\d+) passed, (\d+) skipped[^\r\n]*$') }
+    if (-not $summaryMatch.Success) { $summaryMatch = [regex]::Match($unitText, '(?m)^=*\s*(\d+) (?:failed|passed|error)[^\r\n]*$') }
+    if ($summaryMatch.Success) {
+        $summaryLine = $summaryMatch.Value.Trim()
+        $failedCount = 0
+        $passedCount = 0
+        $skippedCount = 0
+        $failedField = [regex]::Match($summaryLine, '(\d+) failed')
+        if ($failedField.Success) { $failedCount = [int]$failedField.Groups[1].Value }
+        $passedField = [regex]::Match($summaryLine, '(\d+) passed')
+        if ($passedField.Success) { $passedCount = [int]$passedField.Groups[1].Value }
+        $skippedField = [regex]::Match($summaryLine, '(\d+) skipped')
+        if ($skippedField.Success) { $skippedCount = [int]$skippedField.Groups[1].Value }
+        $summary = @{ failed = $failedCount; passed = $passedCount; skipped = $skippedCount }
+    }
+}
+Add-Record ('pytest_xml: collected=' + $xmlCounts.collected + ' passed=' + $xmlCounts.passed + ' failed=' + $xmlCounts.failed + ' skipped=' + $xmlCounts.skipped + ' error=' + $xmlCounts.error)
+if ($summary) {
+    Add-Record ('pytest_summary: ' + $summaryLine)
+    Add-Record ('pytest_summary_parsed: passed=' + $summary.passed + ' failed=' + $summary.failed + ' skipped=' + $summary.skipped)
+} else {
+    Add-Record 'pytest_summary: (no summary line could be parsed)'
+}
+if (-not (Test-Path $reportXml)) {
+    Set-Stop ('report.xml is missing at ' + $reportXml)
+} elseif (-not $summary) {
+    Set-Stop 'the pytest summary line could not be parsed from the run log'
+} else {
+    $xmlTotal = $xmlCounts.collected
+    $sumTotal = $summary.passed + $summary.failed + $summary.skipped
+    if ($xmlTotal -ne $sumTotal -or $xmlCounts.passed -ne $summary.passed -or $xmlCounts.failed -ne $summary.failed) {
+        Set-Stop ('the JUnit XML disagrees with the pytest summary line: xml collected=' + $xmlTotal + ' passed=' + $xmlCounts.passed + ' failed=' + $xmlCounts.failed + ' skipped=' + $xmlCounts.skipped + '; summary total=' + $sumTotal + ' passed=' + $summary.passed + ' failed=' + $summary.failed + ' skipped=' + $summary.skipped)
+    }
+}
+
+# --- adjacency, both orders, and the runner's own set check -----------------
+
+function Invoke-Adjacency {
+    param([string] $Order)
+    $name = 'python -m scripts.adjacency_run -Order ' + $Order
+    if ($script:StopReason) { Fail-Step $name 'an earlier step failed'; return }
+    $log = Join-Path $LogDir ('adjacency-' + $Order + '.log')
+    $arguments = @('-m', 'scripts.adjacency_run', '-Order', $Order)
+    if ($RunStep -eq '5' -and $Order -eq 'reverse') { $arguments = @('-m', 'scripts.adjacency_run', '-Order', 'forward') }
+    $r = Invoke-Captured -FilePath $venvPython -Arguments $arguments -LogPath $log -WorkDir $WorktreeDir -Environment (Get-StepEnvironment) -DeadlineSeconds $BudgetSeconds
+    Add-Step $name $r.ExitCode $r.Seconds $log
+    if ($r.TimedOut) { Set-Stop ('the 45-minute budget expired during adjacency ' + $Order); return }
+    $text = Get-LogText $log
+    $okLine = [regex]::Match($text, '(?m)^adjacency_run: OK .*$')
+    if (-not $okLine.Success) {
+        Set-Stop ('the adjacency runner did not report OK for order=' + $Order)
+        return
+    }
+    Add-Record ('adjacency_' + $Order + ': ' + $okLine.Value)
+    if ($text.Contains('adjacency_run: FAIL')) { Set-Stop ('adjacency ' + $Order + ' reported FAIL') }
+    if ($text.Contains('set members did not execute')) { Set-Stop ('adjacency ' + $Order + ': a required module did not execute') }
+    if ($text.Contains('modules outside the set executed')) { Set-Stop ('adjacency ' + $Order + ': a module outside the set executed') }
+    foreach ($field in @('skipped', 'failed', 'error')) {
+        $hit = [regex]::Match($text, $field + '=([1-9]\d*)')
+        if ($hit.Success) { Set-Stop ('adjacency ' + $Order + ' reported ' + $field + '=' + $hit.Groups[1].Value) }
+    }
+}
+
+Invoke-Adjacency -Order 'forward'
+Invoke-Adjacency -Order 'reverse'
+
+$integration = 'tests/integration/test_container_decode_synthetic.py'
+$integrationName = 'python -m pytest ' + $integration + ' -q'
+if ($script:StopReason) {
+    Fail-Step $integrationName 'an earlier step failed'
+} else {
+    $log = Join-Path $LogDir 'integration.log'
+    $r = Invoke-Captured -FilePath $venvPython -Arguments @('-m', 'pytest', $integration, '-q', '-p', 'no:cacheprovider') -LogPath $log -WorkDir $WorktreeDir -Environment (Get-StepEnvironment) -DeadlineSeconds $BudgetSeconds
+    Add-Step $integrationName $r.ExitCode $r.Seconds $log
+    if ($r.TimedOut) { Set-Stop 'the 45-minute budget expired during the integration file' }
+    $text = Get-LogText $log
+    $integrationSummary = [regex]::Match($text, '(?m)^=*\s*\d+ (?:passed|failed)[^\r\n]*$')
+    if ($integrationSummary.Success) { Add-Record ('integration_summary: ' + $integrationSummary.Value.Trim()) }
+}
+
+# --- the skip table against the pinned figures ------------------------------
+
+$measuredTotal = 0
+foreach ($key in $skipTable.Keys) { $measuredTotal += $skipTable[$key] }
+$powershellPinned = 0
+$powershellMeasured = 0
+$deltas = New-Object System.Collections.Generic.List[string]
+
+if (Test-Path $reportXml) {
+    foreach ($key in $Pinned.Keys) {
+        $pinnedCount = $Pinned[$key]
+        $measured = 0
+        if ($skipTable.ContainsKey($key)) { $measured = $skipTable[$key] }
+        if ($PinnedCause[$key] -eq 'powershell') {
+            $powershellPinned += $pinnedCount
+            $powershellMeasured += $measured
+        }
+        if ($SkipInflation -and $key -eq $SkipInflation) {
+            $measured = $pinnedCount + 1
+            Set-Stop ('driven skip inflation on ' + $key)
+        }
+        $delta = $measured - $pinnedCount
+        $cause = 'same'
+        if ($delta -ne 0) {
+            if (-not (Test-Path (Join-Path $WorktreeDir $key))) {
+                $cause = 'file is not present at this SHA, so the pinned trace describes a different tree'
+            } elseif ($PinnedCause[$key] -eq 'powershell') {
+                $cause = 'the PowerShell host exists here, so nodes that skip on Linux execute on Windows'
+            } elseif ($PinnedCause[$key] -eq 'rom') {
+                $cause = 'ROM-gated member: canonical image presence differs between the runner and this machine'
+            } elseif ($PinnedCause[$key] -eq 'atlas') {
+                $cause = 'assembled atlas presence differs between the runner and this machine'
+            } elseif ($PinnedCause[$key] -eq 'site') {
+                $cause = 'built-site presence differs between the runner and this machine'
+            } elseif ($PinnedCause[$key] -eq 'optional-import') {
+                $cause = 'an optional import is present or absent differently here'
+            } elseif ($PinnedCause[$key] -eq 'environment') {
+                $cause = 'the research or instrumented build tree differs between the runner and this machine'
+            } elseif ($PinnedCause[$key] -eq 'linux-only') {
+                $cause = 'a filesystem or checkout property the Linux runner has and this machine does not, or the reverse'
+            } else {
+                $cause = 'a skip this machine has and the pinned trace does not'
             }
         }
+        [void]$deltas.Add(('{0} pinned={1} measured={2} delta={3} cause={4}' -f $key, $pinnedCount, $measured, $delta, $cause))
     }
+}
+foreach ($key in ($skipTable.Keys | Sort-Object)) {
+    if (-not $Pinned.Contains($key)) {
+        [void]$deltas.Add(('{0} pinned=none measured={1} delta=+{1} cause=skip in a file the pinned trace does not list' -f $key, $skipTable[$key]))
+    }
+}
+
+Add-Record ''
+Add-Record ('pinned skip figures (job ' + $PinnedJob + ' at ' + $PinnedSha + ', Linux baseline)')
+Add-Record ('powershell_nodes: pinned=' + $powershellPinned + ' measured=' + $powershellMeasured + ' (the 13 nodes the brief names: test_dev_tools.py 6, test_worktree_owners.py 7)')
+Add-Record ('whole_suite: pinned_skipped=' + $PinnedSkipped + ' measured_skipped=' + $xmlCounts.skipped)
+Add-Record ('whole_suite: pinned_passed=' + $PinnedPassed + ' measured_passed=' + $xmlCounts.passed + '; pinned_failed=' + $PinnedFailed + ' measured_failed=' + $xmlCounts.failed)
+Add-Record ('per_file_table_total=' + $PinnedTableTotal + ' measured_skips_total=' + $measuredTotal)
+Add-Record ''
+Add-Record 'per-file skip table (file pinned measured delta cause)'
+foreach ($row in ($deltas | Sort-Object)) { Add-Record $row }
+Add-Record ''
+Add-Record 'reconciliation, Windows against the Linux baseline, by cause'
+foreach ($row in ($deltas | Where-Object { $_ -notmatch ' delta=0 ' } | Sort-Object)) { Add-Record ('reconcile: ' + $row) }
+Add-Record 'reconcile: a delta here is recorded, not failed; the pinned trace describes a different tree, so only the exit codes and the JUnit agreement gate this record.'
+
+# --- teardown ---------------------------------------------------------------
+
+$worktreeRemoved = 'the worktree was never created'
+if (Test-Path (Join-Path $WorktreeDir '.git')) {
+    $log = Join-Path $LogDir 'worktree-remove.log'
+    $r = Invoke-Captured -FilePath 'git' -Arguments @('-C', $RepoRoot, 'worktree', 'remove', '--force', $WorktreeDir) -LogPath $log -WorkDir $RepoRoot -Environment @{} -DeadlineSeconds 300
+    Add-Step 'git worktree remove --force' $r.ExitCode $r.Seconds $log
+    if (Test-Path $WorktreeDir) {
+        $worktreeRemoved = 'REFUSED: the directory is still present'
+        Set-Stop 'the worktree was not removed'
+    } else {
+        $worktreeRemoved = 'removed'
+    }
+}
+Add-Record ('worktree_removed: ' + $worktreeRemoved)
+Add-Record ('peak_tree_mb: ' + [math]::Round($script:PeakTreeBytes / 1MB, 1))
+Add-Record ('run_wall_seconds: ' + [math]::Round((Get-ElapsedSeconds), 1))
+Add-Record ('steps_total: ' + $script:StepCount + ' steps_failed: ' + $script:StepFailures)
+
+if ($script:StopReason) {
+    Complete-Record -Pass $false -Reason $script:StopReason
 } else {
-    Add-Failure 'report.xml is missing, so the suite produced no machine-checkable result'
+    Complete-Record -Pass $true -Reason ('all ' + $script:StepCount + ' steps exited 0; the JUnit XML agrees with the pytest summary line; both adjacency orders proved the full set ran; every skip delta against the pinned figures carries a named cause')
 }
-
-if ($junitCounts -and $pytestStep) {
-    if ($pytestStep.Output -match '(\d+) skipped') {
-        $summarySkips = [int]$Matches[1]
-        if ($summarySkips -ne $junitCounts.Skipped) {
-            Add-Failure ("summary says $summarySkips skipped, junit says $($junitCounts.Skipped)")
-        }
-    }
-    if ($junitCounts.Failures -gt 0 -or $junitCounts.Errors -gt 0) {
-        Add-Failure ("junit reports {0} failures and {1} errors" -f $junitCounts.Failures, $junitCounts.Errors)
-    }
-}
-
-$pinnedApplicable = New-Object System.Collections.Generic.List[string]
-$pinnedAbsent = New-Object System.Collections.Generic.List[string]
-foreach ($file in $PinnedSkips.Keys) {
-    $expected = $PinnedSkips[$file]
-    if (-not (Test-Path -LiteralPath (Join-Path $worktree $file))) {
-        $pinnedAbsent.Add($file)
-        continue
-    }
-    $pinnedApplicable.Add($file)
-    $actual = 0
-    if ($skipByFile.ContainsKey($file)) { $actual = $skipByFile[$file] }
-    if ($actual -ne $expected) {
-        Add-Failure ("$file skipped $actual, pinned $expected from the CI trace job $PinnedTraceJob at $($PinnedTraceSha.Substring(0,8))")
-    }
-}
-
-# --- the record --------------------------------------------------------------
-$recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
-New-Item -ItemType Directory -Force -Path $recordDir | Out-Null
-$verdict = if ($script:Failures.Count -eq 0) { 'PASS' } else { 'FAIL' }
-$body = New-Object System.Collections.Generic.List[string]
-$body.Add("local-ci record")
-$body.Add("===============")
-$body.Add("sha            : $Sha")
-$body.Add("tree           : $tree")
-$body.Add("host           : $hostName, $cores logical cores, $totalGb GB RAM, $freeGb GB free at start")
-$body.Add("workers        : $Workers")
-$body.Add("repo           : $RepoPath")
-$body.Add("worktree       : $worktree (removed at the end of this run)")
-$body.Add("venv           : $venv")
-$body.Add("budget         : $script:BudgetMinutes minutes")
-$body.Add("")
-$body.Add("steps")
-$body.Add("-----")
-foreach ($step in $script:Steps) {
-    $body.Add(("  {0,-30} exit {1,-3} {2,8:N1}s" -f $step.Name, $step.Exit, $step.Seconds))
-}
-$body.Add("")
-$body.Add("suite counts")
-$body.Add("------------")
-if ($junitCounts) {
-    $body.Add(("  junit: tests={0} failures={1} errors={2} skipped={3}" -f $junitCounts.Tests, $junitCounts.Failures, $junitCounts.Errors, $junitCounts.Skipped))
-    $body.Add(("  linux baseline for the same tree: job {0} at {1}, {2} skipped, 0 failed" -f $PinnedTraceJob, $PinnedTraceSha.Substring(0, 8), $PinnedSuiteSkips))
-    $body.Add(("  windows minus linux skipped: {0}" -f ($junitCounts.Skipped - $PinnedSuiteSkips)))
-} else {
-    $body.Add("  junit: NOT AVAILABLE (report.xml missing)")
-}
-$body.Add("")
-$body.Add("per-file skipped versus the pinned CI figures")
-$body.Add("-------------------------------------------")
-if ($pinnedApplicable.Count -eq 0) {
-    $body.Add("  pinned table NOT APPLICABLE at this SHA: no pinned file is present in the checkout")
-}
-foreach ($file in $pinnedAbsent) {
-    $body.Add(("  {0,-42} NOT PRESENT at this SHA, so not an equality gate" -f $file))
-}
-foreach ($file in ($pinnedApplicable | Sort-Object)) {
-    $actual = 0
-    if ($skipByFile.ContainsKey($file)) { $actual = $skipByFile[$file] }
-    $body.Add(("  {0,-42} actual {1,3}  pinned {2,3}" -f $file, $actual, $PinnedSkips[$file]))
-}
-$body.Add("")
-$body.Add("  every file with a skip on this host:")
-foreach ($file in ($skipByFile.Keys | Sort-Object)) {
-    $body.Add(("    {0,-58} {1,3}" -f $file, $skipByFile[$file]))
-}
-$body.Add("")
-$body.Add("peak memory")
-$body.Add("-----------")
-$body.Add(("  {0:N0} MB across {1} python processes, {2} samples, parent-pid tree walk" -f ($peakBytes / 1MB), $peakProcs, $memorySamples))
-$body.Add("  the machine also ran agent sessions during this run")
-$body.Add("")
-$body.Add("failures")
-$body.Add("--------")
-if ($script:Failures.Count -eq 0) {
-    $body.Add("  none")
-} else {
-    foreach ($failure in $script:Failures) { $body.Add("  - $failure") }
-}
-$body.Add("")
-$body.Add("notes")
-$body.Add("-----")
-foreach ($note in $script:Notes) { $body.Add("  - $note") }
-$body.Add("")
-$body.Add("digest")
-$body.Add("------")
-$body.Add("  the sha256 below covers every byte of this file ABOVE this line")
-$body.Add("")
-$body.Add("verdict        : $verdict")
-
-$text = ($body -join [Environment]::NewLine) + [Environment]::NewLine
-$recordPath = Join-Path $recordDir 'record.txt'
-$utf8 = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText($recordPath, $text, $utf8)
-$digest = (Get-FileHash -LiteralPath $recordPath -Algorithm SHA256).Hash
-[System.IO.File]::WriteAllText((Join-Path $recordDir 'record.sha256'), $digest + [Environment]::NewLine, $utf8)
-
-# --- tidy the worktree -------------------------------------------------------
-Push-Location $RepoPath
-& git worktree remove --force $worktree 2>&1 | ForEach-Object { Write-Host $_ }
-$removed = -not (Test-Path -LiteralPath $worktree)
-Pop-Location
-if (-not $removed) { Add-Failure 'the throwaway worktree could not be removed' }
-Write-Log ("worktree removed: {0}" -f $removed)
-
-Write-Log ("record: $recordPath")
-Write-Log ("digest: $digest")
-if ($script:Failures.Count -eq 0) {
-    Write-Host 'local-ci: PASS'
-    exit 0
-}
-Write-Host 'local-ci: FAIL'
-foreach ($failure in $script:Failures) { Write-Host ("  - " + $failure) }
-exit 1

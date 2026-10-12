@@ -169,14 +169,6 @@ def _gamma_ceiling(maximum_output: int) -> int:
     return maximum_output + 3
 
 
-#: :func:`_gamma_ceiling` at the module's default bound: the ceiling a call that
-#: did not raise ``maximum_output`` derives. No call site applies this value, and
-#: none may: the decode derives its own from the bound each call declared, so a
-#: caller that accepts more than :data:`DEFAULT_MAX_OUTPUT` is not judged by the
-#: default.
-_GAMMA_LIMIT = _gamma_ceiling(DEFAULT_MAX_OUTPUT)
-
-
 class ContainerError(ValueError):
     """Raised when a container header or its packed stream is not well formed.
 

@@ -1,11 +1,31 @@
 param(
-    [switch]$SkipUpstreams
+    [switch]$SkipUpstreams,
+    # The extras a contributor gets. The default is the set CI installs
+    # (`-e ".[dev,workbench,research]"`, .gitlab-ci.yml), because the workbench
+    # and research gates are gates a contributor is told to run and they skip
+    # whole without PySide6 and capstone. `packaging` is left out: it adds
+    # PyInstaller for cutting a release, which is an owner-run step.
+    [string]$Extra = 'dev,workbench,research'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $VenvPath = Join-Path $ProjectRoot '.venv'
 $VenvPython = Join-Path $VenvPath 'Scripts\python.exe'
+
+$KnownExtras = @('dev', 'workbench', 'research', 'packaging')
+$ExtraArguments = @()
+foreach ($Name in $Extra.Split(',')) {
+    $Trimmed = $Name.Trim()
+    if (-not $Trimmed) { continue }
+    if ($KnownExtras -notcontains $Trimmed) {
+        throw "Unknown extra '${Trimmed}'; the project declares $($KnownExtras -join ', ')"
+    }
+    $ExtraArguments += @('--extra', $Trimmed)
+}
+if (-not $ExtraArguments) {
+    throw 'At least one extra is required; setup installs no test tooling otherwise'
+}
 
 function Test-ProjectPython {
     if (-not (Test-Path -LiteralPath $VenvPython -PathType Leaf)) {
@@ -38,7 +58,7 @@ if (-not (Test-ProjectPython)) {
     if ($LASTEXITCODE -ne 0) { throw 'uv could not install Python 3.12' }
     $PythonSelector = '3.12'
 }
-& $Uv.Source sync --locked --extra dev --project $ProjectRoot --python $PythonSelector
+& $Uv.Source sync --locked @ExtraArguments --project $ProjectRoot --python $PythonSelector
 if ($LASTEXITCODE -ne 0) { throw 'Locked project synchronization failed' }
 if (-not (Test-ProjectPython)) { throw 'Synchronized .venv is invalid' }
 

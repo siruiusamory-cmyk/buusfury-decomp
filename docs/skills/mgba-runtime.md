@@ -195,6 +195,34 @@ sends input should state that the same way rather than silently.
 Quote characters do **not** survive PowerShell to UI Automation `SetValue`.
 Write Lua sent that way with long-bracket strings: `print([[text]])`.
 
+### 6.1 Owner-authorised exception: the dashboard input bridge
+
+The owner's dashboard docks an mGBA window and drives it with keys, and an embedded emulator never receives
+Qt key events. So the dashboard holds the keys and hands them to a Lua bridge that starts as a SECOND
+`--script`. This is an exception to section 6, granted by the owner on 2026-10-11, and it is bounded:
+
+- the bridge lives outside this repository and is named only by `LOG1_MGBA_EXTRA_SCRIPT`; no machine path is
+  tracked, and a shell that predates the variable falls back to the User registry value;
+- it is loaded on every run whose mGBA build has `--script`, and a build without the flag SKIPS it with a
+  printed note rather than refusing to launch, because the GDB launcher is pinned to such a build;
+- EVERY run that loads it records its absolute path, its SHA-256 and a note in the run directory
+  (`extra-script.json`, and `extra_script_path`/`extra_script_sha256`/`extra_script_loaded` in the GDB
+  launcher's `inputs.json`), so the exception is reviewable after the fact;
+- what it does: it adds only the keys the dashboard currently holds and releases everything when the
+  dashboard disconnects. It touches no emulated memory, writes no save, and loads no state.
+
+The bridge is switched OFF by a real sentinel rather than an empty value, because an environment
+variable set to "" does not survive to the child on Windows PowerShell 5.1: set
+`LOG1_MGBA_NO_EXTRA_SCRIPT=1`, or the literal value `none`. A run with the variable unset records that it was not set, and a variable that names a missing
+file records THAT, because the two are different states. The bridge LISTENS on `127.0.0.1:61234` itself: it is the server, and the dashboard connects to
+it to hand over the keys it is holding.
+
+The test that holds all of this is `tests/unit/test_mgba_extra_script.py`: its source-level checks always
+run, and its functional checks exercise the GDB launcher's `-DryRun` where a dev mGBA build and the
+launcher's `.venv` are present, naming the missing prerequisite and skipping otherwise. A build's location
+can be given with `WEBFOOT_MGBA_DEV`, the same way the ROM gates accept an environment variable, so the
+checks can run in a checkout that does not download the emulator.
+
 ## 7. Observers stay read-only
 
 `tests/unit/test_mgba_capture.py` greps observer sources and fails on input- or

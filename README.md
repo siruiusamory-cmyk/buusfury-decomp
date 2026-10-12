@@ -198,8 +198,8 @@ modification, and it is the one you share. [Release artefacts](docs/release-arte
 states what a user receives, what must never be distributed, and how version and
 build identity work.
 
-The desktop editor needs the PySide6 extra
-(`uv pip install -e ".[workbench]"`) and starts from `DragonByte Z.cmd` or with
+The desktop editor needs the PySide6 extra, which `scripts\setup.ps1` installs by
+default alongside the test tooling, and starts from `DragonByte Z.cmd` or with
 `python -m tools.webfoot.workbench`. Before it can open any ROM it also needs the
 assembled atlas at `build\atlas\atlas.jsonl`, and it refuses every ROM without it.
 Produce one from a local ROM:
@@ -210,8 +210,15 @@ webfoot atlas regenerate ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --out .\bui
 
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
-[verified project state](docs/PROJECT_STATE.md). The portable suite runs with
-`.\scripts\test.ps1`.
+[verified project state](docs/PROJECT_STATE.md). `.\scripts\test.ps1` runs the
+portable `fast` gate in parallel by default, across four pytest-xdist worker
+processes, and passes any extra arguments through to pytest after that
+selection, so `.\scripts\test.ps1 tests\unit\test_write_invariants_property.py`
+narrows the same run. `.\scripts\test.ps1 -n 0` runs the same gate serially in
+one process. With pytest's verbose output a failure names the worker that hit it,
+as in `[gw2] FAILED tests\unit\test_thing.py::test_case`, and
+`.\scripts\test.ps1 -n 0 tests\unit\test_thing.py::test_case` re-runs that one
+serially. [docs/testing.md](docs/testing.md) has the detail.
 
 ## Contributing and documentation
 

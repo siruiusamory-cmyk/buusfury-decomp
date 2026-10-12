@@ -316,6 +316,25 @@ def test_a_write_past_the_image_is_refused(tmp_path, base):
     assert session.journal.edits() == ()
 
 
+def test_an_unbuildable_raw_write_is_reported_rather_than_raised(tmp_path, base):
+    """N1: the ROM page asks this before a dialog, so it must answer, not raise.
+
+    Both unbuildable requests are refusals of the same kind as an owned range: a
+    range past the image, and a session with no image open. They used to escape as
+    `SessionError` into the Qt slot, because only `_EDIT_ERRORS` was caught.
+    """
+    session = _session(tmp_path, base)
+    past = session.raw_write_problem(len(base) - 1, b"\x01\x02")
+    assert "is not a 2-byte range inside the" in past
+
+    session.base_image = None
+    closed = session.raw_write_problem(FREE_OFFSET, b"\x11")
+    assert "No ROM is open" in closed
+
+    free = _session(tmp_path, base)
+    assert free.raw_write_problem(FREE_OFFSET, b"\x11") == ""
+
+
 def test_the_raw_document_round_trips_through_a_save_and_an_undo(tmp_path, base):
     session = _session(tmp_path, base)
     new = b"\x11\x22"
@@ -392,7 +411,7 @@ def test_a_refused_raw_write_leaves_the_pending_document_exactly_as_it_was(
     """
     session = _session(tmp_path, base)
     session.apply_raw_edit(FREE_OFFSET, b"\x11\x22", confirmed=True)
-    pending = session.journal.raw_edits().bytes_by_offset
+    pending = dict(session.journal.raw_edits().bytes_by_offset)
     assert pending == {FREE_OFFSET: b"\x11\x22"}
 
     with pytest.raises(SessionError):
@@ -411,7 +430,7 @@ def test_a_semantic_claim_between_two_raw_writes_does_not_consume_the_first(
     """The other refusal that lands after the replacement check."""
     session = _session(tmp_path, base)
     session.apply_raw_edit(FREE_OFFSET, b"\x11\x22", confirmed=True)
-    pending = session.journal.raw_edits().bytes_by_offset
+    pending = dict(session.journal.raw_edits().bytes_by_offset)
     session.apply_edit(
         kind=EditKind.SEMANTIC,
         target="dialogues",
@@ -456,6 +475,34 @@ def test_opening_a_project_that_authors_raw_bytes_keeps_them(tmp_path, base):
 
 
 # --- the non-blocking findings, each measured ---------------------------------
+
+
+def test_a_caller_cannot_change_the_journals_raw_document(tmp_path, base):
+    """N6: a frozen document holding a mutable dict was not frozen.
+
+    The document is rebuilt from the project's base and the applied entries alone,
+    so a caller who wrote through the mapping would make a Save write a byte no
+    entry explains, and an undo would not take that byte back.
+    """
+    session = _session(tmp_path, base)
+    session.apply_raw_edit(FREE_OFFSET, b"\x11\x22", confirmed=True)
+    document = session.journal.raw_edits()
+
+    with pytest.raises(TypeError):
+        document.bytes_by_offset[SECOND_OFFSET] = b"\x99"  # type: ignore[index]
+
+    assert session.journal.raw_edits().bytes_by_offset == {FREE_OFFSET: b"\x11\x22"}
+    assert [entry.after for entry in session.journal.edits()] == [b"\x11\x22"]
+
+
+def test_the_document_holds_a_copy_of_the_mapping_it_was_built_from():
+    """The read-only view wraps a copy, so the caller's own mapping cannot reach it."""
+    source = {FREE_OFFSET: b"\x11"}
+    document = RawEdits(source)
+
+    source[FREE_OFFSET] = b"\x22"
+
+    assert document.bytes_by_offset == {FREE_OFFSET: b"\x11"}
 
 
 def test_an_undone_semantic_edit_stops_claiming_its_bytes(tmp_path, base):

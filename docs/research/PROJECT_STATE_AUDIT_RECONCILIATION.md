@@ -193,10 +193,61 @@ are labelled that way so they cannot be mistaken for original audit findings.
 
 | Disposition | Count |
 | --- | --- |
-| CLOSED | 25 |
+| CLOSED | 27 |
 | SUPERSEDED | 1 |
 | RELEASE-BLOCKING | 4 |
-| DEFERRED | 43 |
+| DEFERRED | 41 |
+
+#### B.1.1 The backlog re-measured 2026-10-11, after the parallel-gate work
+
+The coordinator directed the Lead to work the audit backlog directly, highest severity first. The
+first act was to re-measure rather than to trust the table above, and the re-measurement changed
+which items are actually outstanding.
+
+- **The must-fix set is empty.** Every `CRITICAL` and `HIGH` row is `CLOSED`, and the remediation
+  table's own `MUST FIX BEFORE ROM-CAPACITY-AND-ALLOCATION-001` list is discharged. The only
+  non-closed row was `CQA-10`.
+- **`CQA-11` is reconciled, not open.** Its three divergent overwrite policies are two fixes and one
+  decision: the Build tab now moves occupied artefacts aside and restores them on failure
+  (`build_panel.py`, pinned by `test_build_panel_overwrite.py`), `authored_image` refuses a
+  destination that is a protected input or a copy of the canonical image and states its policy in
+  `save_authored_image`'s docstring, and the remediation's suggested `overwrite` argument was not
+  adopted because replacing an ordinary existing artefact is deliberate. The audit carries this as a
+  re-measurement note under C.3.
+- **`CQA-10` had two live unguarded writers, both in `tools/webfoot/cli.py`.** The
+  `tileset census --occurrences` destination created its parent directory and wrote its file with no
+  destination predicate at all; it was fixed and merged in `CQA-10-UNGUARDED-OCCURRENCES-001`, which
+  reuses the project's four existing policies in the emitter's order and refuses before anything is
+  created. The `graphics export` branch enforced only the source-alias rule and is
+  `CQA-10-UNGUARDED-GRAPHICS-EXPORT-001`.
+- **The audit's line numbers have drifted completely, and this is the durable lesson.** It cites
+  `write.py:513-516` for the overwrite refusal; that address now holds `ChunkProvenance.to_json`,
+  and the refusal lives in `write.ensure_new_destination`. A citation in the audit is a pointer to
+  re-measure, never evidence of current state. Rows in B.2 that cite line numbers inherit that
+  caveat.
+- **Not yet re-measured, and therefore asserted as nothing:** the entries in the audit's
+  `SHOULD FIX BEFORE MAJOR NEW AUTHORING FEATURES` list other than `CQA-11` and `CQA-13`
+  (`CQA-14`, `CQA-19`, `CQA-20`, `CQA-21`, `CQA-23`, `CQA-26`, `CQA-27`, `CQA-35`). Given that
+  `CQA-11` was recorded open while its two concrete defects had already been fixed, those rows
+  should be re-measured before any of them is worked.
+
+
+**Refresh 2026-10-11, after the backlog was worked directly. Six rows above are now out of date and
+are corrected here rather than in place, because this is a record of what was true when written.**
+`CQA-13` is ALREADY FIXED: the atlas write stages through `project/atomic.py` and `os.replace`.
+`CQA-20` is CLOSED: the deploy job now requires both test-stage jobs, verified end to end on master.
+`CQA-26` is ALREADY FIXED: the unread sentinel is `_UNREAD_POINTER = -1` with the reason that `0` is
+the engine's own null chunk. `CQA-27` is genuinely OPEN, and its size note is stale twice over: the
+widget is 7,589 lines, not 1,986 as this table says and not 8,282 as one recon reported. `CQA-35` is
+REFUTED on its data-placement half and fixed on its arithmetic half, with the real defect being a
+profile-blind registry read tracked separately. `CQA-23` is CLOSED as already-fixed-superseded on two
+of three halves, with the duplicate-binding half merged; only CQA-27 remains of that finding.
+
+**The lesson this pass produced, recorded because it caused a wasted lane:** a brief must be sourced
+from MEASUREMENT, not from this table or from the audit's prose. Three separate lanes measured a
+brief and found the defect already fixed, the destination closed, or the two candidate fixes not
+equivalent. This table closed CQA-23's layout-history half on 2026-10-07 and a later brief still sent
+a lane to fix it, because the brief read the audit's older paragraph and not this row.
 
 ### B.2 Findings
 
@@ -227,7 +278,7 @@ drifted, the citation is to the line read in the baseline tree.
 | 19 | `CQA-19` | MEDIUM: `webfoot_lz._gamma` is unbounded, so a malformed container costs quadratic time | `webfoot_lz.py:225-231` is still a bare bit loop with no internal bound. `_marker_scan_limit` `:234-250` and `_emit_raw` `:252-266` bound the read only on the marker-terminated path, which is not the default (`require_end_marker`, `:314-322`); `tools/webfoot/atlas_producers/scan.py:345` calls `lz.unpack(data, offset)` with no input-consumption bound | DEFERRED | Partially remediated, not superseded: the marker-terminated path is bounded, the default decode path keeps the unbounded loop, so the debt is carried rather than dismissed. Low in practice, because a malformed container wastes time rather than corrupting anything, and no hostile input was measured. See section G. |
 | 20 | `CQA-20` | MEDIUM: the deploy job is not gated by the test job | `.gitlab-ci.yml:149-169` `deploy-site` has rules only, no `needs:`. Its own steps re-run `npm run check`, `npm run build` and `site_check.py` | DEFERRED | Re-judged down: the published artifact is still validated in the deploy job, so the exposure is publishing a site from a commit whose SDK suite did not run, not publishing an unchecked page. |
 | 21 | `CQA-21` | MEDIUM: the `fast` gate is not hermetic, and the only published-page-versus-registry check was inert everywhere | Closed half: `site_check.py` runs in `test-site` (`.gitlab-ci.yml:144`) and `deploy-site` (`:166`). Open half: `docs/testing.md:18-19` still says `fast` needs nothing beyond the dev extra | DEFERRED | Split finding. The inert-check half is CLOSED; the hermeticity and stale contract wording remain and are carried; neither is release-affecting because CI itself is now honest. |
-| 22 | `CQA-22` | MEDIUM: `tools/qa` probes are owned by no test and no gate; the cited one can pass vacuously | `tools/qa/status_duplication_probe.py` keeps the vacuity path; the claim "no test imports `tools.qa`" is now false (`tests/unit/test_qa_capture_shell.py:21`); the real defect class is pinned by `tests/unit/test_workbench_project_status.py`, which runs in CI | DEFERRED | Instrument-only silence with no shipping path; the premise that both guards could be quiet at once is gone. |
+| 22 | `CQA-22` | MEDIUM: `tools/qa` probes are owned by no test and no gate; the cited one can pass vacuously | `CLOSED 2026-10-13 by CQA-22-PROBE-VACUITY-GUARD-001`, which re-measured and drove the vacuity path: at the baseline, with the status bar rendering no sentence, `tools/qa/status_duplication_probe.py` `status_sentences:52-60` returns `[]`, the loop at `:99-115` prints `clean` for all nine screens and `main:121` exits 0. The probe now names the nine screens in `SCREENS`, refuses an empty sentence list, prints its denominator and exits 1 on any unmeasured screen, and `tests/unit/test_qa_status_duplication_probe.py` covers the pure helpers. Two of this row's premises were themselves corrected by measurement: a renamed private status attribute raises `AttributeError` and exits 1 rather than returning an empty list, so the silent path was the unrendered bar alone, and `tests/unit/test_qa_capture_shell.py:21` imports `tools.qa.visual_pass_capture`, a different module that never covered this probe. This closes the cited probe; every other probe under `tools/qa` except `visual_pass_capture` still has no test. | CLOSED | Closed, not carried: a `clean` line was the only evidence offered for a whole class of defect and it could be printed while nothing was measured. The note that the premise was gone was imprecise for the reason above; the same-class pytest guard is `tests/unit/test_workbench_project_status.py`, which skips itself whole where Qt is absent (`:36`). What the probe measures is unchanged: the refusal, the screen assertion and the denominator are added around it. |
 | 23 | `CQA-23` | MEDIUM: undo ownership is inconsistent - Maps undo mode-blind, layout edits have no history, the shell cannot reach the Graphics history | `editors.py:403-414` now routes by mode, and Layout, Browse and Warps have stacks; `graphics_tab.py:583-585` still installs its own Ctrl+Z beside the shell's `app.py:319` | **RELEASE-BLOCKING** | Threatens the editor UX path a v1.0 user meets: two undo systems over one document, one of them unreachable from the shell. Two of three halves are already fixed, so the residue is bounded. |
 | 24 | `CQA-24` | MEDIUM: "Revert unapplied" discarded pending colours but left Apply enabled and the list on screen | `graphics_tab.py:1574-1582` clears pending, repopulates and calls `_refresh_pending_ui()` | CLOSED | The refresh-call remediation is present. |
 | 25 | `CQA-25` | MEDIUM: shell undo lambdas raised an unhandled exception on every shutdown with a wired history | `app.py:645-658` catches `RuntimeError` and disables the actions; `:663-674` tracks every stack in a set | CLOSED | The escaping traceback is contained and the single-flag defect is fixed. |
@@ -247,7 +298,7 @@ drifted, the citation is to the line read in the baseline tree.
 | 39 | `CQA-39` | LOW: docstring claims a caller cannot get a plausible offset out of an opaque slot, but `source_file_offset` is unconditional | `formats/map_slots.py:167`, `:171` | DEFERRED | Documentation overclaim only. |
 | 40 | `CQA-40` | LOW: a data table with documented-UNKNOWN extent is indexed as production truth for relocation anchors and Thumb fetches | UNVERIFIED: the cited UNKNOWN-extent assertion was not located at its current line | DEFERRED | Carried without a closure claim. The finding is not refuted and not confirmed this pass. |
 | 41 | `CQA-41` | LOW: the `writer` gate is a filename heuristic, so write-path tests with unrelated names carry only `-m fast` | `tests/gates.py:51-109` still fnmatch on filename; `tests/unit/test_asset_export_strict_lz.py` matches no writer pattern | DEFERRED | `fast` is all of `tests/unit` and CI runs `tests/unit`, so nothing escapes the pipeline; only a developer's blast-radius run is affected. |
-| 42 | `CQA-42` | LOW: `scripts/test.ps1` runs the bare ~90-minute full suite with no gate selection | `scripts/test.ps1:9` `& $Python -m pytest`; `docs/testing.md:3-5` states the policy it contradicts | DEFERRED | Developer wall clock, not a shipped property. |
+| 42 | `CQA-42` | LOW: `scripts/test.ps1` runs the bare ~90-minute full suite with no gate selection | `scripts/test.ps1:9` `& $Python -m pytest`; `docs/testing.md:3-5` states the policy it contradicts. Closed by `TEST-SPEED-001`: the line now reads `& $Python -m pytest -m fast @args`, so the entry point runs the portable gate by default and passes extra arguments through; `README.md:213-216` and `docs/testing.md:57-65` state the new default | CLOSED | Developer wall clock, not a shipped property, and now no longer run by reflex through the single entry point. |
 | 43 | `CQA-43` | LOW: a test asserted exact English phrases in the policy files and counted as passing | File absent from the baseline tree; merge `3dc606b` is an ancestor | CLOSED | Closed by removing the file, exactly as the finding records. |
 | 44 | `CQA-44` | LOW: the property sweep is derandomized at a fixed 50 examples and nothing raises `WEBFOOT_PROPERTY_EXAMPLES` | `test_write_invariants_property.py:48-60` default `"50"`, `derandomize=True`; no test sets the variable | DEFERRED | Frozen discovery power with no shipping path. |
 | 45 | `CQA-45` | LOW: View then Detailed Editor follows an editor switch but not the Maps mode change it depends on | `app.py:616-617` `_sync_scene_action`, called at `:481`; `_maps.modeChanged` `:168` is wired only to `_refresh_undo_actions()` | DEFERRED | The mode-change dependency is still not the trigger. |

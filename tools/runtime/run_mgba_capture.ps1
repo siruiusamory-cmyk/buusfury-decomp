@@ -163,6 +163,51 @@ if ($GeneratedRomSha256) {
 }
 $stateInfo = Get-Item -LiteralPath $resolvedState
 $stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
+
+# The owner's dashboard input bridge, outside this repository and named only by an environment variable,
+# so no machine path is tracked here. OWNER AUTHORISATION (2026-10-11): every run that can load it does,
+# and records its path and SHA-256 in this run's inputs, which is what makes the exception in
+# docs/skills/mgba-runtime.md section 6 reviewable. A build without --script - the default here, since
+# this launcher is digest-pinned to 0.10.5 - SKIPS it with a printed note instead of refusing the launch.
+# A variable set to "" does NOT survive to the child on Windows PowerShell 5.1, so the switch that turns
+# the bridge off is a real sentinel: the literal value `none`, or LOG1_MGBA_NO_EXTRA_SCRIPT=1.
+$extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
+$extraScriptDisabled = ($env:LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1') -or ($extraScript -ieq 'none')
+if ($extraScriptDisabled) {
+    $extraScript = $null
+}
+elseif ($null -eq $extraScript) {
+    $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+    if (-not $extraScript) { $extraScript = $null }
+}
+$extraScriptPath = $null
+$extraScriptSha = $null
+$extraScriptLoaded = $false
+$extraScriptNote = if ($extraScriptDisabled) {
+    'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
+} else {
+    'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+}
+if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
+    $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+    Write-Output "extra script SKIPPED: $extraScriptNote"
+}
+elseif ($extraScript) {
+    $extraHelpText = if ($LuaStartup) { '--script' } else { (& $resolvedMGB --help 2>&1 | Out-String) }
+    if ($extraHelpText -notmatch '--script') {
+        $extraScriptNote = 'this mGBA build has no --script flag, so the bridge was not loaded'
+        Write-Output "extra script SKIPPED: $extraScriptNote"
+    }
+    else {
+        $extraScriptPath = (Resolve-Path -LiteralPath $extraScript).Path
+        $extraScriptSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $extraScriptPath).Hash
+        $extraScriptLoaded = $true
+        $extraScriptNote = 'loaded as a second --script; it presses only keys the dashboard holds'
+        Write-Output "extra script: $extraScriptPath"
+        Write-Output "  sha256    : $extraScriptSha"
+    }
+}
+
 $identity = [ordered]@{
     rom_path = $resolvedRom
     rom_size = $romInfo.Length
@@ -175,6 +220,10 @@ $identity = [ordered]@{
     additional_breakpoints = @($parsedAdditionalBreakpoints | ForEach-Object { '0x{0:X8}' -f $_ })
     lua_path = $resolvedLua
     lua_mode = if ($LuaStartup) { 'startup' } elseif ($resolvedLua) { 'ui-injection' } else { $null }
+    extra_script_path = $extraScriptPath
+    extra_script_sha256 = $extraScriptSha
+    extra_script_loaded = $extraScriptLoaded
+    extra_script_note = $extraScriptNote
 }
 
 if ($DryRun) {
@@ -237,6 +286,9 @@ try {
         '-C', 'mute=0'
     )
     if ($startupLua) { $mgbaArgs += @('--script', ('"' + $startupLua + '"')) }
+    # The bridge resolved above, recorded in this run's inputs, and appended only when this build has the
+    # flag. Skipped runs say so on the console and in extra_script_note.
+    if ($extraScriptLoaded) { $mgbaArgs += @('--script', ('"' + $extraScriptPath + '"')) }
     $mgbaArgs += ('"' + $resolvedRom + '"')
     $process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
 

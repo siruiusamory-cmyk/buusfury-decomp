@@ -17,6 +17,8 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6.QtWidgets")
 
+from PySide6.QtGui import QKeySequence  # noqa: E402
+
 from tools.webfoot import graphics as graphics_sdk  # noqa: E402
 from tools.webfoot.project import ProjectMeta, write_project  # noqa: E402
 from tools.webfoot.workbench import graphics_tab as gt  # noqa: E402
@@ -275,3 +277,92 @@ def test_shell_undo_is_not_offered_after_the_project_changes(project):
     assert stack is not None, "the shell must still reach the Graphics history"
     assert stack.count() == 0, "the retired project's history must be dropped"
     assert window._action_undo.isEnabled() is False
+
+
+# --- CQA-23, second half of this ticket: ONE Ctrl+Z owner in this window -----
+#
+# The tab built its own `createUndoAction` pair and gave them the standard
+# window-context keys, at the same time as the shell's Edit -> Undo/Redo actions
+# carry those keys for the whole window. Two live bindings for one key is the
+# defect; the shell is the owner that answers the Edit menu, so the tab's pair
+# loses the key and keeps only its toolbar buttons.
+
+
+def _ctrl_z_bindings(widget):
+    """Every child QAction of `widget` bound to the platform Ctrl+Z sequence."""
+    from PySide6.QtGui import QAction, QKeySequence
+
+    standard = QKeySequence(QKeySequence.StandardKey.Undo)
+    return [
+        action
+        for action in widget.findChildren(QAction)
+        if action.shortcut() == standard
+    ]
+
+
+def test_only_the_shell_owns_ctrl_z_in_the_graphics_window(project):
+    window = _shell(project)
+    tab = window._graphics
+
+    assert tab._undo_action.shortcut().isEmpty(), (
+        "the Graphics tab still binds Ctrl+Z over the shell's action"
+    )
+    assert window._action_undo.shortcut() == QKeySequence(
+        QKeySequence.StandardKey.Undo
+    )
+    assert tab._undo_action.text() == "Undo", "the toolbar button keeps its action"
+
+
+def test_ctrl_z_is_bound_once_in_the_graphics_window(project):
+    """One Ctrl+Z binding survives, and it reaches the Graphics history twice over.
+
+    Offscreen Qt does not deliver a synthesized key sequence into a window the
+    platform never maps (measured: with the tab and the shell both bound,
+    `QTest.keyClick` fired neither), so the key itself cannot be pressed here.
+    The observable halves are asserted instead: the duplicate binding is gone,
+    only the shell carries the key, and each of the two routes reaches the same
+    one history.
+    """
+    p = _profile()
+    window = _shell(project)
+    tab = window._graphics
+    _apply(tab, 40, (10, 20, 30))
+
+    host = window._hosts["Graphics"]
+    assert _ctrl_z_bindings(host) == [], (
+        "the Graphics host still binds Ctrl+Z beside the shell's action"
+    )
+    # One owner for the whole shell: the only Ctrl+Z action parented to the
+    # window is the shell's Edit -> Undo. The Maps surfaces, whose own bindings
+    # this ticket does not touch, sit inside their own tabs and are excluded by
+    # the host-subtree assertion above.
+    assert sum(
+        action is window._action_undo for action in _ctrl_z_bindings(window)
+    ) == 1
+    assert window._action_undo.shortcut() == QKeySequence(QKeySequence.StandardKey.Undo)
+    assert window._active_undo_stack() is tab._undo_stack
+
+    window._action_undo.trigger()
+    assert graphics_sdk.get_palette_override(project, p, 40) is None, (
+        "the shell action did not reach the Graphics history"
+    )
+
+    _apply(tab, 40, (10, 20, 30))
+    tab._undo_action.trigger()
+    assert graphics_sdk.get_palette_override(project, p, 40) is None, (
+        "the tab's own action no longer reaches its history through its button"
+    )
+
+
+def test_graphics_undo_buttons_still_work_without_their_key(project):
+    """The tab keeps its toolbar buttons; only the window key moved to the shell."""
+    p = _profile()
+    tab = _tab(project)
+    _apply(tab, 40, (10, 20, 30))
+    assert tab._undo_button.isEnabled() is True
+
+    tab._undo_button.click()
+    assert graphics_sdk.get_palette_override(project, p, 40) is None
+
+    tab._redo_button.click()
+    assert graphics_sdk.get_palette_override(project, p, 40) == (10, 20, 30)

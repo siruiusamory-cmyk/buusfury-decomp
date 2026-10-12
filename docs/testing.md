@@ -54,6 +54,87 @@ Add the directory when you already know which one it is: `pytest -m` still
 collects the whole tree first (a few seconds here) before deselecting, so
 `python -m pytest tests/unit -m "fast and writer"` finishes sooner.
 
+`.\scripts\test.ps1` (the repository's single test entry point) runs the portable
+gate, `-m fast`, by default and passes every extra argument through to pytest
+after that selection. So `.\scripts\test.ps1 tests/unit/test_relocation.py` runs
+that file inside the default gate, and a narrower `-k`, `--maxfail` or path
+argument composes with it. A second `-m` replaces the default rather than
+composing with it, because pytest keeps the last one. The entry point also runs
+`-n 4 --dist loadfile` by default, and `-n 0` is the explicit serial opt-out:
+`.\scripts\test.ps1 -n 0` runs the same gate in one process (see "Parallel
+runs").
+
+To run the whole tree through the entry point, replace the selection with the
+expression that covers every gate, rather than trying to clear it: an empty `-m`
+does not work here, because Windows PowerShell 5.1 (the requirement `README.md`
+names) drops an empty string argument and pytest then exits with
+`argument -m: expected one argument`.
+
+```powershell
+.\scripts\test.ps1 -m "fast or rom or workbench or writer or map or research"
+```
+
+That expression is exhaustive rather than a guess: measured 2026-10-11, those six
+markers are the complete set in `pyproject.toml`, the expression collects the same
+6,781 tests as no `-m` at all, and its complement
+(`-m "not (fast or rom or workbench or writer or map or research)"`) collects zero.
+Every test carries at least one of them.
+
+### Parallel runs
+
+The entry point and the `test-sdk` CI job both run the gate across pytest-xdist
+worker processes, at module granularity (`--dist loadfile`), because the
+slowest modules here are dominated by per-module setup rather than by the tests
+themselves. Each worker is a separate process, so worker-local caches, module
+level fixtures and monkeypatched module attributes are per-worker rather than
+shared, and the counts must not change.
+
+Opt out with `-n 0`, which real pytest reads as "no workers" and runs
+everything in one process:
+
+```powershell
+.\scripts\test.ps1 -n 0                                        # serial
+.\scripts\test.ps1 tests\unit\test_relocation.py -n 0          # serial, one file
+```
+
+The `-n 0` check comes first and matches that exact spelling. Windows PowerShell
+5.1 splits the pair before the script sees it, which is why the check looks for
+two arguments rather than one string. `--%` does exist from PowerShell 3, and it
+is deliberately not the mechanism here: measured on this machine's 5.1.26100, it
+stops parsing where it appears, so a caller must place it before every argument,
+and it still passes the shell's own redirection tokens through to the child as
+literal arguments. A caller that passes its own `-n` or `--dist` in any other
+form overrides the default rather than colliding with it, since the default pair
+is written first and the caller's arguments are appended.
+
+**Same counts, either mode.** A serial and a parallel run of the same commit
+must report identical collected, passed, skipped and failed counts. A test that
+passes serially and fails in parallel is a finding about test isolation, not a
+flake to retry, and it is reported with the differing node ids rather than
+worked around.
+
+**Which worker a failure came from.** Each worker stamps its own id on the
+failure's header line, so a failure reads:
+
+```text
+================================== FAILURES ===================================
+_______________________________ test_this_fails _______________________________
+[gw0] win32 -- Python 3.12.10 <the interpreter that ran it>
+```
+
+`--dist loadfile` sends a whole module to one worker, so that `gw0` is the
+process that ran the failing module. The last line before the assertion, the one
+naming the file and line, is the test; the `[gwN]` above it is the worker to
+search the job log for, because the summary's `FAILED ...` line carries the node
+id but not the worker.
+
+**Re-run one failure alone, serially.** Prefix the node id with the opt-out so
+the failing test runs in a single process with no distribution in the way:
+
+```powershell
+.\scripts\test.ps1 -n 0 tests\unit\test_relocation.py::test_the_guard_refuses_a_stale_cursor
+```
+
 A gate is a *selection*, not a promise: `-m rom` on a machine with no ROM
 reports skips, and `-m fast` includes members that need the canonical image or a
 local artifact and skip without them. Measured 2026-10-08, six of the portable
@@ -108,7 +189,8 @@ is genuinely warranted.
   deleting each other's temporary directories. A `--basetemp` inside the
   repository is honoured, with a warning.
 - **PySide6** is needed for the `workbench` gate. Without it those modules
-  skip cleanly rather than erroring; install `.[workbench]` to run them. CI
+  skip cleanly rather than erroring; `.\scripts\setup.ps1` installs it, and
+  `uv sync --locked --extra workbench` adds it to an existing environment. CI
   installs `.[dev,workbench,research]` and sets `QT_QPA_PLATFORM=offscreen`,
   because the runner has no display while several of those modules construct a
   real `QApplication` and real widgets.
@@ -116,7 +198,16 @@ is genuinely warranted.
   decoder with it (`test_thumb_caller_census.py`,
   `test_thumb_disasm_field_extraction.py`, `test_ui_graphics_probe.py`); without
   it they skip as a whole file. It is research tooling rather than a shipping
-  dependency, so it is the separate `research` extra: install `.[research]`.
+  dependency, so it is the separate `research` extra: `.\scripts\setup.ps1`
+  installs it, and `uv sync --locked --extra research` adds it to an existing
+  environment.
+- **`scripts/setup.ps1` installs `dev`, `workbench` and `research`**, the same
+  three extras CI installs, so the one command the project tells a contributor
+  to run produces an environment that runs every portable gate instead of one
+  that skips the workbench and research halves. Its `-Extra` parameter replaces
+  the set, for example `-Extra dev` for a deliberately minimal environment.
+  `packaging` (PyInstaller) is not installed: cutting a release is an owner-run
+  step and `.\scripts\build-*.ps1` documents how to get it.
 - **A required GUI module must not collapse to a whole-file skip in CI.** The
   shipping Workbench modules are named in `REQUIRED_GUI_MODULES` in
   `tests/gates.py`. When a run collects one of them and it contributes no test,

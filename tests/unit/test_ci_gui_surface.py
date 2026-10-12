@@ -16,7 +16,11 @@ instead of silently reducing the suite:
   claim about dependency-guarded GUI modules rather than an arbitrary path list;
 - the list must cover the named editor regressions (the state and error-surface
   regression, the palette editor, undo/redo and palette cost), which is what
-  pins the acceptance criterion durably.
+  pins the acceptance criterion durably;
+- ``deploy-site`` must need ``test-sdk``, because the deploy job's only rule is
+  the default branch while the test job's second rule can exclude it from
+  exactly that pipeline, and a rule-excluded job cannot fail anything. Audit
+  finding CQA-20 records the hole this asserts shut.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -48,6 +52,10 @@ CI_CONFIG = REPOSITORY_ROOT / ".gitlab-ci.yml"
 #: The job that runs the portable suite, and therefore the one that must carry
 #: the shipping GUI dependency set.
 TEST_JOB = "test-sdk"
+
+#: The job that validates the built site. Named alongside the suite in the deploy
+#: job's dependencies, because `needs` bypasses the stage barrier.
+SITE_JOB = "test-site"
 
 #: Extras the test job must install for the shipping surface to execute.
 REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
@@ -308,3 +316,39 @@ def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
             conftest._COLLECTED_TEST_FILES,
             conftest._COLLAPSED_REASONS,
         ) = saved
+
+
+def test_the_deploy_job_needs_both_test_jobs():
+    """Prevents: publishing a commit whose portable suite or site check never ran.
+
+    ``deploy-site`` matches only the default branch, while both test jobs' second
+    rule skips them when that branch push has an open merge request. A
+    rule-excluded job cannot fail anything, so without these dependencies the
+    deploy job publishes regardless of whether they ran. The dependencies must be
+    required, not ``optional``: an optional need is silently dropped when the job
+    is absent from the pipeline, which is the exact case being closed. Both jobs
+    are named because ``needs`` bypasses the stage barrier, so naming only the
+    suite would drop the wait on the site job that the barrier used to give.
+    """
+    config = _ci_config()
+    deploy = config.get("deploy-site") or {}
+    needs = deploy.get("needs") or []
+    required = {
+        need.get("job") if isinstance(need, dict) else need
+        for need in needs
+        if not (isinstance(need, dict) and need.get("optional"))
+    }
+    # Every job in the test stage, not a fixed pair: a new test job added later
+    # must be waited on too, or `needs` will silently bypass it.
+    test_stage = {
+        name
+        for name, job in config.items()
+        if isinstance(job, dict) and job.get("stage") == "test"
+    }
+    assert test_stage, f"{_cited('stage: test')}: no test-stage job found"
+    assert required == test_stage, (
+        f"{_cited('deploy-site')}: deploy-site must require a non-optional "
+        f"`needs:` entry for every test-stage job {sorted(test_stage)}; its "
+        f"required needs are {sorted(required)}, so a pipeline whose jobs were "
+        f"excluded by their rules can still publish the site without them"
+    )

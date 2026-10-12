@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QKeySequence, QPainter, QPen, QUndoCommand, QUndoStack
+from PySide6.QtGui import QAction, QColor, QPainter, QPen, QUndoCommand, QUndoStack
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -822,17 +822,19 @@ class MapWorkspaceTab(QWidget):
         self._status.setVisible(False)
 
         self._undo_stack = QUndoStack(self)
+        # Undo/Redo join the one canvas strip rather than a second toolbar. The
+        # actions carry no key of their own: CQA-23 leaves Ctrl+Z and Ctrl+Y to
+        # the shell's Edit -> Undo/Redo, which route to the ACTIVE mode's history
+        # (`MapsEditor.undo_stack`). Binding the standard keys here as well made
+        # one key answer to two live actions in this window.
         self._undo_action = self._undo_stack.createUndoAction(self, "Undo")
-        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self._redo_action = self._undo_stack.createRedoAction(self, "Redo")
-        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._undo_button = QPushButton("Undo")
         self._redo_button = QPushButton("Redo")
         self._undo_button.clicked.connect(self._undo_action.trigger)
         self._redo_button.clicked.connect(self._redo_action.trigger)
         self._undo_stack.canUndoChanged.connect(lambda _available: self._sync_undo_controls())
         self._undo_stack.canRedoChanged.connect(lambda _available: self._sync_undo_controls())
-        # Undo/Redo join the one canvas strip rather than a second toolbar.
         row = toolbar_widget.layout_row()
         row.insertWidget(row.count() - 2, self._undo_button)
         row.insertWidget(row.count() - 2, self._redo_button)
@@ -1643,7 +1645,7 @@ class MapWorkspaceTab(QWidget):
         self._sync_undo_controls()
 
     def _sync_undo_controls(self) -> None:
-        """Keep both visual controls and shortcuts honest about history state."""
+        """Keep both visual controls honest about history state."""
         # QUndoStack emits its final availability signals while QObject teardown
         # is deleting children.  At that point there is no live control state to
         # update; returning avoids calling a deleted wrapped C++ object.

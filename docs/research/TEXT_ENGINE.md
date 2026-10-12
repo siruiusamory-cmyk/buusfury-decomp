@@ -42,13 +42,15 @@ canonical image's text when a canonical image was supplied), every `Record`
 (selector, start, length, text, every carrying site, and the longer records that
 cover it), and each record's locked control units.
 
-An edit is one of three frozen dataclasses:
+An edit is one of four frozen dataclasses:
 
 - `SlotEdit(slot, old, new)` for the 1,534-slot string table;
 - `RecordEdit(selector, start, length, old, new)` for one dialogue record, where
   `old` must occur exactly once in the record's text;
 - `RenameEdit(old, new, retail_test, relocated_slots)` for a character rename
-  whose target is fixed by the canonical image.
+  whose target is fixed by the canonical image;
+- `SpacingEdit()` for the corpus-wide spacing rebuild of section 3. It needs the
+  canonical image at open and must be the only edit in its plan.
 
 `plan` decides one of `IN_PLACE`, `MOVE` or `REFUSED` per target, lists every
 byte range the export will write, lists the covering records a move leaves
@@ -147,6 +149,36 @@ operands and are deliberately given no name.
 - **Locked control units.** A control unit is a halfword below 0x20 (0x0008
   consumes the next halfword as its operand); an edit whose replacements change
   that sequence is refused. What each unit draws is not known.
+- **Spacing rebuild.** `SpacingEdit` collapses every interior 2+ space run in the
+  DECODED STREAM, not inside a record, because the containers are chain-shared and
+  a per-record fix re-creates the run in a covering record (pitfall P-023). Each
+  record's handle is rewritten to the span its text now occupies, so no record
+  keeps a length it paid for and no payback space exists. A run survives exactly
+  where the canonical image's record at the same identity carries a 2+ space run at
+  the same unit offset, and when the canonical run is shorter the base run is cut
+  down to it. Every deletion is checked to be a space unit before it is made, and a
+  non-space unit or a record whose text would collapse to nothing refuses the plan.
+  Used by `tools/research/build_release4_spacing.py`; measured over Release 4A: 490
+  units removed, 2,536 handle words rewritten, 20 retail runs kept, containers
+  rewritten at the offsets they already occupied so the table never moves.
+- **Proven handle carriers.** A handle word is written only inside the
+  event-resource pool (`PROVEN_HANDLE_POOL`, the placement contract's
+  `pool_start`/`table` pair, carried on the `Layout` at open). Outside the pool the
+  inventory's shape filter is near-random: measured on Release 4A, 907
+  record-shaped words lie outside it, 281 pass, and 256 of those name spans sharing
+  no edge with any real record, against 11 of 2,639 inside. A word outside the pool
+  is therefore a coincidence until someone proves which code reads it, and it keeps
+  its bytes. A moved record whose only words are outside the pool is listed by a
+  rename and REFUSED by a targeted edit. Measured effect: revision 1 of the release
+  pass wrote 155 such words, 142 of them in code and graphics; revision 2 writes
+  none. The independent verifier asserts that every out-of-pool record-shaped word
+  is byte-identical and, since RELEASE4-SPRITEFIX-001, allows a changed byte inside
+  the pool only at a four-byte in-pool site word rather than anywhere in the range.
+  That narrowed set is built from the same shape filter the engine uses, so its
+  residual risk is the opposite one: a word the filter wrongly calls a handle could
+  be written and whitelisted. The resolve-and-compare check is what still guards it,
+  because every in-pool site must resolve as a record with unchanged non-space
+  characters.
 - **Detection.** The container table is reached through the image's own literal
   word, the containers through the table, the records through their handles, and
   the string table through its declared base. Every candidate is then validated:
@@ -195,17 +227,37 @@ nothing outside it.
 | --- | --- |
 | input | `v3-release3.gba`, 10,146,136 bytes, `521bd0fa0a8bc198f36430e3419184807e335fa588bd718152996c076a8f15fd` |
 | edit | one `RenameEdit` for `Videl` to `Lazuli`, relocated slots 138, 172, 1066 |
-| decisions | 37 `MOVE` (34 records, 3 slots), 60 records listed |
-| output | 10,169,982 bytes, `f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201` |
+| decisions | 37 `MOVE` (34 records, 3 slots), 68 records listed |
+| output | 10,169,982 bytes, differs from the published image only at the nine words below |
 
-That is the published release-3.1 image, byte for byte. The counts agree with
-the release's own manifest: 34 rows, 60 left, 3 slots, and an appended container
-declaring 23,790 bytes at file offset 10,146,136.
+The published release-3.1 image is `f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201`.
+This engine reproduces it every byte except **28 bytes across nine words outside
+the event-resource pool**: `0x316A18`, `0x40E178`, `0x4567CC`, `0x46C29C`,
+`0x4D99A8`, `0x545A04`, `0x5C6FB4`, `0x725474`, `0x726074`. Every one is a shape
+coincidence the release's builder wrote because it used the inventory without the
+pool rule.
+
+Those nine writes are not merely coincidences: they damaged shipped data. Six sit
+inside compressed character animation frames (characters 033, 042 twice, 099, 114
+and 123), and five of those six no longer decode at all, while the sixth decodes
+with 1,230 wrong bytes; two are uncompressed 8bpp sprite tiles (a 3-pixel speck
+each); one is unclassified data with no consumer identified. Release 4A and the
+Release 4 image both carry the damage, and RELEASE4-SPRITEFIX-001 restores the
+canonical bytes and proves each frame decodes identically to canonical again. The
+per-frame detail, with the atlas attribution and the fingerprint of each restored
+word, is in `docs/research/RELEASE4_SPRITEFIX.md`.
+
+All 26 in-pool handle words the release wrote are reproduced byte for byte, and the
+record counts agree with the release's own manifest: 34 rows, 3 slots, 60 records
+listed for the owner. The further 8 listed records are the ones no pool word names.
+
+Finding B1 of the RELEASE4-SPACES-001 review is what turned this up: the same
+filter, used by a corpus-wide spacing pass, wrote 155 such words.
 
 ## 5. Tests
 
-`tests/unit/test_text_engine.py`, 39 tests, all portable (`fast` gate): 34 on the
-synthetic image and 5 that need the canonical image or the release images and skip
+`tests/unit/test_text_engine.py`, 51 tests, all portable (`fast` gate): 43 on the
+synthetic image and 8 that need the canonical or the release images and skip
 without them. The fixture is a 450 KB synthetic image with seven stored containers,
 real record words and the real 1,534-slot table, so every rule runs in CI without
 any ROM.
@@ -221,8 +273,10 @@ any ROM.
 | spoken lines | `test_a_line_lists_every_record_that_contains_it`, `test_a_line_break_ends_a_line_and_the_terminator_is_not_part_of_it`, `test_a_line_that_is_only_control_units_is_not_a_line`, `test_the_pool_filter_is_the_rule_s_own_switch` |
 | speakers | `test_a_speaker_is_the_loaded_image_s_own_name_for_the_operand`, `test_a_record_whose_sites_disagree_has_no_speaker`, `test_a_runtime_party_face_names_no_character`, `test_an_appearance_table_two_records_disagree_about_is_dropped` |
 | per-occurrence retail test | `test_every_rename_occurrence_carries_its_own_retail_decision` |
-| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` plus the mixed-plan regression `test_a_mixed_plan_leaves_the_retail_table_words_alone` |
+| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, `test_an_in_place_relocation_leaves_every_retail_table_word_alone`, `test_a_spacing_relocation_leaves_every_retail_table_word_alone`, `test_a_refused_relocation_appends_nothing`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves`, and a mixed plan that relocates a container in place `test_a_mixed_plan_leaves_the_retail_table_words_alone` |
 | readback per site | `test_an_in_place_edit_and_a_move_from_one_container_both_read_back` |
+| spacing rebuild | `test_the_spacing_pass_collapses_a_chain_shared_run_and_rewrites_every_handle`, `test_a_run_the_canonical_image_carries_is_kept_and_the_other_collapses`, `test_a_spacing_plan_may_not_carry_another_edit`, `test_a_spacing_pass_without_the_canonical_image_is_refused` |
+| proven carriers | `test_a_record_shaped_word_outside_the_pool_is_never_written`, `test_a_targeted_edit_refuses_a_record_no_pool_word_names` |
 | per-occurrence decision | `test_a_record_holding_both_actors_renames_only_the_retail_occurrence`, `test_an_occurrence_with_no_retail_name_is_counted_unclear`, `test_a_rename_refuses_when_the_offsets_do_not_correspond` |
 | destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory`, `test_apply_refuses_the_canonical_reference_as_its_own_destination`, `test_apply_refuses_to_overwrite_an_existing_output` |
 | detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused`, `test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector` |
@@ -233,16 +287,35 @@ any ROM.
 - **Control units are uninterpreted.** The engine knows a unit is a control unit
   and that an edit may not change the sequence, not what it draws. A chip that
   names a speaker or a portrait code cannot be authored from a meaning.
+- **A handle word is written only inside the event-resource pool.** The inventory's
+  shape filter is near-random outside it (281 of 907 words pass on Release 4A, 256
+  of those naming spans that share no edge with a real record). A word outside the
+  pool is a coincidence until someone proves which code reads it, and this engine
+  does not write it. A rename lists a record no pool word names; a targeted edit on
+  one refuses. The cost of being wrong the other way is measured: revision 1 of the
+  spacing pass wrote 155 such words, 142 of them in code and graphics.
 - **No box metrics.** There is no font or dialogue-box model, so nothing checks
   whether a line fits the box. The engine bounds a record by the handle's 4,094
   byte length field and the container's 65,534 byte start field, not by pixels.
-- **The table is relocated when the grown slot is not already a container.** On
-  the retail image that slot holds `0x03004A68`, an IWRAM word three code loads
-  reach through the literal at file `0x03D92C`, so the engine copies the whole
-  table into appended space and repoints the `0x123CC` literal on first use, and
-  refuses when that literal is not named exactly once. A table that already
-  carries a container in the grown slot (the shape every shipped release has) gets
-  one slot word written in place, which is the route the releases used.
+- **No word of the retail table is ever written.** A table at the retail offset
+  (`TitleProfile.retail_table`, file `0x7B5B64`, the canonical image's own literal
+  `0x087B5B64`) is live structure: its grown slot holds `0x03004A68` and three code
+  loads reach that word through the literal at file `0x03D92C`, and its other slots
+  are read by the engine's dispatch. `_writable_table` therefore copies the whole
+  64-slot block into appended space and repoints the one literal that names it
+  before ANY entry is written, whether the write comes from a move or from a
+  container that has to be relocated, and it refuses when that literal is not named
+  exactly once (P-027). A table already in expansion space, which every shipped
+  release has, is written in place. The table is settled BEFORE a relocated
+  container is appended, so a refusal leaves the plan holding exactly the image it
+  was handed: no orphan container in the output buffer for a caller that never
+  exports it (N5 of the RELEASE4-SPRITEFIX-001 review).
+- **A mixed plan no longer writes a dead retail table word (F1, closed).** An
+  in-place container relocation now goes through the same `_writable_table` guard,
+  so the table is copied aside before the entry is written and the retail block
+  stays byte-identical. `test_an_in_place_relocation_leaves_every_retail_table_word_alone`
+  pins it, and `test_a_spacing_relocation_leaves_every_retail_table_word_alone`
+  pins the spacing path.
 - **A move leaves the old bytes.** Every longer record covering the same span
   keeps the old wording; the plan reports each one and warns. Release 4's
   container rebuild is what removes the case.
@@ -324,6 +397,17 @@ any ROM.
   wrapping to the preview.
 - **No CLI.** Ticket 1 is the engine; the desktop surface is ticket 2, in
   `tools/buufury_text/`, and it consumes this module and nothing else.
+- **A spacing pass keeps retail runs, including ones a second record also reads.**
+  On the Release 4A image, run `0:47756` is retail spacing and is also inside a
+  longer record's span, so that record still shows the two spaces. Of the six kept
+  positions that more than one word reads, only `0:5428` has two in-pool readers;
+  at the other five the second reader is an out-of-pool coincidence word, which by
+  the pool rule is not a record. Measured detail in `RELEASE4_SPACING.md` section 6.
+- **A spacing pass can be defeated by an image whose canonical correspondence does
+  not hold.** The keep rule maps the base's byte offsets straight onto the canonical
+  payload. Every release preserved record lengths, so that correspondence holds for
+  this corpus; on an image where it does not, the pass would keep the wrong runs and
+  the verifier's independent rule would report it.
 
 ## 7. Harvest
 
@@ -348,6 +432,13 @@ ticket:
 - **P-037**: the review found a readback keyed on the INPUT's per-selector record
   rows, which mis-checks a record that moved out of a container that was also
   edited in place; the expectation must be keyed on the SITE.
+- **P-060**: the review of the spacing release found the engine and its verifier
+  sharing ONE shape filter to find handle words, so 155 words outside the
+  event-resource pool were written and the verifier's allowed-changed-byte set
+  whitelisted exactly those words. The rule now names the pool, and the verifier
+  allows a changed pool byte only at a four-byte in-pool site word. The shared
+  filter survives inside that narrowing, which is why P-060's check keeps the
+  resolve-and-compare test as the guard rather than the allowed set alone.
 
 Also `references/tools.md` T-011 records the module itself, its invocation, the
 two golden digests and its limits.

@@ -95,6 +95,24 @@ POWERSHELL_FILE_PATH = re.compile(r"-FilePath\s+([^\s`]+)", re.IGNORECASE)
 #: with a reason, or `test_the_current_tree_has_no_unregistered_launch_site`
 #: fails. That is what makes the exemption explicit rather than implicit.
 NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
+    ("tests/unit/test_mgba_extra_script.py",
+     "test_a_dry_run_with_the_switch_variable_records_none", "prerequisites['shell']"):
+        "runs the GDB launcher with -DryRun and the switch variable set, to prove the switch wins "
+        "over a bridge that names a real file; it starts no emulator",
+    ("tests/unit/test_mgba_extra_script.py", "dry_run", "prerequisites['shell']"):
+        "runs the GDB launcher with -DryRun, which prints the identity it would write and exits "
+        "before any emulator starts; it proves the extra-script path and hash are recorded",
+    ("tests/unit/test_friend_v4b_cell.py", "built", "sys.executable"):
+        "runs the Cell port builder over the two retail images into the test's own temporary directory; "
+        "it starts no emulator",
+    ("tests/unit/test_friend_v4b_cell.py", "test_the_independent_verifier_passes", "sys.executable"):
+        "runs the port's independent verifier on the image the builder produced; it starts no emulator",
+    ("tests/unit/test_palette_census.py", "census", "sys.executable"):
+        "runs the palette index census over the canonical image; it starts no emulator",
+    ("tests/unit/test_friend_v4b_cell.py", "test_the_name_is_written_on_the_release_base",
+     "sys.executable"):
+        "runs the Cell port builder on the release-4A image to prove the name slot write and its refusal "
+        "for a name that does not fit; it starts no emulator",
     ("tools/research/build_friend_v3_text_derivative.py", "run", "command"):
         "runs this interpreter on the repository's own text-batch and padding-repair "
         "modules; it starts no emulator",
@@ -237,14 +255,6 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "'git'"):
         "lists tracked files with git to check the exception table; it starts "
         "no emulator",
-    ("tests/unit/test_runtime_evidence_report.py",
-     "_emulator_processes",
-     "'ps'"):
-        "reads the POSIX process list to assert no emulator appeared",
-    ("tests/unit/test_runtime_evidence_report.py",
-     "_emulator_processes",
-     "'tasklist'"):
-        "reads the Windows process list to assert no emulator appeared",
     ("tests/unit/test_runtime_evidence_report.py",
      "test_the_module_entry_point_prints_the_report",
      "sys.executable"):

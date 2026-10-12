@@ -1,7 +1,8 @@
-"""Shared pytest configuration: focused gates, a usable temporary root, and a
-loud failure when a required GUI module collapses.
+"""Shared pytest configuration: focused gates, a usable temporary root, a loud
+failure when a required GUI module collapses, and a session-end census of what
+the run skipped.
 
-Three things live here, all test-infrastructure only - no shipped behaviour is
+Four things live here, all test-infrastructure only - no shipped behaviour is
 configured from this file.
 
 **Focused gates.** Every collected test is tagged with the gates defined in
@@ -35,6 +36,17 @@ A required module that is not attempted in a run is never reported, so a
 targeted subset (``python -m pytest tests/unit/test_map_render.py``) is
 unaffected.
 
+**What the session skipped (CQA-21).** A green run says what it did not run.
+Every test the session reported as skipped is collected by
+:func:`pytest_runtest_logreport` - the same hook the terminal reporter builds its
+own skip summary from - and listed at session end with pytest's own reason. A
+member declared in ``ARTEFACT_DEPENDENT_TESTS`` (``tests/gates.py``) is marked as
+such, so the dependency is stated by the gate rather than recovered from a reason
+string. That list is reported and never enforced: no CI job builds the site for
+the ``fast`` gate, so a member skipping over a missing ``dist/`` is the designed
+arrangement rather than a hidden surface. A session that skipped nothing prints
+nothing.
+
 **A usable temporary root.** ``tmp_path`` must not resolve inside the
 repository, and must not resolve into a temp root the process cannot read or
 write. A ``tmp_path`` under the work tree makes the generated-output guards
@@ -57,6 +69,7 @@ import tempfile
 import pytest
 
 from tests.gates import (
+    ARTEFACT_DEPENDENT_TESTS,
     GATE_DESCRIPTIONS,
     REPOSITORY_ROOT,
     REQUIRED_GUI_MODULES,
@@ -141,6 +154,11 @@ _COLLECTED_TEST_FILES: set[str] = set()
 #: Why a file collapsed, for the files pytest reported a whole-file collection
 #: skip for. Populated by :func:`pytest_collectreport`.
 _COLLAPSED_REASONS: dict[str, str] = {}
+
+#: Every test this session reported as skipped, as ``{node id: reason}``.
+#: Populated by :func:`pytest_runtest_logreport` and reported once by
+#: :func:`pytest_sessionfinish`.
+_SKIPPED_TEST_REASONS: dict[str, str] = {}
 
 #: pytest's rootdir, captured by :func:`pytest_configure`. Collection reports
 #: identify a file by a node id, which is relative to this root.
@@ -291,29 +309,40 @@ def pytest_collection_modifyitems(
             _COLLECTED_TEST_FILES.add(_path_key(item.path))
 
 
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    """Record every skipped test and pytest's reason, for the session census.
+
+    This is the hook the terminal reporter builds its own skip summary from, so
+    the census sees the same skips it does; under ``-n auto`` the controller runs
+    it for each report a worker sends, which is what keeps the census complete
+    there rather than silently empty.
+    """
+    if report.skipped:
+        _SKIPPED_TEST_REASONS[report.nodeid] = _skip_reason(report)
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """Fail the session when a required GUI module collapsed to nothing.
+    """Report what the session skipped, and fail it on a collapsed GUI module.
 
-    The check is at session end because only then is the whole picture known:
-    which files were attempted, which contributed a test, and why the rest
-    stopped. See the module docstring for the CI/local/opt-in scope.
-
-    The status is recorded before any early return, because the exit path below carries it.
+    The checks are at session end because only then is the whole picture known:
+    which files were attempted, which contributed a test, why the rest stopped,
+    and which tests reported a skip. See the module docstring for the
+    CI/local/opt-in scope of the GUI guard and the scope of the census.
     """
     global _SESSION_EXIT_STATUS
     _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
                                else exitstatus)
     collapsed = _collapsed_required_modules()
     collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]
-    if not collapsed:
-        return
-    enforced = _required_gui_surface_is_enforced()
-    _report_collapsed_modules(session.config, collapsed, enforced)
-    if enforced:
-        # pytest has already computed its own status ("no tests ran" is 5 when
-        # the only collected module collapsed); a collapsed shipping surface is
-        # a test failure, and the summary below says which one.
-        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if collapsed:
+        enforced = _required_gui_surface_is_enforced()
+        _report_collapsed_modules(session.config, collapsed, enforced)
+        if enforced:
+            # pytest has already computed its own status ("no tests ran" is 5 when
+            # the only collected module collapsed); a collapsed shipping surface is
+            # a test failure, and the summary below says which one.
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    _report_skipped_tests(session.config)
 
 
 def _is_test_file(path: Path | str) -> bool:
@@ -372,6 +401,82 @@ def _collapsed_reason(report: pytest.CollectReport) -> str:
         return f"{message} (reported at {path}:{lineno})"
     lines = [line.strip() for line in str(longrepr).splitlines() if line.strip()]
     return lines[-1] if lines else "no reason reported by pytest"
+
+
+def _skip_reason(report: pytest.TestReport) -> str:
+    """The one-line reason a skipped test reported, without its location.
+
+    The node id the census prints already names the test, so only the message is
+    repeated here; a location matters for a whole-file collapse, which is why
+    :func:`_collapsed_reason` keeps it.
+    """
+    longrepr = report.longrepr
+    if isinstance(longrepr, (tuple, list)) and len(longrepr) == 3:
+        return str(longrepr[2]).removeprefix("Skipped: ")
+    return _collapsed_reason(report)
+
+
+def _relative_node_id(node_id: str) -> str:
+    """A node id in the ``unit/test_x.py::test_y`` form the gate lists use."""
+    path, _, test = node_id.partition("::")
+    relative = relative_test_path(path) or path
+    return f"{relative}::{test}" if test else relative
+
+
+def _is_artefact_dependent(relative_node_id: str) -> bool:
+    """Whether a declaration in ``ARTEFACT_DEPENDENT_TESTS`` covers this test.
+
+    A parametrised member is declared by its function, so a reported
+    ``::test_x[param]`` matches the ``::test_x`` entry.
+    """
+    return any(
+        relative_node_id == declared or relative_node_id.startswith(f"{declared}[")
+        for declared in ARTEFACT_DEPENDENT_TESTS
+    )
+
+
+#: How a declaration in ``ARTEFACT_DEPENDENT_TESTS`` is marked in the census.
+_DECLARED_ARTEFACT_MARK = "declared artefact dependency (see tests/gates.py)"
+
+
+def _report_skipped_tests(config: pytest.Config) -> None:
+    """Print every test this session skipped, with pytest's own reason.
+
+    Nothing is printed when nothing skipped, so a healthy run stays quiet, and
+    nothing here can fail the session: the census states what did not execute
+    rather than enforcing it (``ARTEFACT_DEPENDENT_TESTS`` in ``tests/gates.py``
+    says why an artefact skip must not fail CI).
+    """
+    entries = []
+    for node_id in sorted(_SKIPPED_TEST_REASONS):
+        relative = _relative_node_id(node_id)
+        entries.append(
+            (relative, _SKIPPED_TEST_REASONS[node_id], _is_artefact_dependent(relative))
+        )
+    if not entries:
+        return
+    # One line per skipped test, so a `-m rom` run with no canonical image prints
+    # one per test where pytest's own summary groups them. Cap the list here if
+    # that log becomes the problem rather than the report.
+    lines = [
+        f"skipped: {relative} - {reason}"
+        + (f" [{_DECLARED_ARTEFACT_MARK}]" if declared else "")
+        for relative, reason, declared in entries
+    ]
+    declared = sum(1 for _, _, is_declared in entries if is_declared)
+    lines.append(
+        f"{len(entries)} skipped test(s), {declared} of them declared artefact "
+        "dependencies; reported, never failed."
+    )
+
+    terminal = config.pluginmanager.get_plugin("terminalreporter")
+    if terminal is None:  # pragma: no cover - only in an embedded/plugin run
+        for line in lines:
+            print(line)
+        return
+    terminal.write_sep("=", f"tests skipped ({len(entries)})")
+    for line in lines:
+        terminal.write_line(line)
 
 
 def _required_gui_surface_is_enforced() -> bool:

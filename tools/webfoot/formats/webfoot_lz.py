@@ -94,6 +94,9 @@ exactly, a stream succeeds only when all of these hold:
   safety limit, checked before any allocation;
 * the bit reader never has to read a word past the end of the image, so a
   truncated control, literal or match field is a failure rather than a short read;
+* the decode consumes no more packed input than the declared size can justify
+  (:func:`_input_scan_limit`), so a malformed token stream is refused instead of
+  being walked to the end of the image;
 * every back-reference names an offset strictly inside the output produced so
   far - distance 0 and a distance greater than the output so far are both
   malformed, never a wrap-around;
@@ -146,9 +149,24 @@ HEADER_SIZE = 8
 #: is a safety limit, not a format fact.
 DEFAULT_MAX_OUTPUT = 64 * 1024
 
-#: Slack, in bytes, added to the derived end-marker scan limit below. It covers
+#: Slack, in bytes, added to the derived input-consumption limit below. It covers
 #: the opening token, the escape itself and the final word's padding.
 _MARKER_SCAN_SLACK = 4 * 1024
+
+
+def _gamma_ceiling(maximum_output: int) -> int:
+    """Exclusive ceiling on the accumulator :func:`_gamma` may build for a call.
+
+    It is derived from the output bound that call declared - ``maximum_output`` on
+    the entry points - rather than fixed, because that bound is a parameter: a
+    match cannot produce more bytes than the call will accept, and a distance
+    cannot point past the output produced so far, so the largest value either field
+    can carry is the distance code's, which is its distance plus three. The margin
+    covers that offset and nothing else; it is not a separate scale, so a caller
+    that raises ``maximum_output`` raises this ceiling with it.
+    CQA-19-GAMMA-CEILING-DERIVATION-001.
+    """
+    return maximum_output + 3
 
 
 class ContainerError(ValueError):
@@ -222,20 +240,32 @@ class _WordBitReader:
         return self._position
 
 
-def _gamma(reader: _WordBitReader) -> int:
-    """Elias-gamma-style value: interleaved payload and continuation bits."""
+def _gamma(reader: _WordBitReader, minimum: int) -> int:
+    """Elias-gamma-style value: interleaved payload and continuation bits.
+
+    ``minimum`` is an exclusive ceiling the caller derives from what it is about
+    to do with the value, so a malformed stream cannot make this loop walk the
+    whole image with a left shift per iteration. Every call site passes the ceiling
+    :func:`_gamma_ceiling` derives from the output bound that call declared, which
+    no stream whose value the decoder would have accepted can reach.
+    """
     value = 1
     while True:
         value = (value << 1) | reader.bit()
+        if value >= minimum:
+            raise ContainerError(
+                f"gamma value reached {value}, over the {minimum} ceiling its own "
+                "field can carry"
+            )
         if reader.bit() == 0:
             return value
 
 
-def _marker_scan_limit(expected: int) -> int:
-    """Packed input an end-marker check may read for a declared ``expected`` output.
+def _input_scan_limit(expected: int) -> int:
+    """Packed input a decode may read for a declared ``expected`` output.
 
-    A stream that has not escaped by then is not one any caller should plan, and the
-    limit keeps a hostile header from making the check walk a whole image. It is
+    A stream that has not finished by then is not one any caller should decode, and
+    the limit keeps a hostile header from making the decode walk a whole image. It is
     **derived from the declared size rather than fixed**, because a legitimate
     packed stream can be larger than the bytes it produces: this encoder's
     literal-only worst case is nine bits per byte, so a fixed ceiling would refuse a
@@ -271,6 +301,7 @@ def _unpack_stream(
     initial_literal_bits: int,
     *,
     require_end_marker: bool = False,
+    maximum_output: int = DEFAULT_MAX_OUTPUT,
 ) -> tuple[bytes, int]:
     """Decode ``expected`` bytes starting at ``payload``.
 
@@ -289,6 +320,14 @@ def _unpack_stream(
     stated here because they are the whole reason the flag exists - the engine
     cannot stop early and truncate the resource, and the stream cannot terminate
     by borrowing bits from whatever follows the payload.
+
+    Consumption is bounded either way. The loop refuses to read more than
+    :func:`_input_scan_limit` input bytes whatever mode it is in, which is the bound
+    the end-marker check used to hold alone, and :func:`_gamma` carries its own cap
+    so a single token cannot consume the whole allowance in one left-shifting loop.
+    ``maximum_output`` is the largest output the call will accept - ``expected``
+    never exceeds it - and it is what sets that cap: :func:`_gamma_ceiling` derives
+    it from this bound rather than taking it from the module's default.
     """
     reader = _WordBitReader(data, payload)
     out = bytearray()
@@ -296,6 +335,8 @@ def _unpack_stream(
     literal_bits = initial_literal_bits
     distance_bits = 8
     previous_distance = 1
+    scan_limit = _input_scan_limit(expected)
+    gamma_ceiling = _gamma_ceiling(maximum_output)
 
     def copy_match(distance: int, count: int) -> None:
         if distance == 0 or distance > len(out):
@@ -312,13 +353,10 @@ def _unpack_stream(
             out.append(out[-distance])
 
     while len(out) < expected or require_end_marker:
-        if (
-            require_end_marker
-            and reader.position - payload > _marker_scan_limit(expected)
-        ):
+        if reader.position - payload > scan_limit:
             raise ContainerError(
-                f"packed stream consumed over {_marker_scan_limit(expected)} "
-                f"input bytes for a declared {expected} without reaching its escape"
+                f"packed stream consumed over {scan_limit} input bytes for a "
+                f"declared {expected} without finishing"
             )
         if reader.bit():
             if len(out) >= expected:
@@ -332,13 +370,13 @@ def _unpack_stream(
             continue
 
         if reader.bit():
-            distance_code = _gamma(reader)
+            distance_code = _gamma(reader, gamma_ceiling)
             if distance_code == 2:
-                copy_match(previous_distance, _gamma(reader))
+                copy_match(previous_distance, _gamma(reader, gamma_ceiling))
                 continue
             distance = reader.get(distance_bits) + ((distance_code - 3) << distance_bits)
             previous_distance = distance
-            count = _gamma(reader)
+            count = _gamma(reader, gamma_ceiling)
             # The match length is biased by its own distance. This ladder is
             # verbatim from the verified upstream; the thresholds are not
             # derivable from first principles and must not be "tidied" into a
@@ -482,7 +520,12 @@ def unpack(
         )
     if kind in PACKED_KINDS:
         decoded, end = _unpack_stream(
-            data, payload, declared, kind, require_end_marker=require_end_marker
+            data,
+            payload,
+            declared,
+            kind,
+            require_end_marker=require_end_marker,
+            maximum_output=maximum_output,
         )
         return Container(
             offset=offset,

@@ -307,6 +307,26 @@ APPROVED_RELEASES: tuple[ApprovedRelease, ...] = (
               "counterpart are listed for the owner. The renamed container's declared size grows "
               "from 2,266 to 23,794 bytes, which is why the image grows by 23,850 bytes.",
     ),
+    ApprovedRelease(
+        name="release-4a",
+        base_sha256="f5c9648bbf7a9b448d801866cc775eb76abd270f7c16fb93d4e01630ef236201",
+        base_bytes=10169982,
+        output_sha256="a21c1e27f7b4f04cbe6952d70eb102b350adac04e6eaba106fa10e2b90a55021",
+        output_bytes=10170720,
+        stages=("dabura-broly-swap",),
+        notes="Owner decision 2026-10-10: Dabura becomes Broly everywhere, the Heaven form "
+              "included. Sprite ids 73 and 98 point at their own COPIES of Broly's definition, appended "
+              "and filled so every slot the originals occupied is non-empty, because the scripts index "
+              "the animation array with no missing-animation check (the donor leaves slot 12, which the "
+              "Heaven actor's resource 490 selects, and slot 22 empty). The placed sites and the "
+              "appearance records KEEP their retail ids: scripts find an actor by definition pointer, so "
+              "a site moved to the donor id would resolve to the shared definition while the scripts "
+              "resolve the copies, and the lookup would match nothing. The two FD55 fights take the "
+              "donor's stat selector 10; the appearance portraits become his; text slot 1024 reads "
+              "Broly. 17 bytes change inside the base and 738 bytes are appended. No enemy stat record, "
+              "behaviour table, placement descriptor, script payload or dialogue record is touched; "
+              "description slot 1025 still names Dabura until the owner supplies wording.",
+    ),
 )
 
 

@@ -152,7 +152,7 @@ def staged_state(browser: mbt.MapBrowserTab) -> tuple:
         browser.unsaved_edit_count(),
         browser._selected_cell,
         browser._draft,
-        tuple(browser._saved),
+        tuple(browser._layout.written),
         browser._brush_ordinal,
         tuple((edit.map_index, edit.layer_slot, edit.cell) for edit in browser._editor.edits())
         if browser._editor is not None

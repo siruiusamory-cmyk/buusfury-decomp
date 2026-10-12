@@ -51,6 +51,27 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\friendv3_coldboot_probe.lua')
     )
+    # Added by FRIEND-V4-BROLY-001 release 4A: the definition-lookup observer. The claim under test is
+    # that an actor placed with sprite id 73 or 98 drives the definition COPY its scripts resolve, and
+    # that the animation slot those scripts ask for is non-null. It arms the animation selector
+    # (0x0800ECDA: the actor's definition, the index, and the slot record it plays), the actor lookup
+    # (0x08011C70: mode 5 is the definition-pointer compare scripts use to find an actor) and the
+    # sprite-id resolver as its liveness channel. READ-ONLY: no emulated memory is written, no input
+    # register is touched, nothing is written outside the run directory, and no state is loaded.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\friendv4a_lookup_probe.lua')
+    )
+    # Added by the dialogue font work: the line-limit probe. READ-ONLY: it arms breakpoints and logs the
+    # limit the engine passes to its own line fitter at 0x0800AF3A. It does not press keys - an earlier
+    # version did, and moved the player around under the operator, which is not a script's job.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_limit_probe.lua')
+    )
+    # Added by the layout-rule work: the INPUT DRIVER that loads the read-only probe above and presses keys
+    # on a bounded schedule. Observers stay read-only, so the driving lives in this separate file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_operand_driver.lua')
+    )
     # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the padding-repair render
     # observer. The trailing-pad repair shortens a record's handle by its pad, so the
     # engine copies fewer units; static reading says no other record's span changes,

@@ -27,8 +27,10 @@ the two cannot disagree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
 
 from tools.webfoot.atlas import Atlas, Confidence, strength
 from tools.webfoot.binary import GBA_ROM_BASE, FileOffset
@@ -116,15 +118,25 @@ class RawWrite:
 
 @dataclass(frozen=True, slots=True)
 class RawEdits:
-    """The authored raw bytes of one project: file offset -> replacement bytes."""
+    """The authored raw bytes of one project: file offset -> replacement bytes.
 
-    bytes_by_offset: dict[int, bytes] = field(default_factory=dict)
+    The mapping is read-only. The class is frozen because the document is a value,
+    and a caller that could write through it would change the bytes the journal
+    holds without the journal's history seeing it: the document is rebuilt from the
+    base and the applied entries alone, so an injection would make a Save write a
+    byte no entry explains. The proxy wraps a copy, so mutating the mapping a
+    caller constructed this from cannot reach the document either.
+    """
+
+    bytes_by_offset: Mapping[int, bytes] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "bytes_by_offset", MappingProxyType(dict(self.bytes_by_offset))
+        )
 
     def __bool__(self) -> bool:
         return bool(self.bytes_by_offset)
-
-    def with_write(self, write: RawWrite) -> "RawEdits":
-        return replace(self, bytes_by_offset={**self.bytes_by_offset, write.offset: write.new})
 
 
 def raw_owner(address: int) -> str:

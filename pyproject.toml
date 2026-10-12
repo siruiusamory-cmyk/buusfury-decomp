@@ -18,6 +18,11 @@ dependencies = [
 dev = [
     "pip==26.2.1",
     "pytest==8.4.2",
+    # The test entry point and the test-sdk CI job run the portable gate on
+    # worker processes at module granularity: the slowest modules are dominated
+    # by per-module decode setup, so processes buy wall clock at an identical
+    # test count.
+    "pytest-xdist==3.8.0",
     "setuptools==84.0.0",
     # Property tests for the pure binary invariants of the write path. Pure
     # Python, no build step, imported only by the modules that use it.

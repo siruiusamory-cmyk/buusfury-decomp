@@ -1,0 +1,67 @@
+{
+  "ticket": "FRIEND-V4B-CELL-PALETTE-C",
+  "gate": "static OBJ palette index census",
+  "result": "MEASURED: no bank is free. Two free banks do not exist, so per the owner's rule this stops for a decision.",
+  "rom": {
+    "title": "Dragon Ball Z - Buu's Fury (U)",
+    "sha256": "940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E",
+    "bytes": 8388608
+  },
+  "method": {
+    "walk": "definition pointer array at file 0x6B6BB4, 0x54-byte definition headers, the slot array at +0x54, animation records, frames, 12-byte piece records",
+    "containers": "every piece's container is decoded with the project's proven codec tools/webfoot/formats/webfoot_lz.py, which decrypts kind 1 (packed). All 7,390 distinct containers are kind 1; the engine's dispatcher is at 0x0803D940 and its packed decoder is the ARM body at 0x087B79E4 reached through the 0x08049120 veneer.",
+    "opaque": "index 0 is transparent in both depths and is excluded. 8bpp pieces only; the single 4bpp piece is counted separately."
+  },
+  "measured": {
+    "definitions_walked": 332,
+    "frames": 23069,
+    "pieces": 23181,
+    "pieces_8bpp": 23180,
+    "pieces_4bpp": 1,
+    "distinct_containers": 7390,
+    "container_kinds": {"1": 7390},
+    "decode_failures": 0,
+    "size_mismatches": 0,
+    "opaque_pixels_counted": 3705212,
+    "distinct_indices_used": 239,
+    "fully_free_banks": []
+  },
+  "per_bank": [
+    {"bank": 0, "indices_used": 12, "opaque_pixels": 573438, "definitions": 190},
+    {"bank": 1, "indices_used": 16, "opaque_pixels": 389102, "definitions": 158},
+    {"bank": 2, "indices_used": 16, "opaque_pixels": 317906, "definitions": 132},
+    {"bank": 3, "indices_used": 15, "opaque_pixels": 196659, "definitions": 119},
+    {"bank": 4, "indices_used": 16, "opaque_pixels": 272597, "definitions": 153},
+    {"bank": 5, "indices_used": 16, "opaque_pixels": 236320, "definitions": 112},
+    {"bank": 6, "indices_used": 13, "opaque_pixels": 168653, "definitions": 124},
+    {"bank": 7, "indices_used": 16, "opaque_pixels": 768025, "definitions": 177},
+    {"bank": 8, "indices_used": 16, "opaque_pixels": 30832, "definitions": 37},
+    {"bank": 9, "indices_used": 16, "opaque_pixels": 127140, "definitions": 87},
+    {"bank": 10, "indices_used": 16, "opaque_pixels": 54989, "definitions": 72},
+    {"bank": 11, "indices_used": 16, "opaque_pixels": 25595, "definitions": 59},
+    {"bank": 12, "indices_used": 14, "opaque_pixels": 444045, "definitions": 134},
+    {"bank": 13, "indices_used": 13, "opaque_pixels": 42122, "definitions": 56},
+    {"bank": 14, "indices_used": 12, "opaque_pixels": 5968, "definitions": 22, "definition_ids": [28, 29, 30, 47, 72, 87]},
+    {"bank": 15, "indices_used": 16, "opaque_pixels": 51821, "definitions": 118}
+  ],
+  "closest_candidates": [
+    {"bank": 14, "indices_used": 12, "opaque_pixels": 5968, "definitions": 22, "note": "fewest pixels by three orders of magnitude"},
+    {"bank": 11, "indices_used": 16, "opaque_pixels": 25595, "definitions": 59},
+    {"bank": 8, "indices_used": 16, "opaque_pixels": 30832, "definitions": 37},
+    {"bank": 13, "indices_used": 13, "opaque_pixels": 42122, "definitions": 56},
+    {"bank": 10, "indices_used": 16, "opaque_pixels": 54989, "definitions": 72}
+  ],
+  "interpretation": "No 16-consecutive-index block is untouched by other actors' art, so a bank cannot be taken without changing some character's colours somewhere in the game. Bank 14 is the only candidate within an order of magnitude of cheap: 12 of its 16 indices are used, by 22 definitions, for 5,968 opaque pixels out of 3,705,212 (0.16 percent).",
+  "owner_options": [
+    "Cell's colours in bank 14 only, accepting that the 22 definitions that touch it lose up to the 12 indices involved, unless those actors never share a scene with Cell.",
+    "Per-scene selection: choose the slot pair per scene from what is on screen, which needs a runtime palette write and a per-scene decision at build time.",
+    "8bpp Cell with his exact palette, which consumes the whole OBJ palette and therefore excludes every other actor from his scenes.",
+    "Reduce Cell to 16 colours per frame with a deterministic slot map, losing at most 6 pixels per frame as measured earlier, requiring no palette space at all."
+  ],
+  "not_established": [
+    "Which definitions the 22 for bank 14 correspond to by NAME: the text table at 0x6BCE8 is a word array of slot pointers and the id-to-slot mapping was not verified, so ids are reported rather than names.",
+    "Anything the engine writes into OBJ palette RAM at runtime. 25 literals of 0x05000200 and 54 literals inside the palette range exist in the image; their routines were not classified, so fade and flash writers are named in neither this measurement nor the option list yet.",
+    "Whether bank 14's 22 actors can ever share a scene with Cell."
+  ],
+  "note": "Counts only. No ROM bytes appear in this file or in the script that produced it."
+}

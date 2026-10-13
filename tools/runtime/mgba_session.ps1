@@ -147,6 +147,12 @@ function Start-MgbaSession {
 
     if (Test-Path -LiteralPath $ReadyPath) { Remove-Item -LiteralPath $ReadyPath -Force }
     if (Test-Path -LiteralPath $MarkerPath) { Remove-Item -LiteralPath $MarkerPath -Force }
+    # A reused run directory must not report the previous run's load result, so both records go
+    # with the ready and marker files.
+    foreach ($staleRecord in 'state-load.txt', 'state-load-failure.txt') {
+        $stalePath = Join-Path $RunDir $staleRecord
+        if (Test-Path -LiteralPath $stalePath) { Remove-Item -LiteralPath $stalePath -Force }
+    }
 
     # The savestate is loaded by the bootstrap, NOT by mGBA's `-t`. Measured: with
     # `-t` the state is already in memory when `--script` runs, so an observer
@@ -299,7 +305,13 @@ function Start-MgbaSession {
     # environment. It is the same digest the gate above has just proved the ROM against.
     $env:LOG1_MGBA_ROM_SHA256 = $expectedHash
 
-    $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
+    try {
+        $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
+    } finally {
+        # The export is process-wide: the child has its copy, so a value left here would be read
+        # by any later mGBA start from this shell, including one that never passed the gate.
+        Remove-Item -LiteralPath Env:\LOG1_MGBA_ROM_SHA256 -ErrorAction SilentlyContinue
+    }
 
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {

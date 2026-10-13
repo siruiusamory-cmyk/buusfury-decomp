@@ -116,3 +116,39 @@ def test_a_state_requested_through_the_postcommand_shape_takes_the_same_guard() 
     dofile = at(text, "if ($PostCommand -match '^dofile")
     assert dofile < at(text, "elseif ($PostCommand -match '^emu:loadStateFile")
     assert "PostCommand dofile target is not allowlisted" in text
+
+
+def test_the_stale_load_records_are_deleted_before_launch() -> None:
+    """A reused run directory must not report the previous run's load result as this run's.
+
+    The ready and marker files were already cleared before launch; the two load records were not,
+    so an unrelated timeout in a reused directory could be explained by a record from an earlier
+    run.
+    """
+    text = helper_text()
+    ready = at(text, "Remove-Item -LiteralPath $ReadyPath -Force")
+    loop = at(text, "foreach ($staleRecord in 'state-load.txt', 'state-load-failure.txt')")
+    removal = at(text, "Remove-Item -LiteralPath $stalePath -Force")
+    composed = at(text, "local state_ok, state_err")
+    assert ready < loop < removal < composed, (
+        "both records are deleted beside the ready and marker files, which is before the bootstrap "
+        "that would write them again and before anything is launched")
+    assert "$stalePath = Join-Path $RunDir $staleRecord" in text
+
+
+def test_the_rom_digest_is_cleared_after_the_child_starts() -> None:
+    """The export is process-wide, so a later mGBA start in the same shell would read it.
+
+    The digest is for the child that has just started; the child holds its own copy, so the value
+    leaves this process as soon as the launch returns, and a launch that throws clears it too.
+    """
+    text = helper_text()
+    clearing = at(text, "Remove-Item -LiteralPath Env:\\LOG1_MGBA_ROM_SHA256")
+    export = at(text, "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
+    gate = at(text, "ROM identity mismatch; run refused")
+    opened = at(text, "    try {\n        $process = Start-Process")
+    closed = at(text, "} finally {")
+    assert gate < export < opened, (
+        "the export must stay after the equality gate and before the launch")
+    assert opened < closed < clearing, (
+        "the clear must sit in the finally block that owns the launch, so a throw clears it too")

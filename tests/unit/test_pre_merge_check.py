@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,71 @@ def run_process(argv: list[str], cwd: Path | None = None) -> subprocess.Complete
         check=False,
         env=_environment(),
     )
+
+
+def _canonical_path(value: str) -> str | None:
+    """One spelling for a path, or None when it cannot be resolved.
+
+    The two git builds on this host print one directory as ``/home/<user>/...``,
+    as the drive form, and as ``/c/...``, so an msys spelling is converted with
+    ``cygpath -w`` first, which is what the msys tools themselves use. The
+    converted path is then resolved and case-folded, so two case spellings of one
+    drive are one path while two different drives stay two.
+    """
+    if not value:
+        return None
+    text = value.replace("\\", "/")
+    if text.startswith("/") and not text.startswith("//"):
+        converter = shutil.which("cygpath") or shutil.which("cygpath.exe")
+        if converter is None:
+            return None
+        converted = subprocess.run(
+            [converter, "-w", text], capture_output=True, text=True, check=False
+        )
+        if converted.returncode != 0 or not converted.stdout.strip():
+            return None
+        text = converted.stdout.strip()
+    return os.path.normcase(os.path.realpath(text))
+
+
+def same_checkout(printed: str, checkout: str) -> bool:
+    """Whether ``printed`` names the SAME directory ``checkout`` names.
+
+    Both spellings are resolved to the filesystem, and equality of the resolved
+    paths or of the file identity decides it. Because a resolved path contains its
+    drive and its user, two paths of different length, of equal length under a
+    different parent, on another drive or under another user are not equal, and a
+    path that cannot be resolved is refused rather than compared as text. The
+    weaker comparison the earlier heads used - a shared suffix, or a suffix of a
+    given length - accepted several of those, and the file carries a row for each
+    such shape.
+    """
+    named, reported = _canonical_path(printed), _canonical_path(checkout)
+    if named is None or reported is None:
+        return False
+    if named == reported:
+        return True
+    try:
+        return os.path.samefile(named, reported)
+    except OSError:
+        return False
+
+
+def checkout_in_refusal(text: str) -> str | None:
+    """The directory the refusal message names, with any wrapping collapsed.
+
+    PowerShell writes its own error text through a console-width formatter, so a
+    long path arrives wrapped: unindented, and sometimes indented by the two
+    spaces the formatter puts before a continuation line. Both are removed, and
+    periods inside the path are kept.
+    """
+    _PREFIX = "it sits in the checkout "
+    _STOP = ". It refuses"
+    clause = re.sub(r"\n\s*", "", text).split(_PREFIX, 1)
+    if len(clause) != 2:
+        return None
+    named = clause[1].split(_STOP, 1)[0]
+    return named.rstrip(". ")
 
 
 class Fixture:
@@ -365,16 +431,138 @@ def test_the_primary_a_subdirectory_of_it_and_a_linked_worktree(tmp_path):
     assert nested.returncode == 1, nested_output
     # The VALUE git reports, not a fragment the caller already supplied:
     # ``$RepoPath`` is the subdirectory, and its own text contains
-    # ``fixture.primary.name``, so only the whole ``--show-toplevel`` proves the
-    # message came from git rather than from the argument.
+    # ``fixture.primary.name``, so only the complete ``--show-toplevel`` proves
+    # the message came from git rather than from the argument.
     toplevel = fixture.primary_git("rev-parse", "--show-toplevel").strip()
     assert toplevel, "the fixture primary has no --show-toplevel"
-    assert toplevel in nested_output, nested_output
+    printed = checkout_in_refusal(nested_output)
+    assert printed is not None, nested_output
+    assert same_checkout(printed, toplevel), (
+        f"the refusal named {printed!r}, which is not the checkout {toplevel!r}"
+    )
     assert "not a git worktree" not in nested_output, nested_output
     linked = run_script(fixture.worktree, fixture.candidate)
     linked_output = linked.stdout + linked.stderr
     assert linked.returncode == 0, linked_output
     assert "PASS" in linked_output, linked_output
+
+
+@needs_powershell
+def test_the_checkout_identity_holds_only_for_the_reported_checkout():
+    """The rule against this checkout, in each spelling this host prints.
+
+    The spellings are built from the checkout itself rather than written down, and
+    the three that share a root must resolve to ONE path, which is what makes the
+    root correspondence a measurement rather than a claim.
+    """
+    checkout = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        env=_environment(),
+        check=False,
+    ).stdout.strip()
+    assert checkout, "this checkout has no --show-toplevel"
+    below_root = re.sub(r"^[A-Za-z]:[\\/]+", "", checkout).replace("\\", "/")
+    _, *rest = below_root.split("/")
+    drive_form = Path(checkout).as_posix()
+    forms = (checkout, drive_form, "/" + "/".join(rest))
+    resolved = {_canonical_path(form) for form in forms}
+    assert None not in resolved, forms
+    assert len(resolved) == 1, resolved
+
+    for form in forms:
+        assert same_checkout(form, checkout), form
+    # Positive: one resolution for a spelling that differs only by case.
+    assert _canonical_path(str(Path(checkout)).lower()) == _canonical_path(checkout)
+    # Negative: a subdirectory, a parent, an unrelated directory on another root,
+    # a shared prefix, a shorter path, and a bare component.
+    assert not same_checkout(checkout + "/docs", checkout)
+    assert not same_checkout(str(Path(checkout).parent), checkout)
+    assert not same_checkout("Z:/nowhere-else", checkout)
+    assert not same_checkout(checkout + "-other", checkout)
+    assert not same_checkout(below_root.split("/")[-1], checkout)
+
+
+@needs_powershell
+def test_the_root_correspondence_is_measured_with_the_conversion_tool():
+    """One directory, the spellings this host's tools print, one resolution.
+
+    The expected spellings come from the conversion tool itself, so the test
+    measures the correspondence instead of restating a mapping written down here.
+    Where the tool is absent the test says so rather than passing quietly.
+    """
+    if os.name != "nt":
+        pytest.skip("the msys spellings are a Windows-host concern")
+    converter = shutil.which("cygpath") or shutil.which("cygpath.exe")
+    if converter is None:
+        pytest.skip("no cygpath on this host, so no msys spelling to compare")
+    probe = Path(tempfile.mkdtemp(prefix="identity-root-")) / "disjoint"
+    probe.mkdir()
+    drive_form = str(probe)
+    msys_drive = subprocess.run(
+        [converter, "-u", drive_form], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    spellings = (drive_form, Path(drive_form).as_posix(), msys_drive, "/" + msys_drive.lstrip("/"))
+    resolved = {_canonical_path(form) for form in spellings}
+    assert None not in resolved, spellings
+    assert len(resolved) == 1, resolved
+    for form in spellings:
+        assert same_checkout(form, drive_form), form
+    # A different user and a different drive are not this directory.
+    assert not same_checkout("/home/other" + msys_drive, drive_form)
+    assert not same_checkout(drive_form.replace("C:", "Z:", 1), drive_form)
+
+
+@needs_powershell
+def test_the_checkout_identity_refuses_every_near_miss_shape():
+    """The same rule against held pairs, so each near miss is explicit.
+
+    S0 is the answer, S1 and S2 are the answer in its other spellings. S3 to S7
+    are the shapes the first rewrite accepted: a sibling, the directory inside, a
+    bare root, a bare parent and a shared prefix. S8 and S9 are the shapes the
+    second rewrite accepted: a SHORTER path whose last segment is the same, and an
+    EQUALLY DEEP path whose last two segments agree under a different parent. S10
+    is another directory with the same last segment, S11 another user and S12
+    another drive. Every row is a real path except the foreign drive, so the rule
+    is exercised against the filesystem.
+    """
+    temp = Path(tempfile.gettempdir())
+    real = temp / "identity-real" / "disjoint"
+    real.mkdir(parents=True, exist_ok=True)
+    other = temp / "identity-other" / "disjoint"
+    other.mkdir(parents=True, exist_ok=True)
+    cases = [
+        # (printed clause, checkout git reported, expected identity)
+        (str(real), str(real), True),                          # S0 the answer
+        (str(real).lower(), str(real), True),                  # S1 case only
+        (str(real).replace("\\", "/"), str(real), True),       # S2 separators only
+        (str(real.parent / "sibling"), str(real), False),      # S3 same parent
+        (str(real / "docs"), str(real), False),                # S4 inside
+        ("/", str(real), False),                               # S5 a bare root
+        (str(temp), str(real), False),                         # S6 a bare parent
+        (str(real) + "-other", str(real), False),              # S7 shared prefix
+        (str(other), str(real.parent), False),                 # S8 shorter path, same last segment
+        (str(real.parent / "wrong-parent" / real.name), str(real), False),  # S9 same depth, last two agree
+        (str(other), str(real), False),                        # S10 another directory, same last segment
+        ("/home/other" + str(real).replace("\\", "/")[2:], str(real), False),  # S11 another user
+        (str(real).replace("C:", "Z:", 1), str(real), False),  # S12 drive only, non-existent target
+    ]
+    for printed, checkout, expected in cases:
+        assert same_checkout(printed, checkout) is expected, (printed, checkout, expected)
+
+
+@needs_powershell
+def test_the_refusal_is_read_with_its_periods_and_its_wrapping():
+    """The extraction rule: periods inside a path survive, only the stop goes."""
+    head = "probe/disjoint/docs is not the root of a git worktree; it sits in the checkout "
+    # A dotted component, wrapped the way PowerShell wraps its own error text.
+    assert (
+        checkout_in_refusal(head + "\n /home/user.name/probe/\ndisjoint. It refuses the primary")
+        == "/home/user.name/probe/disjoint"
+    )
+    # No clause at all: nothing to read.
+    assert checkout_in_refusal("a probe directory is not the root of an image") is None
 
 
 @needs_powershell

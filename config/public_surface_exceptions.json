@@ -50,6 +50,26 @@
       "path": "tests/unit/test_site_consistency.py",
       "signal_index": 10,
       "reason": "A synthetic control for the built-site screen: the test builds a page containing an absolute user path and asserts the screen reports it. The path belongs to no real machine."
+    },
+    {
+      "path": "tools/save_catalogue/walk.py",
+      "signal_index": 6,
+      "reason": "A provenance class name fixed by the design note. It means the digest matched a blank pattern a tracked launcher stages into its run directory, so it names a category of file rather than a person or a process."
+    },
+    {
+      "path": "tools/save_catalogue/cli.py",
+      "signal_index": 6,
+      "reason": "The same fixed provenance class name, offered here as a find filter. It names a category of file rather than a person or a process."
+    },
+    {
+      "path": "tests/unit/test_save_catalogue.py",
+      "signal_index": 6,
+      "reason": "The same fixed provenance class name, asserted by the test that a staged blank is classified as a staged blank rather than recorded as the owner's save."
+    },
+    {
+      "path": "docs/save-catalogue.md",
+      "signal_index": 6,
+      "reason": "The same fixed provenance class name, documented with the evidence that fires it."
     }
   ]
 }

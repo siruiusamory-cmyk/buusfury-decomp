@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import struct
 import sys
+import time
 import zlib
 from pathlib import Path
 
@@ -386,6 +388,114 @@ def test_a_state_container_is_a_savestate_with_no_game_attributed(store_home: Pa
     assert "gbAs" in entry.kind_evidence
 
 
+def test_a_scan_survives_one_bad_file_and_indexes_the_rest(store_home: Path, tmp_path: Path,
+                                                           monkeypatch):
+    """One unreadable candidate must cost nothing but its own row (B1)."""
+    import builtins
+
+    root = tmp_path / "build"
+    root.mkdir()
+    # Three distinct images: an identical digest is one entry seen three times,
+    # which would not show that the scan indexed everything else.
+    (root / "a - Buu's Fury (U).sav").write_bytes(make_save(b"\x0a\x0b" + bytes(PAYLOAD_LEN - 2)))
+    bad = root / "b - Buu's Fury (U).sav"
+    bad.write_bytes(make_save(b"\x0c\x0b" + bytes(PAYLOAD_LEN - 2)))
+    (root / "c - Buu's Fury (U).sav").write_bytes(make_save(b"\x0e\x0b" + bytes(PAYLOAD_LEN - 2)))
+    # The digest path and the head path open the file differently, and both have
+    # to see the failure, or the test would prove only half of the containment.
+    real_builtin, real_method = builtins.open, Path.open
+
+    def refuse_builtin(file, *arguments, **keywords):
+        if Path(file).name == bad.name:
+            raise OSError("simulated I/O error")
+        return real_builtin(file, *arguments, **keywords)
+
+    def refuse_method(self, *arguments, **keywords):
+        if self.name == bad.name:
+            raise OSError("simulated I/O error")
+        return real_method(self, *arguments, **keywords)
+
+    monkeypatch.setattr(builtins, "open", refuse_builtin)
+    monkeypatch.setattr(Path, "open", refuse_method)
+
+    report = walk.scan(store_home, [root])
+
+    assert (report.new, report.updated) == (2, 0)
+    assert [row["path"] for row in report.problems] == [str(bad)]
+    with Store(store_home).connect() as connection:
+        paths = sorted(source.path for entry in Store(store_home).find(connection)
+                       for source in entry.sources)
+    assert str(bad) not in paths
+    assert len(paths) == 2
+
+
+def test_a_rom_the_recent_list_names_but_that_is_gone_costs_nothing(store_home: Path,
+                                                                    tmp_path: Path, monkeypatch):
+    """B1's crash: the emulator's MRU keeps a path whose image was moved away."""
+    root = tmp_path / "build"
+    root.mkdir()
+    save = root / "game.sav"
+    save.write_bytes(make_save())
+    rom = root / "game.gba"
+    rom.write_bytes(b"\x00" * 16)
+    monkeypatch.setattr(walk, "recent_roms", lambda: {rom: str(rom)})
+    rom.unlink()
+
+    report = walk.scan(store_home, [root])
+
+    assert report.new == 1
+    assert report.problems == []
+    with Store(store_home).connect() as connection:
+        entry = Store(store_home).find(connection)[0]
+    assert entry.provenance == "UNKNOWN"
+    assert "not readable" in entry.provenance_evidence
+    assert str(rom) in entry.provenance_evidence
+
+
+def test_a_save_older_than_the_rom_beside_it_is_not_the_owner(store_home: Path, tmp_path: Path,
+                                                             monkeypatch):
+    """The mtime rule is enforced, not narrated (B2)."""
+    root = tmp_path / "build"
+    root.mkdir()
+    save = root / "game.sav"
+    save.write_bytes(make_save())
+    rom = root / "game.gba"
+    rom.write_bytes(b"\x00" * 16)
+    now = time.time()
+    os.utime(rom, (now - 60, now - 60))
+    os.utime(save, (now - 300, now - 300))
+    roms = {rom: str(rom)}
+
+    older = walk.resolve_provenance(save, "A" * 64, save.stat().st_size, [root], [], roms)
+
+    assert older.provenance == "UNKNOWN"
+    assert "older" in older.evidence
+    assert str(rom) in older.evidence
+
+
+def test_a_save_newer_than_or_equal_to_the_rom_beside_it_is_the_owner(tmp_path: Path):
+    """Both directions and the equal case, decided on the same rule (B2)."""
+    root = tmp_path / "build"
+    root.mkdir()
+    save = root / "game.sav"
+    save.write_bytes(make_save())
+    rom = root / "game.gba"
+    rom.write_bytes(b"\x00" * 16)
+    now = time.time()
+    os.utime(rom, (now - 300, now - 300))
+    roms = {rom: str(rom)}
+
+    os.utime(save, (now - 60, now - 60))
+    newer = walk.resolve_provenance(save, "A" * 64, save.stat().st_size, [root], [], roms)
+    os.utime(save, (now - 300, now - 300))
+    equal = walk.resolve_provenance(save, "A" * 64, save.stat().st_size, [root], [], roms)
+
+    assert newer.provenance == "OWNER"
+    assert "equal to or newer" in newer.evidence
+    assert equal.provenance == "OWNER"
+    assert walk.utc_of(now - 300) in equal.evidence
+
+
 def test_a_store_predating_a_provenance_rename_is_migrated_once(store_home: Path, tmp_path: Path):
     """The store is machine-local, so a class rename has to reach its rows."""
     _index_one(store_home, tmp_path)
@@ -420,6 +530,11 @@ def test_a_re_scan_refreshes_provenance_without_re_hashing(store_home: Path, tmp
     save.write_bytes(make_save())
     rom = root / "game.gba"
     rom.write_bytes(b"\x00" * 16)
+    # The save carries the newer mtime, so the rule that fires is the one that
+    # should: a save written after the image beside it.
+    now = time.time()
+    os.utime(rom, (now - 300, now - 300))
+    os.utime(save, (now - 60, now - 60))
     walk.scan(store_home, [root])
     with Store(store_home).connect() as connection:
         assert Store(store_home).find(connection)[0].provenance == "UNKNOWN"

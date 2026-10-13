@@ -6,9 +6,11 @@ re-hashes everything on purpose.
 
 Provenance is a class plus the evidence that fired, never a guess:
 
-* ``OWNER`` - registered through the CLI, or matched to the emulator's own
-  recent-ROM list (`qt.ini` `[mru]`) with a save that sits beside a ROM from
-  that list, or present in a protected backup directory;
+* ``OWNER`` - registered through the CLI in the owner's own words, or matched to
+  the emulator's own recent-ROM list (`qt.ini` `[mru]`) with a save that sits
+  beside a ROM from that list and a modification time that fits it: equal to or
+  later than the image's, because a save older than the ROM copy beside it was
+  not written by that copy;
 * ``TOOL-STAGED`` - the digest is a known blank staged pattern;
 * ``DERIVED`` - the file sits in a launcher run directory with an `inputs.json`
   that names this file's digest as its ROM, save or state, and only when the
@@ -169,7 +171,7 @@ def resolve_provenance(path: Path, sha256: str, size: int,
     if path.suffix.lower() in BATTERY_SUFFIXES:
         match = _recent_rom_match(path, stat, roms if roms is not None else recent_roms())
         if match is not None:
-            return Provenance("OWNER", match)
+            return match
     return Provenance(
         "UNKNOWN",
         "no rule fired: not inside a protected backup, not a known blank digest, not named by a run"
@@ -177,16 +179,42 @@ def resolve_provenance(path: Path, sha256: str, size: int,
     )
 
 
-def _recent_rom_match(path: Path, stat: os.stat_result, roms: dict[Path, str]) -> str | None:
+def _recent_rom_match(path: Path, stat: os.stat_result, roms: dict[Path, str]) -> Provenance | None:
+    """The ``OWNER`` verdict from the emulator's own recent-ROM list, or None.
+
+    A save older than the image it sits beside was not written by that copy of
+    the image, so it is not the owner's evidence and resolves to UNKNOWN with
+    that reason rather than to OWNER with the wrong direction in a sentence.
+
+    A ROM the list names can be gone by the time this runs, so every stat of one
+    is inside a guard: a missing image makes that entry no evidence, and it never
+    costs the scan.
+    """
+    refused: str | None = None
     for rom, recorded in sorted(roms.items(), key=lambda item: str(item[0])):
         if rom.parent.resolve() != path.parent.resolve() or rom.stem != path.stem:
             continue
-        rom_mtime = rom.stat().st_mtime
-        relation = "newer" if stat.st_mtime >= rom_mtime else "older"
-        return (f"emulator recent-ROM entry {recorded} has the sibling save {path.name};"
-                f" save mtime {utc_of(stat.st_mtime)} is {relation} than the image mtime"
-                f" {utc_of(rom_mtime)}")
-    return None
+        try:
+            rom_mtime = rom.stat().st_mtime
+        except OSError:
+            # No match from this entry, and the reason is carried so the entry's
+            # evidence names it rather than reporting that no ROM was ever named.
+            refused = (f"the emulator's recent-ROM entry {recorded} is not readable at"
+                       f" {rom}, so it is no evidence for {path.name}")
+            continue
+        if stat.st_mtime >= rom_mtime:
+            return Provenance(
+                "OWNER",
+                f"emulator recent-ROM entry {recorded} has the sibling save {path.name};"
+                f" save mtime {utc_of(stat.st_mtime)} is equal to or newer than the image mtime"
+                f" {utc_of(rom_mtime)}",
+            )
+        refused = (f"the save sits beside emulator recent-ROM entry {recorded} but its mtime"
+                   f" {utc_of(stat.st_mtime)} is older than the matched ROM's"
+                   f" {utc_of(rom_mtime)}, so the copy here did not write it")
+    if refused is None:
+        return None
+    return Provenance("UNKNOWN", refused)
 
 
 def sibling_rom(path: Path, roms: dict[Path, str]) -> Path | None:
@@ -272,10 +300,15 @@ class ScanReport:
     unchanged: int = 0
     rehashed: int = 0
     changed: list[dict] = None  # type: ignore[assignment]
+    #: Candidates a scan could not index, with the reason. One unreadable file is
+    #: recorded here and the walk goes on; it never costs the run.
+    problems: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.changed is None:
             self.changed = []
+        if self.problems is None:
+            self.problems = []
 
     def as_json(self) -> dict:
         return {
@@ -286,11 +319,17 @@ class ScanReport:
             "unchanged": self.unchanged,
             "rehashed": self.rehashed,
             "changed": self.changed,
+            "problems": self.problems,
         }
 
 
 def fingerprint(size: int, mtime: float) -> tuple[int, int]:
     return size, int(mtime)
+
+
+def _problem(report: ScanReport, path: Path, error: BaseException) -> None:
+    """Record an unreadable candidate instead of losing it silently."""
+    report.problems.append({"path": str(path), "error": str(error)})
 
 
 def scan(store_home: Path | None = None, roots: list[Path] | None = None,
@@ -315,7 +354,12 @@ def scan(store_home: Path | None = None, roots: list[Path] | None = None,
                 continue
             index.note_root(root, connection)
             for path in iter_candidates(root):
-                _index_one(index, connection, path, root, guard, roms, verify, report, rehash)
+                try:
+                    _index_one(index, connection, path, root, guard, roms, verify, report, rehash)
+                except (OSError, ValueError) as error:
+                    # One bad file must not cost the run: it is reported as a
+                    # problem and the scan keeps indexing everything else.
+                    _problem(report, path, error)
         connection.commit()
     return report
 
@@ -325,7 +369,8 @@ def _index_one(index: Store, connection, path: Path, root: Path, protected: list
                rehash: bool = False) -> None:
     try:
         stat = path.stat()
-    except OSError:
+    except OSError as error:
+        _problem(report, path, error)
         return
     known = connection.execute(
         "SELECT sha256, mtime, size FROM sources WHERE path = ?", (str(path),)
@@ -361,11 +406,18 @@ def _index_one(index: Store, connection, path: Path, root: Path, protected: list
         return
     try:
         digest = sha256_of(path)
-    except OSError:
+    except OSError as error:
+        _problem(report, path, error)
         return
     report.rehashed += 1
-    entry = _entry_for(index, connection, path, digest, stat, root, protected, roms)
-    created = index.upsert_entry(entry, connection)
+    try:
+        entry = _entry_for(index, connection, path, digest, stat, root, protected, roms)
+        created = index.upsert_entry(entry, connection)
+    except (OSError, ValueError) as error:
+        # The head read, the geometry and the store write all live here, so the
+        # whole per-file derivation is what the scan contains.
+        _problem(report, path, error)
+        return
     index.add_source(digest, Source(path=str(path), root=str(root), mtime=stat.st_mtime,
                                     size=stat.st_size, seen_at=utc_now()), connection)
     if created:

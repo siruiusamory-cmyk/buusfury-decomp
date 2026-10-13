@@ -51,6 +51,7 @@ BETA_ROOT = "tools.webfoot.workbench"
 #: Top-level directories a tracked file may live under. A new top-level
 #: directory is a deliberate decision, so it is listed here rather than inferred.
 ALLOWED_ROOTS = (
+    "ci",
     "config",
     "docs",
     "public",

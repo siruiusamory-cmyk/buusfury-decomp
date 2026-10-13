@@ -188,6 +188,12 @@ test-site:
   # end to end on this machine. The cap is five times that, because a cold npm
   # cache is the slow case, and it still bounds a hung build.
   timeout: 20 minutes
+  variables:
+    # Do not inherit the deployment credential into a test job. This job runs
+    # `npm ci`, which executes package install scripts on the owner's own
+    # machine, so a protected token in this environment is an exposure the other
+    # three routed jobs already refuse.
+    CLOUDFLARE_API_TOKEN: ""
   script:
     # `npm run check` type-checks the site source, `npm run build` produces the
     # artifact, and the checker validates both the data and the artifact.

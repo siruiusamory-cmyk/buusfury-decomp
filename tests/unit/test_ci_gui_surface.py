@@ -35,6 +35,10 @@ instead of silently reducing the suite:
   because ``test-sdk``'s ``--dist loadfile`` means no module ever follows
   another in one process, and module-to-module Qt state is exactly what that
   hides.
+- every routed test job must clear the protected deployment credential at the
+  job, because these jobs run install scripts on the owner's own machine and the
+  protected variable is visible on the default branch, which is the pipeline
+  ``deploy-site`` runs in.
 
 The job bodies live in ``ci\\*.ps1`` and the YAML names the file, because the
 four test-stage jobs run on a shell executor on Windows, where ``image:`` is
@@ -714,3 +718,29 @@ def test_the_test_jobs_run_on_the_self_hosted_runner_and_the_deploy_job_does_not
         f"{_cited(DEPLOY_JOB)}: {DEPLOY_JOB} must keep the image it builds the "
         f"site in; it is {deploy.get('image')!r}"
     )
+
+
+def test_every_routed_job_clears_the_deployment_credential():
+    """Prevents: a protected deployment credential in a job that runs install scripts.
+
+    The four test-stage jobs run on the owner's own machine, where ``npm ci``
+    executes package install scripts and any test can read the process
+    environment. The credential is a protected CI variable, so only a protected
+    ref can see it at all - and the default branch IS protected, which is exactly
+    the pipeline ``deploy-site`` runs in. Every routed job therefore clears it at
+    the job.
+
+    This asserts the clearing on every routed job rather than on the three that
+    happened to have it, so a job that gains routing without the line fails here
+    by name instead of shipping the exposure.
+    """
+    config = _ci_config()
+    for name in LOCAL_CI_JOBS:
+        cleared = (config[name].get("variables") or {}).get("CLOUDFLARE_API_TOKEN")
+        assert cleared == "", (
+            f"{_cited(name)}: {name} must carry "
+            '`variables: {CLOUDFLARE_API_TOKEN: ""}`; it is '
+            f"{cleared!r}. The variable is protected, so the default-branch "
+            "pipeline is the one that can see it, and this job runs install "
+            "scripts on the owner's own machine"
+        )

@@ -390,10 +390,15 @@ constraint for about 124 s and 700 MB per pipeline.
 user, and it dies at logoff: a pipeline queued while the machine is logged out
 waits. It executes whatever is on **any branch of this project**, not only the
 default one, so a branch push is code execution on that PC. It is an
-*unprotected* runner (`access_level: not_protected`), which is acceptable
-because the project's one CI variable, `CLOUDFLARE_API_TOKEN`, is `protected:
-true`: an unprotected ref cannot see it. The deploy job keeps the credential and
-stays on the shared runners, which is why it was not moved.
+*unprotected* runner (`access_level: not_protected`), and the project's one CI
+variable, `CLOUDFLARE_API_TOKEN`, is `protected: true`, so an unprotected ref
+cannot see it. The default branch IS protected, though, and the test jobs run
+there, so every routed job clears that variable at the job
+(`variables: CLOUDFLARE_API_TOKEN: ""`): neither `npm ci`'s install scripts nor
+any test on that machine reads the credential.
+`tests/unit/test_ci_gui_surface.py` fails by name if a routed job stops clearing
+it. The deploy job keeps the credential and stays on the shared runners, which is
+why it was not moved.
 
 The old protected runner (tag `rom-local`) is untouched by this routing: it
 still owns the ROM-gated jobs that need the canonical image.

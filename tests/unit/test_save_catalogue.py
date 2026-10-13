@@ -616,6 +616,75 @@ def test_the_8192_and_32768_byte_boundary_files_are_classed_by_size_not_truncati
     assert entries[8192].game == geometry.BUUS_FURY
 
 
+def test_a_vanishing_file_after_the_first_stat_reaches_the_open_path(store_home: Path, tmp_path: Path,
+                                                                     monkeypatch):
+    """Cover the branch past the first stat: the digest read fails, the path is named.
+
+    The permission test can trip the stat catch, so this one patches only the opener
+    and asserts the first stat was allowed, which is what makes it a different branch.
+    """
+    import builtins
+
+    root = tmp_path / "build"
+    root.mkdir()
+    (root / "a - Buu's Fury (U).sav").write_bytes(make_save(b"\x0a\x0b" + bytes(PAYLOAD_LEN - 2)))
+    vanishing = root / "b - Buu's Fury (U).sav"
+    vanishing.write_bytes(make_save(b"\x0c\x0b" + bytes(PAYLOAD_LEN - 2)))
+    real_stat, real_open, real_method = Path.stat, builtins.open, Path.open
+    statted: list[str] = []
+
+    def note_stat(self, *arguments, **keywords):
+        statted.append(self.name)
+        return real_stat(self, *arguments, **keywords)
+
+    def refuse_open(file, *arguments, **keywords):
+        if Path(file).name == vanishing.name:
+            raise FileNotFoundError("[WinError 2] The system cannot find the file specified")
+        return real_open(file, *arguments, **keywords)
+
+    def refuse_method(self, *arguments, **keywords):
+        if self.name == vanishing.name:
+            raise FileNotFoundError("[WinError 2] The system cannot find the file specified")
+        return real_method(self, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "stat", note_stat)
+    monkeypatch.setattr(builtins, "open", refuse_open)
+    monkeypatch.setattr(Path, "open", refuse_method)
+
+    report = walk.scan(store_home, [root])
+
+    assert vanishing.name in statted, "the first stat must have been allowed"
+    assert report.new == 1
+    assert [row["path"] for row in report.problems] == [str(vanishing)]
+    assert "find the file" in report.problems[0]["error"].lower()
+
+
+def test_the_entry_and_upsert_branch_is_contained(store_home: Path, tmp_path: Path, monkeypatch):
+    """A failure inside the entry derivation, after the digest, is recorded too."""
+    root = tmp_path / "build"
+    root.mkdir()
+    (root / "a - Buu's Fury (U).sav").write_bytes(make_save(b"\x0a\x0b" + bytes(PAYLOAD_LEN - 2)))
+    (root / "b - Buu's Fury (U).sav").write_bytes(make_save(b"\x0c\x0b" + bytes(PAYLOAD_LEN - 2)))
+    real_upsert = Store.upsert_entry
+    calls: list[str] = []
+
+    def second_one_fails(self, entry, connection):
+        # The first entry lands; the second raises where the old code had no guard.
+        calls.append(entry.sha256)
+        if len(calls) == 2:
+            raise ValueError("simulated store failure")
+        return real_upsert(self, entry, connection)
+
+    monkeypatch.setattr(Store, "upsert_entry", second_one_fails)
+
+    report = walk.scan(store_home, [root])
+
+    assert len(calls) == 2
+    assert report.new == 1
+    assert len(report.problems) == 1
+    assert "simulated store failure" in report.problems[0]["error"]
+
+
 def test_legacy_of_goku_bytes_are_not_de_swizzled():
     """Its transform scope is unknown, so the reversal is not applied (non-blocking)."""
     layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)

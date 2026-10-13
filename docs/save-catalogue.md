@@ -92,6 +92,9 @@ real files and a number derived from code are never confused:
 | Legacy of Goku II | 8,192 B | `0x10 + k*0x168` | `0x164` | `adler32`, stored at `slot+0x164` | slot 0 verified against three real saves; stride and count derived from code |
 | Legacy of Goku | 512 B | `0 + k*0xAC` | `0xA0` | the word at `slot+0x08` is a rolling XOR key that reads no payload byte but the seed, so it cannot detect corruption | code-only; no such save exists in this corpus, so validity is `UNKNOWN` |
 
+The verification counts in that table are from the seed measurements of 2026-10-12
+and do not move; the live-corpus counts, dated where they appear, do.
+
 The family shares the medium and the **8-byte-block byte reversal** (the medium
 stores each 8-byte block byte-reversed relative to the game's buffer, so a block
 is de-swizzled before the checksum is computed); it does not share the slot
@@ -127,12 +130,26 @@ Not yet claimed, and recorded as such: which slot offset names the map the playe
 stands on, and any decoded field. The 8-byte settings header (`checksum(first 4)`
 plus the word `0x12345678`) is read at image offset 0 in the medium's frame: the
 header block is de-swizzled before the rule is applied, because the medium stores
-every 8-byte block byte-reversed. The check agrees with `validate_rev8.py`'s own
-implementation on all 1,026 held 8,192-byte battery sources (34 distinct digests)
-with no disagreement, and it reports a written header on 354 sources over 9
-distinct digests, with payloads `04040500`, `06060300` and `08000000`. The erased
-block (`FF`/`00`) is not a written header, and an entry's `header_written` is a
-reading of the file, never a claim about what the game intended.
+every 8-byte block byte-reversed.
+
+**Measured corpus figures, as of 2026-10-12, over the 1,026 held 8,192-byte
+battery sources (34 distinct digests); the store is live, so these move.** Each
+count is printed with the filter that produced it, from one query:
+
+| Filter | Sources | Distinct digests |
+| --- | --- | --- |
+| held 8,192-byte battery sources | 1,026 | 34 |
+| `header_written` true | 354 | 11 |
+| of those, digest names Buu's Fury in the filename | 53 | 2 |
+| of those, digest names no title | 301 | 9 |
+
+The check agrees with `validate_rev8.py`'s own implementation (its header block
+read out of its source and executed) with no disagreement on any held source. The
+header payloads are `04040500`, `06060300` and `08000000`; an erased block
+(`FF`/`00`) is not a written header in either implementation. `header_written` is a
+reading of the file, never a claim about what the game intended, and the store's
+`slots.header_written` column stays at 0 until the next real scan re-derives it:
+that is a known state of a live store, not a defect.
 
 ## Safety
 

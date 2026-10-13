@@ -42,11 +42,9 @@ then the little-endian u32 ``checksum(first 4) + 0x12345678``. The file frame is
 not the frame that rule is written in: the medium stores every 8-byte block
 byte-reversed, so the header block is de-swizzled before the rule is applied,
 exactly as ``validate_rev8.py`` does. Reading the raw block is a check that cannot
-see a header a real file holds. The two implementations agree on all 1,026 held
-8,192-byte battery sources (34 distinct digests) with no disagreement, and 354
-sources over 9 distinct digests do carry a written header, with payloads of
-``04040500``, ``06060300`` and ``08000000``. A title whose header is a hypothesis
-gets no check at all rather than a check that cannot fire.
+see a header a real file holds. A title whose header is a hypothesis gets no check
+at all rather than a check that cannot fire. The measured corpus figures live in
+``docs/save-catalogue.md``, dated, so a live store cannot stale this docstring.
 """
 
 from __future__ import annotations
@@ -256,9 +254,8 @@ class Slot:
     checksum_computed: int | None
     integrity_field_kind: str
     #: Whether the settings header sits at image offset 0 where the layout's own
-    #: rule says it would, in the medium's frame. Measured with
-    #: :func:`header_written`, so it is a check that can fire: on the held corpus
-    #: it reports a written header on 354 sources over 9 distinct digests.
+    #: rule says it would, in the medium's frame, measured with
+    #: :func:`header_written`. Corpus counts are in ``docs/save-catalogue.md``.
     header_written: bool
     transform_scope: str
 

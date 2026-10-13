@@ -286,6 +286,10 @@ function Start-MgbaSession {
         $previousForeground = [DbzSessionWindow]::GetForegroundWindow()
     }
 
+    # An observer cannot hash a file, so the image's identity reaches the child in the
+    # environment. It is the same digest the gate above has just proved the ROM against.
+    $env:LOG1_MGBA_ROM_SHA256 = $expectedHash
+
     $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
 
     $deadline = (Get-Date).AddSeconds(30)

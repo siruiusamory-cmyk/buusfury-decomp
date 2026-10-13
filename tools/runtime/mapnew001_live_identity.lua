@@ -61,8 +61,37 @@ local COUNT_HELPER_FIRST = 0x20FF
 local COUNT_HELPER_BASE = 0xFF
 
 local ROM_BASE = 0x08000000
-local CANONICAL_ROM_SIZE = 8388608
-local EXPANDED_ROM_SIZE = 16777216
+
+-- IDENTITY ALLOWLIST, an ADDITION to the allowlist and not a loosening: it
+-- replaces a size-only check that accepted ANY image of the canonical or the
+-- expanded size, so the pair of numbers said nothing about which image was
+-- running. An image that is not one of these entries is still refused, exactly as
+-- a third size was refused before. Both halves must match: the SHA-256 the
+-- launcher declared and the size the running core reports.
+--
+-- An observer cannot hash a file, so the digest arrives in the environment from
+-- the launcher's own exact-digest gate (`-ExpectedRomSha256`, checked against the
+-- file before anything is launched).
+--
+-- `emu:romSize()` reports the FILE size, not a rounded cart size: measured at
+-- 10,141,220 for that image in docs/research/FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md,
+-- which is what makes a 10,190,116-byte entry a meaningful pair.
+local ROM_IDENTITIES = {
+    { size = 8388608, sha256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e" },
+    { size = 10190116, sha256 = "81c5766fba8eb961d3703d8c0bae900c9a7bd8bbf5ba209a03d56e124736948c" },
+}
+local ROM_SHA256_ENV = "LOG1_MGBA_ROM_SHA256"
+
+local function rom_identity_allowed(declared, size)
+    if type(declared) ~= "string" then return false end
+    declared = declared:lower()
+    for _, entry in ipairs(ROM_IDENTITIES) do
+        if entry.size == size and entry.sha256 == declared then
+            return true
+        end
+    end
+    return false
+end
 
 local HEARTBEAT_EVERY = 120
 local MAX_ROWS = 40000
@@ -81,9 +110,11 @@ local game_code = emu:getGameCode()
 assert(game_code == "BG3E" or game_code == "AGB-BG3E",
     "unexpected game code: " .. tostring(game_code))
 
+local declared_sha256 = os.getenv(ROM_SHA256_ENV)
 local rom_size = emu:romSize()
-assert(rom_size == CANONICAL_ROM_SIZE or rom_size == EXPANDED_ROM_SIZE,
-    "unexpected ROM size: " .. tostring(rom_size))
+assert(rom_identity_allowed(declared_sha256, rom_size),
+    "refused: the image is not on the identity allowlist; size=" .. tostring(rom_size) ..
+    ", declared sha256=" .. tostring(declared_sha256))
 local ROM_END = ROM_BASE + rom_size
 
 local function safe8(addr)

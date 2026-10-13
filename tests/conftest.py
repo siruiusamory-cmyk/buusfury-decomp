@@ -96,13 +96,21 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
-#: Argument that means "this run's result is read from a machine-readable report",
-#: which is what both CI and the local full-CI record gate do and what no local
-#: developer run does. The record gate cannot set ``CI`` itself: it is master's
-#: reviewed ``scripts/local-ci.ps1`` and it runs the suite as an ordinary local
-#: process. This argument is why the exit path below takes the clean exit under
+#: Option destination that means "this run's result is read from a machine-readable
+#: report", which is what both CI and the local full-CI record gate do and what no
+#: local developer run does. The record gate cannot set ``CI`` itself: it is
+#: master's reviewed ``scripts/local-ci.ps1`` and it runs the suite as an ordinary
+#: local process. This option is why the exit path below takes the clean exit under
 #: the gate as well as under CI.
-_RECORDED_REPORT_OPTION = "junitxml"
+#:
+#: The name is ``xmlpath``, not ``junitxml``: ``_pytest/junitxml.py`` registers
+#: ``--junitxml`` with ``dest="xmlpath"``. Read the destination through
+#: ``config.option``; the attribute does not exist under the flag's own spelling, and
+#: a key that never matches is a mitigation that never fires. Measured 2026-10-13: an
+#: xdist ``-n 2`` run of one Qt module with ``--junitxml`` set ``xmlpath`` in the
+#: controller AND in both workers, and reading a missing ``junitxml`` left every one
+#: of the three on the interpreter's own exit path.
+_RECORDED_REPORT_OPTION = "xmlpath"
 
 #: The status the CI exit path below carries. It starts at pytest's INTERNAL_ERROR
 #: rather than at 0, because ``pytest_sessionfinish`` is what overwrites it and that
@@ -589,7 +597,9 @@ def _run_result_is_recorded(config: pytest.Config) -> bool:
     CI is the environment. The local full-CI record gate is the report: it runs
     ``scripts/local-ci.ps1``, which passes ``--junitxml`` and sets no CI variable. A local
     developer run passes neither. The report option is read defensively because a caller may
-    hand this hook a stub config, which is how the exit-path cases drive it.
+    hand this hook a stub config, which is how the exit-path cases drive it, and it is read
+    under its destination name - ``xmlpath`` - because that is the attribute pytest actually
+    sets; see :data:`_RECORDED_REPORT_OPTION`.
     """
     if any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES):
         return True

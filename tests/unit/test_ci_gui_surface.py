@@ -571,10 +571,18 @@ def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> N
     while its captured stderr carried ``Fatal Python error: Aborted``, because
     ``scripts/local-ci.ps1`` sets no CI variable - it is master's reviewed script - and passes
     ``--junitxml`` instead. A developer's own run sets neither and keeps the ordinary exit.
+
+    The option name is ``xmlpath`` and not ``junitxml``: ``_pytest/junitxml.py`` registers
+    ``--junitxml`` with ``dest="xmlpath"``. A stub built with ``junitxml`` was the first
+    version of this case and it passed while the real gate never took the exit at all, which
+    is the failure this file's own docstrings keep warning about.
     """
     import types
 
     from tests import conftest
+
+    assert conftest._RECORDED_REPORT_OPTION == "xmlpath", (
+        "the recorded-report option name changed; --junitxml is registered as `xmlpath`")
 
     monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", pytest.ExitCode.OK)
     monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
@@ -587,7 +595,7 @@ def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> N
         raise SystemExit(code)
 
     monkeypatch.setattr(conftest.os, "_exit", capture)
-    recorded = types.SimpleNamespace(option=types.SimpleNamespace(junitxml="report.xml"))
+    recorded = types.SimpleNamespace(option=types.SimpleNamespace(xmlpath="report.xml"))
     with pytest.raises(SystemExit):
         conftest.pytest_unconfigure(recorded)
     assert captured == [int(pytest.ExitCode.OK)], (
@@ -595,7 +603,7 @@ def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> N
 
     # The same config without the report argument is a developer's run: no clean exit.
     captured.clear()
-    conftest.pytest_unconfigure(types.SimpleNamespace(option=types.SimpleNamespace(junitxml=None)))
+    conftest.pytest_unconfigure(types.SimpleNamespace(option=types.SimpleNamespace(xmlpath=None)))
     assert captured == [], (
         f"a local run without a report argued its way into the exit path ({captured})")
 

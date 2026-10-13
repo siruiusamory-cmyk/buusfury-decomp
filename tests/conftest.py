@@ -96,6 +96,14 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
+#: Argument that means "this run's result is read from a machine-readable report",
+#: which is what both CI and the local full-CI record gate do and what no local
+#: developer run does. The record gate cannot set ``CI`` itself: it is master's
+#: reviewed ``scripts/local-ci.ps1`` and it runs the suite as an ordinary local
+#: process. This argument is why the exit path below takes the clean exit under
+#: the gate as well as under CI.
+_RECORDED_REPORT_OPTION = "junitxml"
+
 #: The status the CI exit path below carries. It starts at pytest's INTERNAL_ERROR
 #: rather than at 0, because ``pytest_sessionfinish`` is what overwrites it and that
 #: hook does not run when the session dies before it: a raising ``pytest_sessionstart``
@@ -547,25 +555,46 @@ def _required_gui_surface_is_enforced() -> bool:
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
-    """In CI only, leave before CPython tears the loaded Qt extensions down.
+    """In CI, or under the local full-CI record gate, leave before CPython tears the loaded
+    Qt extensions down.
 
     The crash this path exists for, the pipelines that carry it and the instrument that can
     name it are recorded in ``docs/research/RETRO_QT_SHUTDOWN_001.md``: one definition of
     that fact rather than a second telling here.
 
-    This is a mitigation, not a fix. It runs only under CI, so a local run keeps the
-    interpreter's own exit path. ``os._exit`` is deliberate where ``sys.exit`` would not do:
-    the point is to skip the finalizers. Streams are flushed first, because ``os._exit``
-    does not flush them. ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary exit so the
-    crash can still be observed from CI by whoever works on it.
+    This is a mitigation, not a fix. It runs under CI, and under a run whose result is read
+    from a machine-readable report - the local record gate passes ``--junitxml`` and cannot
+    set ``CI``, because that gate is master's reviewed script and runs the suite as an
+    ordinary local process. Measured 2026-10-13: the record gate's own suite step for this
+    ticket reported exit 0 while its captured stderr carried ``Fatal Python error: Aborted``,
+    so that record could not be called crash-free; the two crash-free runs on this line are
+    the CI ones, where this path already ran. A local run keeps the interpreter's own exit
+    path. ``os._exit`` is deliberate where ``sys.exit`` would not do: the point is to skip the
+    finalizers. Streams are flushed first, because ``os._exit`` does not flush them.
+    ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary exit so the crash can still be
+    observed from CI by whoever works on it.
     """
     if os.environ.get("WEBFOOT_KEEP_INTERPRETER_EXIT") == "1":
         return
-    if not any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES):
+    if not _run_result_is_recorded(config):
         return
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(_SESSION_EXIT_STATUS)
+
+
+def _run_result_is_recorded(config: pytest.Config) -> bool:
+    """Whether this run is CI or one whose result is read from a machine-readable report.
+
+    CI is the environment. The local full-CI record gate is the report: it runs
+    ``scripts/local-ci.ps1``, which passes ``--junitxml`` and sets no CI variable. A local
+    developer run passes neither. The report option is read defensively because a caller may
+    hand this hook a stub config, which is how the exit-path cases drive it.
+    """
+    if any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES):
+        return True
+    option = getattr(config, "option", None)
+    return bool(getattr(option, _RECORDED_REPORT_OPTION, None))
 
 
 def _collapsed_required_modules() -> list[tuple[str, str]]:

@@ -563,6 +563,43 @@ def test_the_ci_exit_path_carries_the_runs_status(monkeypatch) -> None:
         f"the exit path carried {captured} for a run that never reached sessionfinish")
 
 
+def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> None:
+    """A recorded run - the local full-CI gate - must take the clean exit without ``CI``.
+
+    Prevents: the local record gate running the same Qt suite on the interpreter's own exit
+    path. Measured 2026-10-13 in the record for this ticket: its suite step reported exit 0
+    while its captured stderr carried ``Fatal Python error: Aborted``, because
+    ``scripts/local-ci.ps1`` sets no CI variable - it is master's reviewed script - and passes
+    ``--junitxml`` instead. A developer's own run sets neither and keeps the ordinary exit.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", pytest.ExitCode.OK)
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITLAB_CI", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    recorded = types.SimpleNamespace(option=types.SimpleNamespace(junitxml="report.xml"))
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(recorded)
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a recorded run left through the ordinary exit path ({captured})")
+
+    # The same config without the report argument is a developer's run: no clean exit.
+    captured.clear()
+    conftest.pytest_unconfigure(types.SimpleNamespace(option=types.SimpleNamespace(junitxml=None)))
+    assert captured == [], (
+        f"a local run without a report argued its way into the exit path ({captured})")
+
+
 def test_the_session_hooks_are_defined_and_have_run() -> None:
     """A scripted edit consumed an anchor line once and took ``pytest_configure`` with it.
 

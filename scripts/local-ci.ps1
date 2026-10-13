@@ -150,10 +150,10 @@ function Invoke-Step {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $quoted = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
     #: Each step's streams are captured into THIS RUN's own directory and KEPT. They used
-    #: to go to two fixed %TEMP% files that were read into memory and deleted, so a failed
-    #: step left no output anywhere and the 05b759ad pip failure could not be established
-    #: from the artifacts. The paths are private, under ignored build/, and are reported
-    #: in the record by path and digest rather than by content.
+    #: to go to two fixed files in the temporary directory, which were read into memory
+    #: and deleted, so a failed step left no output anywhere and the 05b759ad pip failure
+    #: could not be established from the artifacts. The paths are private, under ignored
+    #: build/, and are reported in the record by path and digest rather than by content.
     $index = $script:Steps.Count + 1
     $slug = ($Name -replace '[^A-Za-z0-9]+', '-').Trim('-')
     if (-not (Test-Path -LiteralPath $script:StepsDir)) { New-Item -ItemType Directory -Force -Path $script:StepsDir | Out-Null }
@@ -300,7 +300,7 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 }
 $env:QT_QPA_PLATFORM = 'offscreen'
 $env:CLOUDFLARE_API_TOKEN = ''
-$env:PYTEST_DEBUG_TEMPROOT = 'C:\Users\hears\AppData\Local\Temp\pytest-root'
+$env:PYTEST_DEBUG_TEMPROOT = Join-Path ([System.IO.Path]::GetTempPath()) 'pytest-root'
 $report = Join-Path $worktree 'report.xml'
 
 # --- steps -------------------------------------------------------------------
@@ -444,7 +444,7 @@ $body.Add('')
 $body.Add('peak memory')
 $body.Add('-----------')
 $body.Add(("  {0:N0} MB peak python tree, parent-pid tree walk during each step" -f ($script:PeakBytes / 1MB)))
-$body.Add('  the machine also ran agent sessions during this run')
+$body.Add('  other work was running on the machine during this run')
 $body.Add('')
 $body.Add('failures')
 $body.Add('--------')

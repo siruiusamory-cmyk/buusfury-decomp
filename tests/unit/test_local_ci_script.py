@@ -25,7 +25,7 @@ The four guards, and the defect each one catches:
 
 The gate is also given a private ``LOCALAPPDATA``, so its venv and its neutral
 clone land in the test's temporary directory and never touch the machine's own
-``%LOCALAPPDATA%\\log1-ci``.
+local CI home.
 """
 
 from __future__ import annotations

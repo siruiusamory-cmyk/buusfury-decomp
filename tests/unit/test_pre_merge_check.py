@@ -369,7 +369,11 @@ def test_the_primary_a_subdirectory_of_it_and_a_linked_worktree(tmp_path):
     # message came from git rather than from the argument.
     toplevel = fixture.primary_git("rev-parse", "--show-toplevel").strip()
     assert toplevel, "the fixture primary has no --show-toplevel"
-    assert toplevel in nested_output, nested_output
+    #: The refusal is thrown through PowerShell, which wraps a long message to the
+    #: console width and can split the reported path across two lines. Whitespace is
+    #: therefore removed from both sides first: the message must still carry the value
+    #: git reported, character for character, and nothing else about the check moves.
+    assert "".join(toplevel.split()) in "".join(nested_output.split()), nested_output
     assert "not a git worktree" not in nested_output, nested_output
     linked = run_script(fixture.worktree, fixture.candidate)
     linked_output = linked.stdout + linked.stderr

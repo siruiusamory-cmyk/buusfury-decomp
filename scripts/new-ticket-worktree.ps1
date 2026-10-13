@@ -47,7 +47,7 @@ if (-not $SharedVenv) { throw "Shared test venv not found: no $SharedSibling abo
 # `git worktree add` progress text under `*>`, and a stale worktree entry under
 # `git status`), so every git call runs with the preference relaxed and is judged
 # by its exit code, with git's own words printed when it fails.
-function Invoke-Git {
+function Invoke-GitCommand {
     param([Parameter(Mandatory)][string[]]$Arguments, [string]$Path = $RepoRoot)
 
     $ErrorActionPreference = 'Continue'
@@ -64,17 +64,17 @@ function Invoke-Git {
     return [pscustomobject]@{ Output = @($output); Exit = $exit }
 }
 
-$git = Invoke-Git 'fetch', 'origin', '--prune'
+$git = Invoke-GitCommand 'fetch', 'origin', '--prune'
 if ($git.Exit -ne 0) { exit $git.Exit }
 
 # The frozen base is the fetched tip, resolved once and passed to the add, so the
 # worktree cannot start from a branch that moved between the two commands.
-$git = Invoke-Git 'rev-parse', 'origin/master'
+$git = Invoke-GitCommand 'rev-parse', 'origin/master'
 if ($git.Exit -ne 0) { exit $git.Exit }
 $Base = ($git.Output -join "`n").Trim()
 Write-Host "base:     $Base (frozen: live origin/master, fetched just now)"
 
-$git = Invoke-Git 'worktree', 'add', '-b', $Branch, $Worktree, $Base
+$git = Invoke-GitCommand 'worktree', 'add', '-b', $Branch, $Worktree, $Base
 if ($git.Exit -ne 0) { exit $git.Exit }
 
 New-Item -ItemType Junction -Path (Join-Path $Worktree '.venv') -Target $SharedVenv | Out-Null
@@ -89,32 +89,15 @@ if ($SiteGates) {
     if ($npmExit -ne 0) { exit $npmExit }
 }
 
-# Ownership sweep: one writer per file. Every sibling worktree is listed with its
-# branch and its uncommitted file count, and up to eight of those paths, which is
-# what a new lane needs to see before it claims a surface.
-Write-Host 'ownership sweep: sibling worktrees, branch, uncommitted files'
-$list = Invoke-Git 'worktree', 'list', '--porcelain'
-$paths = [System.Collections.Generic.List[string]]::new()
-$branches = @{}
-$current = $null
-foreach ($line in $list.Output) {
-    if ($line.StartsWith('worktree ')) {
-        $current = $line.Substring(9)
-        $paths.Add($current)
-        $branches[$current] = '(detached HEAD)'
-    } elseif ($line.StartsWith('branch ') -and $current) {
-        $branches[$current] = $line.Substring(7) -replace '^refs/heads/', ''
-    }
-}
-foreach ($path in $paths) {
-    $status = Invoke-Git -Path $path -Arguments 'status', '--porcelain'
-    if ($status.Exit -ne 0) {
-        # A stale entry (moved or deleted worktree) must say so rather than
-        # report the zero files git printed nothing about.
-        Write-Host ("  {0}  [{1}]  unreadable: git status exited {2}" -f $path, $branches[$path], $status.Exit)
-        continue
-    }
-    Write-Host ("  {0}  [{1}]  {2} uncommitted file(s)" -f $path, $branches[$path], $status.Output.Count)
-    foreach ($entry in $status.Output | Select-Object -First 8) { Write-Host "    $entry" }
-    if ($status.Output.Count -gt 8) { Write-Host ("    ... and {0} more" -f ($status.Output.Count - 8)) }
-}
+# Ownership sweep: one writer per file. The sweep itself lives in exactly one
+# place, tools\dev\worktree_owners.ps1, which a lane can also run from inside a
+# worktree; this script dot-sources that file so its helpers do not print into
+# the output and calls the one implementation rather than a second copy of it.
+. (Join-Path $PSScriptRoot '..\tools\dev\worktree_owners.ps1')
+Invoke-WorktreeOwnershipSweep -Repository $RepoRoot
+
+# A cut that completed is a success, whatever the last native call returned:
+# `git status` against a stale worktree entry exits nonzero, and without this
+# the script inherited that code and reported a good cut as failure (measured
+# 2026-10-12 with 128). The unreadable entries stay data in the output above.
+exit 0

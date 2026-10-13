@@ -1,0 +1,143 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""Buu's Fury Text Editor - the frozen Windows build.
+
+The second desktop application this repository freezes, and it reuses the
+established shape rather than inventing a second one: the same reduced Qt payload,
+the same build-time identity record, the same generated-at-build-time ``.spec``
+beside a tracked template, and the same ``datas`` mechanism for the one resource
+the window loads at runtime.
+
+**Onedir**, not one file. The sibling application's template records the measured
+one-file start-up cost this avoids, and this product has the same reason: an editor
+that carries a Qt runtime starts from a directory at once. ``EXE(exclude_binaries=True)``
+plus ``COLLECT`` is therefore the shape here, and the release artefact is
+``Buu's Fury Text Editor/Buu's Fury Text Editor.exe``.
+
+What travels, and what does not
+-------------------------------
+
+``tools/buufury_text/icons`` is the only bundled data file set: the Tabler SVGs the
+theme draws every state glyph from. Nothing else is needed at runtime - the engine's
+title profiles are literals in ``tools/webfoot/textedit/engine.py``, so no ROM
+profile catalog is declared and none is missing. The canonical image is never
+bundled: the application reads an image the user names, and no ROM, save or save
+state can be staged by this file.
+
+The Qt SVG image plugin, on purpose
+-----------------------------------
+
+The window draws its icons from SVG files, and ``QIcon`` takes the reader for a file
+from its extension rather than from an import, so nothing in the source names Qt SVG
+and nothing in the import graph reaches it. Without it every icon in a frozen build
+is blank while the same source works in a checkout. It is declared here through
+``hiddenimports`` rather than left to the Qt hook, and the build script refuses an
+artefact whose staged ``PySide6/plugins/imageformats/qsvg.dll`` is absent.
+
+Identity
+--------
+
+``scripts/randomizer.ico`` is the repository's own mark, rendered from
+``public/favicon.svg``, and the icon every released product already carries.
+
+The executable carries the product's identity in two forms: the Windows version
+resource named below, whose fields a stranger reads in the file's properties dialog,
+and the runtime string ``--version`` prints, which comes from
+``tools/buufury_text/identity.py``.
+``tests/unit/test_buufury_text_release.py`` holds the two to the same version, so
+neither can drift into a second identity.
+
+The resource is named by ``EXE``'s ``version`` argument, and the release guard reads
+that wiring as the single-quoted form ``version='Buu's Fury Text Editor.version.txt'``.
+Python source cannot spell that form, because the product name carries an apostrophe
+and it would end the string early, so the argument below is quoted with double quotes:
+the two spellings are the same string, which ``tests/unit/test_buufury_text_release.py``
+checks by value rather than by quoting style.
+"""
+
+#: Python modules nothing here imports. PySide6's PyInstaller hook collects the
+#: whole Qt SDK otherwise, and a text editor loads none of these.
+_UNUSED_QT_MODULES = [
+    'PySide6.QtQml',
+    'PySide6.QtQuick',
+    'PySide6.QtQuickWidgets',
+    'PySide6.QtPdf',
+    'PySide6.QtPdfWidgets',
+    'PySide6.QtVirtualKeyboard',
+]
+
+#: Native libraries and data belonging to those modules, matched on their
+#: bundle-relative path with forward slashes. QtSvg is deliberately NOT here: it is
+#: the plugin the icons need.
+_UNUSED_QT_PREFIXES = (
+    'PySide6/Qt6Qml',
+    'PySide6/Qt6Quick',
+    'PySide6/Qt6Pdf',
+    'PySide6/Qt6VirtualKeyboard',
+    'PySide6/translations/',
+)
+
+#: The Tabler icons the theme resolves by name at runtime. Declared as one directory
+#: entry, through a name rather than a quoted path: the folder travels whole, so an
+#: icon added to it cannot be missing from a build, and the release guard resolves a
+#: quoted data source with ``is_file``, which a directory can never satisfy.
+_ICON_DIRECTORY = 'tools/buufury_text/icons'
+
+#: Imported by a *file extension* rather than by an import: the Qt SVG image plugin
+#: reads the SVGs in the icon directory above. PyInstaller cannot follow that, so the
+#: Qt module is named here and its image plugin and shared library come with it.
+_STRING_IMPORTED_QT_MODULES = ['PySide6.QtSvg']
+
+
+def _is_unused_qt(relative: str) -> bool:
+    normalised = relative.replace('\\', '/')
+    return normalised.startswith(_UNUSED_QT_PREFIXES)
+
+
+a = Analysis(
+    ['tools/buufury_text/_pyinstaller_entry.py'],
+    pathex=['.'],
+    binaries=[],
+    datas=[(_ICON_DIRECTORY, 'icons')],
+    hiddenimports=_STRING_IMPORTED_QT_MODULES,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=_UNUSED_QT_MODULES,
+    noarchive=False,
+    optimize=0,
+)
+
+a.binaries = [item for item in a.binaries if not _is_unused_qt(item[0])]
+a.datas = [item for item in a.datas if not _is_unused_qt(item[0])]
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="Buu's Fury Text Editor",
+    icon='scripts/randomizer.ico',
+    version="Buu's Fury Text Editor.version.txt",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="Buu's Fury Text Editor",
+)

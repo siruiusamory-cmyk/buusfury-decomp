@@ -60,7 +60,7 @@ from .. import compressed_dialogue as cd
 from ..binary import GBA_ROM_BASE as ROM_BASE
 from ..data.placement_contracts import CONTRACTS
 from ..destination import refuse_rom_destination
-from ..dialogue_repack import container_pointers, text_of
+from ..dialogue_repack import chains_of, container_pointers, text_of
 from ..formats import text_tables as tt
 from ..formats import webfoot_lz
 from ..handles import DialogueHandle, unpack_handle
@@ -115,6 +115,26 @@ class TextEditError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class MapTable:
+    """One title's map table, and the placement route that reaches dialogue.
+
+    Every address is a file offset, like the rest of `TitleProfile`.
+    """
+
+    table: int
+    count: int
+    stride: int
+    name_slot_at: int
+    array_at: int
+    count_at: int
+    placement_family: int
+    descriptor_at: int
+    resource_handler: int
+    event_table: int
+    event_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class TitleProfile:
     """One Webfoot title's measured candidate addresses.
 
@@ -136,6 +156,18 @@ class TitleProfile:
     #: loads reach the grown slot through the literal at file 0x03D92C. A table at
     #: this offset is copied aside before any of its words is written.
     retail_table: int = 0x7B5B64
+    #: The appearance table, whose records pair a name slot with a portrait slot.
+    #: Zero means the title has none and no speaker can be resolved.
+    appearance_table: int = 0
+    appearance_count: int = 0
+    #: The event-resource pool, as FILE offsets like every other address here.
+    #: A handle site inside it has a proven consumer, so a record carrying one is
+    #: a proven dialogue reference; a site outside it is counted and not linked.
+    #: None means "not measured for this title".
+    event_pool: tuple[int, int] | None = None
+    #: The map table and the route from a map to the dialogue its placements
+    #: reference. None means the title has none and no line can be placed.
+    maps: MapTable | None = None
 
 
 #: Game code bytes 0xAC..0xB0 of the GBA header, measured on the canonical image.
@@ -148,6 +180,24 @@ PROFILES: tuple[TitleProfile, ...] = (
         text_slots=1534,
         live_selectors=7,
         grown_selector=7,
+        appearance_table=0x74D380,
+        appearance_count=232,
+        # The event-resource pool the SDK's placement contracts declare at ROM
+        # address 0x0877C5A4..0x0879B704, as file offsets.
+        event_pool=(0x77C5A4, 0x79B704),
+        maps=MapTable(
+            table=0x8E2E0,
+            count=452,
+            stride=0x38,
+            name_slot_at=0x0C,
+            array_at=0x14,
+            count_at=0x04,
+            placement_family=0x0800FD55,
+            descriptor_at=0x14,
+            resource_handler=0x0800424F,
+            event_table=0x79B704,
+            event_count=522,
+        ),
     ),
 )
 
@@ -290,6 +340,11 @@ class Record:
         return f"{self.selector}:{self.start}:{self.length}"
 
     @property
+    def handle(self) -> DialogueHandle:
+        """The packed handle this record's identity is made of."""
+        return DialogueHandle(self.selector, self.start, self.length)
+
+    @property
     def locked(self) -> tuple[str, ...]:
         """The control units inside this record, as locked tokens.
 
@@ -326,6 +381,57 @@ class Model:
         return tuple(record for record in self.records if record.selector == selector)
 
 
+@dataclass(frozen=True, slots=True)
+class Text:
+    """A run of displayed characters with no control unit in it."""
+
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class Control:
+    """One control unit, as the raw unit(s) it occupies.
+
+    `operand` is the following halfword for a code that takes one (0x0008), else
+    None. What the code DOES is not catalogued here: a caller that wants a name
+    for it supplies the catalogue (the RE Lab's is pending).
+    """
+
+    raw: str
+    code: int
+    operand: str | None = None
+
+
+def units(text: str) -> tuple[Text, Control]:
+    """Split displayed text into alternating text runs and control units.
+
+    `locked_tokens` answers which units a text carries; this answers where they
+    sit, which is what an editor needs to draw each one as a single atom and to
+    refuse an edit that splits one.
+    """
+    split: list[Text | Control] = []
+    run: list[str] = []
+    position = 0
+    while position < len(text):
+        codepoint = ord(text[position])
+        if codepoint < 0x20:
+            if run:
+                split.append(Text("".join(run)))
+                run = []
+            if codepoint == 0x08 and position + 1 < len(text):
+                split.append(Control(text[position:position + 2], codepoint,
+                                     text[position + 1]))
+                position += 2
+                continue
+            split.append(Control(text[position], codepoint))
+        else:
+            run.append(text[position])
+        position += 1
+    if run:
+        split.append(Text("".join(run)))
+    return tuple(split)
+
+
 def locked_tokens(text: str) -> tuple[str, ...]:
     """Every control unit in `text`, in order, as the raw unit(s) it occupies.
 
@@ -334,28 +440,430 @@ def locked_tokens(text: str) -> tuple[str, ...]:
     as its operand. The three 0x00A0-range units the containers also carry are
     text, not control, and are not tokens.
     """
-    tokens = []
-    position = 0
-    while position < len(text):
-        codepoint = ord(text[position])
-        if codepoint < 0x20:
-            if codepoint == 0x08 and position + 1 < len(text):
-                tokens.append(text[position:position + 2])
-                position += 2
+    return tuple(item.raw for item in units(text) if isinstance(item, Control))
+
+
+# --- the record word, its portrait operand, and the spoken lines -------------
+
+
+#: The dialogue record word, 8 bytes: a u16 id, the handler byte 0x05, the portrait
+#: OPERAND, then the packed handle. Measured on the canonical image, re-read on
+#: release 3.1, and stated the same way in FRIEND_V3_IDASA_UUB_DIALOGUE.md.
+RECORD_WORD_BYTES = 8
+#: Where the operand sits relative to the record's first handle site.
+OPERAND_FROM_HANDLE = 1
+
+#: One appearance record: a u16 name slot, a u16 description slot, a u32 sprite id,
+#: a u32 PORTRAIT SLOT, then an i32 stat index. The join runs portrait slot -> the
+#: appearance records that carry it -> their name slots. The reverse (array entry ->
+#: appearance record) does not exist: the array at 0x6F393C holds art pointers only.
+APPEARANCE_RECORD_BYTES = 0x10
+APPEARANCE_NAME_SLOT_AT = 0x00
+APPEARANCE_PORTRAIT_SLOT_AT = 0x08
+
+#: The two units that END a displayed run. There is no page-break unit: the box
+#: redraws per strip, and nothing measured shows 0x000B advancing a page, so
+#: nothing here claims one.
+LINE_BREAK = 0x000A
+SOFT_END = 0x000B
+BREAKS = (LINE_BREAK, SOFT_END)
+#: Inline formatting consumes the unit after it, so a walk must step over that
+#: operand instead of reading it as a break.
+INLINE_FORMAT = 0x0008
+
+#: The operand's three meanings, taken from the box constructor's own branches
+#: (K-017): 0 and 7 take `r1 = 0` and the text object gets NO art, no default and
+#: no fallback; 1..6 take the save/party path, so the character depends on the
+#: player's save; 8 and above index the portrait array with no clamp and no null
+#: test.
+NO_ART_OPERANDS = (0, 7)
+PARTY_OPERANDS = (1, 2, 3, 4, 5, 6)
+FIRST_TABLE_OPERAND = 8
+
+#: What a record's portrait operand says. The engine never maps an operand to a
+#: character inside the game, so this is a tooling join by value, and it says only
+#: which face is DRAWN.
+NO_PORTRAIT = "no portrait"
+PARTY_PORTRAIT = "party"
+NAMED_PORTRAIT = "named"
+UNKNOWN_PORTRAIT = "unknown"
+AMBIGUOUS_PORTRAIT = "ambiguous"
+
+
+def record_operand(model: Model, record: Record) -> int | None:
+    """The portrait operand every one of this record's sites agrees on.
+
+    None when the record carries no site or when its sites disagree. Measured on
+    release 3.1, 21 record identities carry two distinct operands, every one of
+    them with all sites inside the event pool, so a single portrait cannot be
+    attributed to such a record.
+    """
+    seen = set()
+    for site in record.sites:
+        at = site - OPERAND_FROM_HANDLE
+        if 0 <= at < len(model.image):
+            seen.add(model.image[at])
+    if len(seen) != 1:
+        return None
+    return seen.pop()
+
+
+def _appearance_names(model: Model) -> dict[int, str]:
+    """Portrait slot -> the displayed name, from the image's own appearance table.
+
+    A slot that two appearance records disagree about is dropped rather than
+    picked: over the table's 232 records exactly one slot is carried by more than
+    one record, and those agree, so failing closed costs nothing.
+    """
+    profile = model.profile
+    table, count = profile.appearance_table, profile.appearance_count
+    if not table or not count or table + count * APPEARANCE_RECORD_BYTES > len(model.image):
+        return {}
+    seen: dict[int, set[str]] = {}
+    for index in range(count):
+        at = table + index * APPEARANCE_RECORD_BYTES
+        slot = int.from_bytes(
+            model.image[at + APPEARANCE_PORTRAIT_SLOT_AT:at + APPEARANCE_PORTRAIT_SLOT_AT + 4],
+            "little")
+        name_slot = int.from_bytes(
+            model.image[at + APPEARANCE_NAME_SLOT_AT:at + APPEARANCE_NAME_SLOT_AT + 2], "little")
+        if not slot or not 0 <= name_slot < len(model.slots):
+            continue
+        seen.setdefault(slot, set()).add(model.slots[name_slot].text)
+    return {slot: next(iter(names)) for slot, names in seen.items() if len(names) == 1}
+
+
+@dataclass(frozen=True, slots=True)
+class Portrait:
+    """Which face a record draws, as far as the data can say.
+
+    `name` is set only for :data:`NAMED_PORTRAIT`. Every other kind is a stated
+    gap rather than a guess: the game itself never maps an operand to a character.
+    """
+
+    operand: int | None
+    kind: str
+    name: str | None = None
+
+    @property
+    def resolved(self) -> str | None:
+        """The character name, or None when the data does not attribute one."""
+        return self.name if self.kind == NAMED_PORTRAIT else None
+
+
+def portraits(model: Model) -> dict[str, Portrait]:
+    """Record key -> which face that record's word draws.
+
+    A key that is absent means the record carries no site at all. A key whose kind
+    is :data:`AMBIGUOUS_PORTRAIT` means the record's own sites disagree on the
+    operand byte, so no single face is attributable.
+
+    MEASURED POPULATION, not a sample: the canonical image holds 2,221 handler-5
+    records that are entries of a dialogue pointer array, of which 229 carry no
+    portrait, 431 take the save-dependent party path and 1,561 index the array
+    (K-017). Some operands have no owning appearance record, so those read as an
+    unknown portrait rather than as a nearby name.
+    """
+    names = _appearance_names(model)
+    found: dict[str, Portrait] = {}
+    for record in model.records:
+        operand = record_operand(model, record)
+        if not record.sites:
+            found[record.key] = Portrait(None, UNKNOWN_PORTRAIT)
+        elif operand is None:
+            found[record.key] = Portrait(None, AMBIGUOUS_PORTRAIT)
+        elif operand in NO_ART_OPERANDS:
+            found[record.key] = Portrait(operand, NO_PORTRAIT)
+        elif operand in PARTY_OPERANDS:
+            found[record.key] = Portrait(operand, PARTY_PORTRAIT)
+        else:
+            name = names.get(operand)
+            found[record.key] = (Portrait(operand, NAMED_PORTRAIT, name) if name
+                                 else Portrait(operand, UNKNOWN_PORTRAIT))
+    return found
+
+
+def speakers(model: Model) -> dict[str, str]:
+    """Record key -> the one displayed name its portrait resolves to.
+
+    The resolved subset of :func:`portraits`, for a caller that only wants the
+    names. A key that is absent means the likeness is not attributable, and that
+    is a measured minority report rather than an edge case: on release 3.1, 1,595
+    of 2,818 records and 1,707 of 3,024 lines resolve.
+
+    The name comes from the loaded image's own text table, so an image that renamed
+    an actor reports the name that image shows.
+    """
+    return {key: portrait.name for key, portrait in portraits(model).items()
+            if portrait.kind == NAMED_PORTRAIT and portrait.name}
+
+
+@dataclass(frozen=True, slots=True)
+class SpokenLine:
+    """One spoken line: a stored run between explicit breaks, and its carriers."""
+
+    selector: int
+    start: int
+    length: int
+    text: str
+    #: Every record whose span contains this line, narrowest first.
+    records: tuple[str, ...]
+    #: The subset of `records` whose own handle site lies in the event pool.
+    proven: tuple[str, ...]
+    #: Every handle site of those records, ascending.
+    sites: tuple[int, ...]
+
+    @property
+    def key(self) -> str:
+        return f"{self.selector}:{self.start}:{self.length}"
+
+    @property
+    def target(self) -> str:
+        """The record an edit of this line should name.
+
+        The narrowest PROVEN carrier, because that is a record whose sites this
+        project has rewritten and verified; the narrowest carrier at all when none
+        is proven, so that a line is never silently uneditable.
+        """
+        if self.proven:
+            return self.proven[0]
+        return self.records[0] if self.records else ""
+
+    @property
+    def target_is_proven(self) -> bool:
+        return bool(self.proven)
+
+
+def _split_runs(stream: bytes, start: int, end: int) -> tuple[tuple[int, int], ...]:
+    """Cut `start`..`end` at the units that end a displayed run, terminators out."""
+    runs: list[tuple[int, int]] = []
+    run = start
+    at = start
+    while at + 2 <= end:
+        unit = int.from_bytes(stream[at:at + 2], "little")
+        if unit in BREAKS:
+            runs.append((run, at))
+            run = at + 2
+            at += 2
+            continue
+        at += 4 if unit == INLINE_FORMAT else 2
+    runs.append((run, end))
+    return tuple(runs)
+
+
+def shown_text(text: str) -> str:
+    """Only the displayed characters of `text`, with every control unit dropped."""
+    return "".join(item.value for item in units(text) if isinstance(item, Text))
+
+
+@dataclass(frozen=True, slots=True)
+class MapRow:
+    """One row of the map table: where it sits, and what the table calls it."""
+
+    index: int
+    name: str
+
+    @property
+    def label(self) -> str:
+        """The name, or the index alone when the table leaves the name slot empty."""
+        return self.name.strip() or f"Map {self.index}"
+
+
+def _event_extents(model: Model) -> dict[int, tuple[int, int]]:
+    """Event resource start -> its extent, from the table's own sorted pointers."""
+    table = model.profile.maps
+    if table is None or table.event_table + table.event_count * 4 > len(model.image):
+        return {}
+    starts = sorted(
+        int.from_bytes(model.image[table.event_table + 4 * index:
+                                    table.event_table + 4 * index + 4], "little") - ROM_BASE
+        for index in range(table.event_count))
+    extents = {}
+    for position, start in enumerate(starts):
+        if start < 0:
+            continue
+        nxt = starts[position + 1] if position + 1 < len(starts) else table.event_table
+        extents[start] = (start, nxt)
+    return extents
+
+
+def maps(model: Model) -> tuple[MapRow, ...]:
+    """Every row of the map table, in map-table order.
+
+    The name comes from the row's own name slot in the LOADED image's text table,
+    so an image that renamed a map reports the name that image shows. 429 of the
+    452 rows carry a name on the canonical image.
+    """
+    table = model.profile.maps
+    if table is None or table.table + table.count * table.stride > len(model.image):
+        return ()
+    rows = []
+    for index in range(table.count):
+        at = table.table + index * table.stride
+        slot = int.from_bytes(model.image[at + table.name_slot_at:
+                                         at + table.name_slot_at + 4], "little")
+        name = model.slots[slot].text if 0 <= slot < len(model.slots) else ""
+        rows.append(MapRow(index=index, name=name))
+    return tuple(rows)
+
+
+def record_maps(model: Model) -> dict[str, int]:
+    """Record key -> the map whose placements reach an event resource it sits in.
+
+    THE CHAIN, every step measured on the canonical image: a map row's `+0x14`
+    array holds placement pointers, a placement's `+0x14` names a descriptor, and a
+    descriptor whose handler is `0x0800424F` carries a payload that is the start of
+    an event resource. A record belongs to that map when one of its own handle sites
+    falls inside that resource's extent. Measured: 28 maps reference 63 resources
+    and reach 487 of the image's 2,805 records through 489 of its 2,993 sites, which
+    reproduces the independent research probe exactly.
+
+    THE LIMIT, stated rather than hidden: the payload's semantics are INFERRED. The
+    handler is known to load and branch, and the payload is known to be a resource
+    start, but no runtime observation yet shows that this handler is what reads that
+    resource's dialogue. The route is therefore evidence-linked, not proven, and a
+    caller that shows a map must say which map came from here.
+
+    A record that two maps reach is given NO map, because a row shown under one of
+    two owners would be a guess. Measured: one record of the 488 is shared.
+    """
+    table = model.profile.maps
+    if table is None:
+        return {}
+    extents = _event_extents(model)
+    if not extents:
+        return {}
+    ranges: list[tuple[int, int, int]] = []
+    for index in range(table.count):
+        at = table.table + index * table.stride
+        if at + table.stride > len(model.image):
+            break
+        array = int.from_bytes(model.image[at + table.array_at:at + table.array_at + 4],
+                               "little")
+        count = model.image[at + table.count_at]
+        if not ROM_BASE <= array < ROM_BASE + len(model.image):
+            continue
+        for position in range(count):
+            word_at = array - ROM_BASE + 4 * position
+            if word_at + 4 > len(model.image):
+                break
+            word = int.from_bytes(model.image[word_at:word_at + 4], "little")
+            if not ROM_BASE <= word < ROM_BASE + len(model.image):
                 continue
-            tokens.append(text[position])
-        position += 1
-    return tuple(tokens)
+            placement = word - ROM_BASE
+            if placement + 4 > len(model.image):
+                continue
+            if int.from_bytes(model.image[placement:placement + 4], "little") != \
+                    table.placement_family:
+                continue
+            descriptor = int.from_bytes(
+                model.image[placement + table.descriptor_at:
+                            placement + table.descriptor_at + 4], "little") - ROM_BASE
+            if not 0 <= descriptor <= len(model.image) - 8:
+                continue
+            handler = int.from_bytes(model.image[descriptor:descriptor + 4], "little")
+            payload = int.from_bytes(model.image[descriptor + 4:descriptor + 8], "little")
+            origin = payload - ROM_BASE
+            if handler == table.resource_handler and origin in extents:
+                low, high = extents[origin]
+                ranges.append((low, high, index))
+    reached: dict[str, set[int]] = {}
+    for record in model.records:
+        for site in record.sites:
+            for low, high, index in ranges:
+                if low <= site < high:
+                    reached.setdefault(record.key, set()).add(index)
+    return {key: next(iter(found)) for key, found in reached.items() if len(found) == 1}
+
+
+def line_maps(model: Model, *, cutters_from_pool: bool = True) -> dict[str, int]:
+    """Spoken-line key -> the map of the record an edit of that line would address."""
+    owners = record_maps(model)
+    if not owners:
+        return {}
+    return {row.key: owners[row.target]
+            for row in lines(model, cutters_from_pool=cutters_from_pool)
+            if row.target in owners}
+
+
+def lines(model: Model, *, cutters_from_pool: bool = True) -> tuple[SpokenLine, ...]:
+    """One row per spoken line, in the image's own storage order.
+
+    A row is a maximal span of one container that no CUTTER's boundary cuts,
+    further cut at the units that end a displayed run. With `cutters_from_pool`
+    the cutters are the records with a handle site inside the profile's event
+    pool; without it every record cuts. The pool filter matters because the
+    structural query that finds records also fires on coincidence words and those
+    chop real messages apart: on release 3.1, cutting at every record yields 3,317
+    rows for 2,818 records where the pool-limited cutters yield 3,024.
+
+    The pool filter reuses the proven-write test as a liveness test, which is an
+    inference and is the rule's one free parameter. `SpokenLine.proven` names the
+    rows and records that would move if it were dropped.
+    """
+    pool = model.profile.event_pool
+    rows: list[SpokenLine] = []
+    for selector in sorted(model.layout.streams):
+        stream = model.layout.streams[selector]
+        records = model.selector_records(selector)
+        if cutters_from_pool and pool is not None:
+            cutters = [row for row in records
+                       if any(pool[0] <= site < pool[1] for site in row.sites)]
+        else:
+            cutters = list(records)
+        if not cutters:
+            continue
+        ordered = sorted(records, key=lambda row: row.start)
+        for chain_start, chain_end in chains_of(cutters):
+            for start, end in _split_runs(bytes(stream), chain_start, chain_end):
+                text = text_of(stream, start, end - start)
+                if not shown_text(text).strip():
+                    continue
+                carriers = []
+                for row in ordered:
+                    if row.start > start:
+                        break
+                    if row.start + row.length >= end:
+                        carriers.append(row)
+                if not carriers:
+                    continue
+                carriers.sort(key=lambda row: (row.length, row.start))
+                proven = [row for row in carriers
+                          if pool is not None
+                          and any(pool[0] <= site < pool[1] for site in row.sites)]
+                rows.append(SpokenLine(
+                    selector=selector, start=start, length=end - start, text=text,
+                    records=tuple(row.key for row in carriers),
+                    proven=tuple(row.key for row in proven),
+                    sites=tuple(sorted({site for row in carriers for site in row.sites}))))
+    return tuple(rows)
 
 
 def open_rom(rom_path: str | Path, canonical: str | Path | None = None) -> Model:
     """Open an image read-only, with the canonical image as the retail reference."""
     path = Path(rom_path)
-    image = path.read_bytes()
+    return load(path.read_bytes(), path, canonical=canonical)
+
+
+def load(image: bytes, path: str | Path, canonical: str | Path | None = None,
+         *, check_profile: bool = True) -> Model:
+    """A model over image bytes already in hand, which need not have been written down.
+
+    `open_rom` reads a file and hands the bytes here. A caller holding an image it BUILT,
+    which `plan` does, reads the result the same way without writing it out first, so a
+    derived view of an edited image goes through the same reader as the original instead of
+    reusing the original record table against edited bytes. Measured, that reuse was a real
+    defect: a record whose edit GREW it kept its original span, so the lines read from the
+    edited streams were cut at the old offsets and disagreed with the exported image.
+
+    `check_profile` is off for that caller. The record floor guards against opening the
+    WRONG image, and these bytes came from an image that already passed it.
+    """
+    path = Path(path)
     digest = hashlib.sha256(image).hexdigest()
     layout = detect(image)
     records = _read_records(image, layout)
-    if len(records) < MINIMUM_DIALOGUE_RECORDS:
+    if check_profile and len(records) < MINIMUM_DIALOGUE_RECORDS:
         raise TextEditError(
             f"REFUSED: {path} carries {len(records)} dialogue record(s), under the "
             f"{MINIMUM_DIALOGUE_RECORDS}-record floor this profile validates against")
@@ -486,6 +994,50 @@ class SpacingEdit:
 
     retail_test: str = ("a run survives only where the canonical image's record at the same "
                         "identity carries a 2+ space run at the same unit offset")
+#: What the retail test says about one occurrence of a name inside a record.
+RENAME = "rename"    # retail names the same actor at this offset, so the swap happens
+KEEP = "keep"        # retail names a different actor here, so this one stays
+UNCLEAR = "unclear"  # retail names neither, so nothing can be decided here
+
+
+@dataclass(frozen=True, slots=True)
+class Occurrence:
+    """One occurrence of a name in a record, and what retail says at that offset."""
+
+    at: int
+    retail: str
+    decision: str
+
+
+def rename_occurrences(current: str, counterpart: str, old: str) -> tuple[Occurrence, ...]:
+    """Every occurrence of `old`, with the decision the retail offset implies.
+
+    Split out of `rename_positions` so a per-occurrence dialog shows the decision
+    the rename will actually make: one rule, one place.
+    """
+    if not old:
+        raise TextEditError("REFUSED: a rename needs a name to replace")
+    if len(current) != len(counterpart):
+        raise TextEditError(
+            f"REFUSED: the record is {len(current)} units and its retail counterpart is "
+            f"{len(counterpart)}, so character offsets do not correspond and an occurrence "
+            "cannot be attributed to an actor")
+    found: list[Occurrence] = []
+    cursor = 0
+    while True:
+        at = current.find(old, cursor)
+        if at == -1:
+            break
+        retail_word = counterpart[at:at + len(old)]
+        if retail_word == old:
+            decision = RENAME
+        elif any(character.isalpha() for character in retail_word):
+            decision = KEEP
+        else:
+            decision = UNCLEAR
+        found.append(Occurrence(at=at, retail=retail_word, decision=decision))
+        cursor = at + len(old)
+    return tuple(found)
 
 
 def rename_positions(current: str, counterpart: str, *, old: str,
@@ -510,35 +1062,16 @@ def rename_positions(current: str, counterpart: str, *, old: str,
     retail names the other actor there, and left because the retail word is
     neither.
     """
-    if not old:
-        raise TextEditError("REFUSED: a rename needs a name to replace")
-    if len(current) != len(counterpart):
-        raise TextEditError(
-            f"REFUSED: the record is {len(current)} units and its retail counterpart is "
-            f"{len(counterpart)}, so character offsets do not correspond and an occurrence "
-            "cannot be attributed to an actor")
-    pieces = []
+    pieces: list[str] = []
     cursor = 0
-    renamed = kept = unclear = 0
-    while True:
-        position = current.find(old, cursor)
-        if position == -1:
-            break
-        retail_word = counterpart[position:position + len(old)]
-        pieces.append(current[cursor:position])
-        if retail_word == old:
-            pieces.append(new)
-            renamed += 1
-        else:
-            pieces.append(old)
-            rival = counterpart[position:position + len(old)]
-            if rival != old and any(character.isalpha() for character in rival):
-                kept += 1
-            else:
-                unclear += 1
-        cursor = position + len(old)
+    counts = {RENAME: 0, KEEP: 0, UNCLEAR: 0}
+    for item in rename_occurrences(current, counterpart, old):
+        pieces.append(current[cursor:item.at])
+        pieces.append(new if item.decision == RENAME else old)
+        counts[item.decision] += 1
+        cursor = item.at + len(old)
     pieces.append(current[cursor:])
-    return "".join(pieces), renamed, kept, unclear
+    return "".join(pieces), counts[RENAME], counts[KEEP], counts[UNCLEAR]
 
 
 # --- the plan ----------------------------------------------------------------

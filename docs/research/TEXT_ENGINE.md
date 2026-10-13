@@ -60,6 +60,50 @@ destination that is the input file itself (by file identity, so a hard link is
 caught); it reads the built bytes back through the handles; and only then does it
 stage and rename, returning the output sha256.
 
+### 2.1 Spoken lines, and who speaks one
+
+A write path never needed to ask what a reader would call a line, or who says it.
+A text editor does, so two further seams answer those two questions and nothing
+else:
+
+```python
+rows  = textedit.lines(model)            # one row per spoken line
+names = textedit.speakers(model)         # record key -> the displayed name
+units = textedit.units(text)             # alternating Text and Control units
+```
+
+`units` splits displayed text into `Text` runs and `Control` units, so a caller can
+draw each control unit as a single atom; `locked_tokens` is that same rule read one
+way, and the two cannot disagree.
+
+`lines` returns a `SpokenLine` per spoken line: a maximal span of one container
+that no CUTTER record's boundary cuts, further cut at the two units that end a
+displayed run, which are `0x000A` (line break) and `0x000B` (soft end). The text
+ends at the break; the break itself is not part of the row. Each row names every
+record whose span contains it, narrowest first, the subset of those whose own
+handle site lies in the profile's event pool, and every one of their sites. A row
+that is only control units or only spaces is not a row.
+
+Measured by two independent scripts, this repository's engine and a research
+probe, agreeing: on the canonical image 2,805 records become 3,003 lines, and on
+release 3.1 2,818 records become 3,024 lines, of which 808 are carried by more
+than one record, the mean carrier count is 1.405 and the largest is 18. Cutting at
+EVERY record instead of the pool-limited cutters yields 3,317 rows for the same
+image, which is the rule's own demonstration that the filter is load-bearing.
+
+`speakers` joins one byte to one name. Byte `+0x03` of a dialogue record word is a
+portrait OPERAND; an operand below 8 is the runtime party face; an operand of 8 or
+more indexes nothing directly, because the array at `0x6F393C` holds art pointers
+and carries no identity. The working direction is the reverse join: operand, then
+every appearance record at `0x74D380` whose `+0x08` portrait slot equals it, then
+their `+0x00` name slot, then that slot's text in the LOADED image, so an image
+that renamed an actor reports the name that image shows. A record resolves only
+when its own sites agree on the operand and the join yields exactly one name. On
+release 3.1, 1,595 of 2,818 records and 1,707 of 3,024 lines resolve, which is
+56.4 percent; a quarter of the remainder is the runtime party face and the rest are
+portraits that name no character. Twenty-one record identities carry two distinct
+operands and are deliberately given no name.
+
 ## 3. The rules, and where each came from
 
 - **In place.** The replacement keeps the record's own byte count, paying the
@@ -84,20 +128,12 @@ stage and rename, returning the output sha256.
   (`0x123CC`), and it REFUSES when that literal is not named exactly once rather
   than writing a word whose owner is unproven (P-027). A table that already
   carries a container in the grown slot is the project's own append table, and one
-  slot word of it is written.
-  **One case is not yet byte-clean, and it is the first item of the UI ticket
-  (finding F1 of this ticket's sign-off).** The in-place phase runs before the move
-  phase, so in a plan that both relocates a container in place (a grown replacement
-  that no longer fits the space its container occupies) and moves a record, the
-  in-place phase writes that container's table entry in the image's own table
-  before the table is copied. Measured example on the canonical image: a plan with
-  `1:5498:12` grown and a move writes retail table slot 1 at file `0x7B5B68`. The
-  write is dead, because the literal is repointed in the same export and nothing
-  else names that word, but the retail block is then NOT byte-identical. The fix is
-  to relocate the table before any container relocation, with a mixed-plan test
-  asserting `0x7B5B64..0x7B5C64` unchanged; until it lands, byte-identity of the
-  retail block is claimed only for plans that do not relocate a container in place,
-  which is every plan this ticket reproves.
+  slot word of it is written. The table is relocated FIRST, before any container
+  relocation, so a plan that also relocates a container in place aims that
+  container's table entry at the table in force and never at the image's own table
+  (F1, fixed with `test_a_mixed_plan_leaves_the_retail_table_words_alone`, which
+  asserts `0x7B5B64..0x7B5C64` unchanged). Byte-identity of the retail block holds
+  for every plan this ticket reproves, in-place container relocation included.
 - **Carry-forward.** The prefix is the previous container's DECODED payload. The
   two release builders copied the stored bytes from the container's header, which
   coincides with the payload only because the container they carried was kind 0.
@@ -220,8 +256,8 @@ filter, used by a corpus-wide spacing pass, wrote 155 such words.
 
 ## 5. Tests
 
-`tests/unit/test_text_engine.py`, 36 tests, all portable (`fast` gate): 32 on the
-synthetic image and 4 that need the canonical or the release images and skip
+`tests/unit/test_text_engine.py`, 51 tests, all portable (`fast` gate): 43 on the
+synthetic image and 8 that need the canonical or the release images and skip
 without them. The fixture is a 450 KB synthetic image with seven stored containers,
 real record words and the real 1,534-slot table, so every rule runs in CI without
 any ROM.
@@ -233,14 +269,18 @@ any ROM.
 | boundary-safe | `test_a_span_with_another_record_boundary_inside_it_moves_instead_of_writing`, `test_a_record_that_merely_contains_the_span_is_not_a_boundary_conflict` |
 | one-reference guard | `test_a_slot_whose_pointer_has_a_second_reference_is_refused`, `test_a_slot_with_one_reference_moves_and_reads_back`, `test_a_slot_edit_refuses_a_guard_that_does_not_match_the_slot` |
 | carry-forward prefix | `test_a_moved_record_is_appended_after_the_carried_payload`, `test_a_carried_record_still_resolves_through_its_own_handle`, `test_a_record_already_in_the_grown_selector_moves_and_reads_back` |
-| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, `test_an_in_place_relocation_leaves_every_retail_table_word_alone`, `test_a_spacing_relocation_leaves_every_retail_table_word_alone`, `test_a_refused_relocation_appends_nothing`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves` |
+| text and control units | `test_text_units_split_at_every_control_unit`, `test_shown_text_drops_every_control_unit` |
+| spoken lines | `test_a_line_lists_every_record_that_contains_it`, `test_a_line_break_ends_a_line_and_the_terminator_is_not_part_of_it`, `test_a_line_that_is_only_control_units_is_not_a_line`, `test_the_pool_filter_is_the_rule_s_own_switch` |
+| speakers | `test_a_speaker_is_the_loaded_image_s_own_name_for_the_operand`, `test_a_record_whose_sites_disagree_has_no_speaker`, `test_a_runtime_party_face_names_no_character`, `test_an_appearance_table_two_records_disagree_about_is_dropped` |
+| per-occurrence retail test | `test_every_rename_occurrence_carries_its_own_retail_decision` |
+| the retail table is not written | `test_the_first_move_relocates_the_table_and_leaves_every_retail_word_alone`, `test_a_table_with_more_than_one_reference_is_refused_instead_of_written`, `test_an_in_place_relocation_leaves_every_retail_table_word_alone`, `test_a_spacing_relocation_leaves_every_retail_table_word_alone`, `test_a_refused_relocation_appends_nothing`, and on the canonical image `test_the_canonical_table_words_are_untouched_when_a_record_moves`, and a mixed plan that relocates a container in place `test_a_mixed_plan_leaves_the_retail_table_words_alone` |
 | readback per site | `test_an_in_place_edit_and_a_move_from_one_container_both_read_back` |
 | spacing rebuild | `test_the_spacing_pass_collapses_a_chain_shared_run_and_rewrites_every_handle`, `test_a_run_the_canonical_image_carries_is_kept_and_the_other_collapses`, `test_a_spacing_plan_may_not_carry_another_edit`, `test_a_spacing_pass_without_the_canonical_image_is_refused` |
 | proven carriers | `test_a_record_shaped_word_outside_the_pool_is_never_written`, `test_a_targeted_edit_refuses_a_record_no_pool_word_names` |
 | per-occurrence decision | `test_a_record_holding_both_actors_renames_only_the_retail_occurrence`, `test_an_occurrence_with_no_retail_name_is_counted_unclear`, `test_a_rename_refuses_when_the_offsets_do_not_correspond` |
 | destination refusal | `test_apply_refuses_the_input_file_as_its_own_destination`, `test_apply_refuses_a_destination_inside_the_protected_rom_directory`, `test_apply_refuses_the_canonical_reference_as_its_own_destination`, `test_apply_refuses_to_overwrite_an_existing_output` |
 | detection | `test_an_image_with_a_foreign_game_code_is_refused`, `test_an_image_whose_live_selector_is_not_a_container_is_refused`, `test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector` |
-| golden replay | the three golden tests of section 4 plus the canonical-image test in the row above: four ROM-dependent tests in all, which skip when those images are not staged |
+| golden replay | the three golden tests of section 4 plus the two canonical-image tests in the row above: five ROM-dependent tests in all, which skip when those images are not staged |
 
 ## 6. Open limits
 
@@ -291,6 +331,72 @@ any ROM.
   in-place edit pays its difference as trailing spaces, so a covering record can
   legitimately lose interior spaces; those sites are compared with spaces removed,
   and a moved record's sites are compared exactly.
+- **The spoken-line rule's cutter filter is an inference.** `lines` limits the
+  cutters to records with a handle site inside the event-resource pool, which
+  reuses a proven-write test as a liveness test. It is the rule's one free
+  parameter: without it the same image yields 3,317 rows instead of 3,024 and
+  fragments real messages. `SpokenLine.proven` names the rows and records that
+  would move if the filter changed, and 23 of release 3.1's rows are carried only
+  by unproven records.
+- **A record's map comes from an INFERRED route.** The profile's map table
+  (`TitleProfile.maps`) sits at file `0x8E2E0` with stride `0x38` and 452 rows, and
+  429 of those rows carry a name on the canonical image; `maps` resolves a name
+  through the row's own name slot in the loaded image's text table. The chain from
+  a map to a dialogue record is: a map row's `+0x14` array holds placement
+  pointers; a placement's `+0x14` names a descriptor; a descriptor whose handler is
+  `0x0800424F` carries a payload that is the start of an event resource; and a
+  record belongs to that map when one of its own handle sites falls inside that
+  resource's extent. Measured on the canonical image, this places 486 of its 2,805
+  records and 538 of its 3,003 lines, across 25 of the table's maps in map-table
+  order, and a record that two maps reach is given neither, because a row shown
+  under one of two owners would be a guess (one record of the reached set is
+  shared). The payload's semantics are INFERRED: the handler is known to load and
+  branch and its payload is known to be a resource start, but no runtime
+  observation yet shows that this handler is what reads that resource's dialogue.
+  The route under-claims for that reason, and a caller that shows a map must say
+  which map came from here. Chapter order and names are external walkthrough prose,
+  not ROM data. Nothing here may be presented as order of appearance in the game;
+  `lines` returns the image's own storage order and a caller may re-sort by first
+  handle site, which is an address order inside a script pool.
+- **Two measured side effects of the line rule ship with it.** On release 3.1, 79
+  of its 2,818 records (74 of the canonical 2,805) carry no line at all and appear
+  only in the Records shape, and 179 of its records (166 canonical) never cut a
+  line, so 821 of its lines (731 canonical) run across a boundary that one of those
+  records owns.
+- **Forty-three percent of lines have no attributable speaker.** 1,223 of release
+  3.1's 2,818 records, and 1,317 of its 3,024 lines, resolve to no name: 891 are
+  the runtime party face, 311 are portraits that name no character, and 21 are
+  records whose own sites disagree. A caller renders those as an explicit
+  "unknown", never as a nearby name.
+- **Rendering commands at a record's start are still treated as text.** Measured,
+  249 records begin with `0x0021`, 63 with `0x0023`, 11 with `0x0040` and 1 with
+  `0x005E`. Those values are at or above 0x20, so `units` classifies them as
+  displayed characters and `locked_tokens` does not lock them. A catalogue that
+  named them would let a chip surface label them as commands instead of letting a
+  translator eat a box-width byte.
+- **The 0x0008 operand has no catalogue.** It appears 470 times inside release
+  3.1's record text; its meaning is censused but not named, and the engine treats
+  each pair as one locked atom.
+- **The record inventory is a per-entry field test, which P-046 names as the wrong
+  discovery method.** `dialogue_record_inventory` accepts a record word because its
+  own bytes look like one: a handler byte at +0x02 and a word at +0x04 that decodes
+  as a handle. Measured, that finds 2,805 records on the canonical image, while the
+  RE Lab's structural census (a record counts only as an entry of a pointer array,
+  toolbelt K-017) finds 2,221 handler-5 dialogue records over the same image, and
+  18 of this engine's records carry a portrait operand above the array's 162, which
+  no appearance record can own. The engine's record set is the population the
+  released builds were reproved against and the goldens reproduce it byte for byte,
+  so it is NOT changed here; a later ticket that walks the stream's own chain
+  (`+0x00` of a record word is the next index) would replace the field test with
+  the structure. Until then a row derived from a coincidence record can be shown,
+  and the line list's carrier-disagreement bucket is partly its symptom: 416 of
+  release 3.1's lines fall to no attribution because their carriers disagree.
+- **A spoken-line rule cannot be a page model.** There is no page-break unit in the
+  data: 0x000B ends the text run, and the box redraws per strip with no measured
+  page step. `lines` therefore cuts only at the two proven break units and leaves
+  wrapping to the preview.
+- **No CLI.** Ticket 1 is the engine; the desktop surface is ticket 2, in
+  `tools/buufury_text/`, and it consumes this module and nothing else.
 - **A spacing pass keeps retail runs, including ones a second record also reads.**
   On the Release 4A image, run `0:47756` is retail spacing and is also inside a
   longer record's span, so that record still shows the two spaces. Of the six kept
@@ -302,7 +408,6 @@ any ROM.
   payload. Every release preserved record lengths, so that correspondence holds for
   this corpus; on an image where it does not, the pass would keep the wrong runs and
   the verifier's independent rule would report it.
-- **No CLI and no UI.** Ticket 1 is the engine. The desktop surface is ticket 2.
 
 ## 7. Harvest
 

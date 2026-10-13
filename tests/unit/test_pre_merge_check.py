@@ -429,10 +429,11 @@ def test_the_primary_a_subdirectory_of_it_and_a_linked_worktree(tmp_path):
     nested = run_script(subdirectory, fixture.candidate)
     nested_output = nested.stdout + nested.stderr
     assert nested.returncode == 1, nested_output
-    # The VALUE git reports, not a fragment the caller already supplied:
-    # ``$RepoPath`` is the subdirectory, and its own text contains
-    # ``fixture.primary.name``, so only the complete ``--show-toplevel`` proves
-    # the message came from git rather than from the argument.
+    # The VALUE git reports, not a fragment of the caller's own argument and not a
+    # whitespace-collapsed copy of the output: the message is read for the directory
+    # it names, and that directory must BE the checkout git reported. PowerShell
+    # wraps its error text at the console width, which is why the extraction drops a
+    # newline and the whitespace after it rather than the spaces inside the path.
     toplevel = fixture.primary_git("rev-parse", "--show-toplevel").strip()
     assert toplevel, "the fixture primary has no --show-toplevel"
     printed = checkout_in_refusal(nested_output)

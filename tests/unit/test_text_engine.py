@@ -14,6 +14,7 @@ of a whole retail image, and a fixture carries the records the rule needs.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -22,6 +23,22 @@ import pytest
 
 from tests.gates import REPOSITORY_ROOT
 from tests.rom_support import canonical_rom_path
+from tests.text_fixture import (
+    APPEARANCE_AT,
+    RECORD_AT,
+    ROM_BASE,
+    TABLE_AT,
+    TABLE_BYTES,
+    TABLE_LITERAL,
+    build,
+    appearances,
+    line_payload,
+    open_image,
+    simple,
+    slot_payload,
+    with_appearances,
+    with_operand,
+)
 from tools.webfoot import textedit
 from tools.webfoot.formats import text_tables as tt
 from tools.webfoot.formats import webfoot_lz
@@ -582,6 +599,130 @@ def test_an_image_truncated_inside_the_table_cannot_skip_a_live_selector(tmp_pat
         textedit.open_rom(path)
 
 
+def test_text_units_split_at_every_control_unit() -> None:
+    assert textedit.units("Hey, you!") == (textedit.Text("Hey, you!"),)
+    assert textedit.units("Hey\x08\x03you\x0a!") == (
+        textedit.Text("Hey"),
+        textedit.Control("\x08\x03", 0x08, "\x03"),
+        textedit.Text("you"),
+        textedit.Control("\x0a", 0x0A),
+        textedit.Text("!"),
+    )
+    # A trailing 0x0008 with no halfword left still reads as one locked unit.
+    assert textedit.units("ok\x08") == (textedit.Text("ok"), textedit.Control("\x08", 0x08))
+    assert textedit.locked_tokens("Hey\x08\x03you\x0a!") == ("\x08\x03", "\x0a")
+
+
+def test_every_rename_occurrence_carries_its_own_retail_decision() -> None:
+    current = "Videl then Videl then Videl"
+    counterpart = "Goten then Videl then ....."
+    assert textedit.rename_occurrences(current, counterpart, "Videl") == (
+        textedit.Occurrence(at=0, retail="Goten", decision=textedit.KEEP),
+        textedit.Occurrence(at=11, retail="Videl", decision=textedit.RENAME),
+        textedit.Occurrence(at=22, retail=".....", decision=textedit.UNCLEAR),
+    )
+    text, renamed, kept, unclear = textedit.rename_positions(
+        current, counterpart, old="Videl", new="Lazul")
+    assert (text, renamed, kept, unclear) == ("Videl then Lazul then Videl", 1, 1, 1)
+
+
+# --- spoken lines and speakers ----------------------------------------------
+
+
+def test_a_line_lists_every_record_that_contains_it(tmp_path: Path) -> None:
+    """One covering record, two inner records: two lines, each once, both carriers."""
+    image = build(payloads={1: line_payload("One line, two line", 0x00)},
+                  records=[(1, 0x00, 0x24), (1, 0x00, 0x12), (1, 0x12, 0x12)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["One line,", " two line"]
+    assert [row.key for row in rows] == ["1:0:18", "1:18:18"]
+    # Narrowest carrier first, and the covering record is a carrier of both halves.
+    assert rows[0].records == ("1:0:18", "1:0:36")
+    assert rows[1].records == ("1:18:18", "1:0:36")
+    assert rows[0].target == "1:0:18"
+    assert rows[0].sites == (0x2004, 0x2014)
+
+
+def test_a_line_break_ends_a_line_and_the_terminator_is_not_part_of_it(
+        tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("first\x0asecond", 0x00)},
+                  records=[(1, 0x00, 0x18)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["first", "second"]
+    assert all(textedit.locked_tokens(row.text) == () for row in rows)
+
+
+def test_a_line_that_is_only_control_units_is_not_a_line(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("real\x0a\x0b\x0a", 0x00)},
+                  records=[(1, 0x00, 0x10)])
+    model = open_image(image, tmp_path)
+    rows = textedit.lines(model, cutters_from_pool=False)
+    assert [row.text for row in rows] == ["real"]
+
+
+def test_the_pool_filter_is_the_rule_s_own_switch(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("alpha beta gamma", 0x00)},
+                  records=[(1, 0x00, 0x20)])
+    model = open_image(image, tmp_path)
+    # The fixture's site is not in this title's event pool, so the filtered rule
+    # contributes no row and the unfiltered one contributes the whole span.
+    assert textedit.lines(model) == ()
+    assert [row.text for row in textedit.lines(model, cutters_from_pool=False)] == \
+        ["alpha beta gamma"]
+
+
+def test_a_record_whose_sites_disagree_has_no_speaker(tmp_path: Path) -> None:
+    image = build(payloads={1: line_payload("hello there", 0x00)},
+                  records=[(1, 0x00, 0x16), (1, 0x00, 0x16)])
+    with_operand(image, 0x3F, 0)
+    with_operand(image, 0x88, 1)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x88)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) is None
+        assert textedit.speakers(model) == {}
+
+
+def test_a_speaker_is_the_loaded_image_s_own_name_for_the_operand(tmp_path: Path) -> None:
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x3F)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x88)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) == 0x3F
+        assert textedit.speakers(model) == {"1:0:22": "Lazuli"}
+
+
+def test_a_runtime_party_face_names_no_character(tmp_path: Path) -> None:
+    """An operand below the table's first real slot resolves to nothing."""
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x03)
+    with_appearances(image, [(1066, 0x03)])
+    with appearances():
+        model = open_image(image, tmp_path)
+        assert textedit.record_operand(model, model.records[0]) == 0x03
+        assert textedit.speakers(model) == {}
+
+
+def test_an_appearance_table_two_records_disagree_about_is_dropped(tmp_path: Path) -> None:
+    image = with_operand(build(payloads={1: line_payload("hello there", 0x00)},
+                               records=[(1, 0x00, 0x16)],
+                               slots={1066: "Lazuli", 1067: "Kakarot"}), 0x3F)
+    with_appearances(image, [(1066, 0x3F), (1067, 0x3F)])
+    with appearances(count=4):
+        model = open_image(image, tmp_path)
+        assert textedit.speakers(model) == {}
+
+
+def test_shown_text_drops_every_control_unit() -> None:
+    assert textedit.shown_text("a\x08\x03b\x0ac") == "abc"
+    assert textedit.shown_text("\x0a\x0b") == ""
+
+
 # --- the release goldens -----------------------------------------------------
 
 GOLDEN_DIRECTORY = Path(REPOSITORY_ROOT) / "roms"
@@ -666,6 +807,35 @@ def test_the_canonical_table_words_are_untouched_when_a_record_moves(tmp_path: P
     textedit.apply(built, tmp_path / "canonical-move.gba")
 
 
+def test_a_mixed_plan_leaves_the_retail_table_words_alone(tmp_path: Path) -> None:
+    """F1: a container relocated in place must not write the image's own table.
+
+    ``1:5498:12`` reads ``Arqua!``; a same-length swap makes container 1 re-pack
+    over its room, so the plan both relocates that container in place and moves a
+    record. Before the table was relocated first, this wrote retail table slot 1
+    at file 0x7B5B68 (f0047a08 -> 00008008) and ``readback`` still returned clean.
+    """
+    rom = canonical()
+    image = rom.read_bytes()
+    table = int.from_bytes(image[TABLE_LITERAL:TABLE_LITERAL + 4], "little") - ROM_BASE
+    assert table == 0x7B5B64
+    model = textedit.open_rom(rom)
+    grown = model.record(1, 5498, 12)
+    mover = model.record(1, 38856, 252)
+    assert grown is not None
+    assert mover is not None
+    built = textedit.plan(model, [
+        textedit.RecordEdit(1, 5498, 12, grown.text, "B" + grown.text[1:]),
+        textedit.RecordEdit(1, 38856, 252, mover.text, mover.text + " and more"),
+    ])
+    assert [item.method for item in built.decisions] == [textedit.IN_PLACE, textedit.MOVE]
+    assert [change.what for change in built.changes if "relocated" in change.what] == \
+        ["container 1 relocated"]
+    assert built.output[table:table + TABLE_BYTES] == image[table:table + TABLE_BYTES]
+    assert textedit.readback(built) == ()
+    textedit.apply(built, tmp_path / "canonical-mixed.gba")
+
+
 def test_the_release31_rename_replays_except_the_release_own_out_of_pool_writes(
         tmp_path: Path) -> None:
     """Release 3.1 wrote nine words the shape filter matched outside the pool.
@@ -701,3 +871,48 @@ def test_the_release31_rename_replays_except_the_release_own_out_of_pool_writes(
             assert built.output[site:site + 4] == published[site:site + 4]
     assert textedit.readback(built) == ()
     textedit.apply(built, tmp_path / "release31.gba")
+
+
+# --- the map table ----------------------------------------------------------
+
+
+def test_a_fixture_too_small_for_the_map_table_places_nothing(tmp_path: Path) -> None:
+    """The table lies past the fixture's end, so every map join refuses to guess."""
+    image, model = simple(tmp_path)
+    assert model.profile.maps is not None
+    assert model.profile.maps.table > len(model.image)
+    assert textedit.maps(model) == ()
+    assert textedit.record_maps(model) == {}
+    assert textedit.line_maps(model) == {}
+
+
+def test_the_map_table_names_its_maps_and_falls_back_to_the_index() -> None:
+    """The three names K-018 checked, the shape of the table, and the fallback."""
+    model = textedit.open_rom(canonical())
+    rows = textedit.maps(model)
+    assert len(rows) == 452
+    assert rows[138].label == "World Tournament Stadium"
+    assert rows[207].label == "Demon World"
+    assert rows[390].label == "Volcano Summit"
+    assert rows[451].label == "Heaven"
+    assert sum(1 for row in rows if row.name.strip()) == 429
+    # A row the table leaves unnamed is labelled by its index, never by a guess.
+    assert rows[11].name.strip() == ""
+    assert rows[11].label == "Map 11"
+
+
+def test_the_placement_route_places_a_minority_and_never_a_second_owner() -> None:
+    """The route is inferred, so it must under-claim rather than over-claim."""
+    model = textedit.open_rom(canonical())
+    owners = textedit.record_maps(model)
+    assert len(owners) == 486
+    assert len(owners) < len(model.records)
+    assert all(0 <= index < 452 for index in owners.values())
+    placed = textedit.line_maps(model)
+    assert placed
+    assert set(placed) <= {row.key for row in textedit.lines(model)}
+    assert set(placed.values()) <= set(owners.values())
+    # A line's map is its own target record's map, and nothing else's.
+    by_key = {row.key: row for row in textedit.lines(model)}
+    for key, index in placed.items():
+        assert owners[by_key[key].target] == index

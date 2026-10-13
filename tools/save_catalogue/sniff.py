@@ -28,7 +28,7 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 #: The private chunk mGBA writes into a savestate's PNG container. Its presence
 #: is what makes a PNG a state rather than a screenshot.
 GBAS_CHUNK = b"gbAs"
-BATTERY_SIZES = {8192: "eeprom-8k", 32768: "sram-32k"}
+BATTERY_SIZES = {512: "eeprom-512", 8192: "eeprom-8k", 32768: "sram-32k"}
 #: Extensions that say "state" without being one.
 STATE_SUFFIX_PREFIX = ".ss"
 SIGNATURE_LEN = 16

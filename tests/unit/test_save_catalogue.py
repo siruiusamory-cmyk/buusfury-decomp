@@ -176,9 +176,32 @@ def test_a_state_extension_without_the_state_chunk_claims_no_game():
     assert "gbAs" in kind.evidence
 
 
-def test_the_two_known_battery_sizes_are_battery_and_an_odd_size_is_not():
+def test_a_512_byte_battery_save_is_kind_battery_and_its_game_comes_from_the_bytes(
+        store_home: Path, tmp_path: Path):
+    """512 is a battery medium whose content, not its name, names the title."""
+    root = tmp_path / "build"
+    root.mkdir()
+    # A name that names no title, so only the content can attribute it.
+    (root / "slot1.sav").write_bytes(make_log1_save())
+
+    walk.scan(store_home, [root])
+
+    with Store(store_home).connect() as connection:
+        entry = Store(store_home).find(connection)[0]
+    assert entry.size == 512
+    assert entry.kind == sniff.battery
+    assert entry.game == geometry.LEGACY_OF_GOKU
+    assert entry.geometry == geometry.LEGACY_OF_GOKU
+    assert entry.slots[0]["checksum_ok"] == "UNKNOWN"
+    assert "rolling_xor_key" in entry.game_evidence
+
+
+def test_the_three_known_battery_sizes_are_battery_and_an_odd_size_is_not():
     assert sniff.sniff(b"\x00" * 24, 8192, ".sav").kind == sniff.battery
     assert sniff.sniff(b"\x00" * 24, 32768, ".srm").kind == sniff.battery
+    # The owner's Legacy of Goku I save is this size, and the geometry table already
+    # carried it: 512 is a battery medium, not an unknown.
+    assert sniff.sniff(b"\x00" * 24, 512, ".sav").kind == sniff.battery
 
     odd = sniff.sniff(b"\x00" * 24, 12345, ".sav")
     assert odd.kind == sniff.unknown

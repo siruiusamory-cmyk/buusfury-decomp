@@ -329,6 +329,10 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "test_the_branch_adds_no_whitespace_errors",
      "'git'"):
         "asks git to check the branch diff for whitespace errors; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py", "git", "'git'"):
+        "commits the two pinned modules into the throwaway clone so the gate's detached "
+        "worktree carries them, which is what its pinned-table guard drives; it starts no "
+        "emulator",
     ("tests/unit/test_ci_gui_surface.py",
      "test_the_adjacency_orders_are_reached_and_either_failure_fails_the_job",
      "shell"):

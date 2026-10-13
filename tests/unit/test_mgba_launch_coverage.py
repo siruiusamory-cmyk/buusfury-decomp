@@ -312,6 +312,23 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "'git'"):
         "reads repository state to name the build a package was cut from; it "
         "starts no emulator",
+    ("tests/unit/test_local_ci_script.py", "_head", "'git'"):
+        "asks git for the head SHA the gate is told to record; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py", "_base_dir", "'git'"):
+        "clones the repository into the test's own temporary directory so the gate "
+        "has a throwaway checkout to run against; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py", "_invoke", "POWERSHELL"):
+        "runs the gate script itself against that throwaway clone with a stub "
+        "interpreter in place of the package manager and the suite; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py",
+     "test_a_cleanup_failure_reaches_the_record",
+     "POWERSHELL"):
+        "runs the gate while holding one of its files open, so the run-removal path "
+        "must reach the record as a failure; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py",
+     "test_the_branch_adds_no_whitespace_errors",
+     "'git'"):
+        "asks git to check the branch diff for whitespace errors; it starts no emulator",
 }
 
 

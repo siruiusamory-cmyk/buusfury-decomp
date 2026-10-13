@@ -685,18 +685,52 @@ def test_the_entry_and_upsert_branch_is_contained(store_home: Path, tmp_path: Pa
     assert "simulated store failure" in report.problems[0]["error"]
 
 
-def test_legacy_of_goku_bytes_are_not_de_swizzled():
-    """Its transform scope is unknown, so the reversal is not applied (non-blocking)."""
-    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
+def make_log1_save() -> bytes:
+    """A 512-byte Legacy of Goku I image with slot 0's key word valid, medium order.
 
-    assert layout.transform_scope == geometry.UNKNOWN_TRANSFORM
-    block = bytes(range(8)) * 22
-    image = bytearray(512)
-    image[0:len(block)] = block
-    slot = geometry.slots(bytes(image), geometry.LEGACY_OF_GOKU)[0]
-    # Read as they lie: the occupancy bit comes from byte 1 of the raw block.
-    assert slot.code_occupancy_bit is bool(bytes(range(8))[1] & 0x01)
-    assert slot.transform_scope == geometry.UNKNOWN_TRANSFORM
+    The owner's save of 2026-10-12 fixed the layout: slot base 0x08, one x1..x168 run
+    seeded by image +0x0C, and the per-8-byte block reversal. Nothing here is a copy of
+    that file: the payload is synthetic.
+    """
+    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
+    frame = bytearray(b"\xff" * 0xAC)
+    frame[0x0C] = 0xAA
+    struct.pack_into("<I", frame, 0x08, geometry.rolling_xor_key(bytes(frame[0x0C:0x0C + 168])))
+    placed = swizzle(bytes(frame))
+    image = bytearray(b"\xff" * 512)
+    image[layout.slot_base:layout.slot_base + len(placed)] = placed
+    return bytes(image)
+
+
+def test_a_legacy_of_goku_save_validates_its_key_word_and_never_passes():
+    """The owner's layout, synthetically rebuilt: the key matches, the verdict stays UNKNOWN."""
+    image = make_log1_save()
+    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
+    slots = geometry.slots(image, geometry.LEGACY_OF_GOKU)
+    frame = geometry.deswizzle(image[layout.slot_base:layout.slot_base + layout.slot_stride])
+
+    assert layout.slot_base == 0x08
+    assert layout.payload_len == 0xA4
+    assert layout.transform_scope == "proven-by-file"
+    # The key rule holds over its own 168-byte span, which is the measurement the owner's
+    # file gave; the layout's 164-byte payload is a different slice and is not that rule.
+    assert struct.unpack_from("<I", frame, 0x08)[0] == geometry.rolling_xor_key(frame[0x0C:0x0C + 168])
+    assert slots[0].checksum_ok == "UNKNOWN"
+    # The key cannot detect corruption, so a matching key is still never a PASS.
+    assert slots[0].checksum_ok == "UNKNOWN"
+    assert slots[0].transform_scope == "proven-by-file"
+    # The second slot is beyond the medium under this stride and reports no key.
+    assert slots[1].checksum_ok == "UNKNOWN"
+
+
+def test_a_raw_order_legacy_of_goku_key_does_not_match():
+    """The reversal is doing work: the same image read raw order fails the key rule."""
+    image = make_log1_save()
+    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
+    raw = image[layout.slot_base:layout.slot_base + layout.slot_stride]
+    stored = struct.unpack_from("<I", raw, 0x08)[0]
+
+    assert geometry.rolling_xor_key(raw[0x0C:0x14]) != stored
 
 
 def test_a_battery_sized_file_with_a_state_extension_is_not_a_battery():

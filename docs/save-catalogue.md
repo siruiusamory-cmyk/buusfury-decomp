@@ -90,7 +90,7 @@ real files and a number derived from code are never confused:
 | --- | --- | --- | --- | --- | --- |
 | Buu's Fury | 8,192 B | `0x10 + k*0x8B0` | `0x8A8` | `adler32`, stored at buffer `slot+0x8A8` (file `slot+0x8AC`) | verified against four real saves; stride and count code-verified |
 | Legacy of Goku II | 8,192 B | `0x10 + k*0x168` | `0x164` | `adler32`, stored at `slot+0x164` | slot 0 verified against three real saves; stride and count derived from code |
-| Legacy of Goku | 512 B | `0 + k*0xAC` | `0xA0` | the word at `slot+0x08` is a rolling XOR key that reads no payload byte but the seed, so it cannot detect corruption | code-only; no such save exists in this corpus, so validity is `UNKNOWN` |
+| Legacy of Goku | 512 B | `0x08 + k*0xAC` | `0xA4` | the word at `slot+0x08` is a rolling XOR key over 168 bytes from `slot+0x0C` that reads no payload byte but the seed, so it cannot detect corruption | measured against the owner's 512-byte save of 2026-10-12 (key word matches, block reversal proven, verdict still `UNKNOWN`) |
 
 The verification counts in that table are from the seed measurements of 2026-10-12
 and do not move; the live-corpus counts, dated where they appear, do.
@@ -99,8 +99,9 @@ The family shares the medium and the **8-byte-block byte reversal** (the medium
 stores each 8-byte block byte-reversed relative to the game's buffer, so a block
 is de-swizzled before the checksum is computed); it does not share the slot
 layout. `transform_scope` records which titles the reversal is proven for, and the
-reversal is applied only where the scope claims it: Legacy of Goku I's scope is
-`unknown`, so its bytes are read as they lie and its occupancy bit is unverified.
+reversal is applied only where the scope claims it. All three titles now claim it:
+Legacy of Goku I's scope was `unknown` until the owner's 512-byte save of
+2026-10-12 matched its key word under the reversal and under no other order.
 
 Two coordinate frames matter for Buu's Fury and both are named in the code:
 the game writes its checksum at **buffer** `slot+0x8A8`, and the file holds that

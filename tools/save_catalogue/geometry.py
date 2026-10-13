@@ -27,13 +27,13 @@ Three facts are indexed apart, because they answer three questions:
 * ``erased_all_ff`` - measured on this corpus, not code: an untouched slot is all
   ones.
 
-Legacy of Goku is deliberately not computed. Its integrity field at ``slot+0x08``
-is a rolling XOR key whose store and verify loops read no payload byte other than
-the seed, so it cannot detect corruption, and no 512-byte save attributable to
-that title exists in this corpus. It is ``checksum_ok = UNKNOWN`` with that
-reason, never a pass. Its ``transform_scope`` is ``unknown``, so it is the one
-title whose bytes are read as they lie: its occupancy bit comes from untransformed
-bytes and is unverified.
+Legacy of Goku's integrity field at ``slot+0x08`` is a rolling XOR key whose store
+and verify loops read no payload byte other than the seed, so it cannot detect
+corruption: a matching key is never ``PASS``. Its layout is now measured, not
+code-only: the owner's 512-byte save of 2026-10-12 matches the key word
+(``x1..x168``, seed at image ``+0x0C``) under the per-8-byte block reversal and
+under no other order, which fixes the slot base at ``0x08`` and proves the
+reversal for this title too.
 
 The settings header is separate from the slot checksum and is read from its own
 place. For Buu's Fury the code writes an 8-byte header at **image offset 0**
@@ -146,10 +146,16 @@ GEOMETRIES: dict[str, Geometry] = {
     LEGACY_OF_GOKU: Geometry(
         game=LEGACY_OF_GOKU,
         medium_size=512,
-        slot_base=0,
+        # Measured on the owner's 512-byte battery save (2026-10-12): the key word sits
+        # at image 0x08 and the whole image carries one x1..x168 run with the seed at
+        # image +0x0C, so the slot base is 0x08 and the second stride is erased.
+        slot_base=0x08,
         slot_stride=0xAC,
         slot_count=2,
-        payload_len=0xA0,
+        # The key's own span is 168 bytes from +0x0C, but the layout's arithmetic has to
+        # leave the key word at +0x08 out of the payload, so the payload is 0xA4 and the
+        # key's last four bytes overlap the word it is compared against.
+        payload_len=0xA4,
         checksum_offset=0x08,
         checksum_kind=ROLLING_XOR_KEY,
         integrity_covers_payload=False,
@@ -157,10 +163,13 @@ GEOMETRIES: dict[str, Geometry] = {
         header_offset=None,
         header_rule="no header is claimed: the word at slot+0x08 is a rolling XOR key, not a data"
                     " checksum",
-        transform_scope=UNKNOWN_TRANSFORM,
-        evidence="code-only: the store loop copies 167 payload bytes and the load loop 168, and the"
-                 " key reads no payload byte other than the seed, so it cannot detect corruption;"
-                 " no 512-byte save attributable to this title exists in the corpus",
+        transform_scope="proven-by-file",
+        evidence="measured: the owner's 512-byte save validates its key word under the per-8-byte"
+                 " block reversal and under no other order (slot base 0x08, key at +0x08, one"
+                 " x1..x168 run seeded by image +0x0C); the reversal is therefore proven for this"
+                 " title, and the store/load asymmetry (167 bytes stored, 168 loaded) is code-only;"
+                 " the key still reads no payload byte other than the seed, so it cannot detect"
+                 " corruption and a slot is never PASS",
     ),
 }
 

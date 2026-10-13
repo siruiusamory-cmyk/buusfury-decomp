@@ -181,8 +181,19 @@ function Start-MgbaSession {
     )
     if ($PostCommand) { $bootstrapLines += $PostCommand }
     if ($StatePath) {
-        $bootstrapLines += ('assert(pcall(emu.loadStateFile, emu, [[{0}]]), [[savestate load failed]])' -f `
-            ([System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'))
+        # A failed load RETURNS false; it does not throw. `pcall` therefore only saw a throw, so the
+        # old assert let an ordinary failure pass silently and the run continued with no state at
+        # all. Both results are captured, the pair is recorded in the run directory, and a load that
+        # is not true raises here, before the ready marker is written.
+        $stateLuaPath = [System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'
+        $stateLoadRecord = (Join-Path $RunDir 'state-load.txt') -replace '\\', '/'
+        $bootstrapLines += @(
+            ('local state_ok, state_err = emu.loadStateFile(emu, [[{0}]])' -f $stateLuaPath),
+            ('local state_log = assert(io.open([[{0}]], [[w]]))' -f $stateLoadRecord),
+            ('state_log:write([[ok ]], state_ok and [[true]] or [[false]], "\n", [[err ]], tostring(state_err), "\n", [[path ]], [[{0}]], "\n")' -f $stateLuaPath),
+            'state_log:close()',
+            'if not state_ok then error([[savestate load failed: ]] .. tostring(state_err), 0) end'
+        )
     }
     $bootstrapLines += @(
         # Mark the moment the state is in memory, so an observer's silence can be attributed to the scene
@@ -299,6 +310,15 @@ function Start-MgbaSession {
     }
     if (-not (Test-Path -LiteralPath $ReadyPath)) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        # A state was asked for and the marker never appeared: the bootstrap recorded the load's own
+        # result before it aborted, so the operator gets that reason instead of the generic timeout,
+        # and the run directory keeps it beside the identity files.
+        $stateLoadRecord = Join-Path $RunDir 'state-load.txt'
+        if ($StatePath -and (Test-Path -LiteralPath $stateLoadRecord)) {
+            $reason = (Get-Content -LiteralPath $stateLoadRecord -Raw).Trim()
+            Set-Content -LiteralPath (Join-Path $RunDir 'state-load-failure.txt') -Value $reason -Encoding ascii
+            throw "savestate load failed: $reason"
+        }
         throw 'Lua script did not report ready'
     }
     return $process

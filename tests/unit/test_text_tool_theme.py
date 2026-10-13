@@ -691,4 +691,3 @@ def test_the_extra_control_classes_are_painted_in_the_theme_ink(qapp) -> None:
         menu.close()
         combo.hidePopup()
         host.close()
-

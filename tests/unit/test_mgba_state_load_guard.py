@@ -7,20 +7,31 @@ RETURNING false. A failed load therefore passed silently and the run continued w
 at all, the only symptom being the launcher's misleading "Lua script did not report ready".
 
 These are source-level checks, which is how this repository holds launcher text that only a
-real launch could otherwise execute (see `tests/unit/test_mgba_extra_script.py`). The order
-assertions are the load-bearing ones: a record written after the raise, or a raise placed
-after the ready marker, would read as a pass while restoring nothing.
+real launch could otherwise execute (see `tests/unit/test_mgba_extra_script.py`). Order alone
+cannot carry a claim about containment: where a statement must live inside a block, the block is
+extracted by brace matching and searched, because a statement moved past the closing brace
+satisfies a position comparison. `helper_text` honours the test-only `STATE_LOAD_GUARD_TEST_LAUNCHER`
+override so a mutation check can drive these tests against a broken COPY of the launcher; it is
+unset in every real run.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "tools" / "runtime" / "mgba_session.ps1"
+#: TEST-ONLY, and unset everywhere else. It exists so the mutation checks can drive these tests
+#: against a deliberately broken COPY of the launcher without touching the tracked file.
+LAUNCHER_OVERRIDE = "STATE_LOAD_GUARD_TEST_LAUNCHER"
 
 
 def helper_text() -> str:
+    """The launcher text, or the copy named by the test-only override above."""
+    override = os.environ.get(LAUNCHER_OVERRIDE)
+    if override:
+        return Path(override).read_text(encoding="utf-8")
     return HELPER.read_text(encoding="utf-8")
 
 
@@ -29,6 +40,26 @@ def at(text: str, needle: str) -> int:
     position = text.find(needle)
     assert position != -1, f"not present in the shared launcher: {needle!r}"
     return position
+
+
+def braced_block(text: str, header: str) -> str:
+    """The body of the brace-delimited block that `header` opens, by counting braces.
+
+    Indentation and blank lines are not evidence of containment. A position comparison proves a
+    statement comes after the keyword, which a statement moved past the closing brace also
+    satisfies, so the blocks that have to hold something are extracted and searched instead.
+    """
+    start = at(text, header) + len(header)
+    assert text[start - 1] == "{", f"{header!r} must end at the brace it opens"
+    depth = 1
+    for position in range(start, len(text)):
+        if text[position] == "{":
+            depth += 1
+        elif text[position] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:position]
+    raise AssertionError(f"unbalanced braces after {header!r}")
 
 
 def test_the_bootstrap_captures_both_results_and_records_them() -> None:
@@ -80,6 +111,11 @@ def test_the_launcher_reports_the_load_failure_instead_of_the_timeout() -> None:
     generic = at(text, "throw 'Lua script did not report ready'")
     assert reason < generic, (
         "the load's own reason must be thrown before the generic ready-timeout message")
+    guarded = braced_block(text, "if ($StatePath -and (Test-Path -LiteralPath $stateLoadRecord)) {")
+    assert 'throw "savestate load failed: $reason"' in guarded, (
+        "the reason must be thrown INSIDE that guard, or a run whose record is absent loses the "
+        "generic message too")
+    assert "throw 'Lua script did not report ready'" not in guarded
 
 
 def test_the_no_state_path_keeps_its_existing_behaviour() -> None:
@@ -127,28 +163,37 @@ def test_the_stale_load_records_are_deleted_before_launch() -> None:
     """
     text = helper_text()
     ready = at(text, "Remove-Item -LiteralPath $ReadyPath -Force")
-    loop = at(text, "foreach ($staleRecord in 'state-load.txt', 'state-load-failure.txt')")
-    removal = at(text, "Remove-Item -LiteralPath $stalePath -Force")
+    header = "foreach ($staleRecord in 'state-load.txt', 'state-load-failure.txt') {"
+    loop = at(text, header)
     composed = at(text, "local state_ok, state_err")
-    assert ready < loop < removal < composed, (
+    assert ready < loop < composed, (
         "both records are deleted beside the ready and marker files, which is before the bootstrap "
         "that would write them again and before anything is launched")
-    assert "$stalePath = Join-Path $RunDir $staleRecord" in text
+    body = braced_block(text, header)
+    assert "$stalePath = Join-Path $RunDir $staleRecord" in body
+    assert "Remove-Item -LiteralPath $stalePath -Force" in body, (
+        "the deletion must be INSIDE the loop over both records, or a statement moved past the "
+        "closing brace clears only the last one")
 
 
-def test_the_rom_digest_is_cleared_after_the_child_starts() -> None:
+def test_the_rom_digest_is_cleared_inside_the_finally_that_owns_the_launch() -> None:
     """The export is process-wide, so a later mGBA start in the same shell would read it.
 
-    The digest is for the child that has just started; the child holds its own copy, so the value
-    leaves this process as soon as the launch returns, and a launch that throws clears it too.
+    Containment, not order: a clear moved to just after the finally's closing brace still sits
+    after the keyword and still runs on the normal path, so an order test stays green while a
+    launch that throws leaks the digest. The block is extracted by counting braces.
     """
     text = helper_text()
-    clearing = at(text, "Remove-Item -LiteralPath Env:\\LOG1_MGBA_ROM_SHA256")
-    export = at(text, "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
+    clearing = "Remove-Item -LiteralPath Env:\\LOG1_MGBA_ROM_SHA256"
     gate = at(text, "ROM identity mismatch; run refused")
-    opened = at(text, "    try {\n        $process = Start-Process")
+    export = at(text, "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
+    launch = at(text, "$process = Start-Process")
+    opened = text.rindex("try {", 0, launch)
     closed = at(text, "} finally {")
-    assert gate < export < opened, (
-        "the export must stay after the equality gate and before the launch")
-    assert opened < closed < clearing, (
-        "the clear must sit in the finally block that owns the launch, so a throw clears it too")
+    assert gate < export < opened < launch < closed, (
+        "the export must stay after the equality gate, and the finally must be the one that owns "
+        "the launch")
+    assert text.count(clearing) == 1
+    body = braced_block(text, "} finally {")
+    assert clearing in body, (
+        "the clear must be INSIDE that finally, or a launch that throws leaves the digest set")

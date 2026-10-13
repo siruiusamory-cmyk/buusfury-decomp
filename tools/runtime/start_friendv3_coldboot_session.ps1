@@ -123,6 +123,10 @@ $identity = [ordered]@{
 $identity | ConvertTo-Json -Depth 4 |
     Set-Content -LiteralPath (Join-Path $runDir 'inputs.json') -Encoding utf8
 
+# One call, after the identity block: the save catalogue records the tool, its label and the
+# ROM, save and state hashes this run just staged. It cannot fail the launch.
+Register-SaveCatalogueRun -RunDir $runDir -Tool 'start_friendv3_coldboot_session' -Label $Label
+
 Write-Output 'SESSION LIVE'
 Write-Output "  mGBA pid : $($process.Id)"
 Write-Output "  run dir  : $runDir"

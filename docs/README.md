@@ -43,6 +43,7 @@ The index for everything under `docs/`. Start with the root
 | [`research-conventions.md`](research-conventions.md) | How a research record is written and when a claim is promoted. |
 | [`runtime-capture.md`](runtime-capture.md) | The canonical emulator capture pipeline, its ordering and its tooling rules. |
 | [`ghidra-workflow.md`](ghidra-workflow.md) | The static-analysis workflow and its calibration. |
+| [`save-catalogue.md`](save-catalogue.md) | The battery-save and savestate index: the store, the commands, the proven geometry and what it will not claim. |
 | [`hash-investigation.md`](hash-investigation.md) | What the hashes of the shipped images are, and what they do and do not prove. |
 | [`consumer-analysis.md`](consumer-analysis.md) | The executable consumer analysis behind the map data model. |
 | [`upstream-audit.md`](upstream-audit.md) | What prior work was examined, and what it may and may not be used for. |

@@ -55,6 +55,43 @@ function Set-SessionWindowFocus {
     return $ok
 }
 
+function Register-SaveCatalogueRun {
+    <#
+    Records one staged run in the save catalogue, and never fails the launch.
+
+    The catalogue is a separate tool (`python -m tools.save_catalogue`) that
+    indexes every battery save and savestate on this machine; this is its one
+    launcher call. It reads the identity block the launcher just wrote
+    (`inputs.json`) and records the tool id, the label and the ROM, save and
+    state hashes it names. Nothing here changes a gate or a launch decision: a
+    missing interpreter or a refused record prints one line and the session
+    continues, because an unindexed run is a lost note, not a failed run.
+
+    Call it AFTER the launcher has written its inputs.json.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RunDir,
+        [Parameter(Mandatory)][string]$Tool,
+        [Parameter(Mandatory)][string]$Label
+    )
+    $trailing = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+    $python = Join-Path $trailing '.venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        Write-Host "save catalogue SKIPPED: no interpreter at $python"
+        return
+    }
+    $arguments = @('-m', 'tools.save_catalogue', 'record-run', '--run-dir', $RunDir,
+                   '--tool', $Tool, '--label', $Label)
+    Push-Location $trailing
+    try {
+        & $python @arguments 2>&1 | ForEach-Object { Write-Host "save catalogue: $_" }
+    } catch {
+        Write-Host "save catalogue SKIPPED: $($_.Exception.Message)"
+    } finally {
+        Pop-Location
+    }
+}
+
 function Start-MgbaSession {
     <#
     Starts mGBA with the state loaded and the observer running, without opening the

@@ -180,6 +180,109 @@ def test_a_dry_run_naming_a_missing_file_says_so(prerequisites) -> None:
         "a set-but-missing path is not the same state as 'not set'")
 
 
+def _dry_run_args(prerequisites: dict, state: bool) -> list[str]:
+    # The fixture already skipped without a host; this names it here too, so the
+    # skip cannot be lost by a future fixture change.
+    _require_host()
+    mgb = prerequisites["mgb"]
+    args = [
+        prerequisites["shell"], "-NoProfile", "-File", str(CAPTURE),
+        "-RomPath", str(prerequisites["rom"]),
+        "-MGBPath", str(mgb), "-RequiredMGBVersion", "0.11",
+        "-MGBSha256", hashlib.sha256(mgb.read_bytes()).hexdigest().upper(),
+        "-DryRun",
+    ]
+    if state:
+        args += ["-StatePath", str(prerequisites["state"])]
+    return args
+
+
+def test_a_dry_run_without_a_state_path_reports_none_and_still_runs(prerequisites) -> None:
+    """RE Lab N1: a boot-time scene has no savestate, and the launcher refused to
+    run at all without one. The state is optional now; when it is absent the
+    identity says so rather than carrying a faked path."""
+    environment = dict(os.environ)
+    environment["LOG1_MGBA_NO_EXTRA_SCRIPT"] = "1"
+    result = subprocess.run(
+        _dry_run_args(prerequisites, state=False),
+        cwd=ROOT, capture_output=True, text=True, env=environment)
+    assert "{" in result.stdout, result.stdout + result.stderr
+    identity = json.loads(result.stdout[result.stdout.index("{"):])
+    assert identity.get("state_path") is None
+    assert identity.get("state_sha256") is None
+    assert identity.get("working_state_path") is None
+    assert "(none: launching without a state load)" in result.stdout
+
+
+def test_a_dry_run_with_a_state_path_still_carries_its_identity(prerequisites) -> None:
+    """Optional must not mean unverified: the identity work stays when a state is given."""
+    identity = dry_run(prerequisites, "none")
+    assert identity.get("state_path") is not None
+    assert identity.get("state_sha256")
+    assert identity.get("state_size")
+
+
+def _require_host() -> str:
+    """The PowerShell host this file's -DryRun checks need, or a named skip.
+
+    CI is Linux: the launcher is a `.ps1`, so those checks cannot run there and say
+    so. The text checks in this file run everywhere.
+    """
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell is None:
+        pytest.skip(
+            "the launcher is a PowerShell script and this platform has no PowerShell "
+            "host; the text checks in this file hold its invariants in CI"
+        )
+    return shell
+
+
+def test_omitting_the_state_is_accepted_by_parameter_binding() -> None:
+    """The optional state, proved WITHOUT the canonical image.
+
+    `-StatePath` used to be Mandatory, so a caller that omitted it was refused by
+    PowerShell's own binder before any of the launcher's checks ran. PowerShell still
+    parses the full parameter block for -DryRun, so this asserts the binder accepts
+    the omission; where a host exists it also asserts the launcher got as far as its
+    own ROM check, which is the proof that the state is optional.
+    """
+    if shutil.which("pwsh") is None and shutil.which("powershell") is None:
+        return
+    shell = _require_host()
+    result = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CAPTURE),
+         "-RomPath", str(ROOT / "no-such-image.gba"),
+         "-MGBPath", str(ROOT / "no-such-mgba.exe"),
+         "-DryRun"],
+        cwd=ROOT, capture_output=True, text=True)
+    output = result.stdout + result.stderr
+    assert "Missing mandatory" not in output, output
+    assert "-StatePath" not in output, (
+        "the binder must not be asking for a state that is optional now:\n" + output)
+    assert "ROM is missing" in output, output
+
+
+def test_the_launcher_refuses_to_race_a_running_mgba() -> None:
+    """RE Lab M4, lifted from start_toolkit031_session.ps1: a leftover mGBA gave no
+    error at all, the run simply produced nothing."""
+    text = CAPTURE.read_text(encoding="utf-8")
+    assert "Get-Process -Name 'mGBA'" in text
+    assert "already running" in text
+    process_check = text.index("Get-Process -Name 'mGBA'")
+    launch = text.index("$process = Start-Process")
+    assert process_check < launch, "the refusal must come before any launch"
+
+
+def test_a_relative_lua_path_resolves_against_the_invoking_worktree() -> None:
+    """RE Lab N1: the launcher read the allowlist and the probe from a DIFFERENT
+    worktree than the caller's, and the log stayed empty with nothing saying why."""
+    text = CAPTURE.read_text(encoding="utf-8")
+    assert "$invokingRoot = (Get-Location).Path" in text
+    assert "Resolve-RequiredFile $LuaPath 'Lua script' @($invokingRoot)" in text
+    assert "resolved inputs:" in text
+    assert "  invoking worktree  : $invokingRoot" in text
+
+
 def test_the_missing_file_note_cannot_be_overwritten() -> None:
     """The session helper set the missing-file note and then overwrote it, which is the review's finding.
 

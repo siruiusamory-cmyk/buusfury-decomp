@@ -69,6 +69,16 @@ $script:Cleaned = $false
 
 if (-not $RepoPath) { $RepoPath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path }
 
+# --- where this RUN keeps its evidence ----------------------------------------
+# The canonical record path stays where callers look for it, and every run also gets
+# its own directory named from the clock plus a guid, so a later run on the same SHA
+# cannot overwrite an earlier run's preserved captures or its copy of the record.
+#: $recordDir is under ignored build/; nothing here is ever committed or printed.
+$recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
+$runId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
+$runDir = Join-Path (Join-Path $recordDir 'runs') $runId
+$script:StepsDir = Join-Path $runDir 'steps'
+
 function Write-Log { param([string]$Text) Write-Host ("[{0,7:N1}s] {1}" -f $script:Stopwatch.Elapsed.TotalSeconds, $Text) }
 function Add-Failure { param([string]$Text) $script:Failures.Add($Text); Write-Log ("FAIL: $Text") }
 
@@ -139,9 +149,19 @@ function Invoke-Step {
     }
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $quoted = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    #: Each step's streams are captured into THIS RUN's own directory and KEPT. They used
+    #: to go to two fixed %TEMP% files that were read into memory and deleted, so a failed
+    #: step left no output anywhere and the 05b759ad pip failure could not be established
+    #: from the artifacts. The paths are private, under ignored build/, and are reported
+    #: in the record by path and digest rather than by content.
+    $index = $script:Steps.Count + 1
+    $slug = ($Name -replace '[^A-Za-z0-9]+', '-').Trim('-')
+    if (-not (Test-Path -LiteralPath $script:StepsDir)) { New-Item -ItemType Directory -Force -Path $script:StepsDir | Out-Null }
+    $outFile = Join-Path $script:StepsDir ('{0:D2}-{1}.out' -f $index, $slug)
+    $errFile = Join-Path $script:StepsDir ('{0:D2}-{1}.err' -f $index, $slug)
     $proc = Start-Process -FilePath $FilePath -ArgumentList $quoted -WorkingDirectory $WorkDir -NoNewWindow -PassThru `
-        -RedirectStandardOutput (Join-Path $env:TEMP 'local-ci-step.out') `
-        -RedirectStandardError (Join-Path $env:TEMP 'local-ci-step.err')
+        -RedirectStandardOutput $outFile `
+        -RedirectStandardError $errFile
     #: Open the process handle NOW, while the step is still alive. Under Windows
     #: PowerShell 5.1 a redirected Start-Process polled on HasExited reports a
     #: NULL ExitCode once the process is gone, and the old null-to-zero mapping
@@ -167,12 +187,20 @@ function Invoke-Step {
     }
     $sw.Stop()
     $out = ''
-    foreach ($f in @((Join-Path $env:TEMP 'local-ci-step.out'), (Join-Path $env:TEMP 'local-ci-step.err'))) {
-        if (Test-Path -LiteralPath $f) { $out += (Get-Content -LiteralPath $f -Raw); Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+    $captures = @()
+    foreach ($f in @($outFile, $errFile)) {
+        if (Test-Path -LiteralPath $f) {
+            $out += (Get-Content -LiteralPath $f -Raw)
+            $captures += [pscustomobject]@{
+                Path   = $f.Substring($RepoPath.Length + 1)
+                Sha256 = (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash
+                Bytes  = (Get-Item -LiteralPath $f).Length
+            }
+        }
     }
     if ($peak -gt $script:PeakBytes) { $script:PeakBytes = $peak }
     $code = if ($killed) { 124 } elseif ($null -ne $proc.ExitCode) { $proc.ExitCode } else { -1 }
-    $entry = [pscustomobject]@{ Name = $Name; Exit = $code; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); Output = $out; Killed = $killed }
+    $entry = [pscustomobject]@{ Name = $Name; Exit = $code; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); Output = $out; Killed = $killed; Captures = $captures }
     $script:Steps.Add($entry)
     if ($killed) { Add-Failure ("step '{0}' exceeded its budget and was killed" -f $Name) }
     elseif ($code -eq -1) { Add-Failure ("step '{0}' finished with no readable exit code" -f $Name) }
@@ -357,7 +385,8 @@ foreach ($file in $PinnedSkips.Keys) {
 Invoke-CiTidy
 
 # --- the record --------------------------------------------------------------
-$recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
+#: $recordDir itself is computed in the run-evidence block near the top, so the run
+#: directory and the canonical record path cannot drift apart.
 New-Item -ItemType Directory -Force -Path $recordDir | Out-Null
 $verdict = if ($script:Failures.Count -eq 0) { 'PASS' } else { 'FAIL' }
 $body = New-Object System.Collections.Generic.List[string]
@@ -377,6 +406,16 @@ $body.Add('')
 $body.Add('steps')
 $body.Add('-----')
 foreach ($step in $script:Steps) { $body.Add(("  {0,-52} exit {1,-4} {2,8:N1}s" -f $step.Name, $step.Exit, $step.Seconds)) }
+$body.Add('')
+$body.Add('step captures (private, under ignored build/)')
+$body.Add('------------------------------------------')
+$body.Add(("  run            : {0}" -f $runId))
+$body.Add(("  run directory  : {0}" -f $runDir.Substring($RepoPath.Length + 1)))
+foreach ($step in $script:Steps) {
+    foreach ($capture in $step.Captures) {
+        $body.Add(("  {0,-46} {1} {2,10} byte(s)  {3}" -f $step.Name, $capture.Sha256, $capture.Bytes, $capture.Path))
+    }
+}
 $body.Add('')
 $body.Add('suite counts')
 $body.Add('------------')
@@ -427,6 +466,10 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($recordPath, $text, $utf8)
 $digest = (Get-FileHash -LiteralPath $recordPath -Algorithm SHA256).Hash
 [System.IO.File]::WriteAllText((Join-Path $recordDir 'record.sha256'), $digest + [Environment]::NewLine, $utf8)
+#: A copy inside this run's own directory: the next run writes the canonical path again,
+#: and this run's evidence must survive that.
+[System.IO.File]::WriteAllText((Join-Path $runDir 'record.txt'), $text, $utf8)
+[System.IO.File]::WriteAllText((Join-Path $runDir 'record.sha256'), $digest + [Environment]::NewLine, $utf8)
 
 } finally {
     Invoke-CiTidy

@@ -30,6 +30,7 @@ clone land in the test's temporary directory and never touch the machine's own
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -94,6 +95,11 @@ if verb[:2] == ["-m", "pip"]:
     leave(0)
 
 if verb[:2] == ["-m", "tools.quality.public_surface"]:
+    # Markers on both streams, so the retention guard can prove that a failed step's
+    # own output survives on disk. That is exactly what the 05b759ad pip failure could
+    # not show, because the gate read its capture into memory and deleted the file.
+    print("STUB_PUBLIC_SURFACE_OUT")
+    sys.stderr.write("STUB_PUBLIC_SURFACE_ERR\\n")
     leave(code("STUB_QUALITY_EXIT", "7"))
 
 if verb[:2] in (
@@ -145,22 +151,20 @@ def _base_dir(tmp_path: Path) -> tuple[Path, Path]:
     return repo, stub
 
 
-def _run_gate(tmp_path: Path, env_extra: dict[str, str] | None = None):
-    if os.name != "nt" or not POWERSHELL:
-        pytest.skip("the local-CI gate is a Windows PowerShell script and needs powershell")
+def _prepare(tmp_path: Path):
+    """A throwaway clone, the stub environment, a private home and the head SHA."""
     repo, stub = _base_dir(tmp_path)
     home = tmp_path / "home"
     home.mkdir()
+    return repo, stub, home, _head()
+
+
+def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
+    """One gate run against an already-prepared clone, so a test can run it twice."""
     environment = dict(os.environ)
-    environment.update(
-        {
-            "LOCALAPPDATA": str(home),
-            "PYTHONPATH": str(stub),
-        }
-    )
+    environment.update({"LOCALAPPDATA": str(home), "PYTHONPATH": str(stub)})
     if env_extra:
         environment.update(env_extra)
-    sha = _head()
     run = subprocess.run(
         [
             POWERSHELL,
@@ -177,10 +181,32 @@ def _run_gate(tmp_path: Path, env_extra: dict[str, str] | None = None):
         capture_output=True,
         text=True,
         env=environment,
-        cwd=str(tmp_path),
+        cwd=str(repo.parent),
         timeout=600,
     )
     record = repo / "build" / "local-ci" / sha / "record.txt"
+    return run, record
+
+
+def _ready() -> None:
+    if os.name != "nt" or not POWERSHELL:
+        pytest.skip("the local-CI gate is a Windows PowerShell script and needs powershell")
+
+
+def _run_dirs(record: Path) -> list[Path]:
+    runs = record.parent / "runs"
+    return sorted(p for p in runs.iterdir() if p.is_dir()) if runs.exists() else []
+
+
+def _digest(path: Path) -> str:
+    # Upper case, because the gate prints the digests Get-FileHash returns.
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def _run_gate(tmp_path: Path, env_extra: dict[str, str] | None = None):
+    _ready()
+    repo, stub, home, sha = _prepare(tmp_path)
+    run, record = _invoke(repo, stub, home, sha, env_extra)
     return run, record, home, sha
 
 
@@ -303,3 +329,70 @@ def test_the_branch_adds_no_whitespace_errors():
         text=True,
     )
     assert check.returncode == 0, check.stdout + check.stderr
+
+
+def test_a_failed_step_keeps_its_captured_output(tmp_path):
+    """The 05b759ad pip failure left nothing behind because its capture was deleted.
+
+    The stub writes a marker to both streams and exits 7, so the failing step's own text
+    must still be on disk after the run, inside the run's private directory, and the
+    record must name each capture with the digest that matches the file.
+    """
+    _run, record, _home, _sha = _run_gate(tmp_path, {"STUB_QUALITY_EXIT": "7"})
+    text = _record_text(record)
+    assert "step captures (private, under ignored build/)" in text, text
+    runs = _run_dirs(record)
+    assert len(runs) == 1, runs
+    steps = sorted((runs[0] / "steps").iterdir())
+    assert steps, "no step capture was kept"
+    public = [p for p in steps if "public-surface" in p.name]
+    assert public, [p.name for p in steps]
+    assert any(
+        "STUB_PUBLIC_SURFACE_ERR" in p.read_text(encoding="utf-8", errors="replace")
+        for p in public
+        if p.suffix == ".err"
+    ), [p.name for p in public]
+    for path in public:
+        assert path.name in text, path.name
+        assert _digest(path) in text, (path, _digest(path))
+    assert (runs[0] / "record.txt").read_text(encoding="utf-8") == text
+
+
+def test_a_later_run_keeps_the_earlier_runs_artifacts_and_names_do_not_collide(tmp_path):
+    """A second run on the same SHA must not overwrite the first run's evidence.
+
+    The first run fails a step and the second passes, so their records differ; every file
+    under the first run's directory must be byte-identical afterwards, the two runs must
+    have different directory names, and inside a run the step captures must be uniquely
+    named and index-prefixed.
+    """
+    _ready()
+    repo, stub, home, sha = _prepare(tmp_path)
+    _first, record = _invoke(repo, stub, home, sha, {"STUB_QUALITY_EXIT": "7"})
+    runs = _run_dirs(record)
+    assert len(runs) == 1, runs
+    before = {
+        str(p.relative_to(runs[0])): _digest(p)
+        for p in runs[0].rglob("*")
+        if p.is_file()
+    }
+    assert before, "the first run kept nothing"
+    _second, record2 = _invoke(repo, stub, home, sha, {"STUB_QUALITY_EXIT": "0"})
+    after = {
+        str(p.relative_to(runs[0])): _digest(p)
+        for p in runs[0].rglob("*")
+        if p.is_file()
+    }
+    assert after == before, "a later run changed the earlier run's artifacts"
+    second_runs = _run_dirs(record2)
+    assert len(second_runs) == 2, second_runs
+    assert runs[0] in second_runs
+    assert record.parent == record2.parent
+    assert len({p.name for p in second_runs}) == 2, [p.name for p in second_runs]
+    for run_dir in second_runs:
+        names = sorted(p.name for p in (run_dir / "steps").iterdir())
+        assert names, run_dir
+        assert len(names) == len(set(names)), names
+        assert all(name[:2].isdigit() for name in names), names
+        assert any(name.endswith(".out") for name in names), names
+        assert any(name.endswith(".err") for name in names), names

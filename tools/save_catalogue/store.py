@@ -15,6 +15,7 @@ Nothing here holds a save byte. There is no column for one.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -166,9 +167,10 @@ class Store:
 
     def connect(self) -> sqlite3.Connection:
         self.home.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=30.0)
         connection.row_factory = sqlite3.Row
         connection.executescript(SCHEMA_SQL)
+        connection.commit()
         _apply_added_columns(connection)
         connection.execute(
             "INSERT INTO meta (key, value) VALUES ('schema', ?) "
@@ -176,6 +178,22 @@ class Store:
             (str(SCHEMA),),
         )
         return connection
+
+    @contextlib.contextmanager
+    def session(self):
+        """A connection that is closed on the way out.
+
+        `sqlite3.Connection` as a context manager commits or rolls back and then
+        stays open, which leaves the file locked for every later caller in the
+        same process. Every path here goes through this instead, so a write is
+        both committed and released.
+        """
+        connection = self.connect()
+        try:
+            yield connection
+            connection.commit()
+        finally:
+            connection.close()
 
     @property
     def owner_dir(self) -> Path:
@@ -235,14 +253,20 @@ class Store:
             "SELECT sha256 FROM entries WHERE sha256 = ?", (entry.sha256,)
         ).fetchone()
         first_seen = entry.first_seen or utc_now()
+        registered = self.registration_evidence(entry.sha256, connection) is not None
+        updates = ("size=excluded.size, kind=excluded.kind, kind_evidence=excluded.kind_evidence,"
+                   " misnamed=excluded.misnamed, game=excluded.game, geometry=excluded.geometry,"
+                   " game_evidence=excluded.game_evidence")
+        if not registered:
+            # The owner naming a file in their own words outranks a rule that
+            # failed to fire, so a re-index must not overwrite it.
+            updates += (", provenance=excluded.provenance,"
+                        " provenance_evidence=excluded.provenance_evidence")
         connection.execute(
             "INSERT INTO entries (sha256, size, kind, kind_evidence, misnamed, game, geometry,"
             " game_evidence, provenance, provenance_evidence, first_seen, notes)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
-            " ON CONFLICT(sha256) DO UPDATE SET size=excluded.size, kind=excluded.kind,"
-            " kind_evidence=excluded.kind_evidence, misnamed=excluded.misnamed, game=excluded.game,"
-            " geometry=excluded.geometry, game_evidence=excluded.game_evidence,"
-            " provenance=excluded.provenance, provenance_evidence=excluded.provenance_evidence",
+            f" ON CONFLICT(sha256) DO UPDATE SET {updates}",
             (entry.sha256, entry.size, entry.kind, entry.kind_evidence, int(entry.misnamed),
              entry.game, entry.geometry, entry.game_evidence, entry.provenance,
              entry.provenance_evidence, first_seen, entry.notes),
@@ -250,6 +274,15 @@ class Store:
         connection.execute("DELETE FROM slots WHERE sha256 = ?", (entry.sha256,))
         self._write_slots(entry, connection)
         return existing is None
+
+    def registration_evidence(self, sha256: str, connection: sqlite3.Connection) -> str | None:
+        """The owner's own note for a digest, when one was registered for it."""
+        row = connection.execute(
+            "SELECT provenance_evidence FROM entries WHERE sha256 = ?"
+            " AND provenance_evidence LIKE ?",
+            (sha256, REGISTRATION_EVIDENCE_PREFIX + "%"),
+        ).fetchone()
+        return row["provenance_evidence"] if row else None
 
     def _write_slots(self, entry: Entry, connection: sqlite3.Connection) -> None:
         connection.executemany(
@@ -273,10 +306,7 @@ class Store:
         in their own words is the strongest evidence the catalogue can hold, so no
         later scan may overwrite it with a rule that failed to fire.
         """
-        registered = connection.execute(
-            "SELECT 1 FROM entries WHERE sha256 = ? AND provenance_evidence LIKE ?",
-            (entry.sha256, REGISTRATION_EVIDENCE_PREFIX + "%"),
-        ).fetchone()
+        registered = self.registration_evidence(entry.sha256, connection) is not None
         fields = "size=?, kind=?, kind_evidence=?, misnamed=?, game=?, geometry=?, game_evidence=?"
         values: list[object] = [entry.size, entry.kind, entry.kind_evidence, int(entry.misnamed),
                                 entry.game, entry.geometry, entry.game_evidence]

@@ -111,7 +111,7 @@ def _dispatch(arguments, index: Store) -> dict:
     if arguments.command == "record-run":
         return scanning.record_run(index.home, Path(arguments.run_dir), arguments.tool,
                                    arguments.label)
-    with index.connect() as connection:
+    with index.session() as connection:
         if arguments.command == "find":
             return {"entries": [item.as_json() for item in index.find(
                 connection,

@@ -179,6 +179,18 @@ def _recent_rom_match(path: Path, stat: os.stat_result, roms: dict[Path, str]) -
     return None
 
 
+def sibling_rom(path: Path, roms: dict[Path, str]) -> Path | None:
+    """The ROM this save sits beside, when the emulator's own list names one.
+
+    A ROM the emulator recorded is evidence about the file next to it, which is
+    how a save named `v3.sav` can still be attributed.
+    """
+    for rom in roms:
+        if rom.parent.resolve() == path.parent.resolve() and rom.stem == path.stem:
+            return rom
+    return None
+
+
 def utc_of(mtime: float) -> str:
     return datetime.fromtimestamp(mtime, timezone.utc).isoformat(timespec="seconds")
 
@@ -287,7 +299,7 @@ def scan(store_home: Path | None = None, roots: list[Path] | None = None,
     report = ScanReport(roots=[str(root) for root in selected],
                         missing_roots=[str(root) for root in selected if not root.exists()])
     roms = recent_roms()
-    with index.connect() as connection:
+    with index.session() as connection:
         for root in selected:
             if not root.exists():
                 continue
@@ -360,10 +372,11 @@ def _entry_for(index: Store, connection, path: Path, digest: str,
     chunks = sniff.png_chunk_names(path) if head.startswith(sniff.PNG_SIGNATURE) else frozenset()
     kind = sniff.sniff(head, stat.st_size, path.suffix, chunks)
     provenance = resolve_provenance(path, digest, stat.st_size, [root], protected, roms)
-    game, evidence, slot_rows = _game_and_slots(path, stat.st_size, kind)
     known_notes = connection.execute(
-        "SELECT notes FROM entries WHERE sha256 = ?", (digest,)
+        "SELECT notes, geometry FROM entries WHERE sha256 = ?", (digest,)
     ).fetchone()
+    remembered = known_notes["geometry"] if known_notes else ""
+    game, evidence, slot_rows = _game_and_slots(path, stat.st_size, kind, remembered, roms)
     return Entry(
         sha256=digest, size=stat.st_size, kind=kind.kind, kind_evidence=kind.evidence,
         misnamed=kind.misnamed, game=game, geometry=game if game != "UNKNOWN" else "",
@@ -383,21 +396,42 @@ def game_by_name(name: str) -> str | None:
     return geometry.game_by_name(name)
 
 
-def _game_and_slots(path: Path, size: int, kind) -> tuple[str, str, list[dict]]:
-    """Owning game and per-slot validity, from the per-title geometry table."""
+def _game_and_slots(path: Path, size: int, kind, remembered: str = "",
+                    roms: dict[Path, str] | None = None) -> tuple[str, str, list[dict]]:
+    """Owning game and per-slot validity, from the per-title geometry table.
+
+    `remembered` is the geometry this digest was already assigned, and `roms` the
+    emulator's own recent list. Both matter because two titles share the
+    8,192-byte medium: a save named `v3.sav` names no title, so its sibling image
+    is the next best evidence, and dropping a layout the index already holds
+    would erase what an earlier reading found.
+    """
     if kind.kind in (sniff.unknown_state, sniff.savestate):
         return ("UNKNOWN",
                 "the extension says state; no verified savestate header exists, so no game is"
                 " claimed from the file",
                 [])
     game = game_by_name(path.stem)
+    note = ""
+    if game is None:
+        # A ROM the emulator recorded, sitting beside this save under the same
+        # stem, names the title the save belongs to.
+        rom = sibling_rom(path, roms)
+        if rom is not None:
+            game = game_by_name(rom.stem)
+            if game is not None:
+                note = f"; the title comes from the sibling image {rom.name}"
     if game is None:
         by_size = geometry.geometry_by_size(size)
         game = by_size.game if by_size is not None else None
+        if game is None and remembered and geometry.geometry_for(remembered) is not None:
+            game = remembered
+            note = ("; the layout was assigned in an earlier scan and the medium size matches more"
+                    " than one title")
     if game is None:
         return ("UNKNOWN",
-                f"no geometry is proven for a {size}-byte image, and no title names this file, so no"
-                " game is claimed",
+                f"no geometry is proven for a {size}-byte image, no title names this file, and more"
+                " than one title claims this medium size, so no game is claimed",
                 [])
     layout = geometry.geometry_for(game)
     slots = geometry.slots(path.read_bytes(), game)
@@ -419,7 +453,8 @@ def _game_and_slots(path: Path, size: int, kind) -> tuple[str, str, list[dict]]:
     return (game,
             f"{layout.medium_size}-byte medium, slot k at {layout.slot_base:#x} + k*"
             f"{layout.slot_stride:#x}, payload {layout.payload_len:#x} de-swizzled, integrity"
-            f" {layout.checksum_kind}, transform_scope={layout.transform_scope}; {layout.evidence}",
+            f" {layout.checksum_kind}, transform_scope={layout.transform_scope}; "
+            f"{layout.evidence}{note}",
             rows)
 
 
@@ -447,7 +482,7 @@ def register(store_home: Path | None, path: Path, note: str, force: bool = False
             f"{source} is a known staged blank ({KNOWN_BLANK_DIGESTS[digest]}); refusing to record"
             " it as the owner's, pass --force to override"
         )
-    with index.connect() as connection:
+    with index.session() as connection:
         known = connection.execute(
             "SELECT sha256 FROM entries WHERE sha256 = ?", (digest,)
         ).fetchone()
@@ -519,7 +554,7 @@ def record_run(store_home: Path | None, run_dir: Path, tool: str, label: str | N
         "save_sha256": _digest(document.get("save_sha256")),
         "state_sha256": _digest(document.get("state_sha256")),
     }
-    with index.connect() as connection:
+    with index.session() as connection:
         index.record_run(connection, record)
         connection.commit()
     return record

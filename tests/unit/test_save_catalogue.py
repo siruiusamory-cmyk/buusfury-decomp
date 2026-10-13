@@ -547,6 +547,24 @@ def test_a_re_scan_never_downgrades_a_registration(store_home: Path, tmp_path: P
     assert entry.notes == "the owner save"
 
 
+def test_a_rehash_never_downgrades_a_registration(store_home: Path, tmp_path: Path,
+                                                  monkeypatch, capsys):
+    """The rehash path re-derives every entry, and the owner's record still wins."""
+    monkeypatch.setenv("LOG1_SAVE_CATALOGUE_HOME", str(store_home))
+    save = _index_one(store_home, tmp_path)
+    assert cli.main(["register", str(save), "--note", "the owner save", "--json"]) == 0
+    capsys.readouterr()
+
+    walk.scan(store_home, [save.parent], rehash=True)
+
+    with Store(store_home).connect() as connection:
+        entry = Store(store_home).find(connection)[0]
+    assert entry.provenance == "OWNER"
+    assert "the owner save" in entry.provenance_evidence
+    assert entry.game == "buus_fury"
+    assert entry.slots[0]["checksum_ok"] == "PASS"
+
+
 def test_register_refuses_a_known_blank_without_force(store_home: Path, tmp_path: Path,
                                                       monkeypatch, capsys):
     monkeypatch.setenv("LOG1_SAVE_CATALOGUE_HOME", str(store_home))

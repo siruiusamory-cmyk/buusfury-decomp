@@ -747,6 +747,60 @@ def test_a_sha_that_is_not_the_mr_head_is_refused_before_any_merge():
     assert "not this MR's head" in outcome.detail
 
 
+class _ForeignHeadApi:
+    """The review's post-state counterexample, scripted so no MR is touched.
+
+    The pinned command fails with `the head does not match --sha`, and the read that
+    follows reports the MR `merged` at a DIFFERENT head - the sequence a concurrent
+    head move plus another actor's merge produces between the wrapper's two reads.
+    A merged state alone must not be reported as this review's merge.
+    """
+
+    def __init__(self):
+        self.state = {"state": "opened", "sha": SHA, "merge_commit_sha": None}
+        self.reads = 0
+        self.calls: list[list[str]] = []
+
+    def project_api(self, project: str, path: str):
+        self.reads += 1
+        self.calls.append(["api", path])
+        # Read 1 is the initial pin read, read 2 is the pre-attempt re-check at the pin,
+        # and read 3 is the POST-command read: that is where the different head lands.
+        if self.reads == 3:
+            self.state = {"state": "merged", "sha": "b" * 40, "merge_commit_sha": "f" * 40}
+        return subprocess.CompletedProcess(
+            ["glab", "api", path], 0, json.dumps(self.state), ""
+        )
+
+    def merge(self, mr: str, project: str, sha: str):
+        self.calls.append(["merge", mr, sha])
+        return subprocess.CompletedProcess(
+            ["glab", "mr", "merge", mr], 1, "", "the head does not match --sha"
+        )
+
+
+def test_a_merged_head_that_is_not_the_pin_is_refused_with_exit_four():
+    """A merged state is not this review's merge unless the merged HEAD is the pin.
+
+    The reviewer drove this exact sequence against the pre-fix source: the pinned
+    command failed, the post-state reported `merged` at another head, and the wrapper
+    returned status merged with main exit 0. The post-state head is now compared with
+    the pin, the refusal carries the explicit mismatch, and main returns 4 - the
+    documented code for a pinned SHA that is not the head that landed.
+    """
+    outcome = mm.merge("240", SHA, _ForeignHeadApi())
+    assert outcome.status == "refused", outcome.as_dict()
+    assert outcome.sha_mismatch is True
+    assert outcome.attempts[0].had_effect is False
+    assert outcome.attempts[0].state_after.get("sha") == "b" * 40
+    assert "not the signed-off SHA" in outcome.detail
+    assert mm.main(["--mr", "240", "--sha", SHA, "--json"], api=_ForeignHeadApi()) == 4
+
+    # And the case the fix must NOT break: a non-zero command whose merge really did
+    # land the pin is still reported merged (test_a_merge_that_lands_is_reported_merged
+    # _even_when_glab_exits_non_zero above drives it).
+
+
 def test_the_wrapper_assumes_the_deterministic_reading_in_what_it_reports():
     outcome = mm.merge("240", SHA, _fake([(0, "merged")], []))
     assert outcome.reading_assumed == mm.DETERMINISTIC_READING
@@ -815,6 +869,8 @@ def probe_repo(tmp_path: Path) -> dict:
     git("config", "user.name", "guard")
     (root / "probe.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "helper.py").write_text("OTHER = 2\n", encoding="utf-8")
+    (root / "tools" / "webfoot").mkdir(parents=True)
+    (root / "tools" / "webfoot" / "journal.py").write_text("JOURNAL = 1\n", encoding="utf-8")
     git("add", ".")
     git("commit", "-q", "-m", "base")
     (root / "probe.py").write_text("VALUE = 2\n", encoding="utf-8")
@@ -854,6 +910,53 @@ def test_the_probe_worktree_copies_and_verifies_when_the_bytes_match(probe_repo)
     # The full SHAs are printed, which is what makes the probe's provenance usable.
     assert "sha256" in result.stdout.lower()
     assert "probe.py" in result.stdout
+
+
+def test_the_probe_worktree_still_copies_a_nested_relative_name(probe_repo):
+    """The correction must refuse escapes WITHOUT refusing the normal nested case."""
+    root = probe_repo["root"]
+    result = _probe("-Path", r"tools\webfoot\journal.py", "-CheckOnly", cwd=root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout, result.stdout
+
+
+def test_the_probe_worktree_refuses_a_parent_relative_name_that_would_escape(tmp_path: Path):
+    """The review's counterexample: an escaped destination rewrote a tracked caller file.
+
+    The name resolves OUTSIDE the repository to a real source and, under the detached
+    target, resolves to a tracked file in the calling worktree; the byte copy then
+    rewrote that file while the tool printed OK with equal digests. The refusal must
+    come before any write, so the caller's file and the repository stay untouched.
+    """
+    _require_powershell()
+    if shutil.which("git") is None:
+        pytest.skip("git is required to build a probe worktree")
+    outer = tmp_path / "outer"
+    root = outer / "a" / "b" / "repo"
+    root.mkdir(parents=True)
+    (outer / "sentinel.txt").write_text("SOURCE FROM OUTSIDE REPOSITORY\n", encoding="utf-8")
+    (root / "sentinel.txt").write_text("CALLER TRACKED SENTINEL\n", encoding="utf-8")
+
+    def git(*args: str) -> None:
+        result = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True, timeout=300
+        )
+        assert result.returncode == 0, f"git {args}: {result.stdout}{result.stderr}"
+
+    git("init", "-q", "--initial-branch=master")
+    git("config", "user.email", "guard@example.invalid")
+    git("config", "user.name", "guard")
+    git("add", "sentinel.txt")
+    git("commit", "-q", "-m", "base")
+
+    result = _probe("-Path", r"..\..\..\sentinel.txt", "-Keep", cwd=root)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "parent-directory" in result.stdout, result.stdout
+    assert (root / "sentinel.txt").read_text(encoding="utf-8") == "CALLER TRACKED SENTINEL\n"
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True
+    ).stdout
+    assert status == "", status
 
 
 def test_the_probe_worktree_is_tracked_in_its_own_launch_site_terms():

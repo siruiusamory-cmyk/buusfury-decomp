@@ -169,9 +169,11 @@ again, and spends at most ONE retry - only when there was no server-side effect.
 The pin is checked before EVERY attempt, including the retry, and the merge call
 itself carries `--sha <sha>`: a rebase under a frozen candidate is refused rather
 than merged. It never trusts an exit code: a `glab` that exits non-zero after a merge
-that landed is reported merged, and a `glab` that exits 0 without moving the MR is
-refused. Only an MR whose state is `merged` AND which carries a merge commit counts
-as an effect, so a move to `closed` or `locked` is never reported as a merge.
+that landed **the pinned head** is reported merged, and a `glab` that exits 0 without
+moving the MR is refused. Only an MR whose state is `merged` AND which carries a merge
+commit counts as an effect, so a move to `closed` or `locked` is never reported as a
+merge; a merge that landed a DIFFERENT head is refused with exit 4, because a merged
+state is not this review's merge unless the merged head is the pin.
 
 **The 405 contradiction, resolved.** The memory store records 405 as a flake
 ("immediate retry merged", MRs !233 and !236); GitLab documents it as deterministic

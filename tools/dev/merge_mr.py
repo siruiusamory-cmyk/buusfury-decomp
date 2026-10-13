@@ -36,7 +36,7 @@ without moving the MR is not.
 
 Exit codes: 0 merged (or already merged), 2 usage or an unreadable MR, 3 refused
 after a retry or for any merge that did not happen, 4 the pinned SHA is not the
-MR's head.
+MR's head, including a merge that landed a different head.
 """
 
 from __future__ import annotations
@@ -191,6 +191,22 @@ def merge(
             state_after=state_after,
             had_effect=effect,
         )
+        # A merged state is THIS review's merge only when the merged HEAD is the pin: the
+        # pinned command can fail while the head moves and another actor merges that new
+        # head. Reporting success there would hand back a merge of an unreviewed SHA.
+        if effect and (state_after.get("sha") or "").lower() != sha.lower():
+            attempt.had_effect = False
+            attempt.error = "the MR merged a head that is not the signed-off SHA"
+            outcome.attempts.append(attempt)
+            outcome.status = "refused"
+            outcome.sha_mismatch = True
+            outcome.detail = (
+                f"the MR merged a head that is not the signed-off SHA: asked for {sha}, "
+                f"the merged head is {(state_after.get('sha') or '(no sha)')} with merge "
+                f"commit {state_after.get('merge_commit_sha')}. The pinned command did not "
+                "land this review; re-freeze and re-review the head that merged."
+            )
+            return outcome
         outcome.attempts.append(attempt)
 
         if effect:

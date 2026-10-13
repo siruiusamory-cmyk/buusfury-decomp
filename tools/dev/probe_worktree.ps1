@@ -69,6 +69,14 @@ foreach ($item in $Path) {
             Write-Host "probe worktree: name paths relative to the repository: $relative"
             exit 2
         }
+        # A parent step is how a repository-relative name escapes the detached target and
+        # rewrites a tracked caller file while the byte comparison still reports OK.
+        # Refused here, before a worktree is created or a byte is written; a nested
+        # relative name such as tools\webfoot\journal.py is unaffected.
+        if (($relative -split '[\\/]') -contains '..') {
+            Write-Host "probe worktree: no parent-directory step in a name path: $relative"
+            exit 2
+        }
         $source = Join-Path $root $relative
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
             Write-Host "probe worktree: no such file: $source"
@@ -112,6 +120,17 @@ try {
     foreach ($relative in ($sources.Keys | Sort-Object)) {
         $source = $sources[$relative]
         $destination = Join-Path $target $relative
+        # The invariant at the write itself: wherever the name resolved, the bytes may only
+        # land inside the detached target.
+        $insideTarget = ([System.IO.Path]::GetFullPath($destination)).StartsWith(
+            ([System.IO.Path]::GetFullPath($target) + [System.IO.Path]::DirectorySeparatorChar),
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+        if (-not $insideTarget) {
+            Write-Host ("  {0,-8} {1} (outside the probe worktree)" -f 'REFUSED', $relative)
+            $failed = $true
+            continue
+        }
         if (-not $VerifyOnly) {
             New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
             # Byte copy, never a text write: a text write is the defect this prevents.

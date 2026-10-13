@@ -72,6 +72,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -519,6 +520,213 @@ def test_the_deploy_job_needs_both_test_jobs():
         f"`needs:` entry for every test-stage job {sorted(test_stage)}; its "
         f"required needs are {sorted(required)}, so a pipeline whose jobs were "
         f"excluded by their rules can still publish the site without them"
+    )
+
+
+def test_a_collapsed_required_module_fails_the_process_exit_code(tmp_path) -> None:
+    """Under CI a collapsed required GUI module must leave the PROCESS non-zero.
+
+    The guard has always reported the collapse; what was measured is that the exit path
+    carried the status it read before the guard decided, so the process exited 0 over a
+    collapsed shipping surface and the job went green. PySide6 is forced unimportable by
+    shadowing it with a package that raises, which is what a missing Qt does, so the module
+    collapses through its own module-level guard exactly as it does in a bare environment.
+    """
+    shadow = tmp_path / "shadow" / "PySide6"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("raise ImportError('forced by the test')\n")
+    repository = Path(__file__).resolve().parents[2]
+    module = sorted(REQUIRED_GUI_MODULES)[0]
+    environment = dict(os.environ, GITLAB_CI="1", PYTHONPATH=str(shadow.parent))
+    environment.pop("WEBFOOT_KEEP_INTERPRETER_EXIT", None)
+    # A passing file beside the collapse is what makes this the real case: at the moment the
+    # session status is first readable it is 0, because nothing failed, and only the guard
+    # raises it. With the collapse alone the status is already 5, so an exit path that read it
+    # too early would still look correct.
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", f"tests/{module}",
+         "tests/unit/test_public_release.py", "-q", "-p", "no:cacheprovider"],
+        capture_output=True, text=True, cwd=repository, env=environment)
+    assert "COLLAPSED" in run.stdout, run.stdout[-2000:]
+    assert run.returncode != 0, (
+        f"a collapsed required module beside a passing file exited {run.returncode}\n"
+        f"{run.stdout[-2000:]}")
+
+
+def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None:
+    """The status the CI exit path carries must be the one the guard decided.
+
+    This is the defect itself, at the hook, rather than at the process: the guard raises the
+    session to TESTS_FAILED, and a status read before it carries the 0 the passing tests left
+    behind, so `pytest_unconfigure` exits clean over a collapsed shipping surface. The
+    subprocess test above shows the end-to-end exit; this one fails the moment the read moves
+    back above the guard, which is what the control run checks.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules",
+                        lambda: [("unit/test_build_panel_guard.py", "contributed no test")])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_required_gui_surface_is_enforced", lambda: True)
+    monkeypatch.setattr(conftest, "_report_collapsed_modules", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", int(pytest.ExitCode.INTERNAL_ERROR))
+    session = types.SimpleNamespace(exitstatus=0, config=None)
+    conftest.pytest_sessionfinish(session, 0)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
+        "the exit path would carry a status the guard had already overruled")
+    # And the decision reaches the process: the same hook that must not report SUCCESS
+    # over an unfinished session reports exactly the status the guard decided here.
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.TESTS_FAILED)], (
+        f"the exit path carried {captured} instead of the status the guard decided")
+
+
+def test_a_clean_session_exits_zero_through_the_hook(monkeypatch) -> None:
+    """The other direction: a session that finished cleanly must still exit SUCCESS.
+
+    The two seeded and decided assertions above only prove the exit path can be non-zero,
+    which a constant non-zero status would also satisfy while turning every green pipeline
+    red. This runs the real hook over a clean session and requires the zero to reach the
+    process.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", conftest._SESSION_EXIT_STATUS)
+    session = types.SimpleNamespace(exitstatus=pytest.ExitCode.OK, config=None)
+    conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.OK, (
+        f"a clean session left the status at {conftest._SESSION_EXIT_STATUS!r}")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a clean session exited {captured} under CI instead of SUCCESS")
+
+
+def test_the_ci_exit_path_carries_the_runs_status(monkeypatch) -> None:
+    """The exit path carries a status that is not SUCCESS when no session finished.
+
+    The status is a module global that only ``pytest_sessionfinish`` overwrites, and the
+    hook does not run when the session dies before it: a raising ``pytest_sessionstart``,
+    or an earlier ``sessionfinish`` hook doing the same, as an xdist worker that cannot
+    start would. Seeded with ``pytest.ExitCode.OK`` the exit path would then publish a
+    green pipeline over an errored run, which is worse than the crash it hides. The exit
+    is captured rather than taken, so the status handed to the process is read directly.
+    """
+    import types
+
+    from tests import conftest
+
+    assert conftest._SESSION_EXIT_STATUS == int(pytest.ExitCode.INTERNAL_ERROR), (
+        f"the seed is {conftest._SESSION_EXIT_STATUS!r}, so a session that never reached "
+        "pytest_sessionfinish would be reported with that status")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured and captured[0] != pytest.ExitCode.OK, (
+        f"the exit path carried {captured} for a run that never reached sessionfinish")
+
+
+def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> None:
+    """A recorded run - the local full-CI gate - must take the clean exit without ``CI``.
+
+    Prevents: the local record gate running the same Qt suite on the interpreter's own exit
+    path. Measured 2026-10-13 in the record for this ticket: its suite step reported exit 0
+    while its captured stderr carried ``Fatal Python error: Aborted``, because
+    ``scripts/local-ci.ps1`` sets no CI variable - it is master's reviewed script - and passes
+    ``--junitxml`` instead. A developer's own run sets neither and keeps the ordinary exit.
+
+    The option name is ``xmlpath`` and not ``junitxml``: ``_pytest/junitxml.py`` registers
+    ``--junitxml`` with ``dest="xmlpath"``. A stub built with ``junitxml`` was the first
+    version of this case and it passed while the real gate never took the exit at all, which
+    is the failure this file's own docstrings keep warning about.
+    """
+    import types
+
+    from tests import conftest
+
+    assert conftest._RECORDED_REPORT_OPTION == "xmlpath", (
+        "the recorded-report option name changed; --junitxml is registered as `xmlpath`")
+
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", pytest.ExitCode.OK)
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITLAB_CI", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    recorded = types.SimpleNamespace(option=types.SimpleNamespace(xmlpath="report.xml"))
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(recorded)
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a recorded run left through the ordinary exit path ({captured})")
+
+    # The same config without the report argument is a developer's run: no clean exit.
+    captured.clear()
+    conftest.pytest_unconfigure(types.SimpleNamespace(option=types.SimpleNamespace(xmlpath=None)))
+    assert captured == [], (
+        f"a local run without a report argued its way into the exit path ({captured})")
+
+
+def test_the_session_hooks_are_defined_and_have_run() -> None:
+    """A scripted edit consumed an anchor line once and took ``pytest_configure`` with it.
+
+    The insertion replaced an anchor line that carried
+    ``def pytest_configure(config: pytest.Config) -> None:``, so the definition vanished and
+    its body stayed behind as unreachable code inside ``capture_application``. Everything it
+    did - the temp-root redirect, the fault handler and the rootdir capture - silently
+    stopped running while the rest of the suite passed, and the ``tmp_path`` failures that
+    resulted read like the machine rather than this file. Reading the two things the hook is
+    responsible for makes that deletion fail here instead of there.
+    """
+    from tests import conftest
+
+    assert callable(getattr(conftest, "pytest_configure", None)), (
+        "tests/conftest.py does not define pytest_configure at module level, so pytest "
+        "never calls it and its body is dead code: the temp-root redirect, the fault "
+        "handler and the rootdir capture are all lost"
+    )
+    assert conftest._ROOTDIR == Path(__file__).resolve().parents[2], (
+        f"pytest_configure did not run: _ROOTDIR is {conftest._ROOTDIR!r}, and a collection "
+        "report's node id is resolved against it"
     )
 
 

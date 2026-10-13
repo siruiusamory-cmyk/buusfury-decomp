@@ -35,6 +35,12 @@ FUTURE = release.ReleaseProduct(
     build_name="Future-Randomizer",
     readme="docs/futurerand/README.txt",
     packager="scripts/package-futurerand.ps1",
+    # The two modules a frozen build's walk starts from. The guard requires them because a
+    # product whose entry script nobody can name is one nothing can walk, so the fixture
+    # names modules of a shipped product: this product is fiction and only its files are
+    # synthetic, and a walk over a module that does not exist would test the wrong thing.
+    entry_module="tools.webfoot.enemyrand._pyinstaller_entry",
+    identity_module="tools.webfoot.enemyrand.service",
 )
 
 #: Residue controls travel base64-encoded, for the reason

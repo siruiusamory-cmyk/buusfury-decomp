@@ -50,6 +50,9 @@ webfoot = "tools.webfoot.cli:main"
 # engineering surface rather than what a user installs; `python -m
 # tools.webfoot.workbench` stays the beta's launch path.
 dragonbyte-z = "tools.dragonbyte.app:main"
+# The text editor's entry point, in the same style: the package's own `main`, which
+# `python -m tools.buufury_text` and the frozen build both reach.
+buufury-text = "tools.buufury_text.app:main"
 
 [tool.setuptools.packages.find]
 include = ["tools*"]

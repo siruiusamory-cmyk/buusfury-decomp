@@ -1,0 +1,47 @@
+# Windows version resource for Buu's Fury Text Editor.
+#
+# Read by PyInstaller through the `version=` argument of EXE() in
+# `Buu's Fury Text Editor.spec.in`. `tools/buufury_text/identity.py` is the ONE
+# authority for the product name and version; the strings below are that identity
+# spelled where a Windows resource loader can read them, and
+# `tests/unit/test_buufury_text_release.py` parses this file and fails when either
+# disagrees with the module. A release candidate is cut by a decision, so this file
+# moves when identity.py does and not before.
+#
+# No ticket, branch, worktree, user or local path belongs in this file.
+#
+# LegalCopyright names the licence rather than a copyright holder, for the reason
+# the sibling resources record: this project states no copyright holder anywhere
+# (README.md's Licence section, pyproject.toml and LICENSE all name MPL-2.0 and
+# nobody), and a field is better left telling the truth than supplied with an
+# invented name.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3F,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        "040904B0",
+        [
+          StringStruct("CompanyName", "Webfoot SDK"),
+          StringStruct("FileDescription", "Buu's Fury Text Editor, text and dialogue editor for Dragon Ball Z: Buu's Fury"),
+          StringStruct("FileVersion", "0.1.0.0"),
+          StringStruct("InternalName", "Buu's Fury Text Editor"),
+          StringStruct("LegalCopyright", "Mozilla Public License 2.0"),
+          StringStruct("OriginalFilename", "Buu's Fury Text Editor.exe"),
+          StringStruct("ProductName", "Buu's Fury Text Editor"),
+          StringStruct("ProductVersion", "0.1.0.0"),
+        ],
+      )
+    ]),
+    VarFileInfo([VarStruct("Translation", [1033, 1200])]),
+  ],
+)

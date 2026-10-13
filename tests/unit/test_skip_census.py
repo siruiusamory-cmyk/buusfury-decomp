@@ -69,6 +69,10 @@ def _run_session_end(monkeypatch, skips: dict[str, str]) -> types.SimpleNamespac
     monkeypatch.setattr(conftest, "_SKIPPED_TEST_REASONS", dict(skips))
     monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
     monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    # This calls the real hook, which writes the module global the CI exit path carries, so
+    # register the current value first: monkeypatch then hands it back at teardown rather
+    # than leaving the status of this stub session behind for another file to read.
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", conftest._SESSION_EXIT_STATUS)
     session = _stub_session()
     conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
     return session

@@ -169,12 +169,35 @@ class ReleaseProduct:
     staged-package rules below belong to the archive shape that has one. What every
     registered product keeps is the spec, the version resource and the icon, which
     is the release DEFINITION, and the checks for those do not depend on the shape.
+
+    The frozen-BUILD facts live here too - the script the spec freezes, the module
+    that owns the identity, the package a frozen application also reaches - because
+    ``tests/unit/test_randomizer_release.py`` reads this one list rather than
+    keeping a table of its own. A product added here is therefore walked, identified
+    and version-checked by the same rules as every other, with no second edit.
     """
 
     package: str
     build_name: str
     readme: str | None
     packager: str | None
+    #: The module the spec's ``Analysis`` freezes, dotted. Required: a frozen build
+    #: whose entry script nobody can name is a product nothing can walk.
+    entry_module: str
+    #: The module that owns the product's identity, dotted. A randomizer's own
+    #: ``service.py`` carries ``TOOL_NAME``/``TOOL_VERSION``; an installed
+    #: application's ``identity`` module carries ``PRODUCT_NAME``/``PRODUCT_VERSION``.
+    #: Which pair is read follows the shape, but which FILE is read is this field.
+    identity_module: str
+    #: The package root a frozen application's walk also counts. ``None`` for an
+    #: archive, whose graph is ``tools.webfoot`` alone.
+    application_root: str | None = None
+    #: Modules a walk from ``entry_module`` must reach. A walk that stopped early
+    #: would otherwise pass every rule below by proving nothing.
+    required_modules: tuple[str, ...] = ()
+    #: The smallest module closure that walk was measured to return for THIS product.
+    #: One number for every product would be a reading of the largest of them.
+    closure_floor: int = 60
     #: ``"archive"`` for a randomizer's two-file release, ``"installed"`` for an
     #: application shipped as a directory beside its runtime. It is a declared
     #: shape rather than something a reader infers from the two optional files, so
@@ -190,6 +213,19 @@ class ReleaseProduct:
         return f"{self.build_name}.version.txt"
 
 
+#: The SDK modules a frozen randomizer must reach: the ROM catalog reader it
+#: identifies an image with, the write path it produces one through, the randomizer
+#: service and the planner it runs. Measured as the difference between the shipped
+#: build and the rebuild that followed EXE-PACKAGE-HYGIENE-001. The two archives are
+#: one build shape and reach the same modules, so the names are declared once and
+#: named by both rows rather than copied into each.
+ARCHIVE_REQUIRED_MODULES = (
+    "tools.webfoot.catalog",
+    "tools.webfoot.write",
+    "tools.webfoot.randomizer.service",
+    "tools.webfoot.enemy_randomizer.planner",
+)
+
 #: The one place a product is declared. Adding a product means adding an entry here
 #: and the files it names; every rule below then applies to it without an edit.
 PRODUCTS: tuple[ReleaseProduct, ...] = (
@@ -198,12 +234,18 @@ PRODUCTS: tuple[ReleaseProduct, ...] = (
         build_name="Enemy-Randomizer",
         readme="docs/enemyrand/README.txt",
         packager="scripts/package-enemy-randomizer.ps1",
+        entry_module="tools.webfoot.enemyrand._pyinstaller_entry",
+        identity_module="tools.webfoot.enemyrand.service",
+        required_modules=ARCHIVE_REQUIRED_MODULES,
     ),
     ReleaseProduct(
         package="warprand",
         build_name="Buu-Fury-Warp-Randomizer",
         readme="docs/warprand/README.txt",
         packager="scripts/package-warprand.ps1",
+        entry_module="tools.webfoot.warprand._pyinstaller_entry",
+        identity_module="tools.webfoot.warprand.service",
+        required_modules=ARCHIVE_REQUIRED_MODULES,
     ),
     # The frozen desktop application. It is registered here for the same reason
     # the randomizers are: its spec, its version resource and its icon are a
@@ -211,12 +253,54 @@ PRODUCTS: tuple[ReleaseProduct, ...] = (
     # `_unregistered` exists to catch. Its release is `dist/<name>/<name>.exe`
     # beside the Qt runtime, so no packager is declared yet and the two-file
     # archive rules below do not apply to it.
+    #
+    # Its identity lives outside its own package, in the repository's one identity
+    # authority, which is also where its version resource is checked from.
     ReleaseProduct(
         package="dragonbyte",
         build_name="DragonByte Z",
         readme=None,
         packager=None,
         release_shape="installed",
+        entry_module="tools.dragonbyte._pyinstaller_entry",
+        identity_module="tools.webfoot.release_identity",
+        application_root="tools.dragonbyte",
+        required_modules=(
+            "tools.dragonbyte.app",
+            "tools.dragonbyte.session",
+            "tools.dragonbyte.shell",
+            "tools.webfoot.catalog",
+            "tools.webfoot.write",
+            "tools.webfoot.release_identity",
+        ),
+    ),
+    # The second frozen desktop application, registered in the same one list for the
+    # same reason: a spec template, a version resource and the shared icon are a
+    # release definition whether or not a build has been run over them. It ships an
+    # installed directory beside its Qt runtime, so like the application above it
+    # declares no README and no packager.
+    #
+    # Its identity is its own package's `identity.py`, and its closure is measured
+    # rather than borrowed: it is a smaller application than the one above, so the
+    # shape-wide floor would be a reading of that product and not of this one.
+    ReleaseProduct(
+        package="buufury_text",
+        build_name="Buu's Fury Text Editor",
+        readme=None,
+        packager=None,
+        release_shape="installed",
+        entry_module="tools.buufury_text._pyinstaller_entry",
+        identity_module="tools.buufury_text.identity",
+        application_root="tools.buufury_text",
+        required_modules=(
+            "tools.buufury_text.app",
+            "tools.buufury_text.session",
+            "tools.buufury_text.shell",
+            "tools.buufury_text.theme",
+            "tools.webfoot.textedit",
+            "tools.webfoot.write",
+        ),
+        closure_floor=35,
     ),
 )
 

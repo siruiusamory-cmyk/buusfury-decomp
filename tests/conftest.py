@@ -59,9 +59,11 @@ once, up front, instead of leaving it to whoever reads the thirtieth
 
 from __future__ import annotations
 
+import faulthandler
 import getpass
 import os
 from pathlib import Path
+import sys
 import tempfile
 
 import pytest
@@ -93,6 +95,31 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: Environment variables that mean "this run is CI, so a collapsed required GUI
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
+
+#: Option destination that means "this run's result is read from a machine-readable
+#: report", which is what both CI and the local full-CI record gate do and what no
+#: local developer run does. The record gate cannot set ``CI`` itself: it is
+#: master's reviewed ``scripts/local-ci.ps1`` and it runs the suite as an ordinary
+#: local process. This option is why the exit path below takes the clean exit under
+#: the gate as well as under CI.
+#:
+#: The name is ``xmlpath``, not ``junitxml``: ``_pytest/junitxml.py`` registers
+#: ``--junitxml`` with ``dest="xmlpath"``. Read the destination through
+#: ``config.option``; the attribute does not exist under the flag's own spelling, and
+#: a key that never matches is a mitigation that never fires. Measured 2026-10-13: an
+#: xdist ``-n 2`` run of one Qt module with ``--junitxml`` set ``xmlpath`` in the
+#: controller AND in both workers, and reading a missing ``junitxml`` left every one
+#: of the three on the interpreter's own exit path.
+_RECORDED_REPORT_OPTION = "xmlpath"
+
+#: The status the CI exit path below carries. It starts at pytest's INTERNAL_ERROR
+#: rather than at 0, because ``pytest_sessionfinish`` is what overwrites it and that
+#: hook does not run when the session dies before it: a raising ``pytest_sessionstart``
+#: or an earlier ``sessionfinish`` hook doing the same. Seeded with 0, the CI exit path
+#: would then report SUCCESS for a run that errored, which is worse than the crash it
+#: exists to avoid. Measured: a sessionstart that raises exits 3 without CI, 0 with
+#: CI=1, and 3 again with ``WEBFOOT_KEEP_INTERPRETER_EXIT=1``.
+_SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
 
 
 # --- a mutable ROM fixture that cannot share a file with a protected input -----
@@ -160,7 +187,59 @@ _SKIPPED_TEST_REASONS: dict[str, str] = {}
 _ROOTDIR: Path | None = None
 
 
+def hand_back_application(application, state) -> None:
+    """Hand the Qt application back as it was, given a state captured earlier.
+
+    The editor's theme is applied to the whole QApplication, so a module that installs it also
+    changes what every other product's window measures in the same process. Measured with one
+    ordinary button: applying it takes the size hint from 20 to 26, which is the application
+    stylesheet, and the editor's proxy style moves it further.
+
+    The stylesheet is cleared first because that is what moves the metrics, then the palette is
+    restored, then the style is put back BY NAME. The old style object is never kept and never
+    handed back: installing a theme lets Qt delete the style the application owned, so passing
+    that wrapper to `setStyle` raises "Internal C++ object already deleted" instead of
+    restoring anything. A wrapper that is already invalid is the case the bare exception below
+    covers, and it is a refusal to touch the application rather than a silent half restore.
+    """
+    from PySide6.QtWidgets import QStyleFactory
+
+    palette, sheet, was = state
+    try:
+        application.setStyleSheet(sheet)
+        application.setPalette(palette)
+        current = application.style().metaObject().className()
+    except RuntimeError:
+        return
+    if current == was:
+        return
+    for key in QStyleFactory.keys():
+        if QStyleFactory.create(key).metaObject().className() == was:
+            application.setStyle(key)
+            return
+
+
+def capture_application(application):
+    """The part of an application's appearance this suite has to hand back.
+
+    `was` is the style's CLASS NAME rather than the object, because the object does not survive
+    the theme it is replaced by.
+    """
+    return (application.palette(), application.styleSheet(),
+            application.style().metaObject().className())
+
+
 def pytest_configure(config: pytest.Config) -> None:
+    """Enable the fault handler, so a crash in a native call names the Python frame.
+
+    The crash it was added for, and what the handler did and did not answer, are recorded in
+    ``docs/research/RETRO_QT_SHUTDOWN_001.md``. The handler is stdlib and prints the frame
+    that was executing when a fatal signal arrives. It writes to the interpreter's own
+    stderr, which pytest's capture does not own, because the crash happens after the last
+    test when capture is being torn down itself.
+    """
+    faulthandler.enable(file=sys.__stderr__)
+
     """Make the temp root one ``tmp_path`` can actually live in.
 
     pytest derives its basetemp from ``tempfile.gettempdir()``, so redirecting
@@ -306,6 +385,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         _SKIPPED_TEST_REASONS[report.nodeid] = _skip_reason(report)
 
 
+@pytest.hookimpl(trylast=True)
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """Report what the session skipped, and fail it on a collapsed GUI module.
 
@@ -313,6 +393,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     which files were attempted, which contributed a test, why the rest stopped,
     and which tests reported a skip. See the module docstring for the
     CI/local/opt-in scope of the GUI guard and the scope of the census.
+
+    The hook runs LAST, and the status the exit path carries is read at the very end of it,
+    because the guard below raises the status and the exit path must carry what the guard
+    decided. Measured: reading it first carried 0 over a collapsed shipping surface, so a CI
+    job reported success while failing, which is the CQA-22 class.
     """
     collapsed = _collapsed_required_modules()
     collapsed += [entry for entry in _collapsed_gui_modules() if entry not in collapsed]
@@ -325,6 +410,9 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             # a test failure, and the summary below says which one.
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     _report_skipped_tests(session.config)
+    global _SESSION_EXIT_STATUS
+    _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
+                               else exitstatus)
 
 
 def _is_test_file(path: Path | str) -> bool:
@@ -472,6 +560,51 @@ def _required_gui_surface_is_enforced() -> bool:
     if os.environ.get(_REQUIRE_GUI_TESTS_VARIABLE) == "1":
         return True
     return any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES)
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """In CI, or under the local full-CI record gate, leave before CPython tears the loaded
+    Qt extensions down.
+
+    The crash this path exists for, the pipelines that carry it and the instrument that can
+    name it are recorded in ``docs/research/RETRO_QT_SHUTDOWN_001.md``: one definition of
+    that fact rather than a second telling here.
+
+    This is a mitigation, not a fix. It runs under CI, and under a run whose result is read
+    from a machine-readable report - the local record gate passes ``--junitxml`` and cannot
+    set ``CI``, because that gate is master's reviewed script and runs the suite as an
+    ordinary local process. Measured 2026-10-13: the record gate's own suite step for this
+    ticket reported exit 0 while its captured stderr carried ``Fatal Python error: Aborted``,
+    so that record could not be called crash-free; the two crash-free runs on this line are
+    the CI ones, where this path already ran. A local run keeps the interpreter's own exit
+    path. ``os._exit`` is deliberate where ``sys.exit`` would not do: the point is to skip the
+    finalizers. Streams are flushed first, because ``os._exit`` does not flush them.
+    ``WEBFOOT_KEEP_INTERPRETER_EXIT=1`` keeps the ordinary exit so the crash can still be
+    observed from CI by whoever works on it.
+    """
+    if os.environ.get("WEBFOOT_KEEP_INTERPRETER_EXIT") == "1":
+        return
+    if not _run_result_is_recorded(config):
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(_SESSION_EXIT_STATUS)
+
+
+def _run_result_is_recorded(config: pytest.Config) -> bool:
+    """Whether this run is CI or one whose result is read from a machine-readable report.
+
+    CI is the environment. The local full-CI record gate is the report: it runs
+    ``scripts/local-ci.ps1``, which passes ``--junitxml`` and sets no CI variable. A local
+    developer run passes neither. The report option is read defensively because a caller may
+    hand this hook a stub config, which is how the exit-path cases drive it, and it is read
+    under its destination name - ``xmlpath`` - because that is the attribute pytest actually
+    sets; see :data:`_RECORDED_REPORT_OPTION`.
+    """
+    if any(os.environ.get(name) for name in _CI_ENVIRONMENT_VARIABLES):
+        return True
+    option = getattr(config, "option", None)
+    return bool(getattr(option, _RECORDED_REPORT_OPTION, None))
 
 
 def _collapsed_required_modules() -> list[tuple[str, str]]:

@@ -205,7 +205,7 @@ def _run_record(path: Path, sha256: str, roots: list[Path]) -> Provenance | None
             if not manifest.is_file():
                 continue
             try:
-                document = json.loads(manifest.read_text(encoding="utf-8"))
+                document = json.loads(manifest.read_bytes().decode("utf-8-sig"))
             except (OSError, ValueError):
                 continue
             if not isinstance(document, dict):
@@ -549,7 +549,10 @@ def record_run(store_home: Path | None, run_dir: Path, tool: str, label: str | N
     if not manifest.is_file():
         raise CatalogueError(f"no run manifest at {manifest}")
     try:
-        document = json.loads(manifest.read_text(encoding="utf-8"))
+        # utf-8-sig because the launchers write this file with PowerShell's
+        # `Set-Content -Encoding utf8`, which emits a byte-order mark on this
+        # machine and would otherwise refuse every real run manifest.
+        document = json.loads(manifest.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError) as error:
         raise CatalogueError(f"cannot read {manifest}: {error}") from error
     if not isinstance(document, dict):

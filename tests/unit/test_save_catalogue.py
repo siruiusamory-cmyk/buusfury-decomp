@@ -479,6 +479,19 @@ def test_which_rom_says_unknown_when_no_run_names_the_state(store_home: Path, tm
     assert "verified savestate header" in document["why"]
 
 
+def test_a_manifest_with_a_byte_order_mark_is_read(store_home: Path, tmp_path: Path,
+                                                   monkeypatch, capsys):
+    """PowerShell writes this file with a BOM, so the reader has to accept one."""
+    monkeypatch.setenv("LOG1_SAVE_CATALOGUE_HOME", str(store_home))
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "inputs.json").write_bytes(
+        b"\xef\xbb\xbf" + json.dumps({"label": "label-bom", "state_sha256": "C" * 64}).encode())
+
+    assert cli.main(["record-run", "--run-dir", str(run), "--tool", "t", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["label"] == "label-bom"
+
+
 def test_record_run_makes_which_rom_answer(store_home: Path, tmp_path: Path, monkeypatch, capsys):
     monkeypatch.setenv("LOG1_SAVE_CATALOGUE_HOME", str(store_home))
     run = tmp_path / "run"

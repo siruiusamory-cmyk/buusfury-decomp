@@ -1917,6 +1917,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="directory to write PNGs into")
     parser.add_argument("--probe", action="store_true", help="print real map facts")
     parser.add_argument(
+        "--rom",
+        type=Path,
+        help=(
+            "canonical image to drive, when it is not at roms/ in this checkout; "
+            "the same override DBZ_QA_ROM gives, without a junction in the worktree"
+        ),
+    )
+    parser.add_argument(
         "--list", action="store_true", help="list the numbered capture states"
     )
     parser.add_argument(
@@ -1924,6 +1932,14 @@ def main(argv: list[str] | None = None) -> int:
         help="comma/range list of state numbers to capture (e.g. 20,21 or 1-6)",
     )
     args = parser.parse_args(argv)
+    if args.rom:
+        if not args.rom.is_file():
+            parser.error(f"--rom names no file: {args.rom}")
+        # The module-level default resolves against THIS checkout, which a ticket
+        # worktree has no `roms/` for: without this, running one probe cost a
+        # junction plus fifteen copied atlas files (log1-lead retro N1).
+        global ROM
+        ROM = args.rom
     if args.list:
         for number, name in STATES:
             print(f"{number:>3}  {name}")

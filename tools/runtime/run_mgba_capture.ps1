@@ -9,7 +9,9 @@ breakpoint and issue the first continue. Generated output stays under build/.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    # Optional since RE Lab N1: a boot-time scene has no savestate to start from, and
+    # a launcher that refuses to run without one makes that whole class unreachable.
+    # Everything that reads the state below is guarded by its presence.
     [string]$StatePath,
     [UInt32]$Breakpoint = 0,
     [string[]]$AdditionalBreakpoint = @(),
@@ -49,15 +51,28 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+# The tree the caller is standing in. A probe named relative to it must resolve
+# there, not in the launcher's own tree: RE Lab lost two runs to a probe that was
+# allowlisted in one worktree while the launcher read the allowlist of another, and
+# the log stayed empty with nothing saying why (N1, measured).
+$invokingRoot = (Get-Location).Path
 $buildRoot = Join-Path $root 'build\runtime-captures'
 $expectedRomSize = 8388608
 $expectedRomSha256 = '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'
 
-function Resolve-RequiredFile([string]$Path, [string]$Label) {
-    $candidate = if ([System.IO.Path]::IsPathRooted($Path)) {
-        $Path
+function Resolve-RequiredFile([string]$Path, [string]$Label, [string[]]$SearchRoots = @()) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        $candidate = $Path
     } else {
-        Join-Path $root $Path
+        $roots = @($SearchRoots) + @($root)
+        $candidate = $null
+        foreach ($search in $roots) {
+            # An empty entry would make this the launcher's tree, which is the trap.
+            if (-not $search) { continue }
+            $probe = Join-Path $search $Path
+            if (Test-Path -LiteralPath $probe -PathType Leaf) { $candidate = $probe; break }
+        }
+        if (-not $candidate) { $candidate = Join-Path $root $Path }
     }
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
         throw "$Label is missing: $candidate"
@@ -77,7 +92,7 @@ function Test-GdbPortInUse {
 }
 
 $resolvedRom = Resolve-RequiredFile $RomPath 'ROM'
-$resolvedState = Resolve-RequiredFile $StatePath 'savestate'
+$resolvedState = if ($StatePath) { Resolve-RequiredFile $StatePath 'savestate' } else { $null }
 $resolvedMGB = Resolve-RequiredFile $MGBPath 'mGBA executable'
 
 # Fail closed on emulator identity. The stable 0.10.5 install at
@@ -103,7 +118,7 @@ if ($mgbHash -ne $MGBSha256.Trim().ToUpperInvariant()) {
         "found $mgbHash at $resolvedMGB. Pass -MGBSha256 to override deliberately.")
 }
 
-$resolvedLua = if ($LuaPath) { Resolve-RequiredFile $LuaPath 'Lua script' } else { $null }
+$resolvedLua = if ($LuaPath) { Resolve-RequiredFile $LuaPath 'Lua script' @($invokingRoot) } else { $null }
 if ($LuaStartup -and -not $resolvedLua) { throw 'LuaStartup requires LuaPath' }
 $python = Resolve-RequiredFile (Join-Path $root '.venv\Scripts\python.exe') 'project Python'
 if ($StackLength % 4 -ne 0) { throw 'StackLength must be a 4-byte multiple' }
@@ -161,8 +176,8 @@ if ($GeneratedRomSha256) {
 } elseif ($romInfo.Length -ne $expectedRomSize -or $romHashBefore -ne $expectedRomSha256) {
     throw 'Canonical ROM identity mismatch; capture refused before launch'
 }
-$stateInfo = Get-Item -LiteralPath $resolvedState
-$stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
+$stateInfo = if ($resolvedState) { Get-Item -LiteralPath $resolvedState } else { $null }
+$stateHash = if ($resolvedState) { (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash } else { $null }
 
 # The owner's dashboard input bridge, outside this repository and named only by an environment variable,
 # so no machine path is tracked here. OWNER AUTHORISATION (2026-10-11): every run that can load it does,
@@ -214,7 +229,7 @@ $identity = [ordered]@{
     rom_sha256 = $romHashBefore
     rom_mode = $romMode
     state_path = $resolvedState
-    state_size = $stateInfo.Length
+    state_size = if ($stateInfo) { $stateInfo.Length } else { $null }
     state_sha256 = $stateHash
     breakpoint = ('0x{0:X8}' -f $Breakpoint)
     additional_breakpoints = @($parsedAdditionalBreakpoints | ForEach-Object { '0x{0:X8}' -f $_ })
@@ -226,12 +241,39 @@ $identity = [ordered]@{
     extra_script_note = $extraScriptNote
 }
 
+# Every resolved path, in one block, before anything is launched: an empty log is
+# then never ambiguous about WHICH tree the probe and the allowlist came from, which
+# is how a run whose probe was allowlisted in another worktree read as silence.
+Write-Output 'resolved inputs:'
+Write-Output "  invoking worktree  : $invokingRoot"
+Write-Output "  launcher worktree  : $root"
+Write-Output "  rom                : $resolvedRom ($romMode)"
+Write-Output "  mGBA               : $resolvedMGB"
+Write-Output "  python             : $python"
+if ($resolvedState) {
+    Write-Output "  savestate          : $resolvedState"
+} else {
+    Write-Output '  savestate          : (none: launching without a state load)'
+}
+if ($resolvedLua) {
+    Write-Output "  lua observer       : $resolvedLua"
+    Write-Output "  allowlist read from: $root (tools\runtime)"
+}
+
 if ($DryRun) {
     $identity | ConvertTo-Json -Depth 3
     exit 0
 }
 if (Test-GdbPortInUse) {
     throw 'TCP port 2345 is already in use; refusing to interfere with another GDB owner'
+}
+# RE Lab M4: a leftover mGBA gives no clear error, the run simply produces nothing.
+# The same check start_toolkit031_session.ps1 already makes, said before any launch.
+$running = @(Get-Process -Name 'mGBA' -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    throw ("An mGBA process is already running (pid {0}); refusing to race it. " +
+        'Stop it first, or use the toolkit031 session scripts if that window is yours.' -f
+        ($running.Id -join ', '))
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -241,13 +283,21 @@ $saveDir = Join-Path $runDir 'save'
 $captureDir = Join-Path $runDir 'capture'
 $stopFile = Join-Path $runDir 'STOP-NOW.txt'
 New-Item -ItemType Directory -Path $saveDir -Force | Out-Null
-$workingState = Join-Path $runDir ('working-state' + $stateInfo.Extension)
-Copy-Item -LiteralPath $resolvedState -Destination $workingState
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $workingState).Hash -ne $stateHash) {
-    throw 'Working savestate copy identity mismatch'
+# The state copy and its verification are skipped, not faked, when no state was
+# named: there is nothing to copy, and the identity records that there was none.
+# It stays here, before the mGBA process check and before Start-Process, because
+# the launcher's own guard test pins that order.
+$workingState = $null
+if ($resolvedState) {
+    $workingState = Join-Path $runDir ('working-state' + $stateInfo.Extension)
+    Copy-Item -LiteralPath $resolvedState -Destination $workingState
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $workingState).Hash -ne $stateHash) {
+        throw 'Working savestate copy identity mismatch'
+    }
+    $identity['working_state_path'] = $workingState
 }
+
 $identity['run_id'] = $runId
-$identity['working_state_path'] = $workingState
 $identity | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDir 'inputs.json')
 
 $process = $null
@@ -279,9 +329,15 @@ try {
             ('local f=assert(io.open([[' + $readyPathForScript + ']], [[w]])); f:write([[ready]]); f:close()')
         Set-Content -LiteralPath $startupLua -Value $bootstrap -Encoding ascii
     }
-    $mgbaArgs = @(
-        '--gdb',
-        '--savestate', ('"' + $workingState + '"'),
+    # The savestate argument is present exactly when a state was named; the literal
+    # is written the way the launcher's own guard test pins it.
+    $mgbaArgs = @('--gdb')
+    if ($resolvedState) {
+        $mgbaArgs += @('--savestate', ('"' + $workingState + '"'))
+    } else {
+        Write-Output 'launching without a savestate: no -StatePath was given'
+    }
+    $mgbaArgs += @(
         '-C', ('savegamePath="' + $saveDir + '"'),
         '-C', 'mute=0'
     )
@@ -397,8 +453,8 @@ try {
     if ($romHashAfter -ne $romHashBefore) {
         throw 'Original ROM identity changed during capture'
     }
-    $stateHashAfter = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
-    if ($stateHashAfter -ne $stateHash) {
+    $stateHashAfter = if ($resolvedState) { (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash } else { $null }
+    if ($resolvedState -and $stateHashAfter -ne $stateHash) {
         throw 'Original savestate identity changed during capture'
     }
 }

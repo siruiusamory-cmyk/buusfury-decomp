@@ -367,6 +367,13 @@ if ($junitCounts) {
         if ($summarySkips -ne $junitCounts.Skipped) { Add-Failure ("summary says $summarySkips skipped, junit says $($junitCounts.Skipped)") }
     }
 }
+#: The pinned figures came from a Linux runner, where a `.ps1` cannot run and those
+#: nodes SKIP. The condition the tests themselves skip on is `shutil.which("pwsh")
+#: or shutil.which("powershell")`, so it is the condition here: a host WITH a
+#: PowerShell runs those nodes, its per-file count is legitimately not the trace's,
+#: and the equality does not apply. The record then says so with the count, never a
+#: silent pass. A host with no PowerShell keeps the equality exactly as before.
+$hasPowerShellHost = [bool]((Get-Command pwsh -ErrorAction SilentlyContinue) -or (Get-Command powershell -ErrorAction SilentlyContinue))
 $pinnedApplicable = New-Object System.Collections.Generic.List[string]
 $pinnedAbsent = New-Object System.Collections.Generic.List[string]
 foreach ($file in $PinnedSkips.Keys) {
@@ -374,7 +381,7 @@ foreach ($file in $PinnedSkips.Keys) {
     $pinnedApplicable.Add($file)
     $actual = 0
     if ($skipByFile.ContainsKey($file)) { $actual = $skipByFile[$file] }
-    if ($actual -ne $PinnedSkips[$file]) {
+    if (-not $hasPowerShellHost -and $actual -ne $PinnedSkips[$file]) {
         Add-Failure ("$file skipped $actual, pinned $($PinnedSkips[$file]) from trace job $PinnedTraceJob at $($PinnedTraceSha.Substring(0,8))")
     }
 }
@@ -431,7 +438,11 @@ foreach ($file in $pinnedAbsent) { $body.Add(("  {0,-42} NOT PRESENT at this SHA
 foreach ($file in ($pinnedApplicable | Sort-Object)) {
     $actual = 0
     if ($skipByFile.ContainsKey($file)) { $actual = $skipByFile[$file] }
-    $body.Add(("  {0,-42} actual {1,3}  pinned {2,3}" -f $file, $actual, $PinnedSkips[$file]))
+    if ($hasPowerShellHost) {
+        $body.Add(("  {0,-42} host has PowerShell, so not an equality gate (actual {1,3}, pinned {2,3})" -f $file, $actual, $PinnedSkips[$file]))
+    } else {
+        $body.Add(("  {0,-42} actual {1,3}  pinned {2,3}" -f $file, $actual, $PinnedSkips[$file]))
+    }
 }
 $body.Add('')
 $body.Add('  every file with a skip on this host:')

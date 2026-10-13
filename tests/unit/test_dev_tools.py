@@ -883,6 +883,10 @@ def probe_repo(tmp_path: Path) -> dict:
 #: `exit` was dropped.
 PARENT_STEP_CONDITION = r"if (($relative -split '[\\/]') -contains '..') {"
 CONTAINMENT_CONDITION = "if (-not $insideTarget) {"
+#: The test inside each `if`'s own parentheses, which is the text the locator compares:
+#: the statement constants above are what a mutation replaces, these are what must match.
+PARENT_STEP_TEST = r"($relative -split '[\\/]') -contains '..'"
+CONTAINMENT_TEST = "-not $insideTarget"
 COPY_CALL = "[System.IO.File]::Copy("
 
 
@@ -890,72 +894,138 @@ def _compact(text: str) -> str:
     return "".join(text.split())
 
 
-def _refuses_with_nonzero_exit(block: str) -> bool:
-    """A literal non-zero exit inside the block; `exit 0` is not a refusal."""
-    for index in range(len(block) - 4):
-        if block[index : index + 4] == "exit" and block[index + 4].isdigit():
-            if block[index + 4] != "0":
-                return True
-    return False
+def _mask(text: str, *, strings: bool) -> str:
+    """Blank `#` comments, and optionally quoted strings, in place.
 
-
-def _block_after(compact: str, condition: str) -> str | None:
-    """The brace-delimited block that follows a condition, or None when it is absent.
-
-    Brace depth, not the first closing brace: the containment refusal's own message
-    carries `{0,-8}` and `{1}` format braces, which balance and are not the block's.
+    Lengths and line breaks survive, so the two masks align index for index: the
+    condition is compared on the mask that KEEPS strings, because its own test is
+    quoted, and brace depth and statements are read on the mask that removes them.
+    A refusal that was commented out or wrapped in a string stops being a refusal.
     """
-    at = compact.find(condition)
-    if at < 0:
-        return None
-    open_at = compact.find("{", at)
-    if open_at < 0:
-        return None
+    out = list(text)
+    index = 0
+    quote = ""
+    while index < len(out):
+        char = out[index]
+        if quote:
+            if strings:
+                out[index] = " "
+            if char == quote:
+                if quote == "'" and index + 1 < len(out) and out[index + 1] == "'":
+                    if strings:
+                        out[index + 1] = " "
+                    index += 2
+                    continue
+                quote = ""
+            elif char == "`" and quote == '"':
+                if strings and index + 1 < len(out):
+                    out[index + 1] = " "
+                index += 2
+                continue
+            index += 1
+            continue
+        if char in ("'", '"'):
+            quote = char
+            if strings:
+                out[index] = " "
+        elif char == "#":
+            while index < len(out) and out[index] not in "\r\n":
+                out[index] = " "
+                index += 1
+            continue
+        index += 1
+    return "".join(out)
+
+
+def _matching(masked: str, open_at: int, opener: str, closer: str) -> int | None:
     depth = 0
-    for index in range(open_at, len(compact)):
-        if compact[index] == "{":
+    for index in range(open_at, len(masked)):
+        if masked[index] == opener:
             depth += 1
-        elif compact[index] == "}":
+        elif masked[index] == closer:
             depth -= 1
             if depth == 0:
-                return compact[open_at : index + 1]
+                return index
     return None
+
+
+def _condition_block(code: str, conditions: str, condition: str) -> tuple[int, str] | None:
+    """The first `if` whose condition compacts to `condition`, with its own block.
+
+    `code` has comments and strings blanked, so an `if` that only appears in either is
+    not a candidate; `conditions` keeps strings, because a condition may quote one.
+    """
+    at = 0
+    while True:
+        at = code.find("if", at)
+        if at < 0:
+            return None
+        if at > 0 and (code[at - 1].isalnum() or code[at - 1] in "_-$"):
+            at += 2
+            continue
+        open_at = code.find("(", at)
+        close_at = None if open_at < 0 else _matching(code, open_at, "(", ")")
+        if close_at is not None and _compact(conditions[open_at + 1 : close_at]) == condition:
+            brace_at = code.find("{", close_at)
+            brace_end = None if brace_at < 0 else _matching(code, brace_at, "{", "}")
+            if brace_end is not None:
+                return at, code[brace_at : brace_end + 1]
+        at += 2
+
+
+def _statements(block: str) -> list[str]:
+    """The block's statements, one per line or semicolon, braces and blanks dropped."""
+    statements: list[str] = []
+    for line in block.replace(";", "\n").splitlines():
+        statement = line.strip().strip("{}").strip()
+        if statement:
+            statements.append(statement)
+    return statements
+
+
+def _is_nonzero_exit(statement: str) -> bool:
+    """A whole `exit <non-zero>` statement; `exit 0` is not a refusal."""
+    text = statement.strip()
+    if text[:4].lower() != "exit":
+        return False
+    code = text[4:].strip()
+    return code.isdigit() and int(code) != 0
 
 
 def escape_refusal_problems(text: str) -> list[str]:
     """What the probe's escape refusals are missing, statement by statement.
 
-    The parent-step branch must be that condition and must exit non-zero; the
-    containment branch must be `-not $insideTarget` and must refuse with `continue` or
-    a non-zero exit; and both must sit ahead of the byte copy, which is the order the
-    contract rests on.
+    Everything is scanned on the masked script, so a refusal that was commented out or
+    wrapped in a string is not a refusal. The parent-step branch must be that condition
+    and must carry a whole `exit <non-zero>` statement in its own block; the containment
+    branch must be `-not $insideTarget` and must carry a whole `continue` statement or a
+    non-zero exit; and both must sit ahead of the byte copy.
     """
-    compact = _compact(text)
-    copy_at = compact.find(_compact(COPY_CALL))
+    code = _mask(text, strings=True)
+    conditions = _mask(text, strings=False)
+    copy_at = code.find(COPY_CALL)
     if copy_at < 0:
         return ["the probe has no byte copy to guard"]
     problems: list[str] = []
-    parent_condition = _compact(PARENT_STEP_CONDITION)
-    parent_block = _block_after(compact, parent_condition)
-    if parent_block is None:
-        problems.append("the parent-step refusal is not the condition it claims to be")
-    else:
-        if not _refuses_with_nonzero_exit(parent_block):
+    for label, condition, needs_continue in (
+        ("parent-step", _compact(PARENT_STEP_TEST), False),
+        ("containment", _compact(CONTAINMENT_TEST), True),
+    ):
+        located = _condition_block(code, conditions, condition)
+        if located is None:
+            problems.append(f"the {label} refusal is not the condition it claims to be")
+            continue
+        at, block = located
+        statements = _statements(block)
+        has_exit = any(_is_nonzero_exit(statement) for statement in statements)
+        has_continue = any(statement.lower() == "continue" for statement in statements)
+        if needs_continue:
+            if not (has_continue or has_exit):
+                problems.append("the containment refusal carries no continue")
+        elif not has_exit:
             problems.append("the parent-step refusal carries no non-zero exit")
-        if compact.find(parent_condition) > copy_at:
-            problems.append("the parent-step refusal comes after the byte copy")
-    containment_condition = _compact(CONTAINMENT_CONDITION)
-    containment_block = _block_after(compact, containment_condition)
-    if containment_block is None:
-        problems.append("the containment refusal is not the condition it claims to be")
-    else:
-        if not (
-            "continue" in containment_block
-            or _refuses_with_nonzero_exit(containment_block)
-        ):
-            problems.append("the containment refusal carries no continue or non-zero exit")
-        if compact.find(containment_condition) > copy_at:
-            problems.append("the containment refusal comes after the byte copy")
+        if at > copy_at:
+            problems.append(f"the {label} refusal comes after the byte copy")
     return problems
 
 
@@ -991,8 +1061,21 @@ def _drop_first_after(text: str, header: str, needle: str) -> str:
     return text[:start] + text[end:]
 
 
-#: The four neutralisations a substring guard passed on. Each is applied to an in-memory
-#: copy of the script, so the tracked file is never written.
+def _comment_first_after(text: str, header: str, needle: str) -> str:
+    at = text.index(needle, text.index(header))
+    start = text.rindex("\n", 0, at) + 1
+    return text[:start] + "# " + text[start:]
+
+
+def _replace_statement(text: str, header: str, needle: str, replacement: str) -> str:
+    at = text.index(needle, text.index(header))
+    start = text.rindex("\n", 0, at) + 1
+    end = text.index("\n", at) + 1
+    return text[:start] + text[start:at] + replacement + "\n" + text[end:]
+
+
+#: Every neutralisation this guard must report. Each is applied to an in-memory copy of
+#: the script, so the tracked file is never written.
 ESCAPE_MUTATIONS = {
     "the containment block deleted": lambda text: _drop_block(text, CONTAINMENT_CONDITION),
     "the parent-step exit dropped": lambda text: _drop_first_after(
@@ -1006,14 +1089,25 @@ ESCAPE_MUTATIONS = {
     "the containment condition neutralised": lambda text: text.replace(
         CONTAINMENT_CONDITION, "if ($false -and -not $insideTarget) {", 1
     ),
+    "the parent-step exit commented out": lambda text: _comment_first_after(
+        text, PARENT_STEP_CONDITION, "exit 2"
+    ),
+    "the containment continue commented out": lambda text: _comment_first_after(
+        text, CONTAINMENT_CONDITION, "continue"
+    ),
+    "the containment continue quoted": lambda text: _replace_statement(
+        text, CONTAINMENT_CONDITION, "continue", "Write-Host 'continue'"
+    ),
 }
 
 
-def test_the_escape_guard_reports_the_four_neutralisations():
-    """Every neutralisation the substring guard missed must be reported by name.
+def test_the_escape_guard_reports_every_neutralisation():
+    """Every neutralisation must be reported by name, including the masked ones.
 
-    The mutations run against in-memory copies, so the only restore this drive needs is
-    the assertion that the tracked file's own text is byte-identical afterwards.
+    A refusal that was commented out or moved into a string is not a refusal, so the
+    drive covers those beside the deleted and neutralised branches. The mutations run
+    against in-memory copies, so the only restore this drive needs is the assertion that
+    the tracked file's own text is byte-identical afterwards.
     """
     original = PROBE_WORKTREE.read_text(encoding="utf-8")
     assert escape_refusal_problems(original) == [], escape_refusal_problems(original)

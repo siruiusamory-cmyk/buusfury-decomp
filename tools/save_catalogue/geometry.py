@@ -81,9 +81,13 @@ class Geometry:
     slot_base: int
     slot_stride: int
     slot_count: int
+    #: Where the payload starts inside the slot's decoded frame. Zero for every title
+    #: whose integrity word follows the payload; Legacy of Goku's key word is the four
+    #: bytes at the START of the slot, so its payload begins four bytes in.
+    payload_offset: int
     payload_len: int
-    #: Buffer coordinates, relative to the slot, of the integrity word. The file
-    #: frame is the same word byte-reversed, four bytes later for Buu's Fury.
+    #: Offset, inside the slot's decoded frame, of the integrity word. The file frame
+    #: is the same word byte-reversed, four bytes later for Buu's Fury.
     checksum_offset: int | None
     checksum_kind: str
     #: Whether the integrity word actually covers payload bytes.
@@ -108,6 +112,7 @@ GEOMETRIES: dict[str, Geometry] = {
         slot_base=0x10,
         slot_stride=0x8B0,
         slot_count=3,
+        payload_offset=0,
         payload_len=0x8A8,
         checksum_offset=0x8A8,
         checksum_kind=ADLER32,
@@ -128,6 +133,7 @@ GEOMETRIES: dict[str, Geometry] = {
         slot_base=0x10,
         slot_stride=0x168,
         slot_count=3,
+        payload_offset=0,
         payload_len=0x164,
         checksum_offset=0x164,
         checksum_kind=ADLER32,
@@ -146,17 +152,21 @@ GEOMETRIES: dict[str, Geometry] = {
     LEGACY_OF_GOKU: Geometry(
         game=LEGACY_OF_GOKU,
         medium_size=512,
-        # Measured on the owner's 512-byte battery save (2026-10-12): the key word sits
-        # at image 0x08 and the whole image carries one x1..x168 run with the seed at
-        # image +0x0C, so the slot base is 0x08 and the second stride is erased.
+        # Measured on the owner's 512-byte battery save (2026-10-12). The slot's own
+        # decoded frame, i.e. the image from slot_base with every 8-byte block reversed,
+        # holds the key word 0xAAAAAAEB at offset 0x00 and the seed byte at offset 0x04.
+        # In image coordinates that is the key at image 0x08 and the seed at image 0x0C,
+        # which is what the two offsets below read: image 0x08 = slot_base 0x08 + 0x00,
+        # image 0x0C = slot_base 0x08 + 0x04.
         slot_base=0x08,
         slot_stride=0xAC,
         slot_count=2,
-        # The key's own span is 168 bytes from +0x0C, but the layout's arithmetic has to
-        # leave the key word at +0x08 out of the payload, so the payload is 0xA4 and the
-        # key's last four bytes overlap the word it is compared against.
+        payload_offset=0x04,
+        # The key's own span is 168 bytes from the seed, but the layout's arithmetic has
+        # to leave the key word out of the payload, so the payload is 0xA4 and the key's
+        # last four bytes overlap the word it is compared against.
         payload_len=0xA4,
-        checksum_offset=0x08,
+        checksum_offset=0x00,
         checksum_kind=ROLLING_XOR_KEY,
         integrity_covers_payload=False,
         empty_checksum_value=None,
@@ -165,11 +175,12 @@ GEOMETRIES: dict[str, Geometry] = {
                     " checksum",
         transform_scope="proven-by-file",
         evidence="measured: the owner's 512-byte save validates its key word under the per-8-byte"
-                 " block reversal and under no other order (slot base 0x08, key at +0x08, one"
-                 " x1..x168 run seeded by image +0x0C); the reversal is therefore proven for this"
-                 " title, and the store/load asymmetry (167 bytes stored, 168 loaded) is code-only;"
-                 " the key still reads no payload byte other than the seed, so it cannot detect"
-                 " corruption and a slot is never PASS",
+                 " block reversal and under no other order (image coordinates: slot base 0x08, key"
+                 " word at image 0x08 = slot+0x00, one x1..x168 run seeded by image 0x0C ="
+                 " slot+0x04); the reversal is therefore proven for this title, and the store/load"
+                 " asymmetry (167 bytes stored, 168 loaded) is code-only; the key still reads no"
+                 " payload byte other than the seed, so it cannot detect corruption and a slot is"
+                 " never PASS",
     ),
 }
 
@@ -278,10 +289,12 @@ def _slot_at(image: bytes, geometry: Geometry, index: int) -> Slot:
     """One slot, read from the file at its own offset.
 
     The slot's bytes are de-swizzled on their own, and only where the layout's
-    ``transform_scope`` claims the reversal, so every offset below is a slot
-    offset and no image-level offset arithmetic can move them. Legacy of Goku's
-    scope is unknown, so its bytes are read as they lie and its occupancy bit is
-    unverified.
+    ``transform_scope`` claims the reversal, so every offset below is an offset
+    INTO THE SLOT and no image-level coordinate can move it: the slot starts at
+    ``slot_base``, the payload at ``payload_offset``, and the integrity word at
+    ``checksum_offset``. For Buu's Fury and Legacy of Goku II the payload starts at
+    the slot's first byte and the word follows it; for Legacy of Goku the word is
+    the slot's first four bytes and the payload starts four bytes in.
     """
     start = geometry.slot_base + index * geometry.slot_stride
     block = image[start:start + geometry.slot_stride]
@@ -289,7 +302,7 @@ def _slot_at(image: bytes, geometry: Geometry, index: int) -> Slot:
         return Slot(index, False, False, max(len(block) - (geometry.checksum_offset or 0), 0),
                     UNKNOWN, None, None, geometry.checksum_kind, False, geometry.transform_scope)
     buffer_frame = deswizzle(block) if geometry.transform_scope != UNKNOWN_TRANSFORM else block
-    payload = buffer_frame[:geometry.payload_len]
+    payload = buffer_frame[geometry.payload_offset:geometry.payload_offset + geometry.payload_len]
     erased = payload == b"\xff" * geometry.payload_len
     occupancy = bool(payload[1] & 0x01) if len(payload) > 1 else False
     stored = None

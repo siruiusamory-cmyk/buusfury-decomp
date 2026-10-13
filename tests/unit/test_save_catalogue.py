@@ -708,52 +708,83 @@ def test_the_entry_and_upsert_branch_is_contained(store_home: Path, tmp_path: Pa
     assert "simulated store failure" in report.problems[0]["error"]
 
 
-def make_log1_save() -> bytes:
-    """A 512-byte Legacy of Goku I image with slot 0's key word valid, medium order.
+IMAGE_KEY = 0x08
+IMAGE_SEED = 0x0C
+IMAGE_SENTINEL = 0x10
+ORACLE_SEED = 0xAA
+KEY_SPAN = 168
+#: Slot's own start in the image. The measured key word is the four bytes at image 0x08
+#: and the seed is image 0x0C, so both are expressed here as LOG1_BASE + a decoded offset.
+#: Named apart from SLOT_BASE, which is Buu's own slot origin.
+LOG1_BASE = IMAGE_KEY
 
-    The owner's save of 2026-10-12 fixed the layout: slot base 0x08, one x1..x168 run
-    seeded by image +0x0C, and the per-8-byte block reversal. Nothing here is a copy of
-    that file: the payload is synthetic.
+
+def oracle_key(seed: int) -> int:
+    """The key the rule must produce, computed here and nowhere production can reach it."""
+    value = 0
+    key = 0
+    for _ in range(KEY_SPAN):
+        value = ((value << 3) | (value >> 29)) & 0xFFFFFFFF
+        value = (value + seed + 1) & 0xFFFFFFFF
+        key ^= value
+    return key
+
+
+def make_log1_save() -> bytes:
+    """A 512-byte Legacy of Goku I image built at FIXED IMAGE coordinates.
+
+    Independent of the production layout: the key word is the four bytes at image
+    0x08, the seed is image 0x0C, a sentinel sits at image 0x10 so a moved payload
+    slice would show up, and the 8-byte blocks are reversed with this file's own loop.
+    The key expected is oracle_key(), never the production function. The payload is
+    synthetic; nothing here is a copy of the owner's file.
     """
-    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
     frame = bytearray(b"\xff" * 0xAC)
-    frame[0x0C] = 0xAA
-    struct.pack_into("<I", frame, 0x08, geometry.rolling_xor_key(bytes(frame[0x0C:0x0C + 168])))
-    placed = swizzle(bytes(frame))
+    frame[IMAGE_SEED - LOG1_BASE] = ORACLE_SEED
+    frame[IMAGE_SENTINEL - LOG1_BASE] = 0x11
+    struct.pack_into("<I", frame, IMAGE_KEY - LOG1_BASE, oracle_key(ORACLE_SEED))
+    reversed_frame = b"".join(frame[i:i + 8][::-1] for i in range(0, len(frame) - len(frame) % 8, 8))
     image = bytearray(b"\xff" * 512)
-    image[layout.slot_base:layout.slot_base + len(placed)] = placed
+    image[LOG1_BASE:LOG1_BASE + len(reversed_frame)] = reversed_frame
     return bytes(image)
 
 
 def test_a_legacy_of_goku_save_validates_its_key_word_and_never_passes():
-    """The owner's layout, synthetically rebuilt: the key matches, the verdict stays UNKNOWN."""
+    """Fixed-coordinate fixture: the RETURNED facts must equal the independent oracle."""
     image = make_log1_save()
     layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
-    slots = geometry.slots(image, geometry.LEGACY_OF_GOKU)
-    frame = geometry.deswizzle(image[layout.slot_base:layout.slot_base + layout.slot_stride])
+    slot = geometry.slots(image, geometry.LEGACY_OF_GOKU)[0]
+    expected = oracle_key(ORACLE_SEED)
 
-    assert layout.slot_base == 0x08
+    assert layout.slot_base == LOG1_BASE
+    assert layout.checksum_offset == IMAGE_KEY - LOG1_BASE
+    assert layout.payload_offset == IMAGE_SEED - LOG1_BASE
     assert layout.payload_len == 0xA4
     assert layout.transform_scope == "proven-by-file"
-    # The key rule holds over its own 168-byte span, which is the measurement the owner's
-    # file gave; the layout's 164-byte payload is a different slice and is not that rule.
-    assert struct.unpack_from("<I", frame, 0x08)[0] == geometry.rolling_xor_key(frame[0x0C:0x0C + 168])
-    assert slots[0].checksum_ok == "UNKNOWN"
+    assert slot.checksum_stored == expected
+    assert slot.checksum_computed == expected
     # The key cannot detect corruption, so a matching key is still never a PASS.
-    assert slots[0].checksum_ok == "UNKNOWN"
-    assert slots[0].transform_scope == "proven-by-file"
-    # The second slot is beyond the medium under this stride and reports no key.
-    assert slots[1].checksum_ok == "UNKNOWN"
+    assert slot.checksum_ok == "UNKNOWN"
+    assert slot.transform_scope == "proven-by-file"
+    # Slot 1's whole span (0xB4..0x160) is inside the 512-byte image, so a key word is
+    # read there too; those bytes are erased in the fixture, so it is never a PASS.
+    assert LOG1_BASE + 2 * layout.slot_stride <= 512
+    assert geometry.slots(image, geometry.LEGACY_OF_GOKU)[1].checksum_ok == "UNKNOWN"
 
 
 def test_a_raw_order_legacy_of_goku_key_does_not_match():
-    """The reversal is doing work: the same image read raw order fails the key rule."""
+    """The reversal is doing work: raw order cannot reproduce the key the image holds."""
     image = make_log1_save()
     layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
-    raw = image[layout.slot_base:layout.slot_base + layout.slot_stride]
-    stored = struct.unpack_from("<I", raw, 0x08)[0]
+    decoded = geometry.deswizzle(image[LOG1_BASE:LOG1_BASE + layout.slot_stride])
+    # In raw order the key word's bytes are reversed, so the word at image 0x08 is not
+    # the oracle and the rule over raw-order bytes does not produce the stored word.
+    raw_word = struct.unpack_from("<I", image, IMAGE_KEY)[0]
+    raw_payload = image[IMAGE_SEED:IMAGE_SEED + KEY_SPAN]
 
-    assert geometry.rolling_xor_key(raw[0x0C:0x14]) != stored
+    assert struct.unpack_from("<I", decoded, layout.checksum_offset)[0] == oracle_key(ORACLE_SEED)
+    assert raw_word != oracle_key(ORACLE_SEED)
+    assert geometry.rolling_xor_key(raw_payload) != raw_word
 
 
 def test_a_battery_sized_file_with_a_state_extension_is_not_a_battery():

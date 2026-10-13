@@ -496,22 +496,124 @@ def test_a_save_newer_than_or_equal_to_the_rom_beside_it_is_the_owner(tmp_path: 
     assert walk.utc_of(now - 300) in equal.evidence
 
 
-def test_the_header_check_reads_image_offset_zero_by_the_proven_rule():
-    """A check that cannot fire is not evidence, so it is given a positive control (B4)."""
-    payload = b"\x01\x02\x03\x04"
-    stamp = (zlib.adler32(payload) + geometry.HEADER_WORD) & 0xFFFFFFFF
-    carrying = payload + struct.pack("<I", stamp) + bytes(8192 - 8)
+def test_the_header_check_reads_the_medium_frame_and_can_report_a_header_present():
+    """A check that cannot fire is not evidence, so it is given a positive control (B4).
 
-    assert geometry.header_written(carrying, geometry.geometry_for(geometry.BUUS_FURY)) is True
-    assert geometry.header_written(b"\x01\x02\x03\x04" + b"\x00" * 8188,
-                                   geometry.geometry_for(geometry.BUUS_FURY)) is False
-    # The old bug's read, as a negative: the checksum word of a valid slot is not
-    # a header stamp, so a save that passes its slot checksum still reports False.
-    assert struct.unpack_from("<I", make_save(), 0)[0] != stamp
+    The control is built the way a file holds it: the header block in buffer order,
+    then byte-reversed as the medium stores every 8-byte block. A control written in
+    buffer order is a frame no file holds and would prove nothing about files.
+    """
+    buffer_frame = b"\x01\x02\x03\x04" + struct.pack(
+        "<I", (zlib.adler32(b"\x01\x02\x03\x04") + geometry.HEADER_WORD) & 0xFFFFFFFF)
+    carrying = bytearray(b"\xff" * 8192)
+    carrying[0:8] = geometry.deswizzle(buffer_frame)
+    carrying = bytes(carrying)
+    wrong_stamp = bytearray(carrying)
+    wrong_stamp[7] ^= 0x01
+    layout = geometry.geometry_for(geometry.BUUS_FURY)
+
+    assert geometry.header_written(carrying, layout) is True
+    assert geometry.header_written(bytes(wrong_stamp), layout) is False
+    assert geometry.header_written(b"\xff" * 8192, layout) is False
+    # The discrimination row: the defect was reading the raw file frame, and on this
+    # image that read sees the stamp reversed, so it cannot fire.
+    raw = struct.unpack_from("<I", carrying, 4)[0]
+    assert raw != (zlib.adler32(carrying[0:4]) + geometry.HEADER_WORD) & 0xFFFFFFFF
+    # A save whose header block is erased reports False in either frame.
     assert geometry.slots(make_save(), geometry.BUUS_FURY)[0].header_written is False
     # No proven header rule means nothing is claimed, never a yes.
     assert geometry.header_written(carrying, geometry.geometry_for(geometry.LEGACY_OF_GOKU_II)) is False
     assert geometry.header_written(carrying, geometry.geometry_for(geometry.LEGACY_OF_GOKU)) is False
+
+
+def test_a_permission_denied_candidate_is_named_in_the_report(store_home: Path, tmp_path: Path,
+                                                              monkeypatch):
+    """A file the process may not touch is recorded, not lost (B1's containment)."""
+    root = tmp_path / "build"
+    root.mkdir()
+    (root / "a - Buu's Fury (U).sav").write_bytes(make_save(b"\x0a\x0b" + bytes(PAYLOAD_LEN - 2)))
+    denied = root / "b - Buu's Fury (U).sav"
+    denied.write_bytes(make_save(b"\x0c\x0b" + bytes(PAYLOAD_LEN - 2)))
+    real_stat, real_open = Path.stat, Path.open
+
+    def refuse_stat(self, *arguments, **keywords):
+        if self.name == denied.name:
+            raise PermissionError("[WinError 5] Access is denied")
+        return real_stat(self, *arguments, **keywords)
+
+    def refuse_open(self, *arguments, **keywords):
+        if self.name == denied.name:
+            raise PermissionError("[WinError 5] Access is denied")
+        return real_open(self, *arguments, **keywords)
+
+    monkeypatch.setattr(Path, "stat", refuse_stat)
+    monkeypatch.setattr(Path, "open", refuse_open)
+
+    report = walk.scan(store_home, [root])
+
+    assert report.new == 1
+    assert [row["path"] for row in report.problems] == [str(denied)]
+    assert "denied" in report.problems[0]["error"]
+    with Store(store_home).connect() as connection:
+        assert len(Store(store_home).find(connection)) == 1
+
+
+def test_a_path_that_vanishes_mid_walk_is_named_in_the_report(store_home: Path, tmp_path: Path,
+                                                              monkeypatch):
+    """A candidate deleted after it was listed is recorded, not lost (B1's containment)."""
+    root = tmp_path / "build"
+    root.mkdir()
+    (root / "a - Buu's Fury (U).sav").write_bytes(make_save(b"\x0a\x0b" + bytes(PAYLOAD_LEN - 2)))
+    vanishing = root / "b - Buu's Fury (U).sav"
+    vanishing.write_bytes(make_save(b"\x0c\x0b" + bytes(PAYLOAD_LEN - 2)))
+    real_index_one = walk._index_one
+
+    def vanish_first(*arguments, **keywords):
+        target = arguments[2]
+        if target.name == vanishing.name and target.exists():
+            target.unlink()
+        return real_index_one(*arguments, **keywords)
+
+    monkeypatch.setattr(walk, "_index_one", vanish_first)
+
+    report = walk.scan(store_home, [root])
+
+    assert report.new == 1
+    assert [row["path"] for row in report.problems] == [str(vanishing)]
+    with Store(store_home).connect() as connection:
+        assert len(Store(store_home).find(connection)) == 1
+
+
+def test_the_bounded_read_caps_a_file_at_the_largest_medium(tmp_path: Path):
+    """The cap is the largest medium claimed, and it truncates rather than loading."""
+    huge = tmp_path / "mis-named.sav"
+    huge.write_bytes(b"\x00" * (1 << 20))
+
+    assert walk.MAX_MEDIUM_SIZE == max(list(sniff.BATTERY_SIZES) + [8192])
+    assert len(walk._bounded_image(huge)) == walk.MAX_MEDIUM_SIZE
+    # A file exactly at the cap is whole, so the cap cannot lose a real medium.
+    boundary = tmp_path / "boundary.sav"
+    boundary.write_bytes(make_save() + b"\xff" * (walk.MAX_MEDIUM_SIZE - 8192))
+    assert len(walk._bounded_image(boundary)) == 32768
+    assert walk._bounded_image(boundary)[:8192] == make_save()
+
+
+def test_the_8192_and_32768_byte_boundary_files_are_classed_by_size_not_truncation(
+        store_home: Path, tmp_path: Path):
+    """A save at either claimed medium size is sniffed by its real size, whole."""
+    root = tmp_path / "build"
+    root.mkdir()
+    (root / "1 - Buu's Fury (U).sav").write_bytes(make_save())
+    (root / "sram.srm").write_bytes(b"\xff" * 32768)
+
+    walk.scan(store_home, [root])
+
+    with Store(store_home).connect() as connection:
+        entries = {entry.size: entry for entry in Store(store_home).find(connection)}
+    assert sorted(entries) == [8192, 32768]
+    assert entries[8192].kind == sniff.battery
+    assert entries[32768].kind == sniff.battery
+    assert entries[8192].game == geometry.BUUS_FURY
 
 
 def test_legacy_of_goku_bytes_are_not_de_swizzled():

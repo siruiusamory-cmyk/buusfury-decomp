@@ -125,11 +125,14 @@ the mtime rule refuses it and the reason is recorded.
 
 Not yet claimed, and recorded as such: which slot offset names the map the player
 stands on, and any decoded field. The 8-byte settings header (`checksum(first 4)`
-plus the word `0x12345678`) is read at image offset 0 by the rule the game's own
-write path uses, and is absent from every file held, including the save the game
-itself wrote, because it is written only on a settings change; the check that says
-so can report it present, and a synthetic image carrying a valid header does. No
-entry claims `header_written` today.
+plus the word `0x12345678`) is read at image offset 0 in the medium's frame: the
+header block is de-swizzled before the rule is applied, because the medium stores
+every 8-byte block byte-reversed. The check agrees with `validate_rev8.py`'s own
+implementation on all 1,026 held 8,192-byte battery sources (34 distinct digests)
+with no disagreement, and it reports a written header on 354 sources over 9
+distinct digests, with payloads `04040500`, `06060300` and `08000000`. The erased
+block (`FF`/`00`) is not a written header, and an entry's `header_written` is a
+reading of the file, never a claim about what the game intended.
 
 ## Safety
 

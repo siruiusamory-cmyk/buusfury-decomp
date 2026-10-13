@@ -38,10 +38,15 @@ bytes and is unverified.
 The settings header is separate from the slot checksum and is read from its own
 place. For Buu's Fury the code writes an 8-byte header at **image offset 0**
 (``0x08006B88`` passes offset 0, ``0x08006B7E`` length 8): four payload bytes,
-then the little-endian u32 ``checksum(first 4) + 0x12345678``. It is rewritten only
-when the settings value changes, so it is absent from every file held, and the
-check that says so is the same one that can report it present. A title whose
-header is a hypothesis gets no check at all rather than a check that cannot fire.
+then the little-endian u32 ``checksum(first 4) + 0x12345678``. The file frame is
+not the frame that rule is written in: the medium stores every 8-byte block
+byte-reversed, so the header block is de-swizzled before the rule is applied,
+exactly as ``validate_rev8.py`` does. Reading the raw block is a check that cannot
+see a header a real file holds. The two implementations agree on all 1,026 held
+8,192-byte battery sources (34 distinct digests) with no disagreement, and 354
+sources over 9 distinct digests do carry a written header, with payloads of
+``04040500``, ``06060300`` and ``08000000``. A title whose header is a hypothesis
+gets no check at all rather than a check that cannot fire.
 """
 
 from __future__ import annotations
@@ -111,9 +116,10 @@ GEOMETRIES: dict[str, Geometry] = {
         integrity_covers_payload=True,
         empty_checksum_value=None,
         header_offset=0,
-        header_rule="8-byte header at image offset 0: four payload bytes, then the little-endian"
-                    " u32 checksum(first 4) + 0x12345678 (write 0x08006B5E/0x08006B88, read"
-                    " 0x08006AF0..0x08006B0C); written only on a settings change",
+        header_rule="8-byte header at image offset 0, de-swizzled before the rule is applied: four"
+                    " payload bytes, then the little-endian u32 checksum(first 4) + 0x12345678"
+                    " (write 0x08006B5E/0x08006B88, read 0x08006AF0..0x08006B0C); written only on a"
+                    " settings change",
         transform_scope="buus_fury_only",
         evidence="measured: slot 0 verified against four real saves; the 8-byte-block reversal and"
                  " the offset pair (buffer 0x8A8, file 0x8AC) are both verified",
@@ -250,9 +256,9 @@ class Slot:
     checksum_computed: int | None
     integrity_field_kind: str
     #: Whether the settings header sits at image offset 0 where the layout's own
-    #: rule says it would. Measured with :func:`header_written`, so it is a check
-    #: that can fire, not a sentence: absent from every file held, including the
-    #: save the game itself wrote, because it is written only on a settings change.
+    #: rule says it would, in the medium's frame. Measured with
+    #: :func:`header_written`, so it is a check that can fire: on the held corpus
+    #: it reports a written header on 354 sources over 9 distinct digests.
     header_written: bool
     transform_scope: str
 
@@ -311,14 +317,20 @@ def header_written(image: bytes, geometry: Geometry) -> bool:
 
     The rule is the game's own, from the code that writes it: four payload bytes,
     then the little-endian u32 ``checksum(first 4) + 0x12345678`` at image offset
-    4. A title with no proven header rule gets False, never a guess, and a short
-    image is not a header either.
+    4. The medium stores every 8-byte block byte-reversed, so the header block is
+    de-swizzled first where the layout's ``transform_scope`` claims the reversal;
+    reading it in the raw file frame is a check that cannot see a real header. A
+    title with no proven header rule gets False, never a guess, and a short image
+    is not a header either.
     """
     offset = geometry.header_offset
     if offset is None or offset + 8 > len(image):
         return False
-    stored = struct.unpack_from("<I", image, offset + 4)[0]
-    return stored == (checksum(image[offset:offset + 4]) + HEADER_WORD) & 0xFFFFFFFF
+    block = image[offset:offset + 8]
+    if geometry.transform_scope != UNKNOWN_TRANSFORM:
+        block = deswizzle(block)
+    stored = struct.unpack_from("<I", block, 4)[0]
+    return stored == (checksum(block[:4]) + HEADER_WORD) & 0xFFFFFFFF
 
 
 def slots(image: bytes, game: str) -> list[Slot]:

@@ -39,6 +39,11 @@ from .store import CatalogueError, Entry, Source, Store, sha256_of, utc_now
 BATTERY_SUFFIXES = (".sav", ".srm")
 STATE_SUFFIX_PREFIX = ".ss"
 
+#: The largest medium the geometry table claims, and the cap on any read of a
+#: file that is not one: a mis-named 500 MB `.sav` is truncated, not loaded.
+MAX_MEDIUM_SIZE = max([row.medium_size for row in geometry.GEOMETRIES.values()]
+                      + list(sniff.BATTERY_SIZES))
+
 #: Directories never descended into: version control, virtual environments and
 #: package caches hold unrelated `.sav`-shaped files and are not the corpus.
 SKIP_DIRECTORIES = frozenset(
@@ -450,6 +455,16 @@ def _entry_for(index: Store, connection, path: Path, digest: str,
     )
 
 
+def _bounded_image(path: Path) -> bytes:
+    """The bytes a geometry check reads: a mis-named oversized file is truncated.
+
+    A `.sav` whose size no geometry claims is not a medium this table knows, so
+    nothing is gained by pulling a huge file into memory to say so.
+    """
+    with path.open("rb") as handle:
+        return handle.read(MAX_MEDIUM_SIZE)
+
+
 def game_by_name(name: str) -> str | None:
     """The title a filename names, from the same strings the emulator records.
 
@@ -491,7 +506,7 @@ def _game_and_slots(path: Path, size: int, kind, remembered: str = "",
         if game is None:
             # Two titles can share a medium size, so ask the bytes: the layout
             # whose slot 0 validates is the one this image was written with.
-            by_checksum = geometry.game_by_checksum(path.read_bytes())
+            by_checksum = geometry.game_by_checksum(_bounded_image(path))
             if by_checksum is not None:
                 game = by_checksum
                 note = ("; the title is the layout this image validates under, chosen from the"
@@ -506,7 +521,7 @@ def _game_and_slots(path: Path, size: int, kind, remembered: str = "",
                 " than one title claims this medium size, so no game is claimed",
                 [])
     layout = geometry.geometry_for(game)
-    slots = geometry.slots(path.read_bytes(), game)
+    slots = geometry.slots(_bounded_image(path), game)
     rows = [
         {
             "slot_index": slot.slot_index,

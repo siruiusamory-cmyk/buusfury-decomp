@@ -31,6 +31,13 @@ CELL_BASE = (10190116, "81c5766fba8eb961d3703d8c0bae900c9a7bd8bbf5ba209a03d56e12
 ENTRY = re.compile(r'\{ size = (\d+), sha256 = "([0-9a-f]{64})" \}')
 
 
+def at(text: str, needle: str) -> int:
+    """Where a pinned literal sits. An assertion, so a removed guard fails with its own message."""
+    position = text.find(needle)
+    assert position != -1, f"not present in the file under test: {needle!r}"
+    return position
+
+
 def observer_text() -> str:
     return OBSERVER.read_text(encoding="utf-8")
 
@@ -75,9 +82,9 @@ def test_the_predicate_accepts_the_listed_pairs_and_refuses_everything_else() ->
 
 def test_the_observer_refuses_before_it_reads_emulated_memory() -> None:
     text = observer_text()
-    predicate = text.index("local function rom_identity_allowed")
-    gate = text.index("assert(rom_identity_allowed(declared_sha256, rom_size),")
-    first_read = text.index("local function safe8")
+    predicate = at(text, "local function rom_identity_allowed")
+    gate = at(text, "assert(rom_identity_allowed(declared_sha256, rom_size),")
+    first_read = at(text, "local function safe8")
     assert gate < first_read, (
         "the identity gate must precede the observer's emulated memory readers, so an unlisted "
         "image is refused rather than sampled")
@@ -98,9 +105,9 @@ def test_the_comment_says_this_is_an_addition_and_not_a_loosening() -> None:
 def test_the_declared_digest_comes_from_the_launchers_own_gate() -> None:
     helper = HELPER.read_text(encoding="utf-8")
     assert "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash" in helper
-    gate = helper.index("ROM identity mismatch; run refused")
-    export = helper.index("$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
-    launch = helper.index("$process = Start-Process")
+    gate = at(helper, "ROM identity mismatch; run refused")
+    export = at(helper, "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
+    launch = at(helper, "$process = Start-Process")
     assert gate < export < launch, (
         "the digest must be exported after the equality gate proved it and before the child starts")
     assert "LOG1_MGBA_ROM_SHA256" in observer_text()

@@ -170,7 +170,16 @@ function Start-MgbaSession {
             )
             & powershell @extraCheckArgs | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'PostCommand dofile target is not allowlisted' }
-        } elseif ($PostCommand -notmatch '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+        } elseif ($PostCommand -match '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+            # This shape IS a state request, so it takes the same capture, record and abort as
+            # -StatePath instead of being composed raw. Two state requests are a configuration
+            # error, not a preference: the run would load twice and record one result.
+            if ($StatePath) {
+                throw 'a savestate was requested twice: -StatePath and a state-load PostCommand'
+            }
+            $StatePath = [System.IO.Path]::GetFullPath($Matches['state'])
+            $PostCommand = $null
+        } else {
             throw ('PostCommand must be one of exactly two shapes: ' +
                    'dofile([[<allowlisted lua>]]) or emu:loadStateFile([[<path>]])')
         }

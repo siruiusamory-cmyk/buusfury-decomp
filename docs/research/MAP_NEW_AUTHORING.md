@@ -189,6 +189,8 @@ deterministic build and provenance.
    and the row bound from the count helper at `0x080125E0` - so an authored index
    is reported as the row the engine loaded rather than asserted.
 
+   **Refused by identity, as of STATE-LOAD-GUARD-001.** The derivative image recorded in this item is REFUSED by `tools/runtime/mapnew001_live_identity.lua`, which is now gated on the pair (sha256, size) rather than on size alone; that image must be admitted by identity by the lane that owns it.
+
    **Instrument check, measured** (run directory
    `build/mapnew001/mapnew001-instrument2`, derivative sha256
    `E9F6C2FE5D5CF09DEA4527956A4CC55349FBF4F48F9BCEB6CBA84196FCCA62ED`, 26 rows,

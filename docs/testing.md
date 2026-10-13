@@ -317,13 +317,20 @@ names what it executes rather than trusting a filter to select it:
 
 ### Where each job runs, and why
 
-Since 2026-10-12 the four test-stage jobs run on a **self-hosted runner on the
-owner's PC** (tag `local-ci`, runner id `57332524`), not on the shared GitLab
-runners, because the shared runners' free monthly quota is spent. `deploy-site`
-is the one exception: it stays on the shared runners with its `image: node:22`
-and its rules, so **publishing the public site pauses while the quota is spent**.
-A merge to the default branch still runs the whole test gate on the owner's
-machine; what stops is the deploy at the end of it.
+Since 2026-10-12 the four test-stage jobs are **configured** to run on a
+**self-hosted runner on the owner's PC** (tag `local-ci`, runner id `57332524`),
+not on the shared GitLab runners, because the shared runners' free monthly quota
+is spent. `deploy-site` is the one exception: it stays on the shared runners with
+its `image: node:22` and its rules, so **publishing the public site pauses while
+the quota is spent**.
+
+**Unproven, and not to be read as measured: no pipeline has been created since
+this routing landed.** While the namespace is over quota GitLab refuses pipeline
+creation for the whole project, so no routed job has ever run from this
+configuration and the routing, the runner and the job bodies are unproven in the
+environment they were written for. The first proof is the first pipeline after
+the quota resets: a hello job on that runner, then a real pipeline. Until then a
+merge to the default branch runs no test gate at all, and publishes nothing.
 
 That runner is a **shell executor on Windows**, which is the fact the rest of
 this section follows from:
@@ -392,13 +399,21 @@ waits. It executes whatever is on **any branch of this project**, not only the
 default one, so a branch push is code execution on that PC. It is an
 *unprotected* runner (`access_level: not_protected`), and the project's one CI
 variable, `CLOUDFLARE_API_TOKEN`, is `protected: true`, so an unprotected ref
-cannot see it. The default branch IS protected, though, and the test jobs run
-there, so every routed job clears that variable at the job
-(`variables: CLOUDFLARE_API_TOKEN: ""`): neither `npm ci`'s install scripts nor
-any test on that machine reads the credential.
-`tests/unit/test_ci_gui_surface.py` fails by name if a routed job stops clearing
-it. The deploy job keeps the credential and stays on the shared runners, which is
-why it was not moved.
+cannot see it.
+
+The default branch IS protected, though, and these jobs run there, so the
+credential reaches them by precedence: a PROJECT CI variable outranks a
+`variables:` entry in `.gitlab-ci.yml`
+(<https://docs.gitlab.com/ci/variables/#cicd-variable-precedence>). The
+job-level `CLOUDFLARE_API_TOKEN: ""` entries in this file therefore do **not**
+clear it, and nothing should read them as the control. The control is a
+process-environment scrub in `ci\common.ps1`, which every routed entry point
+dot-sources before it runs anything, so the variable is already gone when `pip`,
+`npm ci` or any test starts. `tests/unit/test_ci_gui_surface.py` proves that with
+a dummy value rather than by reading the YAML: it sets a review-only token in a
+child's environment, sources the shared file, and shows a grandchild process
+cannot see it. The deploy job keeps the credential and stays on the shared
+runners, which is why it was not moved.
 
 The old protected runner (tag `rom-local`) is untouched by this routing: it
 still owns the ROM-gated jobs that need the canonical image.

@@ -38,7 +38,15 @@ instead of silently reducing the suite:
 - every routed test job must clear the protected deployment credential at the
   job, because these jobs run install scripts on the owner's own machine and the
   protected variable is visible on the default branch, which is the pipeline
-  ``deploy-site`` runs in.
+  ``deploy-site`` runs in. The job-level ``variables:`` entries are belt and
+  braces only: a PROJECT CI variable outranks them, so the effective control is
+  the process-environment scrub in ``ci\\common.ps1``, proved by inheritance with
+  a dummy value rather than by reading the YAML.
+- the ``adjacency`` job's two orders must both be REACHED, not merely named: the
+  generated PowerShell job script must not exit after the forward order, and a
+  failure in either order must fail the job. That is proved by executing the
+  exact YAML lines with a stubbed command, because a text check passed while the
+  job could never reach the second order.
 
 The job bodies live in ``ci\\*.ps1`` and the YAML names the file, because the
 four test-stage jobs run on a shell executor on Windows, where ``image:`` is
@@ -62,6 +70,8 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 
 import pytest
 import yaml
@@ -609,6 +619,24 @@ def test_the_adjacency_job_runs_the_fixed_set_in_both_orders():
         "scripts/adjacency_run.py, which is the module that holds the set and "
         "fails on a skip"
     )
+    # Reach, not presence. GitLab's PowerShell shell runs the whole `script:`
+    # as ONE generated script, so an unconditional `exit` on the forward line
+    # would end the job before the reverse order ran; naming both orders passed
+    # here while the second was unreachable. The forward line must carry its
+    # exit code and the last line must aggregate both.
+    assert "exit $LASTEXITCODE" not in script[0], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must not exit after the forward "
+        f"order, or the generated job script ends before the reverse order runs; "
+        f"its first line is {script[0]!r}"
+    )
+    assert "$forward = $LASTEXITCODE" in script[0], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must carry the forward order's "
+        f"exit code instead of exiting on it; its first line is {script[0]!r}"
+    )
+    assert "$forward -ne 0" in script[-1] and "exit 1" in script[-1], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB}'s last line must fail the job "
+        f"when either order failed; its last line is {script[-1]!r}"
+    )
     assert job.get("rules") == config[TEST_JOB].get("rules"), (
         f"{_cited('adjacency')}: {ADJACENCY_JOB} must run wherever {TEST_JOB} runs, "
         "so the adjacency orders cannot be silently excluded from the pipelines "
@@ -721,26 +749,167 @@ def test_the_test_jobs_run_on_the_self_hosted_runner_and_the_deploy_job_does_not
 
 
 def test_every_routed_job_clears_the_deployment_credential():
-    """Prevents: a protected deployment credential in a job that runs install scripts.
+    """Structural net: the belt-and-braces `variables:` entry, NOT the control.
 
-    The four test-stage jobs run on the owner's own machine, where ``npm ci``
-    executes package install scripts and any test can read the process
-    environment. The credential is a protected CI variable, so only a protected
-    ref can see it at all - and the default branch IS protected, which is exactly
-    the pipeline ``deploy-site`` runs in. Every routed job therefore clears it at
-    the job.
-
-    This asserts the clearing on every routed job rather than on the three that
-    happened to have it, so a job that gains routing without the line fails here
-    by name instead of shipping the exposure.
+    A PROJECT CI variable outranks a job `variables:` entry in `.gitlab-ci.yml`
+    (<https://docs.gitlab.com/ci/variables/#cicd-variable-precedence>), so these
+    entries do not clear `CLOUDFLARE_API_TOKEN`. They are kept so the intent is
+    visible at the job, and this test keeps them consistent across the four
+    routed jobs. THE EFFECTIVE CONTROL IS THE PROCESS SCRUB in
+    ``ci\\common.ps1``, proved by
+    ``test_every_routed_entry_point_scrubs_the_credential_before_it_runs_anything``
+    and ordered by
+    ``test_every_routed_entry_point_sources_the_scrub_before_its_first_external_command``.
     """
     config = _ci_config()
     for name in LOCAL_CI_JOBS:
         cleared = (config[name].get("variables") or {}).get("CLOUDFLARE_API_TOKEN")
         assert cleared == "", (
             f"{_cited(name)}: {name} must carry "
-            '`variables: {CLOUDFLARE_API_TOKEN: ""}`; it is '
-            f"{cleared!r}. The variable is protected, so the default-branch "
-            "pipeline is the one that can see it, and this job runs install "
-            "scripts on the owner's own machine"
+            '`variables: {CLOUDFLARE_API_TOKEN: ""}` as the belt-and-braces '
+            f"entry; it is {cleared!r}. This entry does not clear the variable by "
+            "itself: the process scrub in ci\\common.ps1 does, and this test does "
+            "not prove that"
+        )
+
+
+def test_the_adjacency_orders_are_reached_and_either_failure_fails_the_job(tmp_path):
+    """Behavioral control: the exact YAML lines run, with a stubbed command.
+
+    GitLab's PowerShell shell runs the whole `script:` as ONE generated script,
+    so an unconditional `exit` on the forward line ends the job before the
+    reverse order runs. Text presence cannot see that, which is how the earlier
+    form passed while the second order was unreachable. This defines a stub for
+    the `powershell` command that records the order it was asked for and returns
+    a configured exit code, then executes the two YAML lines verbatim in a child
+    PowerShell: both orders must be reached, and a failure in either must end the
+    job non-zero.
+    """
+    shell = shutil.which("powershell")
+    if not shell:
+        pytest.skip("this control executes the generated PowerShell job script")
+    lines = [str(step) for step in _ci_config()[ADJACENCY_JOB]["script"]]
+    assert len(lines) == 2, (
+        f"{_cited('adjacency')}: this control expects the two order lines; the "
+        f"script is {lines!r}"
+    )
+    for forward_code, reverse_code, expected in ((0, 0, 0), (0, 7, 1), (7, 0, 1)):
+        log = tmp_path / f"orders-{forward_code}-{reverse_code}.log"
+        harness = tmp_path / f"harness-{forward_code}-{reverse_code}.ps1"
+        harness.write_text(
+            "\n".join(
+                [
+                    "function powershell {",
+                    "  $line = ($args -join ' ')",
+                    f"  Add-Content -LiteralPath '{log}' -Value $line",
+                    "  if ($line -match '-Order forward') "
+                    f"{{ $global:LASTEXITCODE = {forward_code} }} "
+                    f"else {{ $global:LASTEXITCODE = {reverse_code} }}",
+                    "}",
+                    *lines,
+                    "exit 0",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        run = subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+            capture_output=True,
+            text=True,
+        )
+        issued = log.read_text(encoding="utf-8") if log.exists() else ""
+        assert "-Order forward" in issued and "-Order reverse" in issued, (
+            f"{_cited('adjacency')}: the generated job must reach both orders; the "
+            f"stub saw {issued!r} with forward={forward_code} reverse={reverse_code}"
+        )
+        assert run.returncode == expected, (
+            f"{_cited('adjacency')}: with forward={forward_code} and "
+            f"reverse={reverse_code} the job must exit {expected}, got "
+            f"{run.returncode}; stdout={run.stdout!r} stderr={run.stderr!r}"
+        )
+
+
+def test_every_routed_entry_point_scrubs_the_credential_before_it_runs_anything(tmp_path):
+    """Behavioral control: a dummy credential must not reach a child process.
+
+    A PROJECT CI variable outranks a job `variables:` entry, so those entries do
+    not clear `CLOUDFLARE_API_TOKEN`; the control is the process-environment
+    scrub in ``ci\\common.ps1``, which every routed entry point dot-sources
+    before it invokes anything. This sets the literal review-only dummy in a
+    child's environment, sources that file exactly as an entry point does, and
+    asks a grandchild process what it can see. No real credential is read,
+    printed or transmitted: the value is the literal REVIEW_DUMMY_ONLY.
+    """
+    shell = shutil.which("powershell")
+    if not shell:
+        pytest.skip("this control executes the shared PowerShell entry plumbing")
+    common = REPOSITORY_ROOT / "ci" / "common.ps1"
+    harness = tmp_path / "credential-scrub.ps1"
+    harness.write_text(
+        "\n".join(
+            [
+                "$env:CLOUDFLARE_API_TOKEN = 'REVIEW_DUMMY_ONLY'",
+                f". '{common}'",
+                "if ($env:CLOUDFLARE_API_TOKEN) "
+                "{ Write-Output 'PARENT_STILL_SET'; exit 8 }",
+                "$child = (& cmd.exe /c set) -join [Environment]::NewLine",
+                "$line = (($child -split [Environment]::NewLine) | "
+                "Where-Object { $_ -like 'CLOUDFLARE_API_TOKEN=*' }) -join ''",
+                "Write-Output ('child_line:[' + $line + ']')",
+                "if ($child -match 'REVIEW_DUMMY_ONLY') { exit 9 }",
+                "exit 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    run = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, (
+        "the dummy credential survived `ci\\common.ps1`: the scrub did not run "
+        f"before the first child; stdout={run.stdout!r} stderr={run.stderr!r}"
+    )
+    assert "REVIEW_DUMMY_ONLY" not in run.stdout, (
+        "the grandchild process still saw the dummy value in its environment: "
+        f"stdout={run.stdout!r}"
+    )
+    assert "child_line:" in run.stdout, (
+        f"the child probe did not run, so inheritance was not measured: "
+        f"stdout={run.stdout!r} stderr={run.stderr!r}"
+    )
+
+
+def test_every_routed_entry_point_sources_the_scrub_before_its_first_external_command():
+    """Structural net for the scrub's ORDER, with the value proof beside it.
+
+    The scrub lives in ``ci\\common.ps1``, so it is effective in an entry point
+    only if that entry point dot-sources the file before it invokes anything.
+    This pins the order per entry point, so moving the dot-source below a
+    ``New-CiVenv``, ``Use-CiVenv``, ``Invoke-CiStep`` or external command fails
+    here by name.
+    """
+    for name in LOCAL_CI_JOBS:
+        text = _ci_script_text(name)
+        assert "common.ps1" in text, (
+            f"{_ci_script_path(name)}: {name} must dot-source ci\\common.ps1, "
+            "which carries the credential scrub"
+        )
+        sourced = text.index("common.ps1")
+        markers = [
+            text.index(marker)
+            for marker in ("New-CiVenv", "Use-CiVenv", "Invoke-CiStep", "& node", "& npm")
+            if marker in text
+        ]
+        assert markers, (
+            f"{_ci_script_path(name)}: {name} invokes nothing this net knows "
+            "about, so the scrub's order cannot be checked"
+        )
+        assert sourced < min(markers), (
+            f"{_ci_script_path(name)}: {name} must source ci\\common.ps1 before "
+            "it runs its first external command, or that command inherits the "
+            "credential"
         )

@@ -47,9 +47,10 @@ test-sdk:
   # fast path and still bounds a hang.
   timeout: 30 minutes
   variables:
-    # Do not inherit the deployment credential into a test job. It is a
-    # protected variable, so an unprotected ref cannot see it either way, and
-    # this says so at the job.
+    # Belt and braces only. A project CI variable outranks a job `variables:`
+    # entry, so this does NOT clear the credential; the effective control is the
+    # process scrub in `ci\common.ps1`, which every routed entry point sources
+    # before it runs anything.
     CLOUDFLARE_API_TOKEN: ""
     # The runner is a desktop session and the job must not depend on one.
     # Twelve of the fifteen PySide6 modules the job must execute set this
@@ -106,7 +107,8 @@ test-integration:
   # default. The file itself takes about a second; the install dominates.
   timeout: 10 minutes
   variables:
-    # Do not inherit the deployment credential into a test job.
+    # The effective control is the process scrub in `ci\common.ps1`: a project
+    # variable outranks this entry.
     CLOUDFLARE_API_TOKEN: ""
   script:
     - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_integration.ps1; exit $LASTEXITCODE'
@@ -154,7 +156,8 @@ adjacency:
   timeout: 20 minutes
   needs: ["test-sdk"]
   variables:
-    # Do not inherit the deployment credential into a test job.
+    # The effective control is the process scrub in `ci\common.ps1`: a project
+    # variable outranks this entry.
     CLOUDFLARE_API_TOKEN: ""
     QT_QPA_PLATFORM: "offscreen"
   script:
@@ -162,8 +165,13 @@ adjacency:
     # reversed, so module-to-module Qt state is exercised in both directions.
     # The script exits non-zero on a skip, a failure, an error, or a member that
     # did not run.
-    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order forward; exit $LASTEXITCODE'
-    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order reverse; exit $LASTEXITCODE'
+    # Each order must NOT exit unconditionally. GitLab's PowerShell shell runs
+    # the whole `script:` as ONE generated script, so an `exit` after the forward
+    # order terminates the job before the reverse order ever runs. The forward
+    # exit code is carried to the last line instead, so both orders always
+    # execute and either one failing fails the job.
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order forward; $forward = $LASTEXITCODE'
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order reverse; if ($forward -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }'
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
@@ -189,10 +197,9 @@ test-site:
   # cache is the slow case, and it still bounds a hung build.
   timeout: 20 minutes
   variables:
-    # Do not inherit the deployment credential into a test job. This job runs
-    # `npm ci`, which executes package install scripts on the owner's own
-    # machine, so a protected token in this environment is an exposure the other
-    # three routed jobs already refuse.
+    # The effective control is the process scrub in `ci\common.ps1`: this job
+    # runs `npm ci`, whose install scripts execute on the owner's own machine,
+    # and a project variable outranks this entry.
     CLOUDFLARE_API_TOKEN: ""
   script:
     # `npm run check` type-checks the site source, `npm run build` produces the

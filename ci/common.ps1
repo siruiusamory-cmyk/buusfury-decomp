@@ -7,6 +7,14 @@
 
 $ErrorActionPreference = 'Stop'
 
+#: A job-level `variables:` entry in `.gitlab-ci.yml` does NOT override a project
+#: CI variable: project scope wins
+#: (https://docs.gitlab.com/ci/variables/#cicd-variable-precedence). The
+#: credential must therefore be removed from THIS process's environment, and
+#: every routed entry point dot-sources this file before it runs anything, so
+#: the scrub lands before the first pip, npm or python child is created.
+$env:CLOUDFLARE_API_TOKEN = ''
+
 #: Resolved once, at dot-source time, from this file's own location: a function's
 #: `$PSScriptRoot` is not a reliable way to ask. Every job script sets its
 #: location to this, because the editable install and pytest both need the

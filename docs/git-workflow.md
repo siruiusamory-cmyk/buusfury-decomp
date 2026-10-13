@@ -178,16 +178,17 @@ site. Merging therefore publishes; treat a merge to `master` as a deploy even
 when the change looks internal.
 
 Since 2026-10-12 the four test-stage jobs (`test-sdk`, `test-integration`,
-`adjacency`, `test-site`) run on a self-hosted runner on the owner's PC, tagged
-`local-ci`, rather than on the shared GitLab runners, whose free monthly quota
-is spent. `deploy-site` did not move: it is the only job that publishes and the
-only one that reads the protected Cloudflare credential, so it stays on the
-shared runners with its `image: node:22`. While that quota is spent the test
-gate still runs and **the public site does not update**, so a merge to the
-default branch no longer publishes by itself. Check the deploy job in the
-default-branch pipeline before saying the live page changed. `docs/testing.md`
-("Where each job runs, and why") owns the routing, the runner's own limits and
-the measured costs.
+`adjacency`, `test-site`) are configured to run on a self-hosted runner on the
+owner's PC, tagged `local-ci`, rather than on the shared GitLab runners, whose
+free monthly quota is spent. `deploy-site` did not move: it is the only job that
+publishes and the only one that reads the protected Cloudflare credential, so it
+stays on the shared runners with its `image: node:22`. **Unproven, not measured:**
+no pipeline has been created since the routing landed, because GitLab refuses
+pipeline creation while the namespace is over quota, so no routed job has run
+from this configuration. The first proof is the first pipeline after the quota
+resets. Until then a merge to the default branch neither runs the test gate nor
+publishes. `docs/testing.md` ("Where each job runs, and why") owns the routing,
+the runner's own limits, the credential scrub and the measured costs.
 
 ### Is the reviewed candidate still valid against live master?
 

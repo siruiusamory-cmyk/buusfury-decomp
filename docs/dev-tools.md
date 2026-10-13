@@ -31,7 +31,7 @@ edit it by hand; regenerate it.
 
 <!-- BEGIN skip-guard-table -->
 `15` nodes skip on a runner without PowerShell: 8 in `tests/unit/test_dev_tools.py`, 7 in `tests/unit/test_worktree_owners.py`.
-Thirteen of these were counted from the test-sdk trace of job `17121704860` at `9c34f1ae`; the probe module's two escape guards were added after that trace. On Windows these nodes run, so no local run can produce the number.
+13 of these were counted from the test-sdk trace of job `17121704860` at `9c34f1ae`; the probe module's two escape guards were added after that trace. On Windows these nodes run, so no local run can produce the number.
 
 | Test file | Nodes that skip without PowerShell |
 | --- | --- |

@@ -877,19 +877,155 @@ def probe_repo(tmp_path: Path) -> dict:
     return {"root": root}
 
 
+#: The two refusals the probe must perform before it copies a byte. Each is pinned as
+#: the STATEMENT it is, never as a word that appears somewhere: a substring guard
+#: passes on a condition neutralised with `$false -and ...` and on a branch whose own
+#: `exit` was dropped.
+PARENT_STEP_CONDITION = r"if (($relative -split '[\\/]') -contains '..') {"
+CONTAINMENT_CONDITION = "if (-not $insideTarget) {"
+COPY_CALL = "[System.IO.File]::Copy("
+
+
+def _compact(text: str) -> str:
+    return "".join(text.split())
+
+
+def _refuses_with_nonzero_exit(block: str) -> bool:
+    """A literal non-zero exit inside the block; `exit 0` is not a refusal."""
+    for index in range(len(block) - 4):
+        if block[index : index + 4] == "exit" and block[index + 4].isdigit():
+            if block[index + 4] != "0":
+                return True
+    return False
+
+
+def _block_after(compact: str, condition: str) -> str | None:
+    """The brace-delimited block that follows a condition, or None when it is absent.
+
+    Brace depth, not the first closing brace: the containment refusal's own message
+    carries `{0,-8}` and `{1}` format braces, which balance and are not the block's.
+    """
+    at = compact.find(condition)
+    if at < 0:
+        return None
+    open_at = compact.find("{", at)
+    if open_at < 0:
+        return None
+    depth = 0
+    for index in range(open_at, len(compact)):
+        if compact[index] == "{":
+            depth += 1
+        elif compact[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return compact[open_at : index + 1]
+    return None
+
+
+def escape_refusal_problems(text: str) -> list[str]:
+    """What the probe's escape refusals are missing, statement by statement.
+
+    The parent-step branch must be that condition and must exit non-zero; the
+    containment branch must be `-not $insideTarget` and must refuse with `continue` or
+    a non-zero exit; and both must sit ahead of the byte copy, which is the order the
+    contract rests on.
+    """
+    compact = _compact(text)
+    copy_at = compact.find(_compact(COPY_CALL))
+    if copy_at < 0:
+        return ["the probe has no byte copy to guard"]
+    problems: list[str] = []
+    parent_condition = _compact(PARENT_STEP_CONDITION)
+    parent_block = _block_after(compact, parent_condition)
+    if parent_block is None:
+        problems.append("the parent-step refusal is not the condition it claims to be")
+    else:
+        if not _refuses_with_nonzero_exit(parent_block):
+            problems.append("the parent-step refusal carries no non-zero exit")
+        if compact.find(parent_condition) > copy_at:
+            problems.append("the parent-step refusal comes after the byte copy")
+    containment_condition = _compact(CONTAINMENT_CONDITION)
+    containment_block = _block_after(compact, containment_condition)
+    if containment_block is None:
+        problems.append("the containment refusal is not the condition it claims to be")
+    else:
+        if not (
+            "continue" in containment_block
+            or _refuses_with_nonzero_exit(containment_block)
+        ):
+            problems.append("the containment refusal carries no continue or non-zero exit")
+        if compact.find(containment_condition) > copy_at:
+            problems.append("the containment refusal comes after the byte copy")
+    return problems
+
+
 def test_the_probe_pins_its_escape_refusal_as_text():
-    """The two escape refusals, pinned as bytes where no PowerShell host exists.
+    """The two escape refusals, pinned as statements where no PowerShell host exists.
 
     The behavioural escape guards skip on a Linux runner, so the refusals they drive
-    are pinned here over the script's own text: a name carrying a parent step is
-    refused by name, and the destination is compared against the detached target
-    before the byte copy, so an escaped destination is never written at all.
+    are pinned here over the script itself: the parent-step branch with its non-zero
+    exit, the containment branch with its own refusal, and both ahead of the byte copy.
     """
-    text = PROBE_WORKTREE.read_text(encoding="utf-8")
-    assert "-contains '..'" in text
-    assert "parent-directory step" in text
-    assert "$insideTarget" in text
-    assert text.index("$insideTarget") < text.index("[System.IO.File]::Copy")
+    problems = escape_refusal_problems(PROBE_WORKTREE.read_text(encoding="utf-8"))
+    assert problems == [], problems
+
+
+def _drop_block(text: str, header: str) -> str:
+    """Delete the block header through its own closing line, and nothing else.
+
+    Line-wise on purpose: the closing brace is indented, so a `\\n}` search would run
+    past the block and take the byte copy with it, which is a different mutation.
+    """
+    lines = text.splitlines(keepends=True)
+    start = next(index for index, line in enumerate(lines) if header in line)
+    end = next(
+        index for index in range(start + 1, len(lines)) if lines[index].strip() == "}"
+    )
+    return "".join(lines[:start] + lines[end + 1 :])
+
+
+def _drop_first_after(text: str, header: str, needle: str) -> str:
+    at = text.index(needle, text.index(header))
+    start = text.rindex("\n", 0, at) + 1
+    end = text.index("\n", at) + 1
+    return text[:start] + text[end:]
+
+
+#: The four neutralisations a substring guard passed on. Each is applied to an in-memory
+#: copy of the script, so the tracked file is never written.
+ESCAPE_MUTATIONS = {
+    "the containment block deleted": lambda text: _drop_block(text, CONTAINMENT_CONDITION),
+    "the parent-step exit dropped": lambda text: _drop_first_after(
+        text, PARENT_STEP_CONDITION, "exit 2"
+    ),
+    "the parent-step condition neutralised": lambda text: text.replace(
+        PARENT_STEP_CONDITION,
+        r"if ($false -and (($relative -split '[\\/]') -contains '..')) {",
+        1,
+    ),
+    "the containment condition neutralised": lambda text: text.replace(
+        CONTAINMENT_CONDITION, "if ($false -and -not $insideTarget) {", 1
+    ),
+}
+
+
+def test_the_escape_guard_reports_the_four_neutralisations():
+    """Every neutralisation the substring guard missed must be reported by name.
+
+    The mutations run against in-memory copies, so the only restore this drive needs is
+    the assertion that the tracked file's own text is byte-identical afterwards.
+    """
+    original = PROBE_WORKTREE.read_text(encoding="utf-8")
+    assert escape_refusal_problems(original) == [], escape_refusal_problems(original)
+    for name, mutate in ESCAPE_MUTATIONS.items():
+        mutated = mutate(original)
+        assert mutated != original, f"the mutation '{name}' no longer applies"
+        assert "[System.IO.File]::Copy(" in mutated, (
+            f"the mutation '{name}' must be surgical: the byte copy must survive it")
+        assert escape_refusal_problems(mutated), (
+            f"the mutation '{name}' was not reported by the escape guard")
+    assert PROBE_WORKTREE.read_text(encoding="utf-8") == original, (
+        "the tracked probe script changed under the drive")
 
 
 def test_the_probe_worktree_refuses_a_file_whose_copy_differs(probe_repo):

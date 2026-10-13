@@ -28,9 +28,10 @@ Three things are derived, never typed from memory:
    it describes.
 
 The counts are the CI runner's, not this machine's. On Windows these nodes RUN, so a
-local run cannot see them at all: `CI_TRACE_SKIPS` is what the test-sdk trace of job
-17121704860 at 9c34f1ae reported, and the per-file counts below are reconciled
-against it rather than against anything measured here.
+local run cannot see them at all: `CI_TRACE_LISTED` is what the test-sdk trace of job
+17121704860 at 9c34f1ae reported, `CI_TRACE_SKIPS` is the count this file expects after
+the probe module's two escape guards were added, and the rendered figure derives its
+number from the trace itself rather than restating it.
 """
 
 from __future__ import annotations
@@ -61,6 +62,13 @@ PLATFORM_SKIP_HELPERS = ("_require_powershell", "_require_windows_powershell")
 #: :235, :263, :272, :279, :297, :327, :364.
 CI_TRACE_JOB = "17121704860"
 CI_TRACE_COMMIT = "9c34f1aebba6f9a4b158d91726f0f816840a8f4b"
+#: What the trace ITSELF listed, kept apart from the count this file expects: the AST has
+#: since grown past it, and the rendered sentence derives its figure from here so the
+#: document never claims the trace said more than it did.
+CI_TRACE_LISTED: dict[str, int] = {
+    "tests/unit/test_dev_tools.py": 6,
+    "tests/unit/test_worktree_owners.py": 7,
+}
 CI_TRACE_SKIPS: dict[str, int] = {
     "tests/unit/test_dev_tools.py": 8,
     "tests/unit/test_worktree_owners.py": 7,
@@ -300,10 +308,10 @@ def render_table() -> str:
     counted = ", ".join(f"{count} in `{path}`" for path, count in sorted(by_file.items()))
     lines = [
         f"`{len(skip_nodes())}` nodes skip on a runner without PowerShell: {counted}.",
-        f"Thirteen of these were counted from the test-sdk trace of job "
-        f"`{CI_TRACE_JOB}` at `{CI_TRACE_COMMIT[:8]}`; the probe module's two escape "
-        "guards were added after that trace. On Windows these nodes run, so no local "
-        "run can produce the number.",
+        f"{sum(CI_TRACE_LISTED.values())} of these were counted from the test-sdk trace "
+        f"of job `{CI_TRACE_JOB}` at `{CI_TRACE_COMMIT[:8]}`; the probe module's two "
+        "escape guards were added after that trace. On Windows these nodes run, so no "
+        "local run can produce the number.",
         "",
         "| Test file | Nodes that skip without PowerShell |",
         "| --- | --- |",

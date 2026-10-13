@@ -15,7 +15,9 @@ Provenance is a class plus the evidence that fired, never a guess:
 * ``DERIVED`` - the file sits in a launcher run directory with an `inputs.json`
   that names this file's digest as its ROM, save or state, and only when the
   recorded path resolves to this file;
-* ``BACKUP`` - under a protected backup directory;
+* ``BACKUP`` - a copy under a protected backup directory. It stays its own class
+  and is not asserted OWNER: the author of such a copy is not known, so the
+  catalogue records where it came from and claims nothing more;
 * ``UNKNOWN`` - none of the above, with the reason every rule failed.
 """
 

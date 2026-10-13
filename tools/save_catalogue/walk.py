@@ -9,7 +9,7 @@ Provenance is a class plus the evidence that fired, never a guess:
 * ``OWNER`` - registered through the CLI, or matched to the emulator's own
   recent-ROM list (`qt.ini` `[mru]`) with a save that sits beside a ROM from
   that list, or present in a protected backup directory;
-* ``AGENT-STAGED`` - the digest is a known blank staged pattern;
+* ``TOOL-STAGED`` - the digest is a known blank staged pattern;
 * ``DERIVED`` - the file sits in a launcher run directory with an `inputs.json`
   that names this file's digest as its ROM, save or state, and only when the
   recorded path resolves to this file;
@@ -81,6 +81,16 @@ def default_roots() -> list[Path]:
     downloads = Path.home() / "Downloads"
     if downloads.is_dir():
         roots.append(downloads)
+    # The owner's own save stores: a LoG II save was found under OneDrive, and
+    # the local work tree holds tool-staged state and attachments. A directory
+    # that is absent is reported by the scan rather than skipped here.
+    roots.append(Path.home() / "OneDrive" / "Documents")
+    work = Path.home() / ".dsh" / "work"
+    if work.is_dir():
+        roots.append(work)
+    attachments = Path.home() / ".dsh" / "attachments"
+    if attachments.is_dir():
+        roots.append(attachments)
     roots.extend(_mgba_directories())
     roots.extend(DEFAULT_PROTECTED_BACKUPS)
     return roots
@@ -155,7 +165,7 @@ def resolve_provenance(path: Path, sha256: str, size: int,
     if runner is not None:
         return runner
     if sha256 in KNOWN_BLANK_DIGESTS:
-        return Provenance("AGENT-STAGED", f"digest matches the known blank pattern: {KNOWN_BLANK_DIGESTS[sha256]}")
+        return Provenance("TOOL-STAGED", f"digest matches the known blank pattern: {KNOWN_BLANK_DIGESTS[sha256]}")
     if path.suffix.lower() in BATTERY_SUFFIXES:
         match = _recent_rom_match(path, stat, roms if roms is not None else recent_roms())
         if match is not None:

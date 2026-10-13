@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument("--game")
     listing.add_argument("--kind", choices=sniff.KINDS)
     listing.add_argument("--provenance",
-                         choices=("OWNER", "AGENT-STAGED", "DERIVED", "BACKUP", "UNKNOWN"))
+                         choices=("OWNER", "TOOL-STAGED", "DERIVED", "BACKUP", "UNKNOWN"))
     listing.add_argument("--valid-only", action="store_true")
     listing.add_argument("--newest", type=int, metavar="N")
     listing.add_argument("--contains-slot", type=int, metavar="K")

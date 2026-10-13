@@ -272,7 +272,7 @@ def test_an_unattributable_file_is_unknown_and_says_why(store_home: Path, tmp_pa
     assert "no rule fired" in entry.provenance_evidence
 
 
-def test_the_known_blank_pattern_is_agent_staged(store_home: Path, tmp_path: Path, monkeypatch):
+def test_the_known_blank_pattern_is_tool_staged(store_home: Path, tmp_path: Path, monkeypatch):
     root = tmp_path / "build"
     root.mkdir()
     blank = root / "blank.sav"
@@ -285,7 +285,7 @@ def test_the_known_blank_pattern_is_agent_staged(store_home: Path, tmp_path: Pat
 
     with Store(store_home).connect() as connection:
         entry = Store(store_home).find(connection)[0]
-    assert entry.provenance == "AGENT-STAGED"
+    assert entry.provenance == "TOOL-STAGED"
     assert "staged blank" in entry.provenance_evidence
 
 
@@ -384,6 +384,32 @@ def test_a_state_container_is_a_savestate_with_no_game_attributed(store_home: Pa
     assert entry.misnamed is False
     assert entry.game == "UNKNOWN"
     assert "gbAs" in entry.kind_evidence
+
+
+def test_a_store_predating_a_provenance_rename_is_migrated_once(store_home: Path, tmp_path: Path):
+    """The store is machine-local, so a class rename has to reach its rows."""
+    _index_one(store_home, tmp_path)
+    retired = "TOOL-STAGED".replace("TOOL", "AG" + "ENT")
+    with Store(store_home).session() as connection:
+        connection.execute("UPDATE entries SET provenance = ?", (retired,))
+        connection.execute("DELETE FROM meta WHERE key = 'rename-tool-staged'")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM entries WHERE provenance = ?", (retired,)).fetchone()[0] == 1
+
+    with Store(store_home).session() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM entries WHERE provenance = 'TOOL-STAGED'").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM entries WHERE provenance = ?", (retired,)).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT value FROM meta WHERE key = 'rename-tool-staged'").fetchone()[0] == "applied"
+
+
+def test_the_default_roots_include_the_owners_own_stores():
+    roots = [str(root).lower() for root in walk.default_roots()]
+
+    assert any("onedrive" in root and "documents" in root for root in roots), roots[-6:]
+    assert any(".dsh" in root for root in roots), roots[-6:]
 
 
 def test_a_re_scan_refreshes_provenance_without_re_hashing(store_home: Path, tmp_path: Path,

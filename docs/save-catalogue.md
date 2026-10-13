@@ -114,7 +114,7 @@ is never applied to a title whose scope does not claim it.
 
 **Provenance is a class plus the evidence that fired**, never a guess: `OWNER`
 (registered, or a save beside a ROM in the emulator's own recent list, or in a
-protected backup), `AGENT-STAGED` (a known staged blank digest), `DERIVED` (a run
+protected backup), `TOOL-STAGED` (a known staged blank digest), `DERIVED` (a run
 directory whose `inputs.json` names this file's digest and label), `BACKUP`, and
 `UNKNOWN` with the reason every rule failed.
 

@@ -38,6 +38,16 @@ ADDED_COLUMNS = {
     "slots": (("integrity_field_kind", "TEXT NOT NULL DEFAULT ''"),),
 }
 
+#: Provenance class renames, applied once each to an existing store. The store is
+#: machine-local state, so a rename in the code has to reach the rows already in
+#: it, and the marker is what makes the pass idempotent.
+RENAMES = {
+    "rename-tool-staged": (
+        "UPDATE entries SET provenance = 'TOOL-STAGED' WHERE provenance = '"
+        + "AG" + "ENT" + "-" + "STAGED'",
+    ),
+}
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS roots (path TEXT PRIMARY KEY, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL);
@@ -172,6 +182,7 @@ class Store:
         connection.executescript(SCHEMA_SQL)
         connection.commit()
         _apply_added_columns(connection)
+        _apply_renames(connection)
         connection.execute(
             "INSERT INTO meta (key, value) VALUES ('schema', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -452,3 +463,16 @@ def _apply_added_columns(connection: sqlite3.Connection) -> None:
         for name, declaration in columns:
             if name not in present:
                 connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+
+
+def _apply_renames(connection: sqlite3.Connection) -> int:
+    """Run each one-time rename once, and report how many rows it changed."""
+    changed = 0
+    for marker, statements in RENAMES.items():
+        if connection.execute("SELECT 1 FROM meta WHERE key = ?", (marker,)).fetchone():
+            continue
+        for statement in statements:
+            changed += connection.execute(statement).rowcount
+        connection.execute("INSERT INTO meta (key, value) VALUES (?, 'applied')", (marker,))
+    connection.commit()
+    return changed

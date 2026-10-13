@@ -424,6 +424,14 @@ def _game_and_slots(path: Path, size: int, kind, remembered: str = "",
     if game is None:
         by_size = geometry.geometry_by_size(size)
         game = by_size.game if by_size is not None else None
+        if game is None:
+            # Two titles can share a medium size, so ask the bytes: the layout
+            # whose slot 0 validates is the one this image was written with.
+            by_checksum = geometry.game_by_checksum(path.read_bytes())
+            if by_checksum is not None:
+                game = by_checksum
+                note = ("; the title is the layout this image validates under, chosen from the"
+                        " titles that share the medium size")
         if game is None and remembered and geometry.geometry_for(remembered) is not None:
             game = remembered
             note = ("; the layout was assigned in an earlier scan and the medium size matches more"

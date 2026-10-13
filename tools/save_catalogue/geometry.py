@@ -168,6 +168,18 @@ def game_by_name(name: str) -> str | None:
     return None
 
 
+def game_by_checksum(image: bytes) -> str | None:
+    """The title whose layout this image actually validates under.
+
+    Two titles can share a medium size, and a save named `v3.sav` names neither.
+    Trying each layout the size admits and keeping the one whose slot 0 passes is
+    evidence from the file itself; a tie or no pass names nothing.
+    """
+    matches = [row for row in GEOMETRIES.values() if row.medium_size == len(image)]
+    passed = [row.game for row in matches if _slot_at(image, row, 0).checksum_ok == "PASS"]
+    return passed[0] if len(passed) == 1 else None
+
+
 def deswizzle(data: bytes) -> bytes:
     """The buffer order of a run of medium bytes: reverse every 8-byte block."""
     whole = len(data) - len(data) % 8

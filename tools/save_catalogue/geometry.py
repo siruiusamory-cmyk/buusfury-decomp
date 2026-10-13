@@ -27,13 +27,16 @@ Three facts are indexed apart, because they answer three questions:
 * ``erased_all_ff`` - measured on this corpus, not code: an untouched slot is all
   ones.
 
-Legacy of Goku's integrity field at ``slot+0x08`` is a rolling XOR key whose store
-and verify loops read no payload byte other than the seed, so it cannot detect
-corruption: a matching key is never ``PASS``. Its layout is now measured, not
-code-only: the owner's 512-byte save of 2026-10-12 matches the key word
-(``x1..x168``, seed at image ``+0x0C``) under the per-8-byte block reversal and
-under no other order, which fixes the slot base at ``0x08`` and proves the
-reversal for this title too.
+Legacy of Goku's integrity word is the slot's FIRST four bytes and is a rolling XOR
+key whose store and verify loops read no payload byte other than the seed, so it
+cannot detect corruption: a matching key is never ``PASS``. The owner's 512-byte save
+of 2026-10-12 fixes the key word's place - the slot's decoded frame holds
+``x1..x168`` at offset ``0x00``, i.e. image ``0x08``, under the per-8-byte block
+reversal and under no other order - which fixes the slot base at ``0x08`` and proves
+the reversal for this title. That file cannot say WHICH byte of its payload is the
+seed (its payload is one repeated byte, so the rule returns the same value for any
+seed inside it); the seed offset ``slot+0x04`` is pinned by the synthetic
+fixed-coordinate fixture in the test suite, not measured from it.
 
 The settings header is separate from the slot checksum and is read from its own
 place. For Buu's Fury the code writes an 8-byte header at **image offset 0**
@@ -152,12 +155,12 @@ GEOMETRIES: dict[str, Geometry] = {
     LEGACY_OF_GOKU: Geometry(
         game=LEGACY_OF_GOKU,
         medium_size=512,
-        # Measured on the owner's 512-byte battery save (2026-10-12). The slot's own
-        # decoded frame, i.e. the image from slot_base with every 8-byte block reversed,
-        # holds the key word 0xAAAAAAEB at offset 0x00 and the seed byte at offset 0x04.
-        # In image coordinates that is the key at image 0x08 and the seed at image 0x0C,
-        # which is what the two offsets below read: image 0x08 = slot_base 0x08 + 0x00,
-        # image 0x0C = slot_base 0x08 + 0x04.
+        # The owner's 512-byte battery save (2026-10-12) puts the key word 0xAAAAAAEB at
+        # offset 0x00 of the slot's own decoded frame (the image from slot_base with every
+        # 8-byte block reversed), i.e. image 0x08. That file's payload is one repeated
+        # byte, so it cannot say which byte is the seed: the payload_offset below (image
+        # 0x0C = slot_base 0x08 + 0x04) is pinned by the synthetic fixed-coordinate
+        # fixture, not measured from it.
         slot_base=0x08,
         slot_stride=0xAC,
         slot_count=2,
@@ -171,16 +174,18 @@ GEOMETRIES: dict[str, Geometry] = {
         integrity_covers_payload=False,
         empty_checksum_value=None,
         header_offset=None,
-        header_rule="no header is claimed: the word at slot+0x08 is a rolling XOR key, not a data"
-                    " checksum",
+        header_rule="no header is claimed: the slot's first four bytes are a rolling XOR key, not a"
+                    " data checksum",
         transform_scope="proven-by-file",
-        evidence="measured: the owner's 512-byte save validates its key word under the per-8-byte"
-                 " block reversal and under no other order (image coordinates: slot base 0x08, key"
-                 " word at image 0x08 = slot+0x00, one x1..x168 run seeded by image 0x0C ="
-                 " slot+0x04); the reversal is therefore proven for this title, and the store/load"
-                 " asymmetry (167 bytes stored, 168 loaded) is code-only; the key still reads no"
-                 " payload byte other than the seed, so it cannot detect corruption and a slot is"
-                 " never PASS",
+        evidence="measured: the owner's 512-byte save puts its key word at image 0x08 = slot+0x00"
+                 " under the per-8-byte block reversal and under no other order, which fixes the slot"
+                 " base at 0x08 and proves the reversal for this title; the seed offset slot+0x04 is"
+                 " pinned by the synthetic fixed-coordinate fixture, because the file's payload is one"
+                 " repeated byte and cannot say which byte is the seed. The store/load asymmetry (167"
+                 " bytes stored, 168 loaded) is code-only; the key reads no payload byte other than the"
+                 " seed, so it cannot detect corruption and a slot is never PASS. Nothing here covers a"
+                 " POPULATED second slot: slot 1 starts at image 0xB4, four bytes past an 8-byte"
+                 " boundary, and stride 0xAC leaves a four-byte tail that the reversal does not take",
     ),
 }
 

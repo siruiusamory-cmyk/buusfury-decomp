@@ -95,7 +95,9 @@ real files and a number derived from code are never confused:
 The family shares the medium and the **8-byte-block byte reversal** (the medium
 stores each 8-byte block byte-reversed relative to the game's buffer, so a block
 is de-swizzled before the checksum is computed); it does not share the slot
-layout. `transform_scope` records which titles the reversal is proven for.
+layout. `transform_scope` records which titles the reversal is proven for, and the
+reversal is applied only where the scope claims it: Legacy of Goku I's scope is
+`unknown`, so its bytes are read as they lie and its occupancy bit is unverified.
 
 Two coordinate frames matter for Buu's Fury and both are named in the code:
 the game writes its checksum at **buffer** `slot+0x8A8`, and the file holds that
@@ -113,16 +115,21 @@ The per-8-byte-block reversal is recorded as `transform_scope` on each entry and
 is never applied to a title whose scope does not claim it.
 
 **Provenance is a class plus the evidence that fired**, never a guess: `OWNER`
-(registered, or a save beside a ROM in the emulator's own recent list, or in a
-protected backup), `TOOL-STAGED` (a known staged blank digest), `DERIVED` (a run
-directory whose `inputs.json` names this file's digest and label), `BACKUP`, and
-`UNKNOWN` with the reason every rule failed.
+(registered, or a save beside a ROM in the emulator's own recent list whose mtime
+is equal to or later than that image's), `TOOL-STAGED` (a known staged blank
+digest), `DERIVED` (a run directory whose `inputs.json` names this file's digest
+and label), `BACKUP` (a copy under a protected backup directory: its author is not
+known, so it is not asserted `OWNER`), and `UNKNOWN` with the reason every rule
+failed. A save older than the ROM copy beside it was not written by that copy, so
+the mtime rule refuses it and the reason is recorded.
 
 Not yet claimed, and recorded as such: which slot offset names the map the player
 stands on, and any decoded field. The 8-byte settings header (`checksum(first 4)`
-plus the word `0x12345678`) is absent from every file held, including the save the
-game itself wrote, because it is written only on a settings change, so no entry
-claims `header_written`.
+plus the word `0x12345678`) is read at image offset 0 by the rule the game's own
+write path uses, and is absent from every file held, including the save the game
+itself wrote, because it is written only on a settings change; the check that says
+so can report it present, and a synthetic image carrying a valid header does. No
+entry claims `header_written` today.
 
 ## Safety
 

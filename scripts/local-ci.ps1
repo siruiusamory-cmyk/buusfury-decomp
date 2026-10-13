@@ -65,11 +65,38 @@ $script:Failures = New-Object System.Collections.Generic.List[string]
 $script:Notes = New-Object System.Collections.Generic.List[string]
 $script:Timeouts = 0
 $script:DroveSkipPath = $false
+$script:Cleaned = $false
 
 if (-not $RepoPath) { $RepoPath = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path }
 
 function Write-Log { param([string]$Text) Write-Host ("[{0,7:N1}s] {1}" -f $script:Stopwatch.Elapsed.TotalSeconds, $Text) }
 function Add-Failure { param([string]$Text) $script:Failures.Add($Text); Write-Log ("FAIL: $Text") }
+
+#: Remove the throwaway linked worktree and the neutral clone. Every exit path
+#: reaches it: the explicit call before the record is written, and the finally
+#: that covers an early exit or an abrupt stop. Idempotent, so those two calls
+#: cannot double-report. The worktree is removed from the NEUTRAL clone, which is
+#: the repository that owns it; the earlier code removed it from $RepoPath, a
+#: different repository, which left the clone and sometimes the worktree behind.
+function Invoke-CiTidy {
+    if ($script:Cleaned) { return }
+    $script:Cleaned = $true
+    $worktreeRemoved = (-not $worktree) -or (-not (Test-Path -LiteralPath $worktree))
+    if (-not $worktreeRemoved) {
+        & git -C $neutral worktree remove --force $worktree 2>&1 | ForEach-Object { Write-Host $_ }
+        $worktreeRemoved = -not (Test-Path -LiteralPath $worktree)
+        if (-not $worktreeRemoved) { Remove-Item -LiteralPath $worktree -Recurse -Force -ErrorAction SilentlyContinue }
+        $worktreeRemoved = -not (Test-Path -LiteralPath $worktree)
+    }
+    $neutralRemoved = (-not $neutral) -or (-not (Test-Path -LiteralPath $neutral))
+    if (-not $neutralRemoved) {
+        Remove-Item -LiteralPath $neutral -Recurse -Force -ErrorAction SilentlyContinue
+        $neutralRemoved = -not (Test-Path -LiteralPath $neutral)
+    }
+    if (-not $worktreeRemoved) { Add-Failure 'the throwaway worktree could not be removed' }
+    if (-not $neutralRemoved) { Add-Failure 'the neutral clone could not be removed' }
+    Write-Log ("worktree removed: {0}; neutral clone removed: {1}" -f $worktreeRemoved, $neutralRemoved)
+}
 
 function Get-TreeBytes {
     param([int]$RootPid)
@@ -115,6 +142,14 @@ function Invoke-Step {
     $proc = Start-Process -FilePath $FilePath -ArgumentList $quoted -WorkingDirectory $WorkDir -NoNewWindow -PassThru `
         -RedirectStandardOutput (Join-Path $env:TEMP 'local-ci-step.out') `
         -RedirectStandardError (Join-Path $env:TEMP 'local-ci-step.err')
+    #: Open the process handle NOW, while the step is still alive. Under Windows
+    #: PowerShell 5.1 a redirected Start-Process polled on HasExited reports a
+    #: NULL ExitCode once the process is gone, and the old null-to-zero mapping
+    #: turned every step into exit 0, so a red quality gate or a red integration
+    #: selection could not fail the record. Measured on 5.1.26100.9444 against a
+    #: step exiting 5: reading .Handle here gives 5; reading nothing gives null;
+    #: WaitForExit() or Refresh() alone still gives null.
+    $null = $proc.Handle
     $peak = 0L
     $killed = $false
     while (-not $proc.HasExited) {
@@ -136,11 +171,11 @@ function Invoke-Step {
         if (Test-Path -LiteralPath $f) { $out += (Get-Content -LiteralPath $f -Raw); Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
     }
     if ($peak -gt $script:PeakBytes) { $script:PeakBytes = $peak }
-    $code = if ($killed) { 124 } else { $proc.ExitCode }
-    if ($null -eq $code) { $code = 0 }
+    $code = if ($killed) { 124 } elseif ($null -ne $proc.ExitCode) { $proc.ExitCode } else { -1 }
     $entry = [pscustomobject]@{ Name = $Name; Exit = $code; Seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1); Output = $out; Killed = $killed }
     $script:Steps.Add($entry)
     if ($killed) { Add-Failure ("step '{0}' exceeded its budget and was killed" -f $Name) }
+    elseif ($code -eq -1) { Add-Failure ("step '{0}' finished with no readable exit code" -f $Name) }
     elseif ($code -ne 0) { Add-Failure ("step '{0}' exited {1}" -f $Name, $code) }
     return $entry
 }
@@ -195,6 +230,11 @@ foreach ($path in @($worktree, $neutral)) {
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }
+#: Everything from here on runs under a finally that removes the throwaway
+#: worktree and the neutral clone, so an early exit or an abrupt stop cannot leave
+#: them behind. The block is not re-indented: the whitespace change would bury
+#: this fix in the delta.
+try {
 $clone = Invoke-Git -Arguments @('clone', '--quiet', '--local', '--no-checkout', $RepoPath, $neutral)
 if ($clone.Exit -ne 0) {
     Write-Host "local-ci: FAIL - could not clone $RepoPath to $neutral"
@@ -211,7 +251,6 @@ $subject = (Invoke-Git -Arguments @('log', '-n', '1', '--format=%s', $Sha)).Text
 $dirty = (Invoke-Git -Arguments @('status', '--porcelain')).Text
 if ($dirty) {
     Write-Host 'local-ci: FAIL - the source repository has uncommitted changes; the record would not describe the SHA alone'
-    & git -C $RepoPath worktree remove --force $worktree 2>&1 | Out-Null
     exit 1
 }
 Write-Log "worktree $worktree at $Sha (tree $tree)"
@@ -229,7 +268,6 @@ if (Test-Path -LiteralPath $venvPython) {
 }
 if (-not (Test-Path -LiteralPath $venvPython)) {
     Write-Host "local-ci: FAIL - no interpreter at $venvPython after the install step"
-    & git -C $RepoPath worktree remove --force $worktree 2>&1 | Out-Null
     exit 1
 }
 $env:QT_QPA_PLATFORM = 'offscreen'
@@ -313,6 +351,11 @@ foreach ($file in $PinnedSkips.Keys) {
     }
 }
 
+#: The cleanup runs BEFORE the verdict is computed and before the record is
+#: written, so a cleanup failure is part of the verdict instead of appearing only
+#: in the process exit. The finally below calls it again, which is a no-op.
+Invoke-CiTidy
+
 # --- the record --------------------------------------------------------------
 $recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
 New-Item -ItemType Directory -Force -Path $recordDir | Out-Null
@@ -328,7 +371,7 @@ $body.Add("host           : $hostName, $cores logical cores, $totalGb GB RAM, $f
 $body.Add("workers        : $Workers")
 $body.Add("timeout_seconds: $script:BudgetSeconds")
 $body.Add("repo           : $RepoPath")
-$body.Add("worktree       : $worktree (removed at the end of this run)")
+$body.Add("worktree       : $worktree (removed before this record was written)")
 $body.Add("venv           : $venv")
 $body.Add('')
 $body.Add('steps')
@@ -385,14 +428,10 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 $digest = (Get-FileHash -LiteralPath $recordPath -Algorithm SHA256).Hash
 [System.IO.File]::WriteAllText((Join-Path $recordDir 'record.sha256'), $digest + [Environment]::NewLine, $utf8)
 
-# --- tidy ---------------------------------------------------------------------
-& git -C $neutral worktree remove --force $worktree 2>&1 | ForEach-Object { Write-Host $_ }
-$removed = -not (Test-Path -LiteralPath $worktree)
-if (Test-Path -LiteralPath $neutral) { Remove-Item -LiteralPath $neutral -Recurse -Force -ErrorAction SilentlyContinue }
-$neutralRemoved = -not (Test-Path -LiteralPath $neutral)
-if (-not $removed) { Add-Failure 'the throwaway worktree could not be removed' }
-if (-not $neutralRemoved) { Add-Failure 'the neutral clone could not be removed' }
-Write-Log ("worktree removed: {0}; neutral clone removed: {1}" -f $removed, $neutralRemoved)
+} finally {
+    Invoke-CiTidy
+}
+
 Write-Log ("record: $recordPath")
 Write-Log ("digest: $digest")
 if ($script:Failures.Count -eq 0) { Write-Host 'local-ci: PASS'; exit 0 }

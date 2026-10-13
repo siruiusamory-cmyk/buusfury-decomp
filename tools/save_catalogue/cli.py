@@ -185,6 +185,8 @@ def _render(document) -> None:
               f"  re-hashed {body['rehashed']}")
         for item in body["changed"]:
             print(f"  CHANGED        : {item['path']} indexed {item['indexed']} found {item['found']}")
+        for item in body["problems"]:
+            print(f"  PROBLEM        : {item['path']} {item['error']}")
         return
     if "entries" in document:
         for entry in document["entries"]:

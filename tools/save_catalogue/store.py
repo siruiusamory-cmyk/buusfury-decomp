@@ -188,6 +188,9 @@ class Store:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (str(SCHEMA),),
         )
+        # Committed here, not left open: a read-only command must not hold the
+        # write lock while it answers, or a launcher's record-run waits on it.
+        connection.commit()
         return connection
 
     @contextlib.contextmanager

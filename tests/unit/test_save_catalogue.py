@@ -496,6 +496,46 @@ def test_a_save_newer_than_or_equal_to_the_rom_beside_it_is_the_owner(tmp_path: 
     assert walk.utc_of(now - 300) in equal.evidence
 
 
+def test_the_header_check_reads_image_offset_zero_by_the_proven_rule():
+    """A check that cannot fire is not evidence, so it is given a positive control (B4)."""
+    payload = b"\x01\x02\x03\x04"
+    stamp = (zlib.adler32(payload) + geometry.HEADER_WORD) & 0xFFFFFFFF
+    carrying = payload + struct.pack("<I", stamp) + bytes(8192 - 8)
+
+    assert geometry.header_written(carrying, geometry.geometry_for(geometry.BUUS_FURY)) is True
+    assert geometry.header_written(b"\x01\x02\x03\x04" + b"\x00" * 8188,
+                                   geometry.geometry_for(geometry.BUUS_FURY)) is False
+    # The old bug's read, as a negative: the checksum word of a valid slot is not
+    # a header stamp, so a save that passes its slot checksum still reports False.
+    assert struct.unpack_from("<I", make_save(), 0)[0] != stamp
+    assert geometry.slots(make_save(), geometry.BUUS_FURY)[0].header_written is False
+    # No proven header rule means nothing is claimed, never a yes.
+    assert geometry.header_written(carrying, geometry.geometry_for(geometry.LEGACY_OF_GOKU_II)) is False
+    assert geometry.header_written(carrying, geometry.geometry_for(geometry.LEGACY_OF_GOKU)) is False
+
+
+def test_legacy_of_goku_bytes_are_not_de_swizzled():
+    """Its transform scope is unknown, so the reversal is not applied (non-blocking)."""
+    layout = geometry.geometry_for(geometry.LEGACY_OF_GOKU)
+
+    assert layout.transform_scope == geometry.UNKNOWN_TRANSFORM
+    block = bytes(range(8)) * 22
+    image = bytearray(512)
+    image[0:len(block)] = block
+    slot = geometry.slots(bytes(image), geometry.LEGACY_OF_GOKU)[0]
+    # Read as they lie: the occupancy bit comes from byte 1 of the raw block.
+    assert slot.code_occupancy_bit is bool(bytes(range(8))[1] & 0x01)
+    assert slot.transform_scope == geometry.UNKNOWN_TRANSFORM
+
+
+def test_a_battery_sized_file_with_a_state_extension_is_not_a_battery():
+    """Extension before the size fallback, so a state is never called a save."""
+    kind = sniff.sniff(b"\x00" * 24, 8192, ".ss1")
+
+    assert kind.kind == sniff.unknown_state
+    assert kind.kind != sniff.battery
+
+
 def test_a_store_predating_a_provenance_rename_is_migrated_once(store_home: Path, tmp_path: Path):
     """The store is machine-local, so a class rename has to reach its rows."""
     _index_one(store_home, tmp_path)

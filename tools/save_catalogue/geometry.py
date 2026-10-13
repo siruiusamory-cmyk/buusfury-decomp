@@ -31,7 +31,17 @@ Legacy of Goku is deliberately not computed. Its integrity field at ``slot+0x08`
 is a rolling XOR key whose store and verify loops read no payload byte other than
 the seed, so it cannot detect corruption, and no 512-byte save attributable to
 that title exists in this corpus. It is ``checksum_ok = UNKNOWN`` with that
-reason, never a pass.
+reason, never a pass. Its ``transform_scope`` is ``unknown``, so it is the one
+title whose bytes are read as they lie: its occupancy bit comes from untransformed
+bytes and is unverified.
+
+The settings header is separate from the slot checksum and is read from its own
+place. For Buu's Fury the code writes an 8-byte header at **image offset 0**
+(``0x08006B88`` passes offset 0, ``0x08006B7E`` length 8): four payload bytes,
+then the little-endian u32 ``checksum(first 4) + 0x12345678``. It is rewritten only
+when the settings value changes, so it is absent from every file held, and the
+check that says so is the same one that can report it present. A title whose
+header is a hypothesis gets no check at all rather than a check that cannot fire.
 """
 
 from __future__ import annotations
@@ -54,6 +64,10 @@ NOT_COMPUTED = "not_computed"
 
 HEADER_WORD = 0x12345678
 
+#: A title whose byte-order transform is not established: its bytes are read as
+#: they lie, and anything derived from them is unverified.
+UNKNOWN_TRANSFORM = "unknown"
+
 
 @dataclass(frozen=True)
 class Geometry:
@@ -75,6 +89,10 @@ class Geometry:
     #: checksum any real payload produces, and it is what an unused LoGII slot
     #: holds.
     empty_checksum_value: int | None
+    #: Where the settings header sits, when a rule for it is proven: image offset
+    #: 0 for Buu's Fury (`0x08006B88` writes it there). None means no header is
+    #: claimed for that title, and nothing is reported about one.
+    header_offset: int | None
     header_rule: str
     transform_scope: str
     evidence: str
@@ -92,8 +110,10 @@ GEOMETRIES: dict[str, Geometry] = {
         checksum_kind=ADLER32,
         integrity_covers_payload=True,
         empty_checksum_value=None,
-        header_rule="8-byte header at slot 0: checksum(first 4) + 0x12345678, written only on a"
-                    " settings change",
+        header_offset=0,
+        header_rule="8-byte header at image offset 0: four payload bytes, then the little-endian"
+                    " u32 checksum(first 4) + 0x12345678 (write 0x08006B5E/0x08006B88, read"
+                    " 0x08006AF0..0x08006B0C); written only on a settings change",
         transform_scope="buus_fury_only",
         evidence="measured: slot 0 verified against four real saves; the 8-byte-block reversal and"
                  " the offset pair (buffer 0x8A8, file 0x8AC) are both verified",
@@ -109,9 +129,10 @@ GEOMETRIES: dict[str, Geometry] = {
         checksum_kind=ADLER32,
         integrity_covers_payload=True,
         empty_checksum_value=0,
-        header_rule="HYPOTHESIS: the word at image offset 0 is a settings header. Measured on the"
-                    " two real saves here it is not adler32(first 4) and does not carry 0x12345678,"
-                    " so no header is claimed",
+        header_offset=None,
+        header_rule="HYPOTHESIS, not checked: the word at image offset 0 may be a settings header."
+                    " Measured on the two real saves here it is not adler32(first 4) and does not"
+                    " carry 0x12345678, so no header is claimed and nothing is reported about one",
         transform_scope="proven-by-file",
         evidence="slot 0 verified against three real saves, with perfect separation from the"
                  " raw-order model over 1460 files; stride 0x168 and count 3 are derived-from-code,"
@@ -129,8 +150,10 @@ GEOMETRIES: dict[str, Geometry] = {
         checksum_kind=ROLLING_XOR_KEY,
         integrity_covers_payload=False,
         empty_checksum_value=None,
-        header_rule="the word at slot+0x08 is a rolling XOR key, not a data checksum",
-        transform_scope="unknown",
+        header_offset=None,
+        header_rule="no header is claimed: the word at slot+0x08 is a rolling XOR key, not a data"
+                    " checksum",
+        transform_scope=UNKNOWN_TRANSFORM,
         evidence="code-only: the store loop copies 167 payload bytes and the load loop 168, and the"
                  " key reads no payload byte other than the seed, so it cannot detect corruption;"
                  " no 512-byte save attributable to this title exists in the corpus",
@@ -226,8 +249,10 @@ class Slot:
     checksum_stored: int | None
     checksum_computed: int | None
     integrity_field_kind: str
-    #: The settings header word is written only on a settings change, so it is
-    #: absent from every file held, including the save the game itself wrote.
+    #: Whether the settings header sits at image offset 0 where the layout's own
+    #: rule says it would. Measured with :func:`header_written`, so it is a check
+    #: that can fire, not a sentence: absent from every file held, including the
+    #: save the game itself wrote, because it is written only on a settings change.
     header_written: bool
     transform_scope: str
 
@@ -240,15 +265,18 @@ class Slot:
 def _slot_at(image: bytes, geometry: Geometry, index: int) -> Slot:
     """One slot, read from the file at its own offset.
 
-    The slot's bytes are de-swizzled on their own, so every offset below is a
-    slot offset and no image-level offset arithmetic can move them.
+    The slot's bytes are de-swizzled on their own, and only where the layout's
+    ``transform_scope`` claims the reversal, so every offset below is a slot
+    offset and no image-level offset arithmetic can move them. Legacy of Goku's
+    scope is unknown, so its bytes are read as they lie and its occupancy bit is
+    unverified.
     """
     start = geometry.slot_base + index * geometry.slot_stride
     block = image[start:start + geometry.slot_stride]
     if len(block) < geometry.slot_stride:
         return Slot(index, False, False, max(len(block) - (geometry.checksum_offset or 0), 0),
                     UNKNOWN, None, None, geometry.checksum_kind, False, geometry.transform_scope)
-    buffer_frame = deswizzle(block)
+    buffer_frame = deswizzle(block) if geometry.transform_scope != UNKNOWN_TRANSFORM else block
     payload = buffer_frame[:geometry.payload_len]
     erased = payload == b"\xff" * geometry.payload_len
     occupancy = bool(payload[1] & 0x01) if len(payload) > 1 else False
@@ -274,15 +302,23 @@ def _slot_at(image: bytes, geometry: Geometry, index: int) -> Slot:
     else:
         verdict = CORRUPT
     return Slot(index, occupancy, erased, geometry.payload_len, verdict, stored, computed,
-                geometry.checksum_kind, _header_written(buffer_frame, geometry.payload_len),
+                geometry.checksum_kind, header_written(image, geometry),
                 geometry.transform_scope)
 
 
-def _header_written(buffer_frame: bytes, payload_len: int) -> bool:
-    """Whether the settings header word sits where the layout says it would."""
-    if payload_len + 4 > len(buffer_frame):
+def header_written(image: bytes, geometry: Geometry) -> bool:
+    """Whether the settings header sits at the image offset the rule names.
+
+    The rule is the game's own, from the code that writes it: four payload bytes,
+    then the little-endian u32 ``checksum(first 4) + 0x12345678`` at image offset
+    4. A title with no proven header rule gets False, never a guess, and a short
+    image is not a header either.
+    """
+    offset = geometry.header_offset
+    if offset is None or offset + 8 > len(image):
         return False
-    return struct.unpack_from(">I", buffer_frame, payload_len)[0] == HEADER_WORD
+    stored = struct.unpack_from("<I", image, offset + 4)[0]
+    return stored == (checksum(image[offset:offset + 4]) + HEADER_WORD) & 0xFFFFFFFF
 
 
 def slots(image: bytes, game: str) -> list[Slot]:

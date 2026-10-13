@@ -2,19 +2,19 @@
 
 Extension is a hint and is recorded as one; the kind comes from the first bytes.
 
-* ``screenshot-png``: the PNG signature. This is not hypothetical: every `.ss1`
-  the project holds is a 240x160 RGB PNG screenshot, not a savestate, including
-  the 57 copies under the run trees and the two in `roms\\`. A file whose
-  extension says state and whose content says screenshot gets ``misnamed`` and
-  is never offered as a state to load.
+* ``screenshot-png``: the PNG signature without the ``gbAs`` chunk. A file whose
+  extension says state and whose content says screenshot gets ``misnamed`` and is
+  never offered as a state to load.
 * ``battery``: a save image whose size matches a known geometry. 8,192 bytes is
   the Buu's Fury EEPROM family; 32,768 is the SRAM-family size already seen in
-  the corpus. The size alone is the evidence, and it is recorded as such.
-* ``savestate``: **never returned today.** The mGBA header is a HYPOTHESIS:
-  no real state exists in this corpus to verify field offsets against, so a
-  non-PNG `.ss*` is ``unknown-state`` with the extension as its only evidence
-  and no game or ROM attributed. When a real state is verified, the parse lands
-  here and this paragraph goes away.
+  the corpus. The size alone is the evidence, and it is recorded as such. A state
+  extension is checked first, so an 8,192-byte file named `.ss1` is not called a
+  battery, and the size test never runs before the extension test.
+* ``savestate``: an mGBA PNG container carrying the private ``gbAs`` chunk. The
+  chunk is what makes it a state; the container's own header is still a
+  HYPOTHESIS, so no game or ROM is attributed from a state.
+* ``unknown-state``: a state extension whose bytes carry neither chunk nor a
+  verified header. It is never a savestate, and the evidence says why.
 * ``unknown``: anything else, with the first 16 bytes stored as a signature
   (a signature, never the bytes).
 """
@@ -67,13 +67,13 @@ def sniff(head: bytes, size: int, suffix: str, chunk_names: frozenset[bytes] = f
                         False)
         return Kind(screenshot, f"{detail}; extension {extension or 'none'}",
                     extension.startswith(STATE_SUFFIX_PREFIX))
-    if size in BATTERY_SIZES:
-        return Kind(battery, f"{size} bytes, the {BATTERY_SIZES[size]} geometry", False)
     if extension.startswith(STATE_SUFFIX_PREFIX):
         return Kind(unknown_state,
                     f"extension {extension}; no mGBA {GBAS_CHUNK.decode()} chunk and no verified"
                     " savestate header, so no state and no game are claimed",
                     False)
+    if size in BATTERY_SIZES:
+        return Kind(battery, f"{size} bytes, the {BATTERY_SIZES[size]} geometry", False)
     return Kind(unknown, f"first {SIGNATURE_LEN} bytes: {head[:SIGNATURE_LEN].hex()}", False)
 
 

@@ -13,10 +13,11 @@ What it will claim, and what it will not:
 * a non-PNG `.ss*` is `unknown-state`: the mGBA savestate header is a
   HYPOTHESIS here (no real state exists in this corpus to verify field offsets
   against), so no ROM and no game is ever attributed from one;
-* battery validity is computed only where a geometry is proven. Today that is
-  Buu's Fury EEPROM, and only that title: the 8-byte-block byte reversal the
-  medium uses is recorded per entry as `transform_scope = buus_fury_only`.
-  Sibling titles carry `checksum_ok = UNKNOWN` until their geometry is proven.
+* battery validity is computed only where a geometry is proven, per title: Buu's
+  Fury and Legacy of Goku II today, each carrying its own evidence level in the
+  `GEOMETRIES` table. Legacy of Goku's bytes are read untransformed because its
+  byte-order transform is unknown, so its occupancy bit is unverified and its
+  validity is UNKNOWN, never a pass.
 
 The index, the logs and every report hold hashes, sizes, mtimes, offsets, field
 names and notes only. Sources are opened read-only, and every write refuses a

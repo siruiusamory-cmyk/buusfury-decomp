@@ -339,6 +339,22 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "test_the_branch_adds_no_whitespace_errors",
      "'git'"):
         "asks git to check the branch diff for whitespace errors; it starts no emulator",
+    ("tests/unit/test_local_ci_script.py", "git", "'git'"):
+        "commits the two pinned modules into the throwaway clone so the gate's detached "
+        "worktree carries them, which is what its pinned-table guard drives; it starts no "
+        "emulator",
+    ("tests/unit/test_ci_gui_surface.py",
+     "test_the_adjacency_orders_are_reached_and_either_failure_fails_the_job",
+     "shell"):
+        "runs a child PowerShell on a generated harness that executes the two adjacency "
+        "order lines verbatim with a stubbed powershell command, to prove both orders "
+        "are reached and either failure ends the job; it starts no emulator",
+    ("tests/unit/test_ci_gui_surface.py",
+     "test_every_routed_entry_point_scrubs_the_credential_before_it_runs_anything",
+     "shell"):
+        "runs a child PowerShell that dot-sources ci/common.ps1 and asks a grandchild "
+        "process what it can see, with the literal review dummy value and no real "
+        "credential; it starts no emulator",
 }
 
 

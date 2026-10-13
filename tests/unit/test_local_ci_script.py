@@ -242,6 +242,59 @@ def test_a_green_run_passes_so_the_red_guard_is_not_vacuous(tmp_path):
     assert run.returncode == 0, (run.returncode, run.stdout[-2000:])
 
 
+def test_a_green_run_passes_when_the_pinned_files_are_present(tmp_path):
+    """The retro-tools shape: a SHA carrying the pinned files must still PASS.
+
+    The pinned per-file counts came from a Linux trace, where those two modules skip
+    because no `.ps1` can run there. On a host WITH a PowerShell the nodes run, so a SHA
+    that carries the modules legitimately skips 0; before the host condition, such a SHA
+    failed its record on the pinned equality and took the green guard above down with it.
+    The modules are committed into the throwaway clone, so the detached worktree the gate
+    records really carries them.
+    """
+    _ready()
+    repo, stub, home, _sha = _prepare(tmp_path)
+    pinned = ("tests/unit/test_dev_tools.py", "tests/unit/test_worktree_owners.py")
+    for relative in pinned:
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# present so the pinned equality would apply\n", encoding="utf-8")
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        )
+        return result.stdout.strip()
+
+    git("add", "--", *pinned)
+    git(
+        "-c",
+        "user.email=guard@example.invalid",
+        "-c",
+        "user.name=guard",
+        "commit",
+        "-q",
+        "-m",
+        "carry the pinned modules",
+    )
+    sha = git("rev-parse", "HEAD")
+    run, record = _invoke(repo, stub, home, sha, {"STUB_QUALITY_EXIT": "0"})
+    text = _record_text(record)
+    #: Whitespace-collapsed, because the record pads each count to a fixed width.
+    flat = " ".join(text.split())
+    assert flat.count("host has PowerShell, so not an equality gate") == 2, text
+    assert (
+        "test_dev_tools.py host has PowerShell, so not an equality gate "
+        "(actual 0, pinned 6)" in flat
+    ), text
+    assert (
+        "test_worktree_owners.py host has PowerShell, so not an equality gate "
+        "(actual 0, pinned 7)" in flat
+    ), text
+    assert "verdict        : PASS" in text, text
+    assert run.returncode == 0, (run.returncode, run.stdout[-2000:])
+
+
 def test_an_early_failure_leaves_no_clone_or_worktree(tmp_path):
     """An early exit must still remove the neutral clone and the throwaway worktree.
 

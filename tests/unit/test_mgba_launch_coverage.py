@@ -399,6 +399,11 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "'git'"):
         "lists the repository's worktrees with git to prove the probe cleaned up; it "
         "starts no emulator",
+    ("tests/unit/test_dev_tools.py",
+     "test_the_probe_worktree_refuses_a_parent_relative_name_that_would_escape",
+     "'git'"):
+        "builds the escape fixture's throwaway repository with git so the probe can be "
+        "driven against a real worktree; it starts no emulator",
     ("tests/unit/test_worktree_owners.py",
      "_run",
      "args"):

@@ -55,13 +55,14 @@ PLATFORM_SKIP_HELPERS = ("_require_powershell", "_require_windows_powershell")
 
 #: The trace the count comes from: test-sdk job 17121704860, commit 9c34f1ae,
 #: "8 failed, 5234 passed, 320 skipped". The 320 include every other skip in the
-#: suite; these 13 are the ones this file polices. The trace's own lines are
+#: suite; thirteen of the fifteen this file polices are the trace's own, and the
+#: probe module's two escape guards were added after it. The trace's own lines are
 #: test_dev_tools.py :52 x2, :69, :792, :818, :834 and test_worktree_owners.py
 #: :235, :263, :272, :279, :297, :327, :364.
 CI_TRACE_JOB = "17121704860"
 CI_TRACE_COMMIT = "9c34f1aebba6f9a4b158d91726f0f816840a8f4b"
 CI_TRACE_SKIPS: dict[str, int] = {
-    "tests/unit/test_dev_tools.py": 6,
+    "tests/unit/test_dev_tools.py": 8,
     "tests/unit/test_worktree_owners.py": 7,
 }
 
@@ -81,6 +82,10 @@ SKIP_GUARD: dict[str, str] = {
         "tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests",
     "tests/unit/test_dev_tools.py::test_the_probe_worktree_leaves_the_caller_worktree_untouched":
         "tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests",
+    "tests/unit/test_dev_tools.py::test_the_probe_worktree_refuses_a_parent_relative_name_that_would_escape":
+        "tests/unit/test_dev_tools.py::test_the_probe_pins_its_escape_refusal_as_text",
+    "tests/unit/test_dev_tools.py::test_the_probe_worktree_still_copies_a_nested_relative_name":
+        "tests/unit/test_dev_tools.py::test_the_probe_pins_its_escape_refusal_as_text",
     "tests/unit/test_worktree_owners.py::test_a_staged_blob_equal_to_masters_is_classified_as_carrying_master":
         "tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches",
     "tests/unit/test_worktree_owners.py::test_a_file_that_differs_from_master_is_classified_as_authored":
@@ -295,9 +300,10 @@ def render_table() -> str:
     counted = ", ".join(f"{count} in `{path}`" for path, count in sorted(by_file.items()))
     lines = [
         f"`{len(skip_nodes())}` nodes skip on a runner without PowerShell: {counted}.",
-        f"Counted from the test-sdk trace of job `{CI_TRACE_JOB}` at "
-        f"`{CI_TRACE_COMMIT[:8]}`; on Windows these nodes run, so no local run can "
-        "produce the number.",
+        f"Thirteen of these were counted from the test-sdk trace of job "
+        f"`{CI_TRACE_JOB}` at `{CI_TRACE_COMMIT[:8]}`; the probe module's two escape "
+        "guards were added after that trace. On Windows these nodes run, so no local "
+        "run can produce the number.",
         "",
         "| Test file | Nodes that skip without PowerShell |",
         "| --- | --- |",

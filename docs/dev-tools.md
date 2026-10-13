@@ -30,12 +30,12 @@ AST of the two test modules and fails when this block and the code disagree. Do 
 edit it by hand; regenerate it.
 
 <!-- BEGIN skip-guard-table -->
-`13` nodes skip on a runner without PowerShell: 6 in `tests/unit/test_dev_tools.py`, 7 in `tests/unit/test_worktree_owners.py`.
-Counted from the test-sdk trace of job `17121704860` at `9c34f1ae`; on Windows these nodes run, so no local run can produce the number.
+`15` nodes skip on a runner without PowerShell: 8 in `tests/unit/test_dev_tools.py`, 7 in `tests/unit/test_worktree_owners.py`.
+Thirteen of these were counted from the test-sdk trace of job `17121704860` at `9c34f1ae`; the probe module's two escape guards were added after that trace. On Windows these nodes run, so no local run can produce the number.
 
 | Test file | Nodes that skip without PowerShell |
 | --- | --- |
-| `tests/unit/test_dev_tools.py` | 6 |
+| `tests/unit/test_dev_tools.py` | 8 |
 | `tests/unit/test_worktree_owners.py` | 7 |
 
 Each one names the text guard that holds its invariant:
@@ -47,6 +47,8 @@ Each one names the text guard that holds its invariant:
 | `tests/unit/test_dev_tools.py::test_the_probe_worktree_copies_and_verifies_when_the_bytes_match` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
 | `tests/unit/test_dev_tools.py::test_the_probe_worktree_leaves_the_caller_worktree_untouched` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
 | `tests/unit/test_dev_tools.py::test_the_probe_worktree_refuses_a_file_whose_copy_differs` | `tests/unit/test_dev_tools.py::test_the_probe_refuses_with_both_digests` |
+| `tests/unit/test_dev_tools.py::test_the_probe_worktree_refuses_a_parent_relative_name_that_would_escape` | `tests/unit/test_dev_tools.py::test_the_probe_pins_its_escape_refusal_as_text` |
+| `tests/unit/test_dev_tools.py::test_the_probe_worktree_still_copies_a_nested_relative_name` | `tests/unit/test_dev_tools.py::test_the_probe_pins_its_escape_refusal_as_text` |
 | `tests/unit/test_dev_tools.py::test_the_writer_refuses_an_empty_message` | `tests/unit/test_dev_tools.py::test_the_message_writer_keeps_the_no_bom_spelling` |
 | `tests/unit/test_worktree_owners.py::test_a_carrier_is_not_reported_as_a_writer_without_its_blob_match` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_classification_branches` |
 | `tests/unit/test_worktree_owners.py::test_a_deleted_file_is_classified_as_deleted_not_unreadable` | `tests/unit/test_worktree_owners.py::test_the_sweep_pins_the_delete_branch_as_text` |

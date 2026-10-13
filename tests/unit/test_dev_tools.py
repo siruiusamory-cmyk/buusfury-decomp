@@ -877,6 +877,21 @@ def probe_repo(tmp_path: Path) -> dict:
     return {"root": root}
 
 
+def test_the_probe_pins_its_escape_refusal_as_text():
+    """The two escape refusals, pinned as bytes where no PowerShell host exists.
+
+    The behavioural escape guards skip on a Linux runner, so the refusals they drive
+    are pinned here over the script's own text: a name carrying a parent step is
+    refused by name, and the destination is compared against the detached target
+    before the byte copy, so an escaped destination is never written at all.
+    """
+    text = PROBE_WORKTREE.read_text(encoding="utf-8")
+    assert "-contains '..'" in text
+    assert "parent-directory step" in text
+    assert "$insideTarget" in text
+    assert text.index("$insideTarget") < text.index("[System.IO.File]::Copy")
+
+
 def test_the_probe_worktree_refuses_a_file_whose_copy_differs(probe_repo):
     """The measured failure: a redirect converted the bytes the probe ran.
 

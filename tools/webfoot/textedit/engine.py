@@ -57,32 +57,15 @@ from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 from .. import compressed_dialogue as cd
+from ..binary import BinaryAddressError, GbaRomAddress
 from ..binary import GBA_ROM_BASE as ROM_BASE
-from ..data.placement_contracts import CONTRACTS
 from ..destination import refuse_rom_destination
 from ..dialogue_repack import chains_of, container_pointers, text_of
 from ..formats import text_tables as tt
 from ..formats import webfoot_lz
 from ..handles import DialogueHandle, unpack_handle
+from ..profile import MapEntryTableProfile, PlacementTypeProfile, TextTableProfile
 from ..write import WriteError, ensure_new_destination, ensure_not_source_alias
-
-#: The only file-offset range in which a record word is a PROVEN reference to a
-#: dialogue record: the event-resource record pool, whose extent is the placement
-#: contract's (pool_start, table) pair rather than a number written here.
-#:
-#: WHY A RANGE AND NOT THE SHAPE FILTER. `dialogue_record_inventory` matches a
-#: 4-byte-aligned word whose +1 is zero and +2 is 0x05, followed by a word that
-#: decodes to a legal span. Outside this pool that filter is near-random: measured
-#: on the Release 4A image, 907 record-shaped words lie outside it and 281 pass the
-#: filter, 256 of them naming spans that share no edge with any real record. The
-#: same measurement inside the pool gives 11 of 2,639. Rewriting an outside word
-#: corrupts whatever actually lives there, and no earlier release did, because
-#: every earlier pass preserved record spans, so a false site was rewritten with
-#: the value it already held. A pass that MOVES a record changes the value, so it
-#: writes only here.
-_EVENT_RESOURCE = CONTRACTS["buus_fury_usa_rev0_01c1707f"]["event_resource"]
-PROVEN_HANDLE_POOL = (_EVENT_RESOURCE["pool_start"] - ROM_BASE,
-                      _EVENT_RESOURCE["table"] - ROM_BASE)
 
 #: One UTF-16LE code unit. A handle's start and length fields count these.
 UNIT = 2
@@ -136,70 +119,158 @@ class MapTable:
 
 @dataclass(frozen=True, slots=True)
 class TitleProfile:
-    """One Webfoot title's measured candidate addresses.
-
-    Adding another title is appending one entry to `PROFILES`; no other line in
-    this module names a game. Every address here is a candidate that the
-    structure has to confirm - `validate` reads through each one and refuses the
-    image when the bytes do not agree.
-    """
-
     key: str
-    game_code: bytes
+    game_code: str
     table_literal: int
     text_table: int
     text_slots: int
     live_selectors: int
     grown_selector: int
-    #: File offset of the RETAIL container table, measured on the canonical image
-    #: (its literal word is 0x087B5B64). Its words are live structure: three code
-    #: loads reach the grown slot through the literal at file 0x03D92C. A table at
-    #: this offset is copied aside before any of its words is written.
+    #: File offset of the RETAIL container table, measured on the canonical image.
+    #: Its words are live structure: three code loads reach the grown slot through
+    #: the image's own literal. A table at this offset is copied aside before any of
+    #: its words is written. It is the one value in this row with no profile key, so
+    #: it is carried as the dataclass default: recorded debt, not a measurement a
+    #: catalogue entry can move.
     retail_table: int = 0x7B5B64
     #: The appearance table, whose records pair a name slot with a portrait slot.
     #: Zero means the title has none and no speaker can be resolved.
     appearance_table: int = 0
     appearance_count: int = 0
     #: The event-resource pool, as FILE offsets like every other address here.
-    #: A handle site inside it has a proven consumer, so a record carrying one is
-    #: a proven dialogue reference; a site outside it is counted and not linked.
-    #: None means "not measured for this title".
+    #: A handle site inside it has a proven consumer; sites outside are not linked.
     event_pool: tuple[int, int] | None = None
-    #: The map table and the route from a map to the dialogue its placements
-    #: reference. None means the title has none and no line can be placed.
+    #: The map table and the route from a map to the dialogue its placements reference.
     maps: MapTable | None = None
 
 
-#: Game code bytes 0xAC..0xB0 of the GBA header, measured on the canonical image.
-PROFILES: tuple[TitleProfile, ...] = (
-    TitleProfile(
-        key="buus-fury",
-        game_code=b"BG3E",
-        table_literal=0x123CC,
-        text_table=0x6BCE8,
-        text_slots=1534,
-        live_selectors=7,
-        grown_selector=7,
-        appearance_table=0x74D380,
-        appearance_count=232,
-        # The event-resource pool the SDK's placement contracts declare at ROM
-        # address 0x0877C5A4..0x0879B704, as file offsets.
-        event_pool=(0x77C5A4, 0x79B704),
-        maps=MapTable(
-            table=0x8E2E0,
-            count=452,
-            stride=0x38,
-            name_slot_at=0x0C,
-            array_at=0x14,
-            count_at=0x04,
-            placement_family=0x0800FD55,
-            descriptor_at=0x14,
-            resource_handler=0x0800424F,
-            event_table=0x79B704,
-            event_count=522,
-        ),
-    ),
-)
+def _text_address(value: int | None, key: str, profile_id: str) -> int:
+    """`value`, or a refusal naming the optional profile key that carries it."""
+    if value is None:
+        raise TextEditError(
+            f"REFUSED: packaged profile {profile_id!r} declares no {key}, so the "
+            "text-edit engine cannot read that part of the layout")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class _Declared:
+    """The profile keys this reader needs, each resolved at construction or refused."""
+
+    id: str
+    text: TextTableProfile
+    size: int
+    pool: tuple[int, int]
+
+    def number(self, key: str) -> int:
+        """The plain number `key` declares."""
+        return _text_address(getattr(self.text, key), key, self.id)
+
+    def raw(self, key: str) -> int:
+        """The declared value of `key` as the integer the catalogue spells."""
+        declared = _text_address(getattr(self.text, key), key, self.id)
+        return declared.raw if isinstance(declared, GbaRomAddress) else declared
+
+    def address(self, key: str) -> int:
+        """The file offset of the ROM address `key` declares."""
+        return self.file_offset(self.raw(key), key)
+
+    def file_offset(self, address: int, key: str) -> int:
+        """The file offset `address` names in this profile's image, or a refusal."""
+        try:
+            return GbaRomAddress(address).to_file_offset(self.size)
+        except BinaryAddressError as error:
+            raise TextEditError(
+                f"REFUSED: {key} declares {address:#010x}, which is not a ROM address "
+                f"inside a {self.size}-byte image: {error}") from error
+
+
+def _map_table(declared: _Declared, maps: MapEntryTableProfile,
+               placement: PlacementTypeProfile) -> MapTable:
+    """The one map row the profile's `map_entries` and `placement_types` describe."""
+    return MapTable(
+        table=declared.file_offset(maps.address.raw, "map_entries.address"),
+        count=maps.count,
+        stride=maps.record_size,
+        name_slot_at=declared.address("map_name_slot_offset"),
+        array_at=declared.address("map_array_offset"),
+        count_at=declared.address("map_count_offset"),
+        placement_family=placement.factory_raw,
+        descriptor_at=declared.address("map_descriptor_offset"),
+        resource_handler=declared.number("event_resource_handler"),
+        event_table=declared.address("event_table"),
+        event_count=declared.number("event_count"),
+    )
+
+
+def _title_profile(catalogue) -> TitleProfile:
+    """The text-edit row the packaged catalogue declares, or a refusal naming the key."""
+    text = catalogue.text_strings
+    maps = catalogue.map_entries
+    placement = catalogue.placement_types
+    if text is None:
+        raise TextEditError(
+            f"REFUSED: packaged profile {catalogue.id!r} declares no text_strings table")
+    if maps is None or placement is None:
+        raise TextEditError(
+            f"REFUSED: packaged profile {catalogue.id!r} declares no map_entries or "
+            "placement_types table, so no map row can be read")
+    declared = _Declared(
+        id=catalogue.id,
+        text=text,
+        size=catalogue.size,
+        pool=tuple(_text_address(text.event_pool, "event_pool", catalogue.id)),
+    )
+    appearances = catalogue.appearances
+    return TitleProfile(
+        key=catalogue.game,
+        game_code=catalogue.game_code,
+        table_literal=declared.address("table_literal"),
+        text_table=declared.address("pointer_table_address"),
+        text_slots=text.count,
+        live_selectors=declared.number("live_selectors"),
+        grown_selector=declared.number("grown_selector"),
+        appearance_table=declared.file_offset(
+            appearances.address.raw, "appearances.address")
+        if appearances is not None else 0,
+        appearance_count=appearances.count if appearances is not None else 0,
+        event_pool=tuple(declared.file_offset(address, "event_pool")
+                         for address in declared.pool),
+        maps=_map_table(declared, maps, placement),
+    )
+
+
+#: The import of `capability` sits inside `profiles` because it imports `profile`.
+_CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
+
+
+def profiles() -> tuple[TitleProfile, ...]:
+    """Every supported title, from the packaged catalogue through the capability gate."""
+    from ..capability import Capability, packaged_contract
+
+    return (_title_profile(
+        packaged_contract(_CANONICAL_PROFILE_ID, Capability.TEXT_STRINGS)),)
+
+
+#: Every title the text editor supports, in catalogue order. Read by `detect`.
+PROFILES: tuple[TitleProfile, ...] = profiles()
+
+#: The only file-offset range in which a record word is a PROVEN reference to a
+#: dialogue record: the packaged profile's event-resource record pool. Callers that
+#: patch `PROFILES` patch this in the same breath, because a fixture's record words
+#: live where its own pool is.
+#:
+#: WHY A RANGE AND NOT THE SHAPE FILTER. `dialogue_record_inventory` matches a
+#: 4-byte-aligned word whose +1 is zero and +2 is 0x05, followed by a word that
+#: decodes to a legal span. Outside this pool that filter is near-random: measured
+#: on the Release 4A image, 907 record-shaped words lie outside it and 281 pass the
+#: filter, 256 of them naming spans that share no edge with any real record. The
+#: same measurement inside the pool gives 11 of 2,639. Rewriting an outside word
+#: corrupts whatever actually lives there, and no earlier release did, because
+#: every earlier pass preserved record spans, so a false site was rewritten with
+#: the value it already held. A pass that MOVES a record changes the value, so it
+#: writes only here.
+PROVEN_HANDLE_POOL = tuple(PROFILES[0].event_pool[index] for index in (0, 1))
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,7 +305,7 @@ def validate(image: bytes, profile: TitleProfile) -> Layout:
         raise TextEditError(
             f"REFUSED: {profile.key}: the image is {len(image)} bytes, too short to hold the "
             f"text table at {profile.text_table:#x} with {profile.text_slots} slots")
-    game_code = image[0xAC:0xB0]
+    game_code = image[0xAC:0xB0].decode("ascii", "replace")
     if game_code != profile.game_code:
         raise TextEditError(
             f"REFUSED: {profile.key}: the header game code is {game_code!r}, not "

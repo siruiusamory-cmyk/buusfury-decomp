@@ -83,6 +83,17 @@ profiles:
           list. Relocation is per ENTRY, not per pool: this flag authorises the
           table, and webfoot.text still proves each body's ownership before
           publishing its anchor as movable.
+        table_literal: 0x080123CC
+        live_selectors: 7
+        grown_selector: 7
+        event_pool: [0x0877C5A4, 0x0879B704]
+        event_resource_handler: 0x0800424F
+        event_table: 0x0879B704
+        event_count: 522
+        map_name_slot_offset: 0x0800000C
+        map_array_offset: 0x08000014
+        map_count_offset: 0x08000004
+        map_descriptor_offset: 0x08000014
       scripts:
       - encoding: stack_be16_buu_v1
         family: static40

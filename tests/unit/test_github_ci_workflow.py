@@ -35,6 +35,14 @@ GATE_BODIES = (
 ROM_NEEDLES = ("." + "gba", "." + "agb", "." + "sav", "save" + "state")
 SECRET_NEEDLES = ("sec" + "rets", "gh" + "p_", "api" + "_key", "pass" + "word", "to" + "ken")
 
+#: The two preconditions the first Windows runner run measured: the bytes on
+#: disk must be the committed bytes, and the temporary root must share the
+#: checkout's volume.
+AUTOCRLF_OFF = "git config --global core.autocrlf false"
+AUTOCRLF_READ_BACK = "git config --get core.autocrlf"
+VOLUME_FROM_WORKSPACE = "Split-Path -Qualifier $env:GITHUB_WORKSPACE"
+LEDGER_PATH = "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md"
+
 
 def _text() -> str:
     return WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -48,6 +56,35 @@ def _job() -> dict:
     jobs = _document()["jobs"]
     assert len(jobs) == 1
     return next(iter(jobs.values()))
+
+
+def _steps() -> list[dict]:
+    return _job()["steps"]
+
+
+def _run_index(fragment: str) -> int:
+    """The index of the one step whose script carries ``fragment``."""
+    matches = [
+        index
+        for index, step in enumerate(_steps())
+        if fragment in str(step.get("run", ""))
+    ]
+    assert len(matches) == 1, fragment
+    return matches[0]
+
+
+def _run_script(fragment: str) -> str:
+    return str(_steps()[_run_index(fragment)]["run"])
+
+
+def _uses_index(owner: str) -> int:
+    matches = [
+        index
+        for index, step in enumerate(_steps())
+        if str(step.get("uses", "")).startswith(owner + "@")
+    ]
+    assert len(matches) == 1, owner
+    return matches[0]
 
 
 def _step(owner: str) -> dict:
@@ -133,3 +170,25 @@ def test_the_workflow_names_no_rom_file_and_no_secret():
     lowered = _text().lower()
     for needle in ROM_NEEDLES + SECRET_NEEDLES:
         assert needle not in lowered, needle
+
+
+def test_the_checkout_is_told_to_keep_committed_bytes_before_it_runs():
+    """Prevents: a CRLF checkout failing the renderer's byte comparison."""
+    script = _run_script(AUTOCRLF_OFF)
+    assert AUTOCRLF_READ_BACK in script
+    assert _run_index(AUTOCRLF_OFF) < _uses_index("actions/checkout")
+
+
+def test_the_temporary_root_shares_the_checkout_volume_before_the_gates():
+    """Prevents: a cross-volume hardlink clone failing the local-CI fixture."""
+    script = _run_script(VOLUME_FROM_WORKSPACE)
+    assert 'Add-Content -Path $env:GITHUB_ENV -Value "TMP=' in script
+    assert 'Add-Content -Path $env:GITHUB_ENV -Value "TEMP=' in script
+    assert _run_index(VOLUME_FROM_WORKSPACE) < _run_index(GATE_BODIES[0])
+
+
+def test_the_checkout_is_proved_to_carry_no_cr_afterwards():
+    """Prevents: the bytes arriving mangled with no stated precondition."""
+    script = _run_script(LEDGER_PATH)
+    assert "[char]13" in script
+    assert _run_index(LEDGER_PATH) > _uses_index("actions/checkout")

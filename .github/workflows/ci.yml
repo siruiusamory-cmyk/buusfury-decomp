@@ -19,6 +19,14 @@ jobs:
       run:
         shell: pwsh
     steps:
+      # The suite compares tracked text bytes, so the checkout must be the
+      # committed bytes.
+      - name: Make the checkout preserve the committed line endings
+        run: |
+          git config --global core.autocrlf false
+          $autocrlf = git config --get core.autocrlf
+          if ($autocrlf -ne "false") { throw "the checkout would convert line endings: core.autocrlf reads $autocrlf, not false" }
+
       - name: Check out the repository without keeping a credential
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -26,10 +34,31 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # A document that arrived as CRLF byte-compares unequal to what the
+      # renderer writes, for a reason that has nothing to do with the change.
+      - name: Prove the checkout kept the committed bytes
+        run: |
+          $ledger = "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md"
+          $text = Get-Content -Raw -Path $ledger
+          if ($text.Contains([char]13)) { throw "$ledger carries CR characters: the checkout converted line endings" }
+          Write-Host "$ledger is CR-free at $($text.Length) characters"
+
       - name: Install Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
+
+      # A local clone hardlinks its objects, which fails across volumes, and
+      # pytest's temporary root follows TMP and TEMP.
+      - name: Put the temporary root on the checkout's volume
+        run: |
+          $volume = Split-Path -Qualifier $env:GITHUB_WORKSPACE
+          if (-not $volume) { throw "GITHUB_WORKSPACE names no volume, so the temporary root cannot share it" }
+          $root = Join-Path $volume "tmp"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "TMP=$root"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEMP=$root"
+          Write-Host "temporary root $root, on the volume of $env:GITHUB_WORKSPACE"
 
       - name: Build the SDK environment, run the portable suite and the quality gates
         run: |

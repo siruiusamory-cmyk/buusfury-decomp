@@ -75,6 +75,23 @@ if (-not $RepoPath) { $RepoPath = (Resolve-Path -LiteralPath (Join-Path $PSScrip
 # cannot overwrite an earlier run's preserved captures or its copy of the record.
 #: $recordDir is under ignored build/; nothing here is ever committed or printed.
 $recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
+#: Fail closed. An empty value here used to turn every later statement into a silent
+#: no-op: the gate ran to the end of its step table and printed PASS with no record
+#: at all, which is the false PASS GitHub run 38504730899 shipped. The two inputs are
+#: printed with the result, because the run that hit it left nothing else behind.
+if (-not $recordDir) {
+    Write-Host ("local-ci: FAIL - the record directory could not be computed from RepoPath '" +
+        $RepoPath + "' and Sha '" + $Sha + "': the computed record directory reads '" + $recordDir + "'")
+    # Both inputs were valid in the run that hit this, so the values that can explain
+    # it travel with the refusal: a Join-Path that does not resolve, a PowerShell
+    # whose module path cannot autoload it, and the interpreter that spawned this one.
+    Write-Host ("local-ci: FAIL - diagnostics: Join-Path resolves " +
+        ([bool](Get-Command Join-Path -ErrorAction SilentlyContinue)) +
+        "; PSVersion " + $PSVersionTable.PSVersion +
+        "; LOCALAPPDATA '" + $env:LOCALAPPDATA + "'" +
+        "; PSModulePath '" + $env:PSModulePath + "'")
+    exit 1
+}
 $runId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
 $runDir = Join-Path (Join-Path $recordDir 'runs') $runId
 $script:StepsDir = Join-Path $runDir 'steps'
@@ -473,8 +490,19 @@ $body.Add("verdict        : $verdict")
 
 $text = ($body -join [Environment]::NewLine) + [Environment]::NewLine
 $recordPath = Join-Path $recordDir 'record.txt'
+if (-not $recordPath) {
+    Write-Host ("local-ci: FAIL - the record path could not be computed from the record directory '" +
+        $recordDir + "' and the name 'record.txt': the computed record path reads '" + $recordPath + "'")
+    exit 1
+}
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($recordPath, $text, $utf8)
+#: The write can fail while the run continues, and a record the gate believes it wrote
+#: is the one thing the whole gate exists to produce, so its absence is fatal here.
+if (-not (Test-Path -LiteralPath $recordPath -PathType Leaf)) {
+    Write-Host ("local-ci: FAIL - the record was not written at '" + $recordPath + "'")
+    exit 1
+}
 $digest = (Get-FileHash -LiteralPath $recordPath -Algorithm SHA256).Hash
 [System.IO.File]::WriteAllText((Join-Path $recordDir 'record.sha256'), $digest + [Environment]::NewLine, $utf8)
 #: A copy inside this run's own directory: the next run writes the canonical path again,

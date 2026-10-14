@@ -1,0 +1,238 @@
+# The GitHub copy of the full local gate. The portable suite is sharded across ten
+# parallel jobs, so the wall clock is bounded by the slowest shard rather than by
+# the whole tree, and the quality gates, the ROM-free integration member and the
+# adjacency orders are jobs of their own rather than steps behind the suite.
+#
+# Every job that checks the repository out carries the same two measured
+# preconditions, defined once as YAML anchors and referenced by every job: the
+# checkout has to be the committed bytes, and the temporary root has to share the
+# checkout's volume. No ROM is needed: the integration member is the one ROM-free
+# member of the ROM-gated directory, and the canonical image stays off the runner.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Every step is a PowerShell 7 script; windows-latest provides pwsh.
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  shard:
+    name: shard ${{ matrix.shard }}
+    runs-on: windows-latest
+    # The unsharded suite step measured 954 s at -n 4; a shard carries about a
+    # tenth of the work plus its own install. 30 minutes bounds a hang and a cold
+    # package cache.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Ten shards plus the three other jobs is thirteen concurrent jobs, inside
+        # the roughly twenty a public repository is given.
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    env:
+      WEBFOOT_SHARD_COUNT: "10"
+      WEBFOOT_SHARD_INDEX: ${{ matrix.shard }}
+      # Modules in the shipping Workbench surface construct a real QApplication.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      # --- the shared preconditions, defined here and aliased by every job -----
+      - &autocrlf
+        name: Make the checkout preserve the committed line endings
+        run: |
+          git config --global core.autocrlf false
+          $autocrlf = git config --get core.autocrlf
+          if ($autocrlf -ne "false") { throw "the checkout would convert line endings: core.autocrlf reads $autocrlf, not false" }
+
+      - &checkout
+        name: Check out the repository without keeping a credential
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # tests/unit/test_local_ci_script.py diffs 34da2e67..HEAD, which a shallow clone cannot resolve.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A document that arrived as CRLF byte-compares unequal to what the renderer
+      # writes, for a reason that has nothing to do with the change.
+      - &committed-bytes
+        name: Prove the checkout kept the committed bytes
+        run: |
+          $ledger = "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md"
+          $text = Get-Content -Raw -Path $ledger
+          if ($text.Contains([char]13)) { throw "$ledger carries CR characters: the checkout converted line endings" }
+          Write-Host "$ledger is CR-free at $($text.Length) characters"
+
+      # A local clone hardlinks its objects, which fails across volumes, and
+      # pytest's temporary root follows TMP and TEMP.
+      - &temporary-root
+        name: Put the temporary root on the checkout's volume
+        run: |
+          $volume = Split-Path -Qualifier $env:GITHUB_WORKSPACE
+          if (-not $volume) { throw "GITHUB_WORKSPACE names no volume, so the temporary root cannot share it" }
+          $root = Join-Path $volume "tmp"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Add-Content -Path $env:GITHUB_ENV -Value "TMP=$root"
+          Add-Content -Path $env:GITHUB_ENV -Value "TEMP=$root"
+          Write-Host "temporary root $root, on the volume of $env:GITHUB_WORKSPACE"
+
+      - &python
+        name: Install Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+          # The manifest decides which versions the extras resolve to.
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # --- end of the shared preconditions -------------------------------------
+
+      - name: Install the shipping and research extras
+        run: python -m pip install --quiet --disable-pip-version-check -e ".[dev,workbench,research]"
+
+      - name: Run this shard of the portable suite
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\steps | Out-Null
+          & python -m pytest tests/unit -q -n 4 --dist loadfile --junitxml=report-shard-${{ matrix.shard }}.xml 2> artifacts\steps\shard-${{ matrix.shard }}.err | Tee-Object -FilePath artifacts\steps\shard-${{ matrix.shard }}.out
+          if ($LASTEXITCODE -ne 0) { throw "shard ${{ matrix.shard }} failed with exit $LASTEXITCODE" }
+
+      - name: Publish this shard's report and its console capture
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shard-${{ matrix.shard }}
+          path: |
+            report-shard-${{ matrix.shard }}.xml
+            artifacts/steps/
+
+  gates:
+    name: quality gates
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - *autocrlf
+      - *checkout
+      - *committed-bytes
+      - *temporary-root
+      - *python
+
+      # The install is here for the cache and for the environment. The post step of
+      # actions/setup-python saves a pip cache, and run 38504730899 failed it with
+      # "Cache folder path is retrieved for pip but doesn't exist on disk" because
+      # the job asked for `cache: pip` and never ran pip, so there was no directory
+      # to save. The gates themselves passed in that run without this step, so this
+      # is the cache fix plus the hardening that they read the project's declared
+      # environment; it is not a repair of a broken gate.
+      - name: Install the project
+        run: python -m pip install --quiet --disable-pip-version-check -e .
+
+      # The four tree-wide gates the local record runs, each its own step so a
+      # failure names the gate, and each the same module the tracked bodies run.
+      - name: Public surface
+        run: python -m tools.quality.public_surface --all
+
+      - name: Architecture
+        run: python -m tools.quality.architecture
+
+      - name: Public release
+        run: python -m tools.quality.public_release
+
+      - name: Readability
+        run: python -m tools.quality.readability --all
+
+  integration:
+    name: integration
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - *autocrlf
+      - *checkout
+      - *committed-bytes
+      - *temporary-root
+      - *python
+
+      - name: Install the development extras this selection imports
+        run: python -m pip install --quiet --disable-pip-version-check -e ".[dev]"
+
+      - name: Run the ROM-free integration member
+        run: python -m pytest tests/integration/test_container_decode_synthetic.py -q
+
+  adjacency:
+    name: adjacency
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - *autocrlf
+      - *checkout
+      - *committed-bytes
+      - *temporary-root
+      - *python
+
+      - name: Install the shipping and research extras
+        run: python -m pip install --quiet --disable-pip-version-check -e ".[dev,workbench,research]"
+
+      - name: Run the adjacency set in both orders
+        run: |
+          # The forward exit code is carried to the last line. An exit after the
+          # forward order would skip the reverse order, and either order failing
+          # must fail the job.
+          & python -m scripts.adjacency_run -Order forward
+          $forward = $LASTEXITCODE
+          & python -m scripts.adjacency_run -Order reverse
+          if ($forward -ne 0 -or $LASTEXITCODE -ne 0) { throw "adjacency failed with forward $forward and reverse $LASTEXITCODE" }
+
+  report:
+    name: merged report
+    runs-on: windows-latest
+    timeout-minutes: 15
+    needs: [shard]
+    # A red shard must still publish what ran, so this job is never skipped.
+    if: always()
+    steps:
+      - *autocrlf
+      - *checkout
+      - *committed-bytes
+      - *temporary-root
+      - *python
+
+      - name: Download every shard's report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: shard-*
+          path: shards
+
+      - name: Merge the shard reports into one
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts\steps | Out-Null
+          $inputs = Get-ChildItem -Path shards -Recurse -Filter 'report-shard-*.xml' | Sort-Object FullName | ForEach-Object { $_.FullName }
+          if (-not $inputs) { throw "no shard report was downloaded, so there is nothing to merge" }
+          & python ci/merge_junit.py --output report.xml @inputs 2> artifacts\steps\report-merge.err | Tee-Object -FilePath artifacts\steps\report-merge.out
+          if ($LASTEXITCODE -ne 0) { throw "merge_junit failed with exit $LASTEXITCODE" }
+
+      - name: Concatenate the shard captures into one suite log
+        if: always()
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $log = 'artifacts\merged-suite.log'
+          foreach ($shard in Get-ChildItem -Path shards -Directory | Sort-Object Name) {
+            Add-Content -Path $log -Value ("===== " + $shard.Name + " =====")
+            $capture = Join-Path $shard.FullName ("artifacts\steps\" + $shard.Name + ".out")
+            if (Test-Path -LiteralPath $capture) {
+              Get-Content -LiteralPath $capture | Add-Content -Path $log
+            } else {
+              Add-Content -Path $log -Value ("no console capture was published for " + $shard.Name)
+            }
+          }
+
+      - name: Publish the merged report, the merged log and every capture
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: merged-report
+          path: |
+            report.xml
+            artifacts/
+            shards/

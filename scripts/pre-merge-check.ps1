@@ -58,6 +58,11 @@
 #     writes tree and blob objects, in a linked worktree into the primary's
 #     `--git-common-dir`. Nothing else is touched: no branch, no index, no
 #     working tree, no remote.
+#
+# PROPOSED gate semantics, awaiting the coordinator's ruling: a candidate that
+# changes a file listed in config/rom-dependent-tests.txt stops as FOCUSED ROM RUN
+# REQUIRED, because those nodes SKIP on a GitHub runner; scripts/rom-focused-check.ps1
+# is the run that covers them, against a private copy of the canonical image.
 
 [CmdletBinding()]
 param(
@@ -150,6 +155,24 @@ if ($gitDir -eq '.git' -or $gitDir -eq '.') {
         'directory')
 }
 
+# --- the ROM-dependent inventory, read before anything else can go wrong ------
+# Fail closed. A gate that cannot tell whether this candidate needs the focused
+# run must never report that a green GitHub run covers it.
+$inventoryPath = Join-Path $RepoPath 'config/rom-dependent-tests.txt'
+if (-not (Test-Path -LiteralPath $inventoryPath -PathType Leaf)) {
+    throw ("config/rom-dependent-tests.txt is missing from ${RepoPath}: without it this gate cannot " +
+        'tell a candidate a green GitHub run covers from one whose tests SKIP there, so it refuses ' +
+        'instead of assuming the run covers it')
+}
+$romInventory = @(Get-Content -LiteralPath $inventoryPath |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ -and -not $_.StartsWith('#') } |
+    ForEach-Object { $_.Replace('\', '/').ToLowerInvariant() })
+if ($romInventory.Count -eq 0) {
+    throw ("config/rom-dependent-tests.txt in ${RepoPath} lists no test file: an empty inventory " +
+        'would classify every candidate as covered by a GitHub run, so it is refused instead')
+}
+
 # --- how git resolved each end, without braces in any argument ----------------
 function Resolve-Revision {
     param([string]$Revision, [string]$What)
@@ -188,6 +211,13 @@ Write-Output ("pre-merge-check: fork $fork; candidate changed {0} paths; " -f $m
 Write-Output ("pre-merge-check: $Remote/$TargetBranch changed {0} paths since that fork; {1} in both" `
         -f $theirs.Count, $overlap.Count)
 
+# --- the record requirement: is a GitHub run enough for this candidate? -------
+# Driven from `$mine`, the paths the candidate already changed. Path-based by
+# design: it is the file that needs the image, not the shape of the edit.
+$romTouching = @($mine |
+    Where-Object { $romInventory -contains $_.Replace('\', '/').ToLowerInvariant() } |
+    Sort-Object)
+
 # --- the predicted merged tree (the merge commit's own computation) -----------
 $mergeOutput = & git -C $RepoPath merge-tree --write-tree $targetTip $candidate 2>$null
 $mergeTreeFailed = $LASTEXITCODE -ne 0
@@ -217,15 +247,39 @@ if ($ExpectMergedTree) {
         $instructions += 'rebase onto live master and re-run the focused tests, then re-request'
     }
 }
+if ($romTouching.Count -gt 0) {
+    $instructions += ('run the ROM-dependent tests named by config/rom-dependent-tests.txt against a ' +
+        'PRIVATE COPY of the canonical image, with the canonical SHA-256 checked before and after, by ' +
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\rom-focused-check.ps1; a full ' +
+        'local record is not required')
+}
 
-if ($failures.Count -eq 0) {
+$romRequired = $romTouching.Count -gt 0
+if (-not $romRequired) {
+    Write-Output ('pre-merge-check: record requirement: GITHUB RUN SUFFICES ' +
+        '(no changed path is a ROM-dependent test file)')
+}
+else {
+    Write-Output (("pre-merge-check: record requirement: FOCUSED ROM RUN REQUIRED ({0} changed path(s) " +
+        'need the canonical image and SKIP on GitHub: {1})') `
+        -f $romTouching.Count, ($romTouching -join ', '))
+}
+
+if ($failures.Count -eq 0 -and -not $romRequired) {
     Write-Output 'pre-merge-check: PASS'
     exit 0
 }
 
-Write-Output 'pre-merge-check: REBASE REQUIRED'
-foreach ($failure in $failures) {
-    Write-Output "  - $failure"
+# One line per condition, so a reader never has to infer which verdict fired, and
+# the rebase text is never printed for a candidate whose only stop is the ROM one.
+if ($romRequired) {
+    Write-Output 'pre-merge-check: FOCUSED ROM RUN REQUIRED'
+}
+if ($failures.Count -gt 0) {
+    Write-Output 'pre-merge-check: REBASE REQUIRED'
+    foreach ($failure in $failures) {
+        Write-Output "  - $failure"
+    }
 }
 if ($ReportOnly) {
     Write-Output 'pre-merge-check: -ReportOnly, so this is a report and not a stop'
@@ -237,7 +291,13 @@ foreach ($instruction in $instructions) {
     $step++
     Write-Output "  $step. $instruction"
 }
-Write-Output ("pre-merge-check: the target moved onto work this candidate's pipeline never tested " +
-    'together with it; the rebase plus the focused tests is minutes, and the alternative is a ' +
-    'silent interaction discovered after the merge')
+if ($failures.Count -gt 0) {
+    Write-Output ("pre-merge-check: the target moved onto work this candidate's pipeline never tested " +
+        'together with it; the rebase plus the focused tests is minutes, and the alternative is a ' +
+        'silent interaction discovered after the merge')
+}
+if ($romRequired) {
+    Write-Output ('pre-merge-check: a GitHub run cannot cover the paths above, because those nodes ' +
+        'SKIP without the canonical image; the focused run against a private copy is what covers them')
+}
 exit 1

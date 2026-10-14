@@ -1,4 +1,4 @@
-"""Authored behavior-trigger evidence contracts, validation data only and never a scheduler, for the one template family runtime evidence established."""
+
 
 BEHAVIOR_TRIGGER_CONTRACTS = {
     "buus_fury_usa_rev0_01c1707f": {

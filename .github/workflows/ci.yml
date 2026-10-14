@@ -141,8 +141,10 @@ jobs:
       - name: Readability
         run: |
           python -m tools.quality.readability --all
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $target = if ($env:GITHUB_BASE_REF) { "origin/$env:GITHUB_BASE_REF" } else { "origin/master" }
           $base = git merge-base $target HEAD
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Write-Host "readability: comment bar against $base"
           python -m tools.quality.readability --changed $base
 

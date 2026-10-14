@@ -62,8 +62,10 @@ Invoke-CiStep { & $python -m tools.quality.readability --all }
 # the default branch otherwise. The same signal, the same step, no second job.
 Invoke-CiStep {
     $base = if ($env:CI_MERGE_REQUEST_DIFF_BASE_SHA) { $env:CI_MERGE_REQUEST_DIFF_BASE_SHA } else { 'origin/master' }
-    if (-not (git rev-parse --verify --quiet $base)) {
-        git fetch --quiet --no-tags origin '+refs/heads/master:refs/remotes/origin/master'
+    & git rev-parse --verify --quiet $base > $null 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        & git fetch --quiet --no-tags origin '+refs/heads/master:refs/remotes/origin/master'
+        if ($LASTEXITCODE -ne 0) { throw "ci: the comment bar base $base cannot be resolved" }
     }
     Write-Host "readability: comment bar against $base"
     & $python -m tools.quality.readability --changed $base

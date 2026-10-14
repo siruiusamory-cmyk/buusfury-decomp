@@ -18,6 +18,7 @@ profiles:
         animation_pointer_offset: 0x54
         object_palette_address: 0x0805652c
         bg_palette_address: 0x080701b0
+        portrait_table_address: 0x086f393c
         evidence: >-
           TOOLKIT-010 GRAPHICS_FORMAT.md, verified against the canonical image.
           All 297 table entries are ROM pointers, strictly ascending, and the

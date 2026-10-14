@@ -57,19 +57,57 @@ from tools.webfoot.formats import rgb_png
 from tools.webfoot.formats import sprite_graphics as sg
 from tools.webfoot.formats import webfoot_lz as wl
 
-#: config/roms.yaml actor_sprites.character_table_address.
-REGISTRY_TABLE_ADDRESS = 0x086B6BDC
-#: config/roms.yaml actor_sprites.object_palette_address.
-OBJECT_PALETTE_ADDRESS = 0x0805652C
 #: A structure's animation-pointer array, count-bounded, begins at +0x54
 #: (PROJECT_STATE.md "Sprite definitions and animations").
 ANIMATION_ARRAY_OFFSET = 0x54
-#: The portrait pointer array (accessor 0x08011F20).
-PORTRAIT_ARRAY_ADDRESS = 0x086F393C
 #: Sprite ids run 10..306, so a structure's run index in the registry is id - 10.
 SPRITE_ID_BASE = 10
 #: The planner's chroma key for a hole (docs/project-format.md).
 CHROMA_KEY = (255, 0, 255)
+
+#: PINMAP-04. The profile every read here defaults to, and the three names that
+#: carry it. The addresses themselves are the profile's declaration: no target
+#: address is spelled in this module, and the planner's own reads take their
+#: addresses from the layout object they are handed, never from these names.
+_CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
+
+#: The compat names remain importable because `tools/research/apply_tulma_graphics.py`
+#: re-exports them and two modules that import that one at collection time read them.
+#: They are resolved on access rather than at import so a packaged profile this module
+#: cannot read fails at the reader that asked for an address, not at collection for
+#: every module that merely imports this one.
+_DERIVED_LAYOUT_NAMES = ("REGISTRY_TABLE_ADDRESS", "OBJECT_PALETTE_ADDRESS",
+                         "PORTRAIT_ARRAY_ADDRESS")
+
+
+def _packaged_layout():
+    """The packaged profile's actor-sprite layout, through the capability gate.
+
+    The same shape `map_render.canonical_profile` uses, one capability over: the
+    profile is the packaged catalog's entry and not a second copy of it. The import
+    is inside the call because `capability` imports `profile`.
+    """
+    from .capability import Capability, packaged_contract
+    layout = packaged_contract(
+        _CANONICAL_PROFILE_ID, Capability.ACTOR_SPRITES
+    ).actor_sprites
+    if layout is None:
+        raise SpriteSwapError(
+            f"packaged profile {_CANONICAL_PROFILE_ID!r} declares no actor_sprites "
+            "layout, so no default target address exists"
+        )
+    return layout
+
+
+def __getattr__(name: str) -> int:
+    if name in _DERIVED_LAYOUT_NAMES:
+        layout = _packaged_layout()
+        return {
+            "REGISTRY_TABLE_ADDRESS": layout.character_table_address,
+            "OBJECT_PALETTE_ADDRESS": layout.object_palette_address,
+            "PORTRAIT_ARRAY_ADDRESS": layout.portrait_table_address,
+        }[name].raw
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 class SpriteGeometry(NamedTuple):
@@ -249,17 +287,25 @@ class Cell:
     raster: bytes
 
 
-def donor_cells(data: bytes, assets: Path, spec: SpriteSwap) -> list[Cell]:
+def donor_cells(data: bytes, assets: Path, spec: SpriteSwap, *,
+                layout=None) -> list[Cell]:
     """Walk a sprite's populated slots and build the raster for every cell.
 
     Every structural fact the write depends on is asserted, not assumed: the composition
     size, the populated slots, the frame count against the sheet's own cell count, one
     piece per frame, the frame rect at its anchor, the 8bpp attribute bit and the
     direction-major cell order.
+
+    ``layout`` is the actor-sprite layout this walk reads its addresses from - the
+    character registry, the object palette and the animation pointer offset. It
+    defaults to the packaged profile's layout and is never cached here, so a caller
+    holding another image's profile drives every read from that one.
     """
+    if layout is None:
+        layout = _packaged_layout()
     size = len(data)
     geometry = spec.geometry
-    table = file_offset(REGISTRY_TABLE_ADDRESS, size)
+    table = file_offset(layout.character_table_address.raw, size)
     structure = file_offset(read_u32(data, table + 4 * spec.character_index), size)
     composition = read_u32(data, structure) >> 16
     if composition != geometry.composition_size:
@@ -268,11 +314,11 @@ def donor_cells(data: bytes, assets: Path, spec: SpriteSwap) -> list[Cell]:
             f"write is proven only for the {geometry.composition_size:#x} one "
             f"{geometry.frame_width}x{geometry.frame_height} frame needs"
         )
-    palette = palette_indices(data, file_offset(OBJECT_PALETTE_ADDRESS, size))
+    palette = palette_indices(data, file_offset(layout.object_palette_address.raw, size))
 
     cells: list[Cell] = []
     for slot, sheet, frames_per_facing in spec.slots:
-        pointer = read_u32(data, structure + ANIMATION_ARRAY_OFFSET + 4 * slot)
+        pointer = read_u32(data, structure + layout.animation_pointer_offset + 4 * slot)
         if pointer == 0:
             raise SpriteSwapError(f"sprite {spec.sprite_id} slot {slot} is null")
         animation = sg.decode_animation(data, file_offset(pointer, size))
@@ -558,7 +604,7 @@ def verify(base: bytes, out: bytes, plan: Plan) -> dict:
 
 
 def verify_reopen(out: bytes, assets: Path, expected: dict[int, bytes],
-                  spec: SpriteSwap) -> dict:
+                  spec: SpriteSwap, *, layout=None) -> dict:
     """Reopen the written image and require every frame cell to reach the intended art.
 
     The diff-confinement check above only proves WHERE bytes changed. This one proves the
@@ -567,9 +613,12 @@ def verify_reopen(out: bytes, assets: Path, expected: dict[int, bytes],
     placed. A container that moved while one of its pieces stayed behind shows up here as a
     missing container named by the output - which is the retail-art-reversion failure mode
     a single-reference rewrite would produce.
+
+    ``layout`` is handed to the re-walk unchanged, so the reopened read resolves from the
+    same layout the write did.
     """
     named: dict[int, bytes] = {}
-    for cell in donor_cells(out, assets, spec):
+    for cell in donor_cells(out, assets, spec, layout=layout):
         named.setdefault(cell.graphic_offset, cell.raster)
     if set(named) != set(expected):
         missing = sorted(hex(x) for x in set(expected) - set(named))
@@ -589,22 +638,30 @@ def verify_reopen(out: bytes, assets: Path, expected: dict[int, bytes],
 
 
 def swap(data: bytes, assets: Path, *, sprites: tuple[SpriteSwap, ...] = (),
-         portraits: tuple[PortraitSwap, ...] = ()) -> tuple[bytes, dict]:
+         portraits: tuple[PortraitSwap, ...] = (), layout=None) -> tuple[bytes, dict]:
     """One pass over the image: rewrite every named sprite's containers and every portrait.
 
     Pure: it takes bytes and returns bytes, so the caller owns the file system and can apply
     the source-alias rule and the staged write once for the whole run. The palette is not
     touched, which the report states as a measurement rather than a promise, because every
     changed byte must fall inside a span this report attributes to a named owner.
+
+    ``layout`` is the actor-sprite layout every target address comes from - the character
+    registry, the object palette and the portrait pointer array. It defaults to the packaged
+    profile's layout, and a layout that declares no portrait array refuses a portrait swap
+    by name instead of falling back to any address.
     """
     if not sprites and not portraits:
         raise SpriteSwapError("no operation was given, so there is nothing to write")
+    if layout is None:
+        layout = _packaged_layout()
 
     plan = Plan()
     per_sprite: list[tuple[SpriteSwap, dict[int, bytes]]] = []
     for spec in sprites:
         placed: dict[int, bytes] = {}
-        for target in containers(donor_cells(data, assets, spec)).values():
+        for target in containers(
+                donor_cells(data, assets, spec, layout=layout)).values():
             geometry = spec.geometry
             plan_container(data, plan, target.offset, geometry.frame_width,
                            geometry.frame_height, target.raster,
@@ -614,10 +671,15 @@ def swap(data: bytes, assets: Path, *, sprites: tuple[SpriteSwap, ...] = (),
         per_sprite.append((spec, placed))
 
     size = len(data)
-    palette = palette_indices(data, file_offset(OBJECT_PALETTE_ADDRESS, size))
+    palette = palette_indices(data, file_offset(layout.object_palette_address.raw, size))
     portrait_records = []
     for spec in portraits:
-        word = file_offset(PORTRAIT_ARRAY_ADDRESS, size) + 4 * spec.slot
+        if layout.portrait_table_address is None:
+            raise SpriteSwapError(
+                f"a portrait swap needs {_CANONICAL_PROFILE_ID}'s portrait_table_address "
+                "and this profile declares none; there is no fallback address"
+            )
+        word = file_offset(layout.portrait_table_address.raw, size) + 4 * spec.slot
         offset = file_offset(read_u32(data, word), size)
         declared = wl.unpack(data, offset).declared_size
         if declared != spec.side * spec.side:
@@ -633,7 +695,8 @@ def swap(data: bytes, assets: Path, *, sprites: tuple[SpriteSwap, ...] = (),
     out = apply(data, plan)
     reopen: dict[str, object] = {}
     for spec, placed in per_sprite:
-        reopen[f"sprite:{spec.sprite_id}"] = verify_reopen(out, assets, placed, spec)
+        reopen[f"sprite:{spec.sprite_id}"] = verify_reopen(
+            out, assets, placed, spec, layout=layout)
     written_portraits = []
     for spec, record, raster in portrait_records:
         now = record.get("new_offset", record["container_offset"])

@@ -97,25 +97,60 @@ def test_the_tools_hex5_census_matches_the_widened_measurement() -> None:
     )
 
 
-def test_the_widened_census_differs_from_section_4_by_that_one_spelled_line() -> None:
-    """The widened token finds one line section 4's pattern cannot see.
+def test_the_widened_census_is_the_publication_plus_every_declared_move() -> None:
+    """The publication is quoted, and each ticket's move of it is declared.
 
-    tools/runtime/rom008_query_probe.py:105 spells its literal with a digit
-    separator, which is the same integer in any interpreter. Section 4's pair
-    stays quoted and the difference stays exactly one line and no files, so a
-    further drift in either number fails here instead of being absorbed.
+    Section 4 stays quoted as published. A ticket that moves the measured pair adds a
+    ledger entry naming every ``path:line`` that left or arrived, so the tree pair is
+    the publication plus the declared moves and nothing else. An undeclared move fails
+    here by value, with every entry printed, instead of being absorbed into a rewritten
+    quotation - which is what would make the published number false.
     """
     measured = census.totals(census.scan(census.census_paths()))[0]
     published = census.CENSUS_INVENTORY_S4
+    expected = census.expected_census_hex5()
     assert measured == census.CENSUS_HEX5, (
         f"HEX5 census: {measured[0]} lines / {measured[1]} files, pinned "
         f"{census.CENSUS_HEX5[0]} lines / {census.CENSUS_HEX5[1]} files"
     )
+    entries = "\n".join(
+        f"  {entry.ticket}: {entry.lines:+d} lines / {entry.files:+d} files, "
+        f"naming {', '.join(entry.named)}: {entry.reason}"
+        for entry in census.RECONCILIATION_LEDGER
+    )
     difference = (measured[0] - published[0], measured[1] - published[1])
-    assert difference == (1, 0), (
+    assert measured == expected, (
         f"the census moved {difference} against INVENTORY.md section 4's published "
-        f"{published[0]} lines / {published[1]} files; the only expected difference "
-        f"is 1 line / 0 files, at tools/runtime/rom008_query_probe.py:105"
+        f"{published[0]} lines / {published[1]} files; the declared ledger expects "
+        f"{expected[0]} lines / {expected[1]} files and the tree measures "
+        f"{measured[0]} lines / {measured[1]} files. Every declared entry:\n{entries}"
+    )
+
+
+def test_every_ledger_entry_names_a_tracked_line_and_declares_a_reason() -> None:
+    """A ``path:line`` typo cannot sit in the ledger, and every entry says why.
+
+    The ledger is the evidence a reader re-measures, so its pointers are checked against
+    the index the scan itself uses rather than trusted, and the line number has to be a
+    real line of that file. The declared deltas must also sum to the difference the
+    publication leaves, so an entry cannot be added without moving the expectation.
+    """
+    tracked = set(tracked_files())
+    for entry in census.RECONCILIATION_LEDGER:
+        assert entry.ticket.strip(), entry
+        assert entry.reason.strip(), entry.ticket
+        assert entry.named, f"{entry.ticket} declares a move and names no line"
+        for named in entry.named:
+            path, _, number = named.rpartition(":")
+            assert path in tracked, f"{entry.ticket} names {named}, which is not tracked"
+            assert number.isdigit(), f"{entry.ticket} names {named} without a line number"
+            lines = (REPOSITORY_ROOT / path).read_text(encoding="utf-8").splitlines()
+            assert 0 < int(number) <= len(lines), (
+                f"{entry.ticket} names {named}, but that file holds {len(lines)} lines"
+            )
+    assert census.expected_census_hex5() == (
+        census.CENSUS_INVENTORY_S4[0] + sum(entry.lines for entry in census.RECONCILIATION_LEDGER),
+        census.CENSUS_INVENTORY_S4[1] + sum(entry.files for entry in census.RECONCILIATION_LEDGER),
     )
 
 

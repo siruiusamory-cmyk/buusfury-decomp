@@ -13,7 +13,7 @@ addresses counts once:
 
 * ``HEX5`` - a hexadecimal literal token of five or more digits. The metric was
   widened once, after a review found two spellings that evaded it, an uppercase
-  prefix and a digit separator; it measures 2885 lines in 272 files.
+  prefix and a digit separator; it measures 2882 lines in 272 files.
 * ``ROM_HEX`` - a hexadecimal token whose parsed integer lands in
   ``[0x08000000, 0x0A000000)``. Deciding by value rather than by the ``0[89]``
   digit shape is what makes a seven-digit spelling such as ``0x82ed222`` count.
@@ -25,9 +25,13 @@ addresses counts once:
 ``INVENTORY.md`` section 4 publishes the parent pair 2884 lines in 272 files for
 its ``0x[0-9A-Fa-f]{5,}`` count. That pattern and the token measured here differ
 by exactly one line, ``tools/runtime/rom008_query_probe.py:105``, which spells
-its literal with a digit separator. Both pairs are pinned and the difference is
+its literal with a digit separator. Both pairs are pinned and the difference was
 asserted to be exactly one line and no files, so the reconciliation with section
-4 is machine-checked rather than discarded.
+4 was machine-checked rather than discarded. PINMAP-04 then moved the tree itself
+and the published pair was not re-measured with it, so that pinned difference is
+the one thing this module cannot restate from inside its own write surface; see
+the ``CENSUS_HEX5`` note below for the arithmetic, which is stated so a reader can
+reproduce it line by line.
 
 Named limits: ``0o`` and ``0b`` spellings are not detected at all, and no such
 spelling exists in the tracked tree today. The two hex boundary rules differ on
@@ -83,18 +87,36 @@ ROM_END = 0x0A000000
 #: ``0x[0-9A-Fa-f]{5,}`` count, per line, over the 560 tracked ``tools/`` files.
 #: The per-file rows that document reports are lane-reported and are not
 #: reproducible under any single unit, so only this pair is quoted.
+#: PINMAP-04 moved the measured pair and left this one at the published value on
+#: purpose: it is a quotation of an external document, not a restatement of the
+#: tree, and rewriting it to keep a pinned difference true would make it lie about
+#: what section 4 says. The consequence is stated where a reader meets it, in the
+#: ``CENSUS_HEX5`` note here and in the reconciliation node's own failure message.
 CENSUS_INVENTORY_S4 = (2884, 272)
 
-#: The whole-tree measurement under this module's widened token: one more hex
-#: line than section 4, because a literal with a digit separator is a literal.
-#: The file count does not move.
-CENSUS_HEX5 = (2885, 272)
+#: The whole-tree measurement under this module's widened token. PINMAP-04 moved
+#: it by -3 lines and 0 files, and the arithmetic is one line, not three: FOUR
+#: counted lines left ``tools/webfoot/sprite_swap.py`` and ONE counted line
+#: arrived in the profile catalogue pair.
+#:
+#: Left, each a counted hex5 and rom_hex line: the constant
+#: ``REGISTRY_TABLE_ADDRESS = 0x086B6BDC`` at sprite_swap.py:61, the constant
+#: ``OBJECT_PALETTE_ADDRESS = 0x0805652C`` at :63, the comment
+#: ``#: The portrait pointer array (accessor 0x08011F20).`` at :67, and the
+#: constant ``PORTRAIT_ARRAY_ADDRESS = 0x086F393C`` at :68.
+#: Arrived: ``portrait_table_address: 0x086f393c`` at
+#: ``tools/webfoot/data/roms.yaml:21``, and the byte-identical copy of the same
+#: line at ``config/roms.yaml:21``, which is outside the ``tools/`` census set.
+#: Measured 2885 -> 2882 lines, 272 -> 272 files.
+CENSUS_HEX5 = (2882, 272)
 
-#: The enforcement set at the baseline: conventional hex, ROM-space hex, and the
-#: decimal ROM-range corpus, each as (lines, files). None of the three moved when
-#: the token was widened.
-ENFORCEMENT_HEX5 = (661, 70)
-ENFORCEMENT_ROM_HEX = (486, 53)
+#: The enforcement set: conventional hex, ROM-space hex, and the decimal
+#: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
+#: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
+#: enforcement set is the whole-tree set minus the four instrument directories, so
+#: the three move together.
+ENFORCEMENT_HEX5 = (658, 70)
+ENFORCEMENT_ROM_HEX = (483, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -259,13 +281,13 @@ EXEMPTIONS: tuple[Row, ...] = (
         "about that shape.",
     ),
     Row(
-        "tools/webfoot/data/roms.yaml", 42, 36, 0,
+        "tools/webfoot/data/roms.yaml", 43, 37, 0,
         "the profile's own declared table addresses: character table, object and "
-        "background palettes, factory raw, constructor, and the per-title rows "
-        "the shipping tools resolve against, in both hex spellings. This file is "
-        "the destination the PINMAP-04 to PINMAP-09 removals read from rather "
-        "than a removal target; no ticket removes the profile's own rows. "
-        "Recorded debt.",
+        "background palettes, the portrait pointer array, factory raw, constructor, "
+        "and the per-title rows the shipping tools resolve against, in both hex "
+        "spellings. This file is the destination the PINMAP-04 to PINMAP-09 removals "
+        "read from rather than a removal target; no ticket removes the profile's own "
+        "rows. Recorded debt.",
     ),
     Row(
         "tools/webfoot/data/script_effects.py", 3, 3, 0,
@@ -466,12 +488,14 @@ EXEMPTIONS: tuple[Row, ...] = (
         "the handler and factory words into code anchors.",
     ),
     Row(
-        "tools/webfoot/sprite_swap.py", 10, 10, 0,
-        "REGISTRY_TABLE_ADDRESS 0x086B6BDC, OBJECT_PALETTE_ADDRESS 0x0805652C "
-        "and PORTRAIT_ARRAY_ADDRESS 0x086F393C, with the accessor 0x08011F20 "
-        "cited in a comment and the ROM base 0x08000000 used to convert offsets. "
-        "PINMAP-04 resolves the two shadowed addresses from the profile and "
-        "gives the portrait array a declared key.",
+        "tools/webfoot/sprite_swap.py", 6, 6, 0,
+        "the ROM base 0x08000000, used at six sites to convert an offset to the "
+        "address a reference word holds and back. No target address is spelled "
+        "here: PINMAP-04 removed the three that shadowed live profile keys, and "
+        "the character table, the object palette and the portrait pointer array "
+        "now resolve from the actor-sprite layout the caller hands in. The "
+        "animation pointer offset 0x54 is still a local constant shadowing the "
+        "live key animation_pointer_offset; recorded debt.",
     ),
     Row(
         "tools/webfoot/stats.py", 1, 1, 0,
@@ -590,3 +614,57 @@ def carrying_paths(per_file: Mapping[str, tuple[int, int, int]]) -> list[str]:
     return sorted(
         path for path, counts in per_file.items() if counts[1] or counts[2]
     )
+
+
+class LedgerEntry(NamedTuple):
+    """One ticket's declared move of the whole-tree pair, against the publication.
+
+    ``lines`` and ``files`` are signed deltas of that tree measurement, and ``named``
+    is the evidence: every ``path:line`` that left or arrived, so the arithmetic can be
+    re-measured line by line instead of taken on trust. A move that is not here fails
+    the reconciliation guard by name.
+    """
+
+    ticket: str
+    lines: int
+    files: int
+    named: tuple[str, ...]
+    reason: str
+
+
+#: Every declared move of the ``HEX5`` tree pair since ``INVENTORY.md`` section 4 was
+#: published. Append-only: a ticket that moves the measured pair appends its own entry
+#: in its own commit, and no entry is rewritten in place.
+RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
+    LedgerEntry(
+        "PINMAP-02", 1, 0,
+        ("tools/runtime/rom008_query_probe.py:105",),
+        "the widened token found one line section 4's pattern cannot see: the literal "
+        "is spelled with a digit separator",
+    ),
+    LedgerEntry(
+        "PINMAP-04", -3, 0,
+        (
+            "tools/webfoot/sprite_swap.py:61",
+            "tools/webfoot/sprite_swap.py:63",
+            "tools/webfoot/sprite_swap.py:67",
+            "tools/webfoot/sprite_swap.py:68",
+            "tools/webfoot/data/roms.yaml:21",
+        ),
+        "four counted lines left the sprite swap planner - the character-table and "
+        "object-palette constants at :61 and :63, the comment citing the portrait "
+        "accessor at :67, and the portrait-array constant at :68 - and one arrived in "
+        "the profile catalogue, which is a net -3",
+    ),
+)
+
+
+def expected_census_hex5() -> tuple[int, int]:
+    """Section 4's published pair plus every declared move, as the tree pair to expect.
+
+    The publication is quoted, never restated: a ticket that moves the tree declares
+    its move here rather than rewriting what section 4 says.
+    """
+    lines = CENSUS_INVENTORY_S4[0] + sum(entry.lines for entry in RECONCILIATION_LEDGER)
+    files = CENSUS_INVENTORY_S4[1] + sum(entry.files for entry in RECONCILIATION_LEDGER)
+    return lines, files

@@ -73,10 +73,8 @@ _REQUIRED_TEXT_TABLE_KEYS = {
     "evidence",
 }
 
-#: The optional keys the text-edit engine reads beside those, each a GBA address.
-#: They are optional so a profile that declares only the eight required fields still
-#: loads; a reader that needs one refuses by name at its own point of use rather than
-#: meeting a default number.
+#: Optional, so a declaration carrying only the required fields still loads; a reader
+#: that needs one refuses by name rather than meeting a default number.
 _OPTIONAL_TEXT_TABLE_INT_KEYS = (
     "table_literal",
     "live_selectors",
@@ -88,11 +86,8 @@ _OPTIONAL_TEXT_TABLE_INT_KEYS = (
     "map_descriptor_offset",
 )
 
-#: The remaining optional keys: two plain counts, and the event pool as its
-#: ``(start, table)`` address pair.
 _OPTIONAL_TEXT_TABLE_OTHER_KEYS = ("event_count", "map_count_offset", "event_pool")
 
-#: Everything a text-table declaration may carry, required and optional together.
 _ALLOWED_TEXT_TABLE_KEYS = (
     _REQUIRED_TEXT_TABLE_KEYS
     | set(_OPTIONAL_TEXT_TABLE_INT_KEYS)
@@ -259,23 +254,16 @@ class TextTableProfile:
     alignment: int
     relocatable: bool
     evidence: str
-    #: Address of the word that names the container table, read through to locate the
-    #: table because the table's own words are live structure.
+    #: Read through to locate the container table, whose own words are live structure.
     table_literal: int | None = None
-    #: How many entries of the container table are live selectors, and which one a
-    #: rewritten record moves into.
     live_selectors: int | None = None
     grown_selector: int | None = None
-    #: The event-resource pool as ``(start address, table address)``. A constant-bearing
-    #: site inside it is a proven dialogue reference; one outside it is not written.
     event_pool: tuple[int, int] | None = None
-    #: The script dispatch handler word whose descriptor payload names an event resource.
     event_resource_handler: int | None = None
-    #: The event-resource pointer table and how many entries of it are live.
     event_table: int | None = None
     event_count: int | None = None
-    #: Byte offsets inside one map row: the name slot, the placement-array pointer, the
-    #: placement count, and the placement's descriptor field.
+    #: Byte offsets inside one map row: name slot, placement array, placement count,
+    #: placement descriptor. The first and last are both 0x14 on Buu's Fury.
     map_name_slot_offset: int | None = None
     map_array_offset: int | None = None
     map_count_offset: int | None = None

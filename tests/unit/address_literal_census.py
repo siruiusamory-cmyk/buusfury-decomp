@@ -108,21 +108,14 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: ``tools/webfoot/data/roms.yaml:21``, and the byte-identical copy of the same
 #: line at ``config/roms.yaml:21``, which is outside the ``tools/`` census set.
 #: Measured 2885 -> 2882 lines, 272 -> 272 files.
-#:
-#: PINMAP-05 moved it again, by -3 lines and 0 files: ELEVEN counted lines left
-#: ``tools/webfoot/textedit/engine.py`` and EIGHT arrived in the profile
-#: catalogue, which is a net -3. Measured 2882 -> 2879 lines, 272 -> 272 files.
-#: The two moves are independent and neither is restated as the other's cause.
+#: PINMAP-05 moved 2882 -> 2879; the entry it appended names all nineteen lines.
 CENSUS_HEX5 = (2879, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
 #: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
 #: enforcement set is the whole-tree set minus the four instrument directories, so
-#: the three move together. PINMAP-05 moved the first two again, in both
-#: directions at once: the text-edit row's four ROM-space lines left and the eight
-#: catalogue lines arrived, so HEX5 fell 3 while ROM-space hex ROSE 4. The decimal
-#: unit did not move.
+#: the three move together.
 ENFORCEMENT_HEX5 = (655, 70)
 ENFORCEMENT_ROM_HEX = (487, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
@@ -519,10 +512,11 @@ EXEMPTIONS: tuple[Row, ...] = (
         "carrierless ones arrive through new optional catalogue keys, so no number in "
         "that range is spelled here and a profile edit moves the tool. What remains is "
         "the RETAIL container-table offset 0x7B5B64 at :135, a dataclass default with "
-        "no profile key - debt the ticket's own range excludes - and the remaining "
-        "comment lines at :155-156, :1087, :1652 and :1690-1691 cite the same offset, "
-        "the 0x6F393C art array and file 0x03D92C as measurement evidence. Debt: the "
-        "retail offset should become a profile key so the row has no defaulted address.",
+        "no profile key; the comments at :155-156, :1087, :1652 and :1690-1691 cite it "
+        "and the 0x6F393C art array as evidence; and :253-256 keeps the proven-reference "
+        "range, whose evidence is the in-pool 11-of-2,639 against the out-of-pool "
+        "281-of-907 measured on the Release 4A image. Debt: the retail offset should "
+        "become a profile key so the row has no defaulted address.",
     ),
     Row(
         "tools/webfoot/workbench/map_browser_tab.py", 2, 2, 0,

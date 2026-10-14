@@ -126,19 +126,15 @@ class TitleProfile:
     text_slots: int
     live_selectors: int
     grown_selector: int
-    #: File offset of the RETAIL container table, measured on the canonical image.
-    #: Its words are live structure: three code loads reach the grown slot through
-    #: the image's own literal. A table at this offset is copied aside before any of
-    #: its words is written. It is the one value in this row with no profile key, so
-    #: it is carried as the dataclass default: recorded debt, not a measurement a
-    #: catalogue entry can move.
+    #: File offset of the RETAIL container table, whose words are live structure and
+    #: are copied aside before any of them is written. The one value here with no
+    #: profile key: debt.
     retail_table: int = 0x7B5B64
     #: The appearance table, whose records pair a name slot with a portrait slot.
     #: Zero means the title has none and no speaker can be resolved.
     appearance_table: int = 0
     appearance_count: int = 0
     #: The event-resource pool, as FILE offsets like every other address here.
-    #: A handle site inside it has a proven consumer; sites outside are not linked.
     event_pool: tuple[int, int] | None = None
     #: The map table and the route from a map to the dialogue its placements reference.
     maps: MapTable | None = None
@@ -163,20 +159,16 @@ class _Declared:
     pool: tuple[int, int]
 
     def number(self, key: str) -> int:
-        """The plain number `key` declares."""
         return _text_address(getattr(self.text, key), key, self.id)
 
     def raw(self, key: str) -> int:
-        """The declared value of `key` as the integer the catalogue spells."""
         declared = _text_address(getattr(self.text, key), key, self.id)
         return declared.raw if isinstance(declared, GbaRomAddress) else declared
 
     def address(self, key: str) -> int:
-        """The file offset of the ROM address `key` declares."""
         return self.file_offset(self.raw(key), key)
 
     def file_offset(self, address: int, key: str) -> int:
-        """The file offset `address` names in this profile's image, or a refusal."""
         try:
             return GbaRomAddress(address).to_file_offset(self.size)
         except BinaryAddressError as error:
@@ -187,7 +179,6 @@ class _Declared:
 
 def _map_table(declared: _Declared, maps: MapEntryTableProfile,
                placement: PlacementTypeProfile) -> MapTable:
-    """The one map row the profile's `map_entries` and `placement_types` describe."""
     return MapTable(
         table=declared.file_offset(maps.address.raw, "map_entries.address"),
         count=maps.count,
@@ -245,31 +236,16 @@ _CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
 
 
 def profiles() -> tuple[TitleProfile, ...]:
-    """Every supported title, from the packaged catalogue through the capability gate."""
     from ..capability import Capability, packaged_contract
 
     return (_title_profile(
         packaged_contract(_CANONICAL_PROFILE_ID, Capability.TEXT_STRINGS)),)
 
 
-#: Every title the text editor supports, in catalogue order. Read by `detect`.
+#: Every title the text editor supports, in catalogue order.
 PROFILES: tuple[TitleProfile, ...] = profiles()
 
-#: The only file-offset range in which a record word is a PROVEN reference to a
-#: dialogue record: the packaged profile's event-resource record pool. Callers that
-#: patch `PROFILES` patch this in the same breath, because a fixture's record words
-#: live where its own pool is.
-#:
-#: WHY A RANGE AND NOT THE SHAPE FILTER. `dialogue_record_inventory` matches a
-#: 4-byte-aligned word whose +1 is zero and +2 is 0x05, followed by a word that
-#: decodes to a legal span. Outside this pool that filter is near-random: measured
-#: on the Release 4A image, 907 record-shaped words lie outside it and 281 pass the
-#: filter, 256 of them naming spans that share no edge with any real record. The
-#: same measurement inside the pool gives 11 of 2,639. Rewriting an outside word
-#: corrupts whatever actually lives there, and no earlier release did, because
-#: every earlier pass preserved record spans, so a false site was rewritten with
-#: the value it already held. A pass that MOVES a record changes the value, so it
-#: writes only here.
+#: The only range in which a record word is a PROVEN reference to a dialogue record.
 PROVEN_HANDLE_POOL = tuple(PROFILES[0].event_pool[index] for index in (0, 1))
 
 

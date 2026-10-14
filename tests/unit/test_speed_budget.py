@@ -98,6 +98,7 @@ def test_the_re_run_of_a_node_the_session_never_collected_is_unmeasured() -> Non
 def test_the_guard_names_a_slow_node_with_both_timings(monkeypatch, capsys) -> None:
     session = _Session()
     session.items = [_Item()]
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setattr(conftest, "_TEST_SECONDS", {_Item.nodeid: 9.5})
     monkeypatch.setattr(conftest, "_remeasure_item", lambda session, nodeid: 9.8)
     assert conftest._report_speed_breaches(session) is True
@@ -106,6 +107,17 @@ def test_the_guard_names_a_slow_node_with_both_timings(monkeypatch, capsys) -> N
     assert "took 9.50s" in printed and "re-run 9.80s" in printed
     assert "5.0s allowance" in printed and "budget 5.0s" in printed
     assert "SPEED-GATE-001" in printed
+
+
+def test_a_breach_off_the_reference_machine_warns_and_does_not_fail(monkeypatch, capsys) -> None:
+    session = _Session()
+    session.items = [_Item()]
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(conftest, "_TEST_SECONDS", {_Item.nodeid: 9.5})
+    monkeypatch.setattr(conftest, "_remeasure_item", lambda session, nodeid: 9.8)
+    assert conftest._report_speed_breaches(session) is False
+    printed = capsys.readouterr().out
+    assert _Item.nodeid in printed and "took 9.50s" in printed
 
 
 def test_a_breach_whose_re_run_is_inside_the_allowance_passes(monkeypatch, capsys) -> None:
@@ -125,6 +137,7 @@ def test_a_node_inside_its_budget_is_not_a_breach(monkeypatch, capsys) -> None:
 
 
 def test_an_integration_node_is_measured_against_the_rom_budget(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setattr(conftest, "_TEST_SECONDS",
                         {"tests/integration/test_rom_reader_example.py::test_slow": 12.0})
     assert conftest._report_speed_breaches(_Session()) is False
@@ -157,6 +170,7 @@ class _Item:
 def test_a_confirmed_breach_is_reported_as_a_failed_test(monkeypatch) -> None:
     session = _Session()
     session.items = [_Item()]
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setattr(conftest, "_TEST_SECONDS", {_Item.nodeid: 9.5})
     monkeypatch.setattr(conftest, "_remeasure_item", lambda session, nodeid: 9.8)
     assert conftest._report_speed_breaches(session) is True

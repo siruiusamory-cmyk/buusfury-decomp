@@ -112,6 +112,17 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
+
+def _speed_guard_fails() -> bool:
+    """Whether a rule-S breach fails this run, which only the GitHub runner does.
+
+    The runner is the reference machine for the test budgets, so a breach there is a
+    defect. A developer machine is not calibrated and its load is not ours, so the
+    same breach is printed and does not fail the run.
+    """
+    return bool(os.environ.get("GITHUB_ACTIONS"))
+
+
 #: Option destination that means "this run's result is read from a machine-readable
 #: report", which is what both CI and the local full-CI record gate do and what no
 #: local developer run does. The record gate cannot set ``CI`` itself: it is
@@ -740,11 +751,14 @@ def _breach_report(item, message: str) -> pytest.TestReport:
 
 
 def _report_speed_breaches(session: pytest.Session) -> bool:
-    """Name every test over its rule-S allowance, and fail the session when one is.
+    """Name every test over its rule-S allowance; fail only on the reference machine.
 
     An xdist controller owns no items, so a worker reports the nodes it ran and the
-    failed report it emits is what carries the verdict back.
+    failed report it emits is what carries the verdict back. The runner is the
+    reference machine (see _speed_guard_fails), so off it a breach is printed and
+    the session continues.
     """
+    enforcing = _speed_guard_fails()
     getoption = getattr(session.config, "getoption", None)
     if (getattr(session.config, "workerinput", None) is None and getoption is not None
             and getoption("numprocesses", None)):
@@ -767,22 +781,22 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
             item,
             f"{nodeid} took {seconds:.2f}s, re-run {signal}, over its {allowance:.1f}s "
             f"allowance (budget {budget:.1f}s), owned by {ticket}",
+            enforcing,
         ))
     if not breaches:
         return False
-    messages = [message for _, message in breaches]
     terminal = session.config.pluginmanager.get_plugin("terminalreporter")
     if terminal is None:  # pragma: no cover - only in an embedded/plugin run
-        for message in messages:
+        for _, message, _ in breaches:
             print(message)
     else:
         terminal.write_sep("=", f"tests over the rule-S budget ({len(breaches)})", red=True)
-        for message in messages:
+        for _, message, _ in breaches:
             terminal.write_line(message)
-    for item, message in breaches:
-        if item is not None:
+    for item, message, fails in breaches:
+        if item is not None and fails:
             session.config.hook.pytest_runtest_logreport(report=_breach_report(item, message))
-    return True
+    return enforcing
 
 
 def _required_gui_surface_is_enforced() -> bool:

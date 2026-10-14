@@ -108,15 +108,23 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: ``tools/webfoot/data/roms.yaml:21``, and the byte-identical copy of the same
 #: line at ``config/roms.yaml:21``, which is outside the ``tools/`` census set.
 #: Measured 2885 -> 2882 lines, 272 -> 272 files.
-CENSUS_HEX5 = (2882, 272)
+#:
+#: PINMAP-05 moved it again, by -3 lines and 0 files: ELEVEN counted lines left
+#: ``tools/webfoot/textedit/engine.py`` and EIGHT arrived in the profile
+#: catalogue, which is a net -3. Measured 2882 -> 2879 lines, 272 -> 272 files.
+#: The two moves are independent and neither is restated as the other's cause.
+CENSUS_HEX5 = (2879, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
 #: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
 #: enforcement set is the whole-tree set minus the four instrument directories, so
-#: the three move together.
-ENFORCEMENT_HEX5 = (658, 70)
-ENFORCEMENT_ROM_HEX = (483, 53)
+#: the three move together. PINMAP-05 moved the first two again, in both
+#: directions at once: the text-edit row's four ROM-space lines left and the eight
+#: catalogue lines arrived, so HEX5 fell 3 while ROM-space hex ROSE 4. The decimal
+#: unit did not move.
+ENFORCEMENT_HEX5 = (655, 70)
+ENFORCEMENT_ROM_HEX = (487, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -281,13 +289,15 @@ EXEMPTIONS: tuple[Row, ...] = (
         "about that shape.",
     ),
     Row(
-        "tools/webfoot/data/roms.yaml", 43, 37, 0,
+        "tools/webfoot/data/roms.yaml", 51, 45, 0,
         "the profile's own declared table addresses: character table, object and "
         "background palettes, the portrait pointer array, factory raw, constructor, "
         "and the per-title rows the shipping tools resolve against, in both hex "
         "spellings. This file is the destination the PINMAP-04 to PINMAP-09 removals "
         "read from rather than a removal target; no ticket removes the profile's own "
-        "rows. Recorded debt.",
+        "rows. PINMAP-05 added eight of them, the optional keys the text-edit row now "
+        "reads, seven as full GBA addresses: :86, :89, :90, :91 and :93-96. Recorded "
+        "debt.",
     ),
     Row(
         "tools/webfoot/data/script_effects.py", 3, 3, 0,
@@ -503,12 +513,16 @@ EXEMPTIONS: tuple[Row, ...] = (
         "cap was read. No ticket covers this file yet: recorded debt.",
     ),
     Row(
-        "tools/webfoot/textedit/engine.py", 17, 5, 0,
-        "the text tool's private per-title row at engine.py:178-199: the layout "
-        "container 0x087B5B64, the packed-dialogue address range "
-        "0x0877C5A4..0x0879B704, the placement family 0x0800FD55 and the "
-        "resource handler 0x0800424F. PINMAP-05 resolves every value in that row "
-        "from the profile with no code edit.",
+        "tools/webfoot/textedit/engine.py", 6, 1, 0,
+        "the text tool's private per-title row at engine.py:178-199 is gone: its nine "
+        "already-carried values read from the packaged profile and its twelve "
+        "carrierless ones arrive through new optional catalogue keys, so no number in "
+        "that range is spelled here and a profile edit moves the tool. What remains is "
+        "the RETAIL container-table offset 0x7B5B64 at :135, a dataclass default with "
+        "no profile key - debt the ticket's own range excludes - and the remaining "
+        "comment lines at :155-156, :1087, :1652 and :1690-1691 cite the same offset, "
+        "the 0x6F393C art array and file 0x03D92C as measurement evidence. Debt: the "
+        "retail offset should become a profile key so the row has no defaulted address.",
     ),
     Row(
         "tools/webfoot/workbench/map_browser_tab.py", 2, 2, 0,
@@ -655,6 +669,36 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "object-palette constants at :61 and :63, the comment citing the portrait "
         "accessor at :67, and the portrait-array constant at :68 - and one arrived in "
         "the profile catalogue, which is a net -3",
+    ),
+    LedgerEntry(
+        "PINMAP-05", -3, 0,
+        (
+            "tools/webfoot/textedit/engine.py:155",
+            "tools/webfoot/textedit/engine.py:156",
+            "tools/webfoot/textedit/engine.py:158",
+            "tools/webfoot/textedit/engine.py:179",
+            "tools/webfoot/textedit/engine.py:186",
+            "tools/webfoot/textedit/engine.py:187",
+            "tools/webfoot/textedit/engine.py:189",
+            "tools/webfoot/textedit/engine.py:191",
+            "tools/webfoot/textedit/engine.py:194",
+            "tools/webfoot/textedit/engine.py:195",
+            "tools/webfoot/textedit/engine.py:197",
+            "tools/webfoot/data/roms.yaml:86",
+            "tools/webfoot/data/roms.yaml:89",
+            "tools/webfoot/data/roms.yaml:90",
+            "tools/webfoot/data/roms.yaml:91",
+            "tools/webfoot/data/roms.yaml:93",
+            "tools/webfoot/data/roms.yaml:94",
+            "tools/webfoot/data/roms.yaml:95",
+            "tools/webfoot/data/roms.yaml:96",
+        ),
+        "eleven counted lines left the text-edit engine - the comments at :155-156 and "
+        ":186 and the row's literals at :158, :179, :187, :189, :191, :194, :195 and "
+        ":197 - and eight arrived in the profile catalogue, the new optional keys at "
+        ":86, :89, :90, :91 and :93-96, which is a net -3. The engine row fell 17 -> 6 "
+        "lines and its ROM-space count 5 -> 1; the catalogue row rose 43 -> 51 and its "
+        "ROM-space count 37 -> 45 because seven of the new keys are full GBA addresses",
     ),
 )
 

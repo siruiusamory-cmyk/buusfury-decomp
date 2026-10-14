@@ -23,10 +23,7 @@ jobs:
   shard:
     name: shard ${{ matrix.shard }}
     runs-on: windows-latest
-    # The unsharded suite step measured 954 s at -n 4; a shard carries about a
-    # tenth of the work plus its own install. 30 minutes bounds a hang and a cold
-    # package cache.
-    timeout-minutes: 30
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -94,8 +91,14 @@ jobs:
       - name: Run this shard of the portable suite
         run: |
           New-Item -ItemType Directory -Force -Path artifacts\steps | Out-Null
+          $clock = [System.Diagnostics.Stopwatch]::StartNew()
           & python -m pytest tests/unit -q -n 4 --dist loadfile --max-worker-restart=0 --junitxml=report-shard-${{ matrix.shard }}.xml 2> artifacts\steps\shard-${{ matrix.shard }}.err | Tee-Object -FilePath artifacts\steps\shard-${{ matrix.shard }}.out
-          if ($LASTEXITCODE -ne 0) { throw "shard ${{ matrix.shard }} failed with exit $LASTEXITCODE" }
+          $code = $LASTEXITCODE
+          $clock.Stop()
+          if ($code -ne 0) { throw "shard ${{ matrix.shard }} failed with exit $code" }
+          $minutes = [math]::Round($clock.Elapsed.TotalMinutes, 2)
+          if ($minutes -gt 8) { throw "shard ${{ matrix.shard }} ran $minutes minutes, over the 8 minute shard budget of rule S; the ten shards measured 1.48 to 2.30 minutes on run 38610899807" }
+          Write-Host "shard ${{ matrix.shard }} ran $minutes minutes, inside the 8 minute shard budget"
 
       - name: Publish this shard's report and its console capture
         if: always()

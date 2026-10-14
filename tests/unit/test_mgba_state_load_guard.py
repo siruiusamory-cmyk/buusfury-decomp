@@ -42,14 +42,31 @@ def at(text: str, needle: str) -> int:
     return position
 
 
-def braced_block(text: str, header: str) -> str:
+def after(text: str, needle: str, position: int) -> int:
+    """Where the FIRST `needle` after `position` sits.
+
+    A launcher that gains a second try/finally ABOVE the launch makes `at(text, "} finally {")`
+    return that earlier block, so a containment check runs against the wrong one. Anchoring from
+    the launch forward keeps the check on the finally that actually owns the launch, and fails
+    loudly if it moves above it.
+    """
+    found = text.find(needle, position)
+    assert found != -1, f"no {needle!r} after the launch: the owning finally is missing or moved above it"
+    return found
+
+
+def braced_block(text: str, header: str, occurrence: int | None = None) -> str:
     """The body of the brace-delimited block that `header` opens, by counting braces.
 
     Indentation and blank lines are not evidence of containment. A position comparison proves a
     statement comes after the keyword, which a statement moved past the closing brace also
     satisfies, so the blocks that have to hold something are extracted and searched instead.
+
+    `occurrence` names the exact index of the header when more than one exists in the file, which
+    is how a caller that already located the block by position gets THAT block rather than the
+    first one.
     """
-    start = at(text, header) + len(header)
+    start = (occurrence if occurrence is not None else at(text, header)) + len(header)
     assert text[start - 1] == "{", f"{header!r} must end at the brace it opens"
     depth = 1
     for position in range(start, len(text)):
@@ -189,11 +206,11 @@ def test_the_rom_digest_is_cleared_inside_the_finally_that_owns_the_launch() -> 
     export = at(text, "$env:LOG1_MGBA_ROM_SHA256 = $expectedHash")
     launch = at(text, "$process = Start-Process")
     opened = text.rindex("try {", 0, launch)
-    closed = at(text, "} finally {")
+    closed = after(text, "} finally {", launch)
     assert gate < export < opened < launch < closed, (
-        "the export must stay after the equality gate, and the finally must be the one that owns "
-        "the launch")
+        "the export must stay after the equality gate, and the finally that OWNS the launch must "
+        "come after it")
     assert text.count(clearing) == 1
-    body = braced_block(text, "} finally {")
+    body = braced_block(text, "} finally {", occurrence=closed)
     assert clearing in body, (
         "the clear must be INSIDE that finally, or a launch that throws leaves the digest set")

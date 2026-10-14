@@ -181,6 +181,8 @@ _BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str, str]] = {
         (5.357, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_pre_merge_check.py::test_the_focused_run_refuses_a_missing_or_empty_inventory":
         (5.010, "local 2026-10-14 venv 3.12.10", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_pre_merge_check.py::test_the_primary_a_subdirectory_of_it_and_a_linked_worktree":
+        (5.900, "local 2026-10-14 venv 3.12.10; 4.269 on 38600996718", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_pre_merge_check.py::test_the_primary_checkout_is_refused_and_a_linked_worktree_is_not":
         (6.887, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_project_safety.py::test_built_wheel_uses_packaged_profile_catalog":

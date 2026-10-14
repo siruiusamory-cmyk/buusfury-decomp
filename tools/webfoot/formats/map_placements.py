@@ -1,11 +1,3 @@
-"""Pure codec for the TOOLKIT-016 factory-led variable-length placement family.
-CONFIRMED: 0x1C + 4*n bytes; +14 descriptor pointer, +18 child count,
-+1C ordered child pointers. Evidence: BUU_FD55_SCRIPT_OWNER.md, constructor
-0800F6D2 -> 0800A93C. Position halfwords stay lossless raw bits at this layer;
-for the supported Buu placement constructor, their signed interpretations are
-map/world X (low) and Y (high) pixels; see PLACEMENT_POSITION_PROVENANCE.md.
-TOOLKIT-008's 32-byte fixed-tail shape remains a legacy subset predicate only.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -174,7 +166,6 @@ def is_placement_record(data, offset: int) -> bool:
         return False
 
 
-#: placement family. TOOLKIT-025 measured the complete `MapEntry+0x04` traversal over
 #: `0x0800FD55` placements, 191 `0x08017DA3` and 148 `0x080111A9` - with zero UNKNOWN
 SIBLING_FACTORIES = (0x08017DA3, 0x080111A9)
 
@@ -234,6 +225,7 @@ def iter_object_slots(data, array_offset: int, count: int) -> tuple[ObjectSlot, 
 
 
 def iter_placement_offsets(data, array_offset: int, *, count: int | None = None) -> tuple[int, ...]:
+    """Walk a pointer run; only a non-family target terminates an unbounded run."""
     if array_offset < 0 or array_offset + 4 > len(data):
         if count is not None:
             raise MapPlacementLengthError('pointer array outside image')

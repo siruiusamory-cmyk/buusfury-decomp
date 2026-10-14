@@ -1,16 +1,7 @@
 """The Webfoot container: an eight-byte header over a packed bitstream.
-    +0x00  kind            0 = stored, 1 and 2 = packed
-    +0x04  declared_size   length of the decoded output, in bytes
-**Termination: the engine's rule and this module's rule are not the same rule.**
-The retail packed decoder (`0x087B79E4`, executed from IWRAM `0x03000040` through
-the Thumb to ARM veneer `0x08049120`) takes exactly `(source, destination)` and
-carries no output counter: of the thirteen comparisons in its body, **none names
-the destination cursor**, so it writes until the bitstream's own escape and
-performs no size comparison at all. That escape is twelve zero bits - prefix
-`000`, seven-bit field `0000000`, two-bit selector `00` - read where a token
-would begin. `CONFIRMED`; the two independent disassemblies and the positive
-census that found no destination comparison are recorded in
-`docs/research/PACKED_STREAM_TERMINATION.md` §2.1.
+
+The retail packed decoder `0x087B79E4` takes `(source, destination)` and carries no output counter, so it stops only on the bitstream's own escape.
+The Thumb to ARM veneer `0x08049120`, the two disassemblies and the positive census are in docs/research/PACKED_STREAM_TERMINATION.md §2.1.
 """
 
 from __future__ import annotations
@@ -34,12 +25,7 @@ def _gamma_ceiling(maximum_output: int) -> int:
 
 
 class ContainerError(ValueError):
-    """Raised when a container header or its packed stream is not well formed.
-
-    One class, because every caller either decodes or refuses. Callers that need
-    to tell a bad header from a truncated stream read the message; nothing in
-    this project branches on the distinction.
-    """
+    """Raised when a container header or its packed stream is not well formed."""
 
 
 @dataclass(frozen=True)
@@ -299,6 +285,7 @@ def validate_retail_termination(
     *,
     maximum_output: int = DEFAULT_MAX_OUTPUT,
 ) -> Container:
+    """Prove one packed payload satisfies the retail engine's termination contract."""
     return unpack(
         data, offset, maximum_output=maximum_output, require_end_marker=True
     )
@@ -331,6 +318,7 @@ def unpack_raw_stream(
 
 
 def build_stored(payload: bytes) -> bytes:
+    """Identity transform behind a verified header, but a stored rewrite exceeds its allocation in all 7,390 canonical sprite containers: 0 fit."""
     return struct.pack("<II", STORED, len(payload)) + payload
 
 
@@ -374,6 +362,7 @@ class _WordBitWriter:
             self.bit(0 if shift == 0 else 1)
 
     def write_end_marker(self) -> None:
+        """Emit the retail decoder's own escape at the current token boundary."""
         self.put(0, 12)
 
     def finish(self) -> bytes:
@@ -399,6 +388,7 @@ def _gamma_cost(value: int) -> int:
 
 
 def pack(payload: bytes, *, kind: int = PACKED_KINDS[1]) -> bytes:
+    """Valid and self-terminating, but not the retail compressor: a median 1.06x the original, so about 1 payload in 200 fits its allocation."""
     if kind not in PACKED_KINDS:
         raise ContainerError(
             f"pack emits a packed container; kind {kind!r} is not one of "

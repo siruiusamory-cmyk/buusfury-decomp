@@ -1,11 +1,3 @@
-"""Pure codec for the Buu's Fury UTF-16LE string pool and its pointer table.
-- ``CONFIRMED`` the encoding, the terminator, the control grammar, the pool and
-  table extents, the exhaustive tiling, and the absence of aliasing. Each was
-  established by reading the canonical ROM and each is re-asserted by a test.
-- ``UNKNOWN``   what any ``0x0008`` operand *means*. The operand is preserved
-  verbatim rather than named, because a guessed name in an authored file would
-  later read as an extracted fact.
-"""
 
 from __future__ import annotations
 
@@ -31,7 +23,6 @@ class TextCodecError(ValueError):
     """Raised when bytes are not decodable text, or text is not encodable."""
 
 
-#     0x0008 <operand>   ->  "{08:XX}"    operand as two uppercase hex digits
 #     0x000A             ->  "\n"         a real newline, because it is one
 # A literal "{" in the text is escaped as "{{", so the escape syntax cannot be
 # today, but the codec must be correct for text a modder authors, not only for
@@ -109,7 +100,6 @@ def encode_string(text: str) -> bytes:
                 f"embedded NUL at index {position} would terminate the string"
             )
         if codepoint == CONTROL_PREFIX or codepoint == CONTROL_NEWLINE:
-            # Unreachable for 0x0A (handled above); 0x08 as a literal character
             # would re-decode as a control prefix, so it is refused rather than
             raise TextCodecError(
                 f"control unit {codepoint:#06x} at index {position} cannot be "

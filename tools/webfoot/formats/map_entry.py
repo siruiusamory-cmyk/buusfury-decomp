@@ -48,10 +48,7 @@ class MapEntryField:
     name: str
 
 
-#: disassembly that `trigger_count_raw` (`+0x04`) is the engine's placement-run
 #: count: the map loader at 0x08008C9E runs `ldrb r0,[r0,#4]` as the bound of a
-#: counted loop that indexes the pointer array at `scripts_pointer_raw` (`+0x14`).
-#: It is NOT the count of the `triggers_pointer_raw` (`+0x10`) slot array; that
 MAP_ENTRY_LAYOUT = (
     MapEntryField(0x00, 1, "output_raw"),
     MapEntryField(0x01, 1, "zone_raw"),
@@ -174,16 +171,6 @@ def _file_identity(stat_result: os.stat_result) -> tuple[int, int, int, int]:
 
 
 def _require_target_profile(identification: RomIdentification) -> RomProfile:
-    """Fail closed unless this exact ROM is verified and declares the table.
-    TOOLKIT-005 removed the fourth check requiring the profile id to equal one
-    constant naming Buu's Fury. Structure still gates the codec:
-    `resolve_map_entry_table_range` refuses any record size other than
-    `MAP_ENTRY_SIZE`, so a profile whose map records are not this shape is
-    rejected on its layout rather than on the game's name. That is the check
-    which should have been carrying the weight all along - Legacy of Goku II
-    also has a 0x38-stride map table, but its fields are laid out differently,
-    so it must not declare `map_entries` against this codec.
-    """
     return capability.require(
         identification,
         capability.Capability.MAP_ENTRIES,

@@ -150,6 +150,7 @@ class EventResourceRecord:
 
     @property
     def supported(self):
+        """Only a type-0 dialog exposes its code block directly in ROM."""
         return self.dialog_type == DIALOG_TYPE_CODE_BLOCK
 
 

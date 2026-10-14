@@ -1,14 +1,3 @@
-"""The one production reader for the accepted map/graphics binary concepts.
-CQA-04-DECODE-STACK-AUTHORITY-001. Before this module the same map and graphics
-concepts were decoded twice in production - once by the export-side readers
-(``tools/export/canonical.py`` and ``tools/export/render.py``) and once by the
-SDK's own map renderer (``tools/webfoot/map_render.py`` and
-``tools/webfoot/formats/bg_tilemap.py``) - with no shared code, no cross-import
-and no test comparing them. The two copies had already drifted observably: one
-read every tile bank at exactly ``0x4000`` bytes and the other at whatever the
-container declared, and only one of them understood the map-side layer handlers
-beyond the dominant chunk grid.
-"""
 
 from __future__ import annotations
 
@@ -91,7 +80,6 @@ CHUNK_POINTER_BYTES = 4
 
 CHUNK_CONTAINER_KIND = 1
 
-#: little-endian screen entries = 0x800 decoded bytes = 32x32 tiles.
 SCREENBLOCK_ENTRY_COUNT = CHUNK_ENTRY_COUNT
 SCREENBLOCK_DECODED_BYTES = CHUNK_DECODED_BYTES
 SCREENBLOCK_PIXELS = CHUNK_PIXELS
@@ -136,29 +124,21 @@ LAYER_CHUNK_X_OFFSET = 0x14
 LAYER_CHUNK_Y_OFFSET = 0x15
 LAYER_CHUNK_WINDOW_OFFSET = 0x18
 
-#: dominant records, the record's size is exactly `0x18 + 4 * chunk_x * chunk_y`
-#: header byte must be copied verbatim - the header's `+0x04`, `+0x08`, `+0x0C`,
-#: `+0x10` and `+0x16` fields have no established semantics (LOGX-SYNTHESIS
 LAYER_RECORD_HEADER_BYTES = LAYER_CHUNK_WINDOW_OFFSET
 
 VIEWPORT_PIXELS_X = 240
 VIEWPORT_PIXELS_Y = 160
 MAX_LAYER_GRID_SIDE = 8
 
-#: The five accepted layer `+0x00` handler values. A handler value is ROM content
 DOMINANT_LAYER_HANDLER = 0x08008087
 ABSENT_LAYER_HANDLER = 0x08007A41
 ABSENT_LAYER_RECORD = 0x080707FC
 
-#: 0x800 decoded bytes, the same form a dominant chunk carries, but they reach
 #: * `0x08007B63` - tail-branch stub `0x08007B62` into constructor `0x08007A60`,
-#:   which decompresses `record + 0x04` (and `record + 0x08`, the same container
 #: * `0x0800897B` - constructor `0x0800897A` builds only a twelve-byte marker
 #:   uploaded later by method 1 of that type's descriptor: `0x080088E6` reads
-#:   `record + 0x1C`, decompresses it into a 0x800-byte buffer and copies it to
 #:   `0x0600E000 + slot * 0x800`. Method 2 (`0x08008924`) then programs
 #:   `BGxHOFS`/`BGxVOFS` at `0x04000010 + 4*slot` from the record's `+0x04`,
-#:   `+0x0C`, `+0x10`, `+0x14`, `+0x18` and a viewport object.
 SCREENBLOCK_HANDLERS: dict[int, int] = {
     0x08007B63: 0x04,
     0x0800897B: 0x1C,
@@ -167,8 +147,6 @@ SCREENBLOCK_HANDLERS: dict[int, int] = {
 #: Entry `0x080088BC` -> constructor `0x080080C0`: enables `REG_IE` bit 1
 #: (`0x04000200 |= 2`, the HBlank interrupt - not `DISPSTAT`, which is
 #: `0x04000004`) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
-#: `record + 5` containers of `0x400` decoded bytes through a nine-slot resident
-#: assignment destroys the correspondence. `record + 0x04` x `record + 0x05`
 TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
 TERRAIN_FIELD_GRID_X_OFFSET = 0x04
 TERRAIN_FIELD_GRID_Y_OFFSET = 0x05
@@ -391,13 +369,6 @@ class MapEntry:
 
 @dataclass(frozen=True, slots=True)
 class LayerRecord:
-    """One layer record reached from a map root's four slots.
-    ``chunk_x``/``chunk_y`` are the dominant form's own grid at `+0x14`/`+0x15`.
-    ``terrain_x``/``terrain_y`` are the terrain-field form's grid at `+0x04`/
-    `+0x05`. They are held separately on purpose: on a terrain-field record the
-    dominant offsets carry unrelated bytes, and filling the grid fields from
-    them would invent a grid the record does not state.
-    """
 
     slot: int
     address: int
@@ -511,8 +482,7 @@ class SelectorStream:
 
 @dataclass(frozen=True, slots=True)
 class AnimatedTileSource:
-    """One animated-tile record reached from ``root + 0x10``.
-    """
+    """One animated-tile record reached from ``root + 0x10``."""
 
     index: int
     address: int
@@ -586,13 +556,6 @@ def read_map_entries(reader: MapGraphicsReader) -> tuple[MapEntry, ...]:
 def read_layer(
     reader: MapGraphicsReader, root_address: int, slot: int
 ) -> LayerRecord:
-    """Read one of a root's four layer slots at the accepted offsets.
-    The dominant form states its chunk grid at `+0x14`/`+0x15` and its chunk
-    window at `+0x18`. The terrain-field form states its cell grid at
-    `+0x04`/`+0x05` and its container run at `+0x08`, so its grid is read from
-    there into ``terrain_x``/``terrain_y`` and the dominant fields are left alone
-    rather than filled with the unrelated bytes those offsets happen to hold.
-    """
     if not 0 <= slot < len(ROOT_LAYER_SLOTS):
         raise MapGraphicsError(f"layer slot {slot!r} is outside 0..3")
     record = reader.u32(root_address + ROOT_LAYER_SLOTS[slot])
@@ -629,8 +592,7 @@ def read_layers(reader: MapGraphicsReader, root_address: int) -> tuple[LayerReco
 
 
 def layer_record_size(columns: int, rows: int) -> int:
-    """A dominant layer record's exact byte size: ``0x18 + 4 * columns * rows``.
-    """
+    """A dominant layer record's exact byte size: ``0x18 + 4 * columns * rows``."""
     if not isinstance(columns, int) or not isinstance(rows, int):
         raise MapGraphicsError("a layer grid is stated in whole columns and rows")
     if columns <= 0 or rows <= 0:
@@ -641,11 +603,7 @@ def layer_record_size(columns: int, rows: int) -> int:
 
 
 def layer_record_header(reader: MapGraphicsReader, layer: LayerRecord) -> bytes:
-    """The dominant record's own ``0x18``-byte header, byte for byte.
-    The header's ``+0x04``, ``+0x08``, ``+0x0C``, ``+0x10`` and ``+0x16`` fields
-    have no established semantics, so a relocated record carries them rather than
-    reconstructing them. Copying is the only operation that cannot invent a value.
-    """
+    """The dominant record's own ``0x18``-byte header, byte for byte."""
     if layer.classification not in ("dominant", "dominant_zero_grid",
                                     "dominant_partial_zero_grid"):
         raise MapGraphicsError(
@@ -719,12 +677,6 @@ def dominant_layer_geometry(
     *,
     addresses: tuple[int, ...] | None = None,
 ) -> tuple[int, int, int, int]:
-    """``(tile_columns, tile_rows, pixel_width, pixel_height)`` of a dominant layer.
-    The one statement of a dominant layer's extent: the grid is the record's own
-    ``+0x14``/``+0x15`` counts of 32x32-entry chunks. Reading it here rather than
-    multiplying at each call site is what kept the two stacks from disagreeing
-    about what a 2x3 grid covers.
-    """
     del reader, addresses
     return (
         layer.chunk_tiles_x,
@@ -747,8 +699,7 @@ def dominant_chunk_words(
 
 
 def chunk_body_bytes(entries: object) -> bytes:
-    """Encode one dominant chunk's screen-entry plane as its 0x800-byte payload.
-    """
+    """Encode one dominant chunk's screen-entry plane as its 0x800-byte payload."""
     if isinstance(entries, (str, bytes, bytearray)) or not hasattr(entries, "__len__"):
         raise MapGraphicsError(
             "a dominant chunk plane must be a sequence of screen entries"
@@ -879,11 +830,6 @@ def screenblock_container_offset(handler: int) -> int:
 def read_screenblock_entries(
     reader: MapGraphicsReader, record_address: int
 ) -> tuple[int, ...]:
-    """Read the screen-entry plane a screen-entry layer's handler decompresses.
-    Two handlers carry the same 32x32 plane and reach it by different code, so
-    the container field is taken from the record's own `+0x00` word. The payload
-    is 1024 little-endian screen entries either way.
-    """
     handler = reader.u32(record_address)
     offset = screenblock_container_offset(handler)
     container_address = reader.u32(record_address + offset)
@@ -901,11 +847,6 @@ def read_screenblock_entries(
 def read_terrain_field_containers(
     reader: MapGraphicsReader, record_address: int
 ) -> tuple[int, ...]:
-    """The container addresses a terrain-field record names, in raster order.
-    The record states its cell grid at `+0x04`/`+0x05` and names `grid_x *
-    grid_y` consecutive container pointers from `+0x08`. A pointer outside the
-    image is a structural mismatch rather than something to skip.
-    """
     grid_x = reader.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
     grid_y = reader.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
     targets: list[int] = []
@@ -982,13 +923,6 @@ def stitch_terrain_field_plane(
 def read_animated_tiles(
     reader: MapGraphicsReader, root_address: int
 ) -> tuple[AnimatedTileSource, ...]:
-    """Read the animated-tile records and decode each one's first packed frame.
-    The accepted root pair at `+0x0C`/`+0x10` is a count and a null-coupled
-    pointer. The record is `u8 frame_count`, `u8 tile_count`, `u16 destination`,
-    then a pointer to the first packed frame; the frame is a *headerless* stream
-    whose size the record's tile count gives, which is why it is decoded through
-    the raw-stream entry point rather than the container one.
-    """
     count = reader.u32(root_address + ROOT_ANIMATED_COUNT_OFFSET)
     if count == 0:
         return ()
@@ -1037,15 +971,6 @@ def assemble_char_block(
     *,
     require_referenced: tuple[int, ...] | None = None,
 ) -> CharBlock:
-    """Assemble character data: selector ordinal -> tile, animated tiles overlaid.
-    A selector writes exactly one 8x8 tile to character memory at
-    ``64 * ordinal``; an animated-tile record writes ``tile_count`` tiles starting
-    at its own destination ordinal. Both come from the engine's own loaders.
-    ``bank_table_address`` is the value stored at `root + 0x4C` - the table of
-    bank *container pointers* - so a bank index is dereferenced through it before
-    the container is decoded. Bank containers are decoded once per bank and
-    cached, because a map's selector stream names a bank many times over.
-    """
     tiles: list[bytes] = []
     cache: dict[int, bytes] = {}
     for selector in selectors:
@@ -1120,11 +1045,6 @@ def read_banks(
     table_address: int,
     count: int = BANK_COUNT,
 ) -> tuple[Bank, ...]:
-    """Read a bank table and decode every bank container.
-    ``table_address`` is a map root's ``+0x4C`` field, which is where the
-    accepted graph stores it. It is required rather than defaulted so a caller
-    cannot silently decode a table belonging to another image.
-    """
     banks: list[Bank] = []
     for index in range(count):
         field = table_address + index * 4

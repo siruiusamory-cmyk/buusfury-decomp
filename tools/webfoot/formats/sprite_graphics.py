@@ -1,29 +1,3 @@
-"""Buu's Fury actor sprite graphics: tiles, palette, pieces, frames, animations.
-    character pointer table   297 entries, all valid, strictly ascending
-      -> character structure  variable size; animation pointers follow a header
-        -> animation record   u32 frame_count, then frame_count * 4 pointers
-          -> frame record     8-byte header, then 12-byte piece records
-            -> piece record   x at +0x00, y at +0x01, two pixel extents at
-                              +0x02/+0x03, a packed OBJ attribute pair at +0x04
-                              and a graphics-container pointer at +0x08
-              -> container    `webfoot.formats.webfoot_lz`, decoding to raw tiles
-**The layout this module used to model, and why it changed.** Until
-EVIDENCE-RISK-DEBT-001 it read the refuted 4-byte frame header and 16-byte piece
-records, with the attribute pair at `+0x08`, the graphics pointer at `+0x0C` and a
-six-byte "unknown" span at `+0x02..+0x07`. LOGX-FRAME-001 refuted that reading: the
-piece stride is `0x0C`, the attribute pair is at `+0x04`, the container pointer is
-at `+0x08`, and the two bytes the old model buried in `unknown_raw` are the piece's
-own pixel extents. The old walk rejected every multi-piece frame on its
-size/geometry test, which is exactly why the corpus appeared to hold 10,959
-single-piece frames and 7,355 containers.
-**Palette.** One global 256-entry object palette at a profile-declared offset,
-not a per-character one. The character structure header holds no palette
-pointer: across 297 structures, ROM pointers appear only at +0x00 (4 of them),
-+0x04 (65) and +0x50 (10), none of which resolves to a palette. The declared
-object palette has 16 inbound word-aligned references against the background
-palette's 1, and decodes as a plain ramp - black, black, white, red, orange,
-yellow, green, cyan.
-"""
 
 from __future__ import annotations
 
@@ -232,6 +206,7 @@ def _check_dimensions(width: int, height: int) -> None:
 
 @dataclass(frozen=True)
 class Piece:
+    """One 12-byte piece record, read only at offsets the engine is seen to use."""
 
     offset: int
     x: int
@@ -437,6 +412,7 @@ class PayloadPlan:
 
 
 def encode_graphic_payload(graphic: Graphic, pixels: bytes, *, kind: int) -> bytes:
+    """Re-encode ``pixels`` into a retail-terminating container stream."""
     if len(pixels) != graphic.width * graphic.height:
         raise SpriteFormatError(
             f"expected {graphic.width * graphic.height} pixels for a "
@@ -478,6 +454,7 @@ def graphics_container_kind(data: bytes, offset: int) -> int:
 
 
 def plan_graphic_payload(data: bytes, graphic: Graphic, pixels: bytes) -> PayloadPlan:
+    """Re-encode into the original's extent; growth is refused rather than written past the allocation."""
     payload = encode_graphic_payload(
         graphic, pixels, kind=graphics_container_kind(data, graphic.offset)
     )

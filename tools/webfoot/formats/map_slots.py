@@ -1,16 +1,7 @@
 """Map-linked 8-byte slot arrays: lossless bytes first, typed decode second.
-TOOLKIT-007. A `MapEntry` at `+0x10` carries a pointer and at `+0x04` a byte.
-Prior research (`docs/research/AUTO_RE_STATE.md:314`) established, from a static
-decode of one entry, that the pointer reaches 8-byte records and that the byte
-counts them. Measured across the whole 452-record corpus that reading does not
-generalise, and this module is shaped by exactly what the measurement showed:
-**What the confirmed example proves.** MapEntry 39 slot[1] is
-`{0x00020006, 0x080755C0}`, and the halfwords at that source `+0x08` are
-`(481, 121, 615, 271)` - the bounds `AUTO_RE_STATE` records. That reproduces
-here exactly. It also shows why 39 is *not* in the typed 35: its declared count
-of 11 runs past its four well-formed slots into data of another shape, so the
-array as declared is not uniform. The example is real; the generalisation was
-not.
+
+The confirmed example is MapEntry 39 slot[1] `{0x00020006, 0x080755C0}`, whose source `+0x08` halfwords are `(481, 121, 615, 271)`, the bounds AUTO_RE_STATE records.
+That example is real; the generalisation is not, because its declared count of 11 runs past its four well-formed slots into data of another shape.
 """
 
 from __future__ import annotations
@@ -28,7 +19,6 @@ _SLOT_STRUCT = struct.Struct("<II")
 
 
 #: example is `0x0002000X`, and this accepts a wider low range so the classifier
-#: tested `0x0003`-`0x0100` range: every limit in that range yields the identical
 _TYPED_HIGH_HALFWORD_LIMIT = 0x0010
 
 
@@ -71,6 +61,7 @@ class MapSlot:
         return _SLOT_STRUCT.pack(self.word0, self.word1)
 
     def is_typed(self, image_size: int) -> bool:
+        """Whether this slot matches the one confirmed `{type, source}` shape."""
         return (
             ROM_BASE <= self.word1 < ROM_BASE + image_size
             and self.word1 % 4 == 0
@@ -79,6 +70,7 @@ class MapSlot:
 
     @property
     def source_file_offset(self) -> int:
+        """This slot's second word as a file offset. Only meaningful when typed."""
         return self.word1 - ROM_BASE
 
 

@@ -1,10 +1,3 @@
-"""GBA Mode 0 regular tiled background: screen entries, screenblocks, layer render.
-**Blocks are addressed by number, never hardcoded.** A charblock is 0x4000 bytes
-and a screenblock is 0x800 bytes from the VRAM base; both this module and its
-callers work in block indices so the same code renders any layer of any dump.
-The manifest block numbers (28/29/30/31 for map 40) are runtime inputs, not
-constants here.
-"""
 
 from __future__ import annotations
 

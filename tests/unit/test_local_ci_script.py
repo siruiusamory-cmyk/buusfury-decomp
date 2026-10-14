@@ -8,7 +8,7 @@ build, the install, the four quality gates, the suite (it writes a clean JUnit
 report), the adjacency orders and the integration selection. That makes a full
 gate run take seconds and lets one step be made deliberately red.
 
-The four guards, and the defect each one catches:
+The five guards, and the defect each one catches:
 
 - ``test_a_red_quality_step_fails_the_record`` - ``Invoke-Step`` read a NULL
   ``ExitCode`` under PowerShell 5.1 because a redirected ``Start-Process`` polled
@@ -22,6 +22,11 @@ The four guards, and the defect each one catches:
   exited 1.
 - ``test_the_branch_adds_no_whitespace_errors`` - ``git diff --check`` against the
   branch base failed on two carriage-return-terminated lines.
+- ``test_the_gate_refuses_when_the_record_directory_cannot_be_computed`` - the
+  record directory was computed with ``Join-Path`` and never checked, so an empty
+  result turned every later statement into a silent no-op and the gate printed
+  ``local-ci: PASS`` with no record at all: the false PASS GitHub run 38504730899
+  shipped.
 
 The gate is also given a private ``LOCALAPPDATA``, so its venv and its neutral
 clone land in the test's temporary directory and never touch the machine's own
@@ -159,12 +164,44 @@ def _prepare(tmp_path: Path):
     return repo, stub, home, _head()
 
 
-def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
-    """One gate run against an already-prepared clone, so a test can run it twice."""
+def _gate_environment(home: Path, stub: Path, env_extra=None) -> dict[str, str]:
     environment = dict(os.environ)
     environment.update({"LOCALAPPDATA": str(home), "PYTHONPATH": str(stub)})
     if env_extra:
         environment.update(env_extra)
+    return environment
+
+
+#: The environment the child was given, printed with a missing record. PATH first: the
+#: difference between the green run and the red one is suspected to be here, not the tree.
+PROBE_KEYS = ("PATH", "VIRTUAL_ENV", "LOCALAPPDATA", "PYTHONPATH")
+
+
+def _probe_record_missing(run, record: Path, environment: dict[str, str]) -> None:
+    """Put the gate's own evidence into pytest's captured output, untruncated.
+
+    GitHub run 38504730899 failed six nodes on ``the gate did not write a record``
+    while the gate itself printed ``local-ci: PASS``. The artifact carried only a
+    truncated ``CompletedProcess`` repr - the middle of it elided by pytest's
+    assertion introspection - so the cause could not be read back. So the streams
+    are PRINTED in full: pytest prints the captured output of a failing test, and
+    that is the one channel that reaches the artifact whole. The environment goes
+    with them.
+    """
+    print("local-ci probe record=" + str(record))
+    print("local-ci probe record-written=False")
+    print("local-ci probe returncode=" + str(run.returncode))
+    print("local-ci probe stdout-begin\n" + str(run.stdout) + "\nlocal-ci probe stdout-end")
+    print("local-ci probe stderr-begin\n" + str(run.stderr) + "\nlocal-ci probe stderr-end")
+    for key in PROBE_KEYS:
+        print("local-ci probe " + key + "=" + str(environment.get(key, "<unset>")))
+    print("local-ci probe which-python=" + str(shutil.which("python")))
+    print("local-ci probe which-py=" + str(shutil.which("py")))
+
+
+def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
+    """One gate run against an already-prepared clone, so a test can run it twice."""
+    environment = _gate_environment(home, stub, env_extra)
     run = subprocess.run(
         [
             POWERSHELL,
@@ -185,6 +222,8 @@ def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
         timeout=600,
     )
     record = repo / "build" / "local-ci" / sha / "record.txt"
+    if not record.exists():
+        _probe_record_missing(run, record, environment)
     return run, record
 
 
@@ -210,9 +249,25 @@ def _run_gate(tmp_path: Path, env_extra: dict[str, str] | None = None):
     return run, record, home, sha
 
 
-def _record_text(record: Path) -> str:
-    assert record.exists(), "the gate did not write a record"
+def _record_text(record: Path, run=None) -> str:
+    """The record, with the gate's own streams named when there is no record.
+
+    A bare ``the gate did not write a record`` was all run 38504730899 left in the
+    artifact, so this carries the returncode and the tails with it; the full streams
+    are printed separately by :func:`_probe_record_missing`.
+    """
+    assert record.exists(), _missing_record(record, run)
     return record.read_text(encoding="utf-8", errors="replace")
+
+
+def _missing_record(record: Path, run=None) -> str:
+    if run is None:
+        return f"the gate did not write a record: {record}"
+    return (
+        f"the gate did not write a record: {record}; returncode={run.returncode}\n"
+        f"--- stdout tail ---\n{(run.stdout or '')[-2000:]}\n"
+        f"--- stderr tail ---\n{(run.stderr or '')[-2000:]}"
+    )
 
 
 def test_a_red_quality_step_fails_the_record(tmp_path):
@@ -224,7 +279,7 @@ def test_a_red_quality_step_fails_the_record(tmp_path):
     ``verdict : PASS`` and the step table says ``exit 0``.
     """
     run, record, _home, _sha = _run_gate(tmp_path, {"STUB_QUALITY_EXIT": "7"})
-    text = _record_text(record)
+    text = _record_text(record, run)
     assert "exit 7" in text, (
         "the step's real exit code did not reach the record:\n"
         + "\n".join(line for line in text.splitlines() if "quality" in line)
@@ -237,7 +292,7 @@ def test_a_red_quality_step_fails_the_record(tmp_path):
 def test_a_green_run_passes_so_the_red_guard_is_not_vacuous(tmp_path):
     """The same run with the stub green must PASS, or the guard above proves nothing."""
     run, record, _home, _sha = _run_gate(tmp_path, {"STUB_QUALITY_EXIT": "0"})
-    text = _record_text(record)
+    text = _record_text(record, run)
     assert "verdict        : PASS" in text, text
     assert run.returncode == 0, (run.returncode, run.stdout[-2000:])
 
@@ -279,7 +334,7 @@ def test_a_green_run_passes_when_the_pinned_files_are_present(tmp_path):
     )
     sha = git("rev-parse", "HEAD")
     run, record = _invoke(repo, stub, home, sha, {"STUB_QUALITY_EXIT": "0"})
-    text = _record_text(record)
+    text = _record_text(record, run)
     #: Whitespace-collapsed, because the record pads each count to a fixed width.
     flat = " ".join(text.split())
     assert flat.count("host has PowerShell, so not an equality gate") == 2, text
@@ -368,10 +423,48 @@ def test_a_cleanup_failure_reaches_the_record(tmp_path):
     if handle is None:
         pytest.skip("the worktree report was not caught open, so the cleanup was not driven")
     record = repo / "build" / "local-ci" / sha / "record.txt"
-    text = _record_text(record)
+    #: stderr was merged into stdout above, so the one stream is what the probe carries.
+    completed = subprocess.CompletedProcess([], process.returncode, output, "")
+    if not record.exists():
+        _probe_record_missing(completed, record, environment)
+    text = _record_text(record, completed)
     assert "the throwaway worktree could not be removed" in text, text
     assert "verdict        : FAIL" in text, text
     assert process.returncode == 1, (process.returncode, output[-2000:])
+
+
+def test_the_gate_refuses_when_the_record_directory_cannot_be_computed(tmp_path, monkeypatch):
+    """A record the gate cannot name is a named failure, never a PASS.
+
+    The empty record directory cannot be produced through the gate's own inputs:
+    ``Join-Path`` rejects only a null or empty Path, and both RepoPath and Sha are
+    non-empty by the time that line runs. So the drive replaces that single line in
+    a COPY of the script with an empty value and asserts the gate's own behaviour:
+    exit 1, both inputs named in the message, and no PASS. It is also the shape of
+    the false PASS GitHub run 38504730899 shipped, where the gate ran to its last
+    line and printed PASS with an empty ``record:`` line and no record on disk.
+    """
+    _ready()
+    repo, stub, home, sha = _prepare(tmp_path)
+    computed = (
+        "$recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)"
+    )
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert computed in source, "the record-directory line moved, so this drive proves nothing"
+    forced = tmp_path / "local-ci-empty-record-dir.ps1"
+    forced.write_text(source.replace(computed, "$recordDir = ''"), encoding="utf-8")
+    # The gate is launched by the same _invoke every other node here uses, with the
+    # copy's path in place of the tracked script: no process start is added anywhere.
+    monkeypatch.setattr(sys.modules[__name__], "SCRIPT", forced)
+    run, record = _invoke(repo, stub, home, sha)
+    assert run.returncode == 1, (run.returncode, run.stdout[-2000:], run.stderr[-2000:])
+    assert "local-ci: FAIL - the record directory could not be computed" in run.stdout, (
+        run.stdout[-2000:]
+    )
+    assert "RepoPath '" + str(repo) + "'" in run.stdout, run.stdout[-2000:]
+    assert "Sha '" + sha + "'" in run.stdout, run.stdout[-2000:]
+    assert "local-ci: PASS" not in run.stdout, run.stdout[-2000:]
+    assert not (repo / "build" / "local-ci" / sha / "record.txt").exists()
 
 
 def test_the_branch_adds_no_whitespace_errors():
@@ -392,7 +485,7 @@ def test_a_failed_step_keeps_its_captured_output(tmp_path):
     record must name each capture with the digest that matches the file.
     """
     _run, record, _home, _sha = _run_gate(tmp_path, {"STUB_QUALITY_EXIT": "7"})
-    text = _record_text(record)
+    text = _record_text(record, _run)
     assert "step captures (private, under ignored build/)" in text, text
     runs = _run_dirs(record)
     assert len(runs) == 1, runs

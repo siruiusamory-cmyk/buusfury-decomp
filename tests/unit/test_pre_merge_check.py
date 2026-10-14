@@ -826,7 +826,9 @@ def test_the_focused_run_refuses_an_image_that_is_not_canonical(tmp_path):
     output = completed.stdout + completed.stderr
     assert completed.returncode == 1, output
     assert "is not the canonical image" in _flat(output), output
-    assert rom_support.CANONICAL_ROM_SHA256.upper() in output.upper(), output
+    # The digest is long enough for PowerShell to wrap it, so it is compared on the
+    # flattened view too: the value must survive wherever the line broke.
+    assert rom_support.CANONICAL_ROM_SHA256.upper() in _flat(output).upper(), output
 
 
 @needs_powershell

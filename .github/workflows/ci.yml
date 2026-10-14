@@ -117,6 +117,16 @@ jobs:
       - *temporary-root
       - *python
 
+      # The install is here for the cache and for the environment. The post step of
+      # actions/setup-python saves a pip cache, and run 38504730899 failed it with
+      # "Cache folder path is retrieved for pip but doesn't exist on disk" because
+      # the job asked for `cache: pip` and never ran pip, so there was no directory
+      # to save. The gates themselves passed in that run without this step, so this
+      # is the cache fix plus the hardening that they read the project's declared
+      # environment; it is not a repair of a broken gate.
+      - name: Install the project
+        run: python -m pip install --quiet --disable-pip-version-check -e .
+
       # The four tree-wide gates the local record runs, each its own step so a
       # failure names the gate, and each the same module the tracked bodies run.
       - name: Public surface

@@ -173,6 +173,27 @@ def test_the_four_quality_gates_are_their_own_job_one_step_each():
         assert len(_run_indices("gates", f"-m tools.quality.{gate}")) == 1, gate
 
 
+def test_the_gates_job_fills_the_pip_cache_it_asks_for_and_installs_first():
+    """Prevents: a cached pip setup whose cache the job never creates.
+
+    Run 38504730899's gates job failed its post step with "Cache folder path is
+    retrieved for pip but doesn't exist on disk": the job declares `cache: pip`
+    with `cache-dependency-path: pyproject.toml` and never ran pip, so there was
+    no directory to save. The gates themselves passed in that run without an
+    install, so this step is the cache fix plus the hardening that they run
+    against the project's declared environment, and the order matters: the
+    install has to precede every gate.
+    """
+    install = _run_index("gates", "-m pip install")
+    script = _run_script("gates", "-m pip install")
+    assert script.strip().startswith("python -m pip install"), script
+    assert "--quiet" in script, script
+    assert re.search(r"-e\s+\.(\s|$)", script), script
+    assert "[" not in script, "the gates job installs extras the gate set does not need"
+    for gate in ("public_surface", "architecture", "public_release", "readability"):
+        assert install < _run_index("gates", f"-m tools.quality.{gate}"), gate
+
+
 def test_the_integration_job_runs_the_rom_free_member_by_name():
     """Prevents: the integration member widening to the ROM-gated directory."""
     script = _run_script("integration", INTEGRATION_MEMBER)

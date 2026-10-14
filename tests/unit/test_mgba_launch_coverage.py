@@ -437,6 +437,11 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs a nested collect-only pytest over one small module, with and "
         "without the shard variables, to read which nodes that shard collects; "
         "it starts no emulator",
+    ("tests/unit/test_readability_comment_share.py",
+     "git",
+     "'git'"):
+        "builds a throwaway repository so the comment bar is measured against a "
+        "real diff; it starts no emulator",
 }
 
 

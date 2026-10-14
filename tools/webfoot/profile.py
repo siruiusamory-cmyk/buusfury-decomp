@@ -61,7 +61,8 @@ _SUPPORTED_CODE_ANCHOR_EVIDENCE = {
 _GBA_ROM_WINDOW_BYTES = 2 ** 25
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
-_ALLOWED_TEXT_TABLE_KEYS = {
+#: The eight fields every text-table declaration carries.
+_REQUIRED_TEXT_TABLE_KEYS = {
     "pointer_table_address",
     "count",
     "pool_address",
@@ -71,6 +72,27 @@ _ALLOWED_TEXT_TABLE_KEYS = {
     "relocatable",
     "evidence",
 }
+
+#: Optional, so a declaration carrying only the required fields still loads; a reader
+#: that needs one refuses by name rather than meeting a default number.
+_OPTIONAL_TEXT_TABLE_INT_KEYS = (
+    "table_literal",
+    "live_selectors",
+    "grown_selector",
+    "event_resource_handler",
+    "event_table",
+    "map_name_slot_offset",
+    "map_array_offset",
+    "map_descriptor_offset",
+)
+
+_OPTIONAL_TEXT_TABLE_OTHER_KEYS = ("event_count", "map_count_offset", "event_pool")
+
+_ALLOWED_TEXT_TABLE_KEYS = (
+    _REQUIRED_TEXT_TABLE_KEYS
+    | set(_OPTIONAL_TEXT_TABLE_INT_KEYS)
+    | set(_OPTIONAL_TEXT_TABLE_OTHER_KEYS)
+)
 
 #: Encodings a text codec implements. A profile naming anything else is refused
 #: rather than decoded with the wrong reader.
@@ -232,6 +254,20 @@ class TextTableProfile:
     alignment: int
     relocatable: bool
     evidence: str
+    #: Read through to locate the container table, whose own words are live structure.
+    table_literal: int | None = None
+    live_selectors: int | None = None
+    grown_selector: int | None = None
+    event_pool: tuple[int, int] | None = None
+    event_resource_handler: int | None = None
+    event_table: int | None = None
+    event_count: int | None = None
+    #: Byte offsets inside one map row: name slot, placement array, placement count,
+    #: placement descriptor. The first and last are both 0x14 on Buu's Fury.
+    map_name_slot_offset: int | None = None
+    map_array_offset: int | None = None
+    map_count_offset: int | None = None
+    map_descriptor_offset: int | None = None
 
     @property
     def pointer_table_size(self) -> int:
@@ -284,7 +320,7 @@ def _optional_text_table(
     if unexpected:
         joined = ", ".join(sorted(str(key) for key in unexpected))
         raise ProfileConfigError(f"{name} contains unexpected fields: {joined}")
-    missing = _ALLOWED_TEXT_TABLE_KEYS - set(table)
+    missing = _REQUIRED_TEXT_TABLE_KEYS - set(table)
     if missing:
         joined = ", ".join(sorted(missing))
         raise ProfileConfigError(f"{name} is missing required fields: {joined}")
@@ -295,6 +331,20 @@ def _optional_text_table(
     for key in ("count", "pool_size"):
         if type(table[key]) is not int or table[key] <= 0:
             raise ProfileConfigError(f"{name} {key} must be a positive integer")
+
+    for key in _OPTIONAL_TEXT_TABLE_INT_KEYS + ("event_count", "map_count_offset"):
+        if key in table and (type(table[key]) is not int or table[key] <= 0):
+            raise ProfileConfigError(f"{name} {key} must be a positive integer")
+
+    if "event_pool" in table:
+        pool = table["event_pool"]
+        if not isinstance(pool, (list, tuple)) or len(pool) != 2 or any(
+                type(value) is not int for value in pool):
+            raise ProfileConfigError(
+                f"{name} event_pool must be two integer GBA addresses")
+        pool = tuple(pool)
+    else:
+        pool = None
 
     encoding = table["encoding"]
     if encoding not in _SUPPORTED_TEXT_ENCODINGS:
@@ -335,6 +385,17 @@ def _optional_text_table(
         alignment=alignment,
         relocatable=relocatable,
         evidence=evidence.strip(),
+        table_literal=table.get("table_literal"),
+        live_selectors=table.get("live_selectors"),
+        grown_selector=table.get("grown_selector"),
+        event_pool=pool,
+        event_resource_handler=table.get("event_resource_handler"),
+        event_table=table.get("event_table"),
+        event_count=table.get("event_count"),
+        map_name_slot_offset=table.get("map_name_slot_offset"),
+        map_array_offset=table.get("map_array_offset"),
+        map_count_offset=table.get("map_count_offset"),
+        map_descriptor_offset=table.get("map_descriptor_offset"),
     )
 
 

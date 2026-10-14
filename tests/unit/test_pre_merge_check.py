@@ -702,11 +702,12 @@ ROM_MARKERS = (
 )
 
 #: Derived by a marker and NOT ROM-dependent, each with the reason a reader can
-#: check. An exclusion is a documented judgement, not a silent filter. Every one
-#: of these existed at the record's commit and the record's skip census holds no
-#: skip line for it, so its marker is satisfied without the image in a run that
-#: has none. A file that is genuinely gated and merely NEWER than the record
-#: belongs in the inventory instead, which is where test_dialogue_render.py is.
+#: check. An exclusion is a documented judgement, not a silent filter. Every one of
+#: these existed at the record's commit, unless its own reason says otherwise, and
+#: the record's skip census holds no skip line for it, so its marker is satisfied
+#: without the image in a run that has none. A file that is genuinely gated and
+#: merely NEWER than the record belongs in the inventory instead, which is where
+#: test_dialogue_render.py is.
 ROM_MARKER_EXCLUSIONS = {
     "tests/unit/dragonbyte_acceptance_support.py": (
         "matches SIBLING_CHECKOUT; it is not a test module at all but the lookup "
@@ -767,6 +768,10 @@ ROM_MARKER_EXCLUSIONS = {
     "tests/unit/test_runtime_evidence_bundle.py": (
         "matches rom011_ and rom012_; it bundles evidence from those builds, and "
         "the census holds no skip for it"
+    ),
+    "tests/unit/test_text_engine_profile_row.py": (
+        "matches canonical_profile through the name of the engine constant it reads; "
+        "its images come from the synthetic text fixture"
     ),
     "tests/unit/test_ticket_worktree_setup.py": (
         "matches WEBFOOT_BUU_ROM and LOGX_CANONICAL_ROM as names to copy into a "

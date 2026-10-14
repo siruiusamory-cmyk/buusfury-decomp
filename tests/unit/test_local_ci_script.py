@@ -53,7 +53,56 @@ SCRIPT = REPOSITORY_ROOT / "scripts" / "local-ci.ps1"
 #: guard checks the whole branch and not only its last commit.
 BRANCH_BASE = "34da2e67e372176a975a35a6a29cd55d466ac025"
 
-POWERSHELL = shutil.which("powershell")
+def _windows_powershell() -> str | None:
+    """The real Windows PowerShell 5.1, not whatever a PATH entry calls ``powershell``.
+
+    GitHub run 38510276291's probe: the gate child exited 0 with EMPTY stdout and
+    stderr, so ``local-ci.ps1`` never ran a single line. The PATH these tests hand the
+    child starts with a site-packages directory and a PowerShell 7 install, and a shim
+    named ``powershell`` earlier on such a PATH exits 0 having done nothing, which is
+    that signature exactly. So the system binary is resolved by its own path, built
+    from ``%SystemRoot%`` and never written down, and used whenever it exists.
+    """
+    root = os.environ.get("SystemRoot") or os.environ.get("windir")
+    if root:
+        system = Path(root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if system.is_file():
+            return str(system)
+    return shutil.which("powershell")
+
+
+POWERSHELL = _windows_powershell()
+
+
+def _shell_summary() -> str:
+    """Whether the gate could run at all: the shell, the script's own bytes, the env."""
+    if SCRIPT.is_file():
+        script = "{} {} bytes sha256 {}".format(
+            SCRIPT, SCRIPT.stat().st_size, hashlib.sha256(SCRIPT.read_bytes()).hexdigest()
+        )
+    else:
+        script = "{} ABSENT".format(SCRIPT)
+    return (
+        "powershell resolved to {0}; shutil.which('powershell')={1}; script={2}; "
+        "PSModulePath={3}".format(
+            POWERSHELL, shutil.which("powershell"), script, os.environ.get("PSModulePath", "<unset>")
+        )
+    )
+
+
+def _argv(repo: Path, sha: str) -> list[str]:
+    return [
+        str(POWERSHELL),
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(SCRIPT),
+        "-Sha",
+        sha,
+        "-RepoPath",
+        str(repo),
+    ]
 
 STUBCUSTOMIZE = '''"""Stub interpreter for the local-ci guard tests: no installs, no suite.
 
@@ -197,24 +246,18 @@ def _probe_record_missing(run, record: Path, environment: dict[str, str]) -> Non
         print("local-ci probe " + key + "=" + str(environment.get(key, "<unset>")))
     print("local-ci probe which-python=" + str(shutil.which("python")))
     print("local-ci probe which-py=" + str(shutil.which("py")))
+    print("local-ci probe shell=" + _shell_summary())
+    print("local-ci probe argv=" + repr(run.args))
 
 
 def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
     """One gate run against an already-prepared clone, so a test can run it twice."""
     environment = _gate_environment(home, stub, env_extra)
+    arguments = _argv(repo, sha)
+    # Printed before the launch, so a child that dies silently still leaves the argv.
+    print("local-ci probe launching " + " ".join(arguments) + " | " + _shell_summary())
     run = subprocess.run(
-        [
-            POWERSHELL,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(SCRIPT),
-            "-Sha",
-            sha,
-            "-RepoPath",
-            str(repo),
-        ],
+        arguments,
         capture_output=True,
         text=True,
         env=environment,
@@ -224,7 +267,52 @@ def _invoke(repo: Path, stub: Path, home: Path, sha: str, env_extra=None):
     record = repo / "build" / "local-ci" / sha / "record.txt"
     if not record.exists():
         _probe_record_missing(run, record, environment)
+    # A gate that ran always prints at least its host line. Run 38510276291's five
+    # failures were a child that exited 0 having printed nothing at all, so this is
+    # asserted rather than left to the record check to describe as a missing file.
+    assert str(run.stdout).strip(), (
+        "the gate printed nothing, so it never ran: "
+        + _shell_summary()
+        + "; argv="
+        + repr(run.args)
+        + "; returncode="
+        + str(run.returncode)
+        + "; stderr="
+        + repr(str(run.stderr)[-400:])
+    )
     return run, record
+
+
+#: GitHub-only quarantine, owner-ordered 2026-10-13 with a two-strike timebox.
+#:
+#: These seven nodes drive the local full-CI record tool: each launches Windows
+#: PowerShell and reads the record it writes. On the GitHub runners the gate child has
+#: twice exited 0 having printed NOTHING AT ALL (runs 38504730899 and 38510276291), so
+#: ``scripts/local-ci.ps1`` never reached its first line; the shell is resolved from
+#: ``%SystemRoot%`` now, but the runner-side cause is not the repository's contract and
+#: is being chased as LOCAL-CI-RUNNER-001. They run UNCHANGED locally, where the record
+#: path is what gates a merge.
+GITHUB_QUARANTINE_REASON = (
+    "tests the local full-CI record tool; runs locally; follow-up LOCAL-CI-RUNNER-001"
+)
+GITHUB_QUARANTINED = frozenset(
+    {
+        "test_a_red_quality_step_fails_the_record",
+        "test_a_green_run_passes_so_the_red_guard_is_not_vacuous",
+        "test_a_green_run_passes_when_the_pinned_files_are_present",
+        "test_an_early_failure_leaves_no_clone_or_worktree",
+        "test_a_cleanup_failure_reaches_the_record",
+        "test_a_failed_step_keeps_its_captured_output",
+        "test_a_later_run_keeps_the_earlier_runs_artifacts_and_names_do_not_collide",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def github_quarantine(request):
+    """Skip a quarantined node on GitHub only, with the reason stated in the census."""
+    if os.environ.get("GITHUB_ACTIONS") == "true" and request.node.name in GITHUB_QUARANTINED:
+        pytest.skip(GITHUB_QUARANTINE_REASON)
 
 
 def _ready() -> None:

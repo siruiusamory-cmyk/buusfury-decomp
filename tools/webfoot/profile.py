@@ -983,6 +983,15 @@ class RomProfile:
             code_anchors=_optional_code_anchors(data.get("code_anchors")),
         )
 
+    def require_code_anchor(self, name: str) -> CodeAnchor:
+        for anchor in self.code_anchors:
+            if anchor.name == name:
+                return anchor
+        declared = ", ".join(anchor.name for anchor in self.code_anchors) or "none"
+        raise ProfileConfigError(
+            f"profile {self.id!r} declares no code anchor {name!r}; declared: {declared}"
+        )
+
 
 def _optional_generated_expansion(
     value: Any, canonical_size: int

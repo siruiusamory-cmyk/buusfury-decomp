@@ -110,15 +110,16 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: Measured 2885 -> 2882 lines, 272 -> 272 files.
 #: PINMAP-05 moved 2882 -> 2879; the entry it appended names all nineteen lines.
 #: PINMAP-06 moved 2879 -> 2877; the entry it appended names both lines.
-CENSUS_HEX5 = (2877, 272)
+#: PINMAP-07a moved 2877 -> 2887; the entry it appended names all ten lines.
+CENSUS_HEX5 = (2887, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
 #: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
 #: enforcement set is the whole-tree set minus the four instrument directories, so
-#: the three move together.
-ENFORCEMENT_HEX5 = (653, 70)
-ENFORCEMENT_ROM_HEX = (485, 53)
+#: the three move together. PINMAP-07a then moved the first two, ten lines each.
+ENFORCEMENT_HEX5 = (663, 70)
+ENFORCEMENT_ROM_HEX = (495, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -287,15 +288,16 @@ EXEMPTIONS: tuple[Row, ...] = (
         "about that shape.",
     ),
     Row(
-        "tools/webfoot/data/roms.yaml", 51, 45, 0,
+        "tools/webfoot/data/roms.yaml", 61, 55, 0,
         "the profile's own declared table addresses: character table, object and "
         "background palettes, the portrait pointer array, factory raw, constructor, "
         "and the per-title rows the shipping tools resolve against, in both hex "
         "spellings. This file is the destination the PINMAP-04 to PINMAP-09 removals "
         "read from rather than a removal target; no ticket removes the profile's own "
         "rows. PINMAP-05 added eight of them, the optional keys the text-edit row now "
-        "reads, seven as full GBA addresses: :86, :89, :90, :91 and :93-96. Recorded "
-        "debt.",
+        "reads, seven as full GBA addresses: :86, :89, :90, :91 and :93-96. PINMAP-07a "
+        "added the ten declared code anchors at :152-188, which is what moved this row "
+        "51 -> 61 and its ROM-space count 45 -> 55. Recorded debt.",
     ),
     Row(
         "tools/webfoot/data/script_effects.py", 3, 3, 0,
@@ -711,6 +713,27 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "tables.appearances.address, which is a net -2 and no files. The canonical.py "
         "row fell 11 -> 9 lines and its ROM-space count 11 -> 9, and the enforcement "
         "pair fell by the same two lines because that file is in the enforcement set",
+    ),
+    LedgerEntry(
+        "PINMAP-07a", 10, 0,
+        (
+            "tools/webfoot/data/roms.yaml:152",
+            "tools/webfoot/data/roms.yaml:156",
+            "tools/webfoot/data/roms.yaml:160",
+            "tools/webfoot/data/roms.yaml:164",
+            "tools/webfoot/data/roms.yaml:168",
+            "tools/webfoot/data/roms.yaml:172",
+            "tools/webfoot/data/roms.yaml:176",
+            "tools/webfoot/data/roms.yaml:180",
+            "tools/webfoot/data/roms.yaml:184",
+            "tools/webfoot/data/roms.yaml:188",
+        ),
+        "ten counted lines arrived in the profile catalogue: the ten declared code "
+        "anchor addresses, the placement factory raw word, the three placement "
+        "handlers, the two sibling factories, the three layer handlers and the entry "
+        "class, which the profile's resolver now reads by name. No line left and no "
+        "file arrived, so the tree pair is +10 lines and the enforcement pair moved "
+        "with it; the catalogue row rose 51 -> 61 and its ROM-space count 45 -> 55",
     ),
 )
 

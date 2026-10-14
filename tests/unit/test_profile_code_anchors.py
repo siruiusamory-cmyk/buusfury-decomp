@@ -14,6 +14,7 @@ import yaml
 
 from tests.helpers import make_synthetic_rom, profile_for
 from tools.webfoot.binary import GbaRomAddress
+from tools.webfoot.packaged import packaged_profile
 from tools.webfoot.profile import (
     CodeAnchor,
     ProfileConfigError,
@@ -33,6 +34,21 @@ SHIPPED_PROFILES = [
     ("legacy_of_goku_ii_usa_rev0_204142e1", "legacy_of_goku_ii", "USA", 0, "ALFE",
      8388608, "6e6c370c339ec9171cb1956adf837a0d342a197f78964882ef46c3086656ff75"),
 ]
+
+#: PINMAP-07a. The shipped Buu profile's ten declared anchors, in declaration
+#: order, each with the address, state and evidence class a lookup must return.
+DECLARED_ANCHORS = (
+    CodeAnchor("factory_raw", GbaRomAddress(0x0800FD55), "thumb", "declared"),
+    CodeAnchor("script_dispatch_handler", GbaRomAddress(0x0800421F), "thumb", "declared"),
+    CodeAnchor("handler_0800421d", GbaRomAddress(0x0800421D), "thumb", "declared"),
+    CodeAnchor("handler_0800424f", GbaRomAddress(0x0800424F), "thumb", "declared"),
+    CodeAnchor("sibling_factory_08017da3", GbaRomAddress(0x08017DA3), "thumb", "declared"),
+    CodeAnchor("sibling_factory_080111a9", GbaRomAddress(0x080111A9), "thumb", "declared"),
+    CodeAnchor("dominant_layer_handler", GbaRomAddress(0x08008087), "thumb", "declared"),
+    CodeAnchor("absent_layer_handler", GbaRomAddress(0x08007A41), "thumb", "declared"),
+    CodeAnchor("terrain_field_layer_handler", GbaRomAddress(0x080088BD), "thumb", "declared"),
+    CodeAnchor("entry_class_0800a7a1", GbaRomAddress(0x0800A7A1), "thumb", "declared"),
+)
 
 
 def anchor(**overrides):
@@ -194,8 +210,13 @@ def test_empty_role_refuses_naming_the_field():
         RomProfileCatalog.loads(document(code_anchors=[anchor(role="   ")]))
 
 
-def test_shipped_version_1_catalogue_loads_with_empty_code_anchors():
-    text = Path("config/roms.yaml").read_text(encoding="utf-8")
+@pytest.mark.parametrize(
+    "path",
+    ["config/roms.yaml", "tools/webfoot/data/roms.yaml"],
+    ids=["development", "packaged"],
+)
+def test_each_shipped_catalogue_copy_declares_every_anchor(path):
+    text = Path(path).read_text(encoding="utf-8")
     catalog = RomProfileCatalog.loads(text)
 
     assert [
@@ -203,7 +224,57 @@ def test_shipped_version_1_catalogue_loads_with_empty_code_anchors():
          profile.game_code, profile.size, profile.sha256)
         for profile in catalog.profiles
     ] == SHIPPED_PROFILES
-    assert [profile.code_anchors for profile in catalog.profiles] == [(), (), (), ()]
+    assert [profile.code_anchors for profile in catalog.profiles] == [
+        DECLARED_ANCHORS, (), (), ()
+    ]
+
+
+@pytest.mark.parametrize(
+    "anchor", DECLARED_ANCHORS, ids=[anchor.name for anchor in DECLARED_ANCHORS]
+)
+def test_a_declared_anchor_resolves_to_its_address_kind_and_evidence(anchor):
+    resolved = packaged_profile().require_code_anchor(anchor.name)
+
+    assert isinstance(resolved, CodeAnchor)
+    assert resolved == anchor
+    assert (resolved.address.raw, resolved.kind, resolved.evidence) == (
+        anchor.address.raw, anchor.kind, anchor.evidence
+    )
+
+
+def test_the_factory_raw_anchor_agrees_with_the_declared_placement_type():
+    profile = packaged_profile()
+
+    assert profile.require_code_anchor("factory_raw").address.raw == (
+        profile.placement_types.factory_raw
+    )
+
+
+def test_the_lookup_carries_the_state_and_evidence_class_unchanged():
+    profile = declared(
+        anchor(name="factory", address=0x08001234, kind="arm", evidence="runtime-proven")
+    )
+
+    resolved = profile.require_code_anchor("factory")
+    assert (resolved.kind, resolved.evidence) == ("arm", "runtime-proven")
+
+
+def test_an_absent_anchor_refuses_naming_the_anchor_and_the_profile():
+    profile = packaged_profile()
+
+    with pytest.raises(ProfileConfigError) as raised:
+        profile.require_code_anchor("no_such_anchor")
+    message = str(raised.value)
+    assert "no_such_anchor" in message
+    assert profile.id in message
+
+
+def test_a_profile_declaring_no_anchors_refuses_rather_than_returning_nothing():
+    profile = profile_for(make_synthetic_rom())
+
+    assert profile.code_anchors == ()
+    with pytest.raises(ProfileConfigError, match="declares no code anchor 'handler'"):
+        profile.require_code_anchor("handler")
 
 
 def test_schema_version_2_document_is_still_refused():

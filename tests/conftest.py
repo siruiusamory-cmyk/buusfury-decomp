@@ -71,10 +71,8 @@ import faulthandler
 import getpass
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
-import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -145,7 +143,6 @@ _SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
 _SPEED_BUDGET_SECONDS = 5.0
 _SPEED_ROM_BUDGET_SECONDS = 30.0
 _SPEED_EXCEPTION_SLACK = 1.5
-_SPEED_RERUN_VARIABLE = "WEBFOOT_SPEED_RERUN"
 _BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str, str]] = {
     "tests/unit/test_architecture.py::test_observations_never_fail_the_run":
         (6.853, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-GATE-001"),
@@ -770,46 +767,9 @@ def _speed_budget(nodeid: str, rom: bool) -> tuple[float, float, str]:
     return budget, max(measured * _SPEED_EXCEPTION_SLACK, budget), ticket
 
 
-def _junit_seconds(report: Path, nodeid: str) -> float | None:
-    if not report.is_file():
-        return None
-    try:
-        root = ET.parse(report).getroot()
-    except ET.ParseError:
-        return None
-    for case in root.iter("testcase"):
-        name = f"{case.get('classname', '').replace('.', '/')}.py::{case.get('name', '')}"
-        if name == nodeid:
-            return float(case.get("time") or 0.0)
-    return None
-
-
-def _remeasure(nodeid: str) -> float | None:
-    """One single-node re-run, measured the same way, so a breach needs two timings.
-
-    The child run is a measurement only: it carries `_SPEED_RERUN_VARIABLE`, which
-    makes this guard stand down inside it.
-    """
-    with tempfile.TemporaryDirectory() as directory:
-        report = Path(directory) / "rerun.xml"
-        environment = dict(os.environ)
-        environment[_SPEED_RERUN_VARIABLE] = "1"
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pytest", nodeid, "-q", "-p", "no:cacheprovider",
-                 f"--junitxml={report}"],
-                cwd=str(REPOSITORY_ROOT), env=environment, capture_output=True, timeout=900,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return _junit_seconds(report, nodeid)
-
-
 def _report_speed_breaches(session: pytest.Session) -> bool:
     """Name every test over its rule-S allowance, and fail the session when one is."""
     if getattr(session.config, "workerinput", None):
-        return False
-    if os.environ.get(_SPEED_RERUN_VARIABLE):
         return False
     breaches = []
     for nodeid, seconds in sorted(_TEST_SECONDS.items()):
@@ -817,16 +777,11 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
         # what the controller can see of a worker's node: the marked items are not
         # collected here under xdist.
         budget, allowance, ticket = _speed_budget(nodeid, nodeid.startswith("tests/integration/"))
-        if seconds <= allowance:
-            continue
-        again = _remeasure(nodeid)
-        if again is not None and again <= allowance:
-            continue
-        signal = "unmeasured" if again is None else f"{again:.2f}s"
-        breaches.append(
-            f"{nodeid} took {seconds:.2f}s, re-run {signal}, over its {budget:.1f}s budget "
-            f"and {allowance:.1f}s allowance, owned by {ticket}"
-        )
+        if seconds > allowance:
+            breaches.append(
+                f"{nodeid} took {seconds:.2f}s, over its {allowance:.1f}s allowance "
+                f"(budget {budget:.1f}s), owned by {ticket}"
+            )
     if not breaches:
         return False
     terminal = session.config.pluginmanager.get_plugin("terminalreporter")

@@ -35,6 +35,7 @@ from .formats import bg_tilemap
 from .formats import map_entry as me
 from .formats import map_graphics as mg
 from .formats import sprite_graphics
+from .packaged import packaged_profile
 from .profile import MapEntryTableProfile, RomProfile, RomProfileCatalog
 from .rom import identify_rom
 
@@ -70,7 +71,9 @@ SCREEN_SIZE_TILES = {0: (32, 32), 1: (64, 32), 2: (32, 64), 3: (64, 64)}
 TILE_BYTES = bg_tilemap.TILE_BYTES_8BPP
 SCREEN_CHUNK_BYTES = bg_tilemap.SCREEN_BLOCK_BYTES
 SCREEN_CHUNK_SIDE = 32
-SUPPORTED_LAYER_HANDLER = 0x08008087
+SUPPORTED_LAYER_HANDLER = (
+    packaged_profile().require_code_anchor("dominant_layer_handler").address.raw
+)
 MAX_TILE_INDEX = 0x3FF
 
 

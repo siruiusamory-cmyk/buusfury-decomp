@@ -702,10 +702,12 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
     """Name every test over its rule-S budget, and fail the session when one is."""
     if getattr(session.config, "workerinput", None):
         return False
-    rom_nodes = {item.nodeid for item in session.items if "rom" in item.keywords}
     breaches = []
     for nodeid, seconds in sorted(_TEST_SECONDS.items()):
-        budget, ticket = _speed_budget(nodeid, nodeid in rom_nodes)
+        # The rom gate is the integration directory (tests/gates.py:54), which is
+        # what the controller can see of a worker's node: the marked items are not
+        # collected here under xdist.
+        budget, ticket = _speed_budget(nodeid, nodeid.startswith("tests/integration/"))
         if seconds > budget:
             breaches.append(
                 f"{nodeid} took {seconds:.2f}s, over its {budget:.1f}s budget, "

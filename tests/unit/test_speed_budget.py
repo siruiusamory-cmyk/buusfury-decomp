@@ -53,6 +53,18 @@ def test_every_exception_names_a_real_module_a_measurement_a_reason_and_a_ticket
         assert ticket.strip(), nodeid
 
 
+def test_an_integration_node_is_measured_against_the_rom_budget(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(conftest, "_TEST_SECONDS",
+                        {"tests/integration/test_rom_reader_example.py::test_slow": 12.0})
+    assert conftest._report_speed_breaches(_Session()) is False
+    assert capsys.readouterr().out == ""
+    monkeypatch.setattr(conftest, "_TEST_SECONDS",
+                        {"tests/integration/test_rom_reader_example.py::test_slow": 31.0})
+    assert conftest._report_speed_breaches(_Session()) is True
+    printed = capsys.readouterr().out
+    assert "took 31.00s" in printed and "30.0s budget" in printed
+
+
 def test_the_guard_names_a_slow_node_with_its_seconds_and_budget(monkeypatch, capsys) -> None:
     monkeypatch.setattr(conftest, "_TEST_SECONDS",
                         {"tests/unit/test_nowhere.py::test_slow": 9.5})

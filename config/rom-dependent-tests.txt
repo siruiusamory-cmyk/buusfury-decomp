@@ -8,11 +8,13 @@
 # 5f0f0c195d9c1567b7a9aaff67ff3e0aa3e7e69f, run 20261013-154138-7c4c4f, step
 # capture 07-pytest-n-4.out, whose closing line is verbatim
 #   5226 passed, 297 skipped in 578.19s (0:09:38)
-# The census's ROM-reason skips are the first 32 members below. The last two are
-# ROM-dependent by the same standard and are not in that census:
-# tests/unit/test_dialogue_render.py is newer than the record, and
-# tests/unit/test_pre_merge_check.py gains its ROM-gated nodes with this change.
-# Each is justified by a source marker, and
+# The census's ROM-reason skips are the first 32 members below. The last one is
+# ROM-dependent by the same standard and is not in that census:
+# tests/unit/test_dialogue_render.py is newer than the record.
+# Cross-checked against the runner: GitHub run 38498291601 for 7e7f537 (20261014,
+# step 01-test-sdk) recorded 33 files with a ROM skip reason, and this list is
+# exactly those 33 - the runner's own census misses none of them.
+# Each member is justified by a source marker, and
 # tests/unit/test_pre_merge_check.py::test_the_inventory_is_the_marker_derivation
 # derives this list from the tree and fails when it and the file disagree.
 #
@@ -49,7 +51,6 @@ tests/unit/test_map_render.py
 tests/unit/test_mgba_extra_script.py
 tests/unit/test_mgba_instrumented_identity.py
 tests/unit/test_palette_census.py
-tests/unit/test_pre_merge_check.py
 tests/unit/test_rom_fixture_isolation.py
 tests/unit/test_spritefix_attribution.py
 tests/unit/test_text_engine.py

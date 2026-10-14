@@ -632,8 +632,10 @@ def test_a_repository_without_the_inventory_is_refused_by_name(tmp_path):
 #: Source markers that say a test file resolves the canonical image, or an
 #: artefact derived from it. Measured on this tree they match 51 files under
 #: tests/unit: the record's own 32 census members, the file that is newer than the
-#: record and gated (test_dialogue_render.py), the pin test below (which imports
-#: the support module and runs ROM-gated nodes of its own), and the 17 exclusions.
+#: record and gated (test_dialogue_render.py), the pin test below, and the 18
+#: exclusions. The inventory holds exactly those 32 plus test_dialogue_render.py,
+#: which is also exactly the 33 files the GitHub run for 7e7f537 records as ROM
+#: skips (run 38498291601, 20261014, step 01-test-sdk).
 ROM_MARKERS = (
     r"rom_support",
     r"SIBLING_CHECKOUT",
@@ -729,6 +731,17 @@ ROM_MARKER_EXCLUSIONS = {
     "tests/unit/test_ticket_worktree_setup.py": (
         "matches WEBFOOT_BUU_ROM and LOGX_CANONICAL_ROM as names to copy into a "
         "worktree, and the census holds no skip for it"
+    ),
+    "tests/unit/test_pre_merge_check.py": (
+        "the pin test itself, excluded on the owner's ruling of 2026-10-13 and for the "
+        "self-reference below. Self-reference: it defines the marker literals and "
+        "imports tests.rom_support, so the sweep matches the file that defines the "
+        "markers for ever. Measured: the GitHub run 38498291601 for 7e7f537 recorded "
+        "0 skips in this file and ran its nodes, so at that commit the exception did "
+        "not reach it. Stated plainly because it cuts the other way: the four "
+        "focused-run nodes this change adds DO skip on a runner without the image, so "
+        "on those terms the exception would reach this file; the ruling, not the "
+        "derivation, is what keeps it out"
     ),
 }
 

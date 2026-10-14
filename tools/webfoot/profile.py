@@ -564,6 +564,13 @@ class ActorSpriteProfile:
     renderer requantises. It is declared here rather than held as a renderer
     constant because it is a per-game ROM address of the same kind as the object
     palette beside it (CQA-15).
+
+    ``portrait_table_address`` is the dialogue-portrait pointer array, optional
+    because the profiles written before PINMAP-04 do not declare it and the key
+    set is compared exactly. A portrait swap against a profile that omits it
+    refuses by name rather than falling back to an address. The extent the array
+    occupies is NOT checked: the profile declares where the array starts and no
+    count for it, so no bound is invented here.
     """
 
     character_table_address: GbaRomAddress
@@ -572,16 +579,19 @@ class ActorSpriteProfile:
     object_palette_address: GbaRomAddress
     bg_palette_address: GbaRomAddress
     evidence: str
+    portrait_table_address: GbaRomAddress | None = None
 
 
 def _optional_actor_sprites(tables, size):
     value = (tables or {}).get("actor_sprites")
     if value is None:
         return None
-    keys = {"character_table_address", "character_count",
-            "animation_pointer_offset", "object_palette_address", "evidence"}
-    keys |= {"bg_palette_address"}
-    if not isinstance(value, Mapping) or set(value) != keys:
+    required = {"character_table_address", "character_count",
+                "animation_pointer_offset", "object_palette_address", "evidence",
+                "bg_palette_address"}
+    optional = {"portrait_table_address"}
+    if (not isinstance(value, Mapping) or set(value) - required - optional
+            or required - set(value)):
         raise ProfileConfigError("actor_sprites requires exact contract fields")
     if type(value["character_count"]) is not int or value["character_count"] <= 0:
         raise ProfileConfigError("actor_sprites character_count must be a positive integer")
@@ -592,6 +602,7 @@ def _optional_actor_sprites(tables, size):
         )
     if not isinstance(value["evidence"], str) or not value["evidence"].strip():
         raise ProfileConfigError("actor_sprites requires non-empty evidence")
+    portrait = None
     try:
         table = GbaRomAddress(value["character_table_address"])
         palette = GbaRomAddress(value["object_palette_address"])
@@ -615,10 +626,21 @@ def _optional_actor_sprites(tables, size):
             raise ProfileConfigError(
                 "actor_sprites background palette runs past the ROM"
             )
+        # The portrait pointer array is an optional address whose declared count
+        # the profile does not state, so only its alignment and its first word
+        # are checked; the array's extent is not bounded here.
+        portrait = value.get("portrait_table_address")
+        if portrait is not None:
+            portrait = GbaRomAddress(portrait)
+            if portrait.raw % 4:
+                raise ProfileConfigError(
+                    "actor_sprites portrait table is not word aligned"
+                )
+            portrait.to_file_offset(size)
     except BinaryAddressError as exc:
         raise ProfileConfigError(str(exc)) from exc
     return ActorSpriteProfile(table, value["character_count"], offset, palette,
-                              bg_palette, value["evidence"])
+                              bg_palette, value["evidence"], portrait)
 
 
 def _optional_placement_types(tables, size):

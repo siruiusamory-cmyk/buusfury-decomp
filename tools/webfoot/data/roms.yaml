@@ -147,6 +147,47 @@ profiles:
           which is what gives the Buu branch contract canonical-byte evidence.
           Relocatable is false because no verified free region is declared for
           this profile.
+    code_anchors:
+      - name: factory_raw
+        address: 0x0800fd55
+        kind: thumb
+        evidence: declared
+      - name: script_dispatch_handler
+        address: 0x0800421f
+        kind: thumb
+        evidence: declared
+      - name: handler_0800421d
+        address: 0x0800421d
+        kind: thumb
+        evidence: declared
+      - name: handler_0800424f
+        address: 0x0800424f
+        kind: thumb
+        evidence: declared
+      - name: sibling_factory_08017da3
+        address: 0x08017da3
+        kind: thumb
+        evidence: declared
+      - name: sibling_factory_080111a9
+        address: 0x080111a9
+        kind: thumb
+        evidence: declared
+      - name: dominant_layer_handler
+        address: 0x08008087
+        kind: thumb
+        evidence: declared
+      - name: absent_layer_handler
+        address: 0x08007a41
+        kind: thumb
+        evidence: declared
+      - name: terrain_field_layer_handler
+        address: 0x080088bd
+        kind: thumb
+        evidence: declared
+      - name: entry_class_0800a7a1
+        address: 0x0800a7a1
+        kind: thumb
+        evidence: declared
     free_regions:
       - file_offset: 0x007ea400
         size: 256

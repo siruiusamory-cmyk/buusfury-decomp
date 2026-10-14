@@ -61,11 +61,17 @@ Invoke-CiStep { & $python -m tools.quality.readability --all }
 # pipeline is judged on: the merge request's own diff base when there is one, and
 # the default branch otherwise. The same signal, the same step, no second job.
 Invoke-CiStep {
-    $base = if ($env:CI_MERGE_REQUEST_DIFF_BASE_SHA) { $env:CI_MERGE_REQUEST_DIFF_BASE_SHA } else { 'origin/master' }
-    & git rev-parse --verify --quiet $base > $null 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        & git fetch --quiet --no-tags origin '+refs/heads/master:refs/remotes/origin/master'
-        if ($LASTEXITCODE -ne 0) { throw "ci: the comment bar base $base cannot be resolved" }
+    $base = $env:CI_MERGE_REQUEST_DIFF_BASE_SHA
+    if (-not $base) {
+        & git rev-parse --verify --quiet 'origin/master' > $null 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            & git fetch --quiet --no-tags origin '+refs/heads/master:refs/remotes/origin/master'
+            if ($LASTEXITCODE -ne 0) { throw "ci: the comment bar base origin/master cannot be resolved" }
+        }
+        # The fork, not the branch tip: diffing against a master that has moved on
+        # charges this branch for every commit master landed since it left.
+        $base = & git merge-base 'origin/master' 'HEAD'
+        if (-not $base) { throw "ci: the comment bar cannot find the merge base with origin/master" }
     }
     Write-Host "readability: comment bar against $base"
     & $python -m tools.quality.readability --changed $base

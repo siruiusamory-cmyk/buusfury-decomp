@@ -1583,6 +1583,7 @@ def _placement_document(maps):
 
 
 def authored_capacity_plan(project_dir, rom_path, catalog):
+    """Planning evidence only: the returned packing is not approved for ROM emission."""
     project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog)
     problems = _check_identity(project, identification, profile)

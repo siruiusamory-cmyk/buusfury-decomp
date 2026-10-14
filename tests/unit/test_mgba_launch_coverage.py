@@ -430,6 +430,12 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs the GDB launcher with a ROM path that does not exist, to prove the "
         "parameter binder accepts a missing savestate and the launcher refuses "
         "before any emulator starts",
+    ("tests/unit/test_ci_shard_partition.py",
+     "_collected",
+     "sys.executable"):
+        "runs a nested collect-only pytest over one small module, with and "
+        "without the shard variables, to read which nodes that shard collects; "
+        "it starts no emulator",
 }
 
 

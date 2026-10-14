@@ -1,9 +1,17 @@
-"""The GitHub gate workflow: its triggers, its pinned actions and its four steps.
+"""The GitHub gate workflow: its triggers, its pinned actions and its five jobs.
 
-The workflow calls the reviewed ``ci\\*.ps1`` bodies rather than restating their
-command lists, so the wiring around them is what needs a guard: the two triggers,
-one Windows job, a 40-hex pin on every action, the four gate bodies in order, and
-an upload that still runs after a failure.
+Part 4 changes the shape from one serial job to parallel jobs: the portable suite
+is sharded across ten runners, and the quality gates, the ROM-free integration
+member and the adjacency orders are jobs of their own rather than steps queued
+behind the suite.
+
+That duplication has to stay tied to the reviewed bodies. The workflow no longer
+calls the ``ci\\*.ps1`` scripts - it runs their commands directly, which is what
+lets the shards be separate jobs - so this module parses the ``-m <module>``
+invocations out of ``ci\\test_sdk.ps1``, ``ci\\adjacency.ps1`` and
+``ci\\test_integration.ps1`` and requires every one of them in the workflow, with
+``--all`` preserved for ``public_surface`` and ``readability``. A command dropped
+from either side fails here.
 """
 
 from __future__ import annotations
@@ -20,28 +28,40 @@ WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 PINNED_ACTION = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}\Z")
 FLOATING_REF = re.compile(r"@(?:main|master|latest|v[0-9]+)\b")
 USES_LINE = re.compile(r"^[ \t]*uses:[ \t]*(\S+)(.*)$", re.MULTILINE)
+MODULE_INVOCATION = re.compile(r"-m\s+([A-Za-z_][A-Za-z0-9_.]*)")
 
-#: The four gate bodies in the order the local record runs them. The last two
-#: share one step, so the reverse order still runs when the forward one fails.
-GATE_BODIES = (
+#: Every job the workflow must carry.
+JOB_NAMES = ("shard", "gates", "integration", "adjacency", "report")
+
+#: The tracked bodies whose command lists the workflow has to keep carrying.
+TRACKED_GATE_BODIES = (
     r"ci\test_sdk.ps1",
+    r"ci\adjacency.ps1",
     r"ci\test_integration.ps1",
-    r"ci\adjacency.ps1 -Order forward",
-    r"ci\adjacency.ps1 -Order reverse",
 )
+
+#: The gates whose tree-wide form is a `--all` invocation on both sides.
+ALL_TREE_GATES = ("public_surface", "readability")
+
+#: The ROM-free integration member, by name.
+INTEGRATION_MEMBER = "tests/integration/test_container_decode_synthetic.py"
 
 #: Built from parts: the public-tree gates screen for these literals, so neither
 #: this file nor the workflow may carry them whole.
 ROM_NEEDLES = ("." + "gba", "." + "agb", "." + "sav", "save" + "state")
 SECRET_NEEDLES = ("sec" + "rets", "gh" + "p_", "api" + "_key", "pass" + "word", "to" + "ken")
 
-#: The two preconditions the first Windows runner run measured: the bytes on
-#: disk must be the committed bytes, and the temporary root must share the
-#: checkout's volume.
+#: The two preconditions every job repeats, and the pin every job installs.
 AUTOCRLF_OFF = "git config --global core.autocrlf false"
 AUTOCRLF_READ_BACK = "git config --get core.autocrlf"
 VOLUME_FROM_WORKSPACE = "Split-Path -Qualifier $env:GITHUB_WORKSPACE"
 LEDGER_PATH = "docs/research/ROM_EDITOR_COVERAGE_LEDGER.md"
+CHECKOUT_OWNER = "actions/checkout"
+SETUP_PYTHON_OWNER = "actions/setup-python"
+UPLOAD_OWNER = "actions/upload-artifact"
+DOWNLOAD_OWNER = "actions/download-artifact"
+SHARD_JOB = "shard"
+SHARD_MATRIX_SIZE = 10
 
 
 def _text() -> str:
@@ -52,52 +72,56 @@ def _document() -> dict:
     return yaml.safe_load(_text())
 
 
-def _job() -> dict:
-    jobs = _document()["jobs"]
-    assert len(jobs) == 1
-    return next(iter(jobs.values()))
+def _jobs() -> dict:
+    return _document()["jobs"]
 
 
-def _steps() -> list[dict]:
-    return _job()["steps"]
+def _job(name: str) -> dict:
+    return _jobs()[name]
 
 
-def _run_index(fragment: str) -> int:
-    """The index of the one step whose script carries ``fragment``."""
+def _steps(name: str) -> list[dict]:
+    return _job(name)["steps"]
+
+
+def _step(job: str, owner: str) -> dict:
+    matches = [
+        step for step in _steps(job)
+        if str(step.get("uses", "")).startswith(owner + "@")
+    ]
+    assert len(matches) == 1, (job, owner)
+    return matches[0]
+
+
+def _uses_index(job: str, owner: str) -> int:
     matches = [
         index
-        for index, step in enumerate(_steps())
+        for index, step in enumerate(_steps(job))
+        if str(step.get("uses", "")).startswith(owner + "@")
+    ]
+    assert len(matches) == 1, (job, owner)
+    return matches[0]
+
+
+def _run_indices(job: str, fragment: str) -> list[int]:
+    return [
+        index
+        for index, step in enumerate(_steps(job))
         if fragment in str(step.get("run", ""))
     ]
-    assert len(matches) == 1, fragment
+
+
+def _run_index(job: str, fragment: str) -> int:
+    matches = _run_indices(job, fragment)
+    assert len(matches) == 1, (job, fragment)
     return matches[0]
 
 
-def _run_script(fragment: str) -> str:
-    return str(_steps()[_run_index(fragment)]["run"])
+def _run_script(job: str, fragment: str) -> str:
+    return str(_steps(job)[_run_index(job, fragment)]["run"])
 
 
-def _uses_index(owner: str) -> int:
-    matches = [
-        index
-        for index, step in enumerate(_steps())
-        if str(step.get("uses", "")).startswith(owner + "@")
-    ]
-    assert len(matches) == 1, owner
-    return matches[0]
-
-
-def _step(owner: str) -> dict:
-    matches = [
-        step
-        for step in _job()["steps"]
-        if str(step.get("uses", "")).startswith(owner + "@")
-    ]
-    assert len(matches) == 1, owner
-    return matches[0]
-
-
-def test_the_workflow_parses_with_the_two_triggers_and_one_windows_job():
+def test_the_workflow_parses_with_the_two_triggers_and_the_five_windows_jobs():
     """Prevents: a trigger or the runner label being dropped."""
     document = _document()
     # YAML reads the bare ``on`` key as the boolean True.
@@ -105,9 +129,11 @@ def test_the_workflow_parses_with_the_two_triggers_and_one_windows_job():
     assert triggers is not None
     for trigger in ("push", "pull_request"):
         assert trigger in triggers
-    job = _job()
-    assert job["runs-on"] == "windows-latest"
-    assert isinstance(job["timeout-minutes"], int)
+    assert document["defaults"]["run"]["shell"] == "pwsh"
+    assert set(_jobs()) == set(JOB_NAMES)
+    for name, job in _jobs().items():
+        assert job["runs-on"] == "windows-latest", name
+        assert isinstance(job["timeout-minutes"], int), name
 
 
 def test_every_action_is_pinned_to_a_commit_with_its_tag_in_a_comment():
@@ -119,45 +145,119 @@ def test_every_action_is_pinned_to_a_commit_with_its_tag_in_a_comment():
         assert PINNED_ACTION.fullmatch(reference), reference
         assert re.search(r"#\s*v?\d", rest), reference
         owners.append(reference.split("@")[0])
-    for required in ("actions/checkout", "actions/setup-python", "actions/upload-artifact"):
+    for required in (CHECKOUT_OWNER, SETUP_PYTHON_OWNER, UPLOAD_OWNER, DOWNLOAD_OWNER):
         assert required in owners
     assert FLOATING_REF.search(text) is None
 
 
-def test_the_four_gate_bodies_run_in_the_order_the_local_record_runs_them():
-    """Prevents: a dropped gate, a reordered gate, or a skipped reverse order."""
+def test_the_shard_job_runs_ten_parallel_slices_of_the_portable_suite():
+    """Prevents: a shard count or an environment variable drifting apart."""
+    job = _job(SHARD_JOB)
+    assert job["strategy"]["fail-fast"] is False
+    assert len(job["strategy"]["matrix"]["shard"]) == SHARD_MATRIX_SIZE
+    assert str(job["env"]["WEBFOOT_SHARD_COUNT"]) == str(SHARD_MATRIX_SIZE)
+    assert job["env"]["WEBFOOT_SHARD_INDEX"] == "${{ matrix.shard }}"
+
+    script = _run_script(SHARD_JOB, "tests/unit -q -n 4 --dist loadfile")
+    assert "report-shard-${{ matrix.shard }}.xml" in script
+
+    upload = _step(SHARD_JOB, UPLOAD_OWNER)
+    assert upload["if"] == "always()"
+    assert "report-shard-${{ matrix.shard }}.xml" in upload["with"]["path"]
+    assert "artifacts/steps" in upload["with"]["path"]
+
+
+def test_the_four_quality_gates_are_their_own_job_one_step_each():
+    """Prevents: the gates being folded back into the suite's job."""
+    for gate in ("public_surface", "architecture", "public_release", "readability"):
+        assert len(_run_indices("gates", f"-m tools.quality.{gate}")) == 1, gate
+
+
+def test_the_integration_job_runs_the_rom_free_member_by_name():
+    """Prevents: the integration member widening to the ROM-gated directory."""
+    script = _run_script("integration", INTEGRATION_MEMBER)
+    assert "-q" in script
+    install = _run_script("integration", "-m pip install")
+    assert '.[dev]' in install and 'workbench' not in install
+
+
+def test_the_adjacency_job_runs_both_orders_in_one_step_and_carries_the_exit():
+    """Prevents: an exit after the forward order skipping the reverse order."""
+    forward = _run_indices("adjacency", "-Order forward")
+    assert forward, "the forward order is not run"
+    assert forward == _run_indices("adjacency", "-Order reverse")
+    script = _steps("adjacency")[forward[0]]["run"]
+    assert "-m scripts.adjacency_run" in script
+    assert "$forward = $LASTEXITCODE" in script
+    assert "$forward -ne 0" in script
+
+
+def test_the_report_job_needs_the_shards_and_always_publishes():
+    """Prevents: the red run being the one with no merged report."""
+    job = _job("report")
+    assert SHARD_JOB in job["needs"]
+    assert job["if"] == "always()"
+    _step("report", DOWNLOAD_OWNER)
+    assert "ci/merge_junit.py" in _run_script("report", "ci/merge_junit.py")
+    assert "merged-suite.log" in _run_script("report", "merged-suite.log")
+    upload = _step("report", UPLOAD_OWNER)
+    assert upload["if"] == "always()"
+    assert "report.xml" in upload["with"]["path"]
+
+
+def test_every_job_keeps_the_committed_bytes_and_the_temporary_root():
+    """Prevents: one job quietly losing a precondition the others carry."""
+    for name in JOB_NAMES:
+        checkout = _uses_index(name, CHECKOUT_OWNER)
+        assert _run_index(name, AUTOCRLF_OFF) < checkout, name
+        assert AUTOCRLF_READ_BACK in _run_script(name, AUTOCRLF_OFF)
+        assert _run_index(name, LEDGER_PATH) > checkout, name
+        assert "[char]13" in _run_script(name, LEDGER_PATH)
+        root = _run_index(name, VOLUME_FROM_WORKSPACE)
+        assert root > checkout, name
+        script = _run_script(name, VOLUME_FROM_WORKSPACE)
+        assert 'Add-Content -Path $env:GITHUB_ENV -Value "TMP=' in script
+        assert 'Add-Content -Path $env:GITHUB_ENV -Value "TEMP=' in script
+
+    # Defined once as anchors and referenced by every job: each body appears a
+    # single time in the file, while the loop above proves all five jobs run it.
     text = _text()
-    missing = [body for body in GATE_BODIES if body not in text]
-    assert not missing, missing
-    offset = -1
-    for body in GATE_BODIES:
-        at = text.index(body)
-        assert at > offset, f"{body} is out of order"
-        offset = at
+    assert text.count(AUTOCRLF_OFF) == 1
+    assert text.count(VOLUME_FROM_WORKSPACE) == 1
+    assert text.count(LEDGER_PATH) == 1
+    assert _run_index(SHARD_JOB, VOLUME_FROM_WORKSPACE) < _run_index(
+        SHARD_JOB, "tests/unit -q -n 4 --dist loadfile"
+    )
 
 
 def test_the_runner_python_is_the_minor_version_the_project_declares():
     """Prevents: the gate running on an interpreter the project does not declare."""
-    assert _step("actions/setup-python")["with"]["python-version"] == "3.12"
+    for name in JOB_NAMES:
+        step = _step(name, SETUP_PYTHON_OWNER)
+        assert step["with"]["python-version"] == "3.12", name
+        assert step["with"]["cache"] == "pip", name
+        assert step["with"]["cache-dependency-path"] == "pyproject.toml", name
 
 
-def test_the_upload_step_always_runs_and_carries_the_report_and_the_captures():
-    """Prevents: the failed run being the one with no log to read."""
-    upload = _step("actions/upload-artifact")
-    assert upload["if"] == "always()"
-    paths = upload["with"]["path"]
-    assert "report.xml" in paths
-    assert "artifacts/steps" in paths
-
-
-def test_the_checkout_keeps_no_credential_in_the_worktree():
-    """Prevents: the job credential being left in the checkout's git config."""
-    assert _step("actions/checkout")["with"]["persist-credentials"] is False
-
-
-def test_the_checkout_fetches_the_history_the_gate_diffs():
+def test_every_checkout_keeps_no_credential_and_fetches_the_history_the_gate_diffs():
     """Prevents: a shallow clone failing the gate's own history check."""
-    assert _step("actions/checkout")["with"]["fetch-depth"] == 0
+    for name in JOB_NAMES:
+        step = _step(name, CHECKOUT_OWNER)
+        assert step["with"]["persist-credentials"] is False, name
+        # tests/unit/test_local_ci_script.py diffs 34da2e67..HEAD.
+        assert step["with"]["fetch-depth"] == 0, name
+
+
+def test_the_workflow_commands_are_the_gate_set_the_tracked_bodies_carry():
+    """Prevents: the workflow and the reviewed gate bodies drifting apart."""
+    workflow = _text()
+    for body in TRACKED_GATE_BODIES:
+        text = (REPOSITORY_ROOT / body).read_text(encoding="utf-8")
+        for module in sorted(set(MODULE_INVOCATION.findall(text))):
+            assert module in workflow, (body, module)
+    for gate in ALL_TREE_GATES:
+        assert f"-m tools.quality.{gate} --all" in workflow
+    assert INTEGRATION_MEMBER in workflow
 
 
 def test_the_workflow_directory_is_a_declared_top_level_root():
@@ -170,25 +270,3 @@ def test_the_workflow_names_no_rom_file_and_no_secret():
     lowered = _text().lower()
     for needle in ROM_NEEDLES + SECRET_NEEDLES:
         assert needle not in lowered, needle
-
-
-def test_the_checkout_is_told_to_keep_committed_bytes_before_it_runs():
-    """Prevents: a CRLF checkout failing the renderer's byte comparison."""
-    script = _run_script(AUTOCRLF_OFF)
-    assert AUTOCRLF_READ_BACK in script
-    assert _run_index(AUTOCRLF_OFF) < _uses_index("actions/checkout")
-
-
-def test_the_temporary_root_shares_the_checkout_volume_before_the_gates():
-    """Prevents: a cross-volume hardlink clone failing the local-CI fixture."""
-    script = _run_script(VOLUME_FROM_WORKSPACE)
-    assert 'Add-Content -Path $env:GITHUB_ENV -Value "TMP=' in script
-    assert 'Add-Content -Path $env:GITHUB_ENV -Value "TEMP=' in script
-    assert _run_index(VOLUME_FROM_WORKSPACE) < _run_index(GATE_BODIES[0])
-
-
-def test_the_checkout_is_proved_to_carry_no_cr_afterwards():
-    """Prevents: the bytes arriving mangled with no stated precondition."""
-    script = _run_script(LEDGER_PATH)
-    assert "[char]13" in script
-    assert _run_index(LEDGER_PATH) > _uses_index("actions/checkout")

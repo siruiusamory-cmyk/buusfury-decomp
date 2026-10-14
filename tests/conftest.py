@@ -55,6 +55,14 @@ output fail by design), and an unusable default root makes every ``tmp_path``
 test error out before it runs. This module therefore states the requirement
 once, up front, instead of leaving it to whoever reads the thirtieth
 ``PermissionError``.
+
+**Sharding (RETRO-CI-GITHUB-001 part 4).** ``WEBFOOT_SHARD_COUNT`` and
+``WEBFOOT_SHARD_INDEX`` name one slice of the portable suite; the GitHub workflow
+runs ten of them as parallel jobs. With both unset - every local run, and the
+local full-CI record - the hook below does nothing at all, so that record is
+unchanged. With them set it DESELECTS the other shards' nodes rather than
+skipping them, so this shard's junit report and skip census describe only the
+tests it ran and its counts stay comparable with the record's.
 """
 
 from __future__ import annotations
@@ -83,10 +91,16 @@ from tests.rom_support import (
     ROM_ENVIRONMENT_VARIABLES as _ROM_ENVIRONMENT_VARIABLES,
     mutable_rom_copy,
 )
+from tests.shards import node_identifier, selection_from_environment, shard_of
 
 #: Set by :func:`pytest_configure` when pytest's own temporary root is unusable
 #: and this module redirected the process temp root to an isolated one.
 _REDIRECTED_TEMPROOT: tuple[Path, str] | None = None
+
+#: Status the shard hook sets once it has sharded a run, so a pytest a test
+#: starts inside that run - which inherits the shard variables - keeps the whole
+#: collection the test asked for instead of being sharded a second time.
+_NESTED_RUN_VARIABLE = "WEBFOOT_PYTEST_IN_PROGRESS"
 
 #: Set this to force the required-GUI-surface guard to fail a session outside
 #: CI, so the guard can be mutation-tested on a developer machine.
@@ -371,6 +385,42 @@ def pytest_collection_modifyitems(
             item.add_marker(getattr(pytest.mark, gate))
         if _is_test_file(item.path):
             _COLLECTED_TEST_FILES.add(_path_key(item.path))
+
+
+@pytest.hookimpl(trylast=True, specname="pytest_collection_modifyitems")
+def pytest_deselect_other_shards(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Keep only this shard's nodes, when the shard variables name one.
+
+    The other shards' nodes are DESELECTED, never marked skipped: the junit
+    report and the skip census must describe the tests this shard ran, so its
+    counts stay comparable with the single-process record. Untouched when the
+    variables are unset, which is every local run and the local full-CI record.
+
+    ``specname`` is load-bearing. The tagging hook above already owns the name
+    ``pytest_collection_modifyitems``, and a module defines one function per
+    name, so pluggy is told which hook to register this one against. It is
+    ``trylast``, so the tagging still sees the whole collection and pytest's own
+    ``-m``/``-k`` filter has already run; either order leaves the same nodes.
+    """
+    if os.environ.get(_NESTED_RUN_VARIABLE):
+        return
+    selection = selection_from_environment()
+    if selection is None:
+        return
+    os.environ[_NESTED_RUN_VARIABLE] = "1"
+    count, index = selection
+    keep: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
+    for item in items:
+        path, _, name = item.nodeid.partition("::")
+        destination = keep if shard_of(node_identifier(path, name), count) == index else deselected
+        destination.append(item)
+    if not deselected:
+        return
+    config.hook.pytest_deselected(items=deselected)
+    items[:] = keep
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:

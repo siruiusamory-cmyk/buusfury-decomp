@@ -1,0 +1,57 @@
+# Test files that need the canonical Buu's Fury image, or an artefact derived
+# from it (the assembled atlas index), and therefore SKIP on a GitHub runner.
+# Repository-relative, forward slashes, one per line, sorted. Read by
+# scripts/pre-merge-check.ps1, which classifies a candidate, and by
+# scripts/rom-focused-check.ps1, which runs exactly these files.
+#
+# Provenance, measured: the local full-CI record's skip census for commit
+# 5f0f0c195d9c1567b7a9aaff67ff3e0aa3e7e69f, run 20261013-154138-7c4c4f, step
+# capture 07-pytest-n-4.out, whose closing line is verbatim
+#   5226 passed, 297 skipped in 578.19s (0:09:38)
+# The census's ROM-reason skips are the first 32 members below. The last two are
+# ROM-dependent by the same standard and are not in that census:
+# tests/unit/test_dialogue_render.py is newer than the record, and
+# tests/unit/test_pre_merge_check.py gains its ROM-gated nodes with this change.
+# Each is justified by a source marker, and
+# tests/unit/test_pre_merge_check.py::test_the_inventory_is_the_marker_derivation
+# derives this list from the tree and fails when it and the file disagree.
+#
+# The exception this file serves is about tests that need the game image, not
+# about every test that skips for any reason. A missing atlas index is derived
+# from the image and is included; an unbuilt site, POSIX permission bits, an
+# absent PIL installation and an absent installer archive all skip too and are
+# deliberately absent here.
+tests/unit/test_atlas_range_index.py
+tests/unit/test_dialogue_font.py
+tests/unit/test_dialogue_render.py
+tests/unit/test_dragonbyte_data_acceptance.py
+tests/unit/test_dragonbyte_dataedits.py
+tests/unit/test_dragonbyte_datapage.py
+tests/unit/test_dragonbyte_datasurface.py
+tests/unit/test_dragonbyte_entity_acceptance.py
+tests/unit/test_dragonbyte_entitysurface.py
+tests/unit/test_dragonbyte_foundation.py
+tests/unit/test_dragonbyte_graphics_acceptance.py
+tests/unit/test_dragonbyte_graphicsurface.py
+tests/unit/test_dragonbyte_map_acceptance.py
+tests/unit/test_dragonbyte_mapedits.py
+tests/unit/test_dragonbyte_mappage.py
+tests/unit/test_dragonbyte_mapsurface.py
+tests/unit/test_dragonbyte_rawbytes.py
+tests/unit/test_dragonbyte_romsurface.py
+tests/unit/test_dragonbyte_state.py
+tests/unit/test_dragonbyte_text_acceptance.py
+tests/unit/test_dragonbyte_textsurface.py
+tests/unit/test_friend_v3_boss_profile.py
+tests/unit/test_friend_v4b_cell.py
+tests/unit/test_graphic_identity_numbering.py
+tests/unit/test_map_render.py
+tests/unit/test_mgba_extra_script.py
+tests/unit/test_mgba_instrumented_identity.py
+tests/unit/test_palette_census.py
+tests/unit/test_pre_merge_check.py
+tests/unit/test_rom_fixture_isolation.py
+tests/unit/test_spritefix_attribution.py
+tests/unit/test_text_engine.py
+tests/unit/test_workbench_graphics.py
+tests/unit/test_workbench_session.py

@@ -1,33 +1,3 @@
-"""ROM-ATLAS-001: byte-addressable structural map of one verified ROM image.
-
-The existing reference graph in `document` answers "what does this declared
-anchor reach". The atlas answers the inverse question an investigation actually
-starts from: given these exact bytes, what region contains them, what points at
-them, and what is next door. It is deliberately a SEPARATE type from `Anchor`:
-`RomDocument.validate` refuses overlapping ownership (document.py:87) because a
-declared anchor owns its bytes, while atlas objects may nest and overlap when
-the structure genuinely does. Widening `Anchor` would weaken that guarantee.
-
-Four layers, each with a different tolerance for being wrong:
-
-  A. `CoverageMap` - an exhaustive partition of the image. Every byte is
-     accounted for exactly once, so "unclassified" is a measurable quantity
-     rather than an absence.
-  B. `AtlasObject` - located structures. May nest, may overlap.
-  C. references - edges. `layout.Reference` where a declared anchor is the
-     target; `AtlasReference` where the target is a raw offset nothing has
-     claimed yet.
-  D. `Observation` - noisy scanner output, capped at CANDIDATE so a heuristic
-     can never promote itself into confirmed structure.
-
-No database, no index cache: whole-image passes over this ROM cost about a
-second, so the atlas lives in memory and serializes to deterministic JSONL.
-
-`RangeIndex` (S4) is the query surface over those layers: which owners claim
-these bytes, which ranges one owner claims, and how many bytes nobody owns. It
-is derived from the atlas, so it is not a second partition and it has no
-classification vocabulary of its own.
-"""
 
 from __future__ import annotations
 
@@ -48,14 +18,7 @@ class AtlasError(ValueError):
 
 
 class Confidence(str, Enum):
-    """Ascending evidence strength. These do NOT collapse into each other.
-
-    `OBSERVED` is "a pass saw this shape", `CANDIDATE` is "it survived a filter",
-    `INFERRED` is INFERRED in docs/DEVELOPMENT.md, `CONFIRMED` its CONFIRMED, and
-    `RUNTIME_CONFIRMED` is CONFIRMED plus a LEVEL 3+ runtime observation. Kept
-    distinct because collapsing OBSERVED into CANDIDATE is exactly how a numeric
-    coincidence becomes a fact.
-    """
+    """The levels do not collapse into each other: OBSERVED is a pass that saw the shape, CANDIDATE survived a filter, CONFIRMED is INFERRED plus independent corroboration, and RUNTIME_CONFIRMED adds a LEVEL 3+ runtime observation."""
 
     UNKNOWN = "UNKNOWN"
     OBSERVED = "OBSERVED"
@@ -65,8 +28,7 @@ class Confidence(str, Enum):
     RUNTIME_CONFIRMED = "RUNTIME_CONFIRMED"
 
 
-#: Ascending order. Compare via `strength()`; the enum deliberately has no
-#: arithmetic operators, so nothing can average or add two evidence levels.
+# Ascending order, compared only through strength(), because the enum has no arithmetic operators and nothing may average two evidence levels.
 CONFIDENCE_ORDER: tuple[Confidence, ...] = (
     Confidence.UNKNOWN,
     Confidence.OBSERVED,
@@ -123,7 +85,6 @@ def _as_range(target: FileOffset | RomRange) -> RomRange:
     raise AtlasError("expected a FileOffset or RomRange")
 
 
-# --- Layer A: exhaustive coverage partition ---------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +118,6 @@ class CoverageSpan:
 
 @dataclass(frozen=True, slots=True)
 class CoverageMap:
-    """Every byte of the image, classified exactly once."""
 
     spans: tuple[CoverageSpan, ...]
     image_size: int
@@ -174,8 +134,6 @@ class CoverageMap:
             raise AtlasError("coverage image size must be a positive integer")
         if not self.spans:
             raise AtlasError("coverage map has no spans")
-        # Order first: the endpoint checks read spans[0] and spans[-1], which are
-        # only the real endpoints once the tuple is known to be sorted.
         for left, right in zip(self.spans, self.spans[1:]):
             if left.range.start.value >= right.range.start.value:
                 raise AtlasError(
@@ -222,12 +180,7 @@ class CoverageMap:
 
     def refine(self, range: RomRange, classification: str, confidence: Confidence,
                provenance: Provenance) -> CoverageMap:
-        """Reclassify `range`, refusing to weaken anything already stronger.
-
-        This refusal is the point of the whole layer: a later broad scanner must
-        not be able to repaint a CONFIRMED region as UNKNOWN_HIGH_ENTROPY just
-        because it ran last.
-        """
+        """Refuses to weaken what is already stronger: a later broad scanner cannot repaint a CONFIRMED region as UNKNOWN_HIGH_ENTROPY just because it ran last."""
         if not isinstance(range, RomRange):
             raise AtlasError("refine requires a typed RomRange")
         range.validate(self.image_size)
@@ -271,7 +224,6 @@ class CoverageMap:
 
 
 def _coalesce(spans: Iterable[CoverageSpan]) -> tuple[CoverageSpan, ...]:
-    """Merge adjacent identical spans so serialization stays canonical."""
     merged: list[CoverageSpan] = []
     for span in spans:
         if merged and merged[-1]._key == span._key and merged[-1].range.end == span.range.start.value:
@@ -283,12 +235,11 @@ def _coalesce(spans: Iterable[CoverageSpan]) -> tuple[CoverageSpan, ...]:
     return tuple(merged)
 
 
-# --- Layer B: objects -------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
+# The four atlas layers have different tolerances for being wrong: coverage is an exhaustive partition, objects may nest, references may point at unclaimed targets, and observations are capped at CANDIDATE.
 class AtlasObject:
-    """A located structure. Unlike an `Anchor`, may nest and may overlap."""
 
     identity: str
     range: RomRange
@@ -330,19 +281,11 @@ class AtlasObject:
                 "provenance": self.provenance.to_json()}
 
 
-# --- Layer C: references ----------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
+# Needed because a layout.Reference target is an AnchorId, and the pointer census finds 58,308 distinct targets of which almost none are declared anchors.
 class AtlasReference:
-    """An edge to a raw offset nothing has claimed yet.
-
-    `layout.Reference.target` is an `AnchorId` (layout.py:165) and
-    `RomDocument.validate` refuses an unknown one (document.py:114), so the
-    existing type cannot express the atlas's normal case: a pointer census finds
-    58,308 distinct targets, almost none of which are declared anchors. Edges
-    whose target IS a declared anchor still use `layout.Reference`.
-    """
 
     source: FileOffset
     target: FileOffset
@@ -373,12 +316,10 @@ class AtlasReference:
                 "provenance": self.provenance.to_json()}
 
 
-# --- Layer D: observations --------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
 class Observation:
-    """A scanner's raw note. Capped at CANDIDATE, enforced by the type."""
 
     range: RomRange
     kind: str
@@ -408,7 +349,6 @@ class Observation:
                 "provenance": self.provenance.to_json()}
 
 
-# --- The atlas --------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -461,7 +401,6 @@ class Atlas:
         except LayoutError as exc:
             raise AtlasError(f"{what} out of bounds: {exc}") from exc
 
-    # -- serialization --
 
     def to_jsonl_lines(self) -> Iterator[str]:
         """Deterministic JSONL: sorted keys, stable order, no floats or clocks."""
@@ -526,13 +465,12 @@ def _provenance(row: dict) -> Provenance:
 
 
 def _reference_sort_key(reference) -> tuple:
-    """Source then target. An AnchorId target sorts by its string identity."""
     return (reference.source.value, str(reference.target.value))
 
 
 def _reference_from_json(row: dict) -> AtlasReference | Reference:
     if "target_anchor" in row:
-        from .layout import AnchorId  # local: only declared-anchor edges need it
+        from .layout import AnchorId
         return Reference(
             FileOffset(row["source_file_offset"]), AnchorId(row["target_anchor"]),
             row["target_delta"], ReferenceEncoding(row["encoding"]),
@@ -543,7 +481,6 @@ def _reference_from_json(row: dict) -> AtlasReference | Reference:
         Confidence(row["confidence"]), _provenance(row))
 
 
-# --- Query surface ----------------------------------------------------------
 
 
 def addr(atlas: Atlas, offset: FileOffset) -> dict:
@@ -557,11 +494,7 @@ def addr(atlas: Atlas, offset: FileOffset) -> dict:
 
 
 def refs_to(atlas: Atlas, target: FileOffset | RomRange) -> tuple:
-    """References whose target lands inside `target`. Atlas edges only.
-
-    A `layout.Reference` targets an `AnchorId`, whose offset only the owning
-    document can resolve, so it is not answerable here.
-    """
+    """References whose target lands inside `target`. Atlas edges only."""
     wanted = _as_range(target)
     return tuple(r for r in atlas.references
                  if isinstance(r, AtlasReference) and wanted.contains(r.target))
@@ -578,8 +511,6 @@ def in_range(atlas: Atlas, range: RomRange) -> dict:
     return {
         "coverage": atlas.coverage.overlapping(range),
         "objects": tuple(o for o in atlas.objects if o.range.overlaps(range)),
-        # A reference both sourced and targeted inside the range satisfies both
-        # queries, so concatenating them would report it twice.
         "references": tuple(dict.fromkeys(refs_from(atlas, range)
                                           + refs_to(atlas, range))),
         "observations": tuple(o for o in atlas.observations if o.range.overlaps(range)),
@@ -599,27 +530,12 @@ def objects_of_kind(atlas: Atlas, kind: str) -> tuple[AtlasObject, ...]:
                         key=lambda o: o.range.start.value))
 
 
-# --- The owner range index ---------------------------------------------------
-#
-# S4 (DRAGONBYTE-Z-OWNER-RANGE-INDEX-001). "What owns these bytes" is answered
-# from the atlas, never from a second scan: the classification and confidence of
-# a byte are read out of `atlas.coverage` (layer A), and an owner is an
-# `AtlasObject` identity (layer B) or a declared extent the caller supplies. The
-# index adds no vocabulary: a byte nobody owns keeps its atlas classification,
-# so an unowned byte reads `UNKNOWN` rather than a word this module invented.
 
-#: The provenance of a declared extent. It is a different kind of claim from a
-#: located object, so it is named rather than left blank.
 DECLARED_EXTENT = "declared-extent"
 
 
+# The one place this count is computed, so the whole-image total and a range total cannot differ.
 def _unknown_bytes(atlas: Atlas, bound: RomRange) -> int:
-    """Bytes of `bound` whose atlas classification is one of the unknowns.
-
-    The one place a count of this kind is computed, so `unknowns()`' whole-image
-    total and a scan's total over one range cannot be two different calculations
-    of the same number.
-    """
     counted = 0
     for span in atlas.coverage.overlapping(bound):
         if span.classification in UNKNOWN_CLASSIFICATIONS:
@@ -630,11 +546,6 @@ def _unknown_bytes(atlas: Atlas, bound: RomRange) -> int:
 
 @dataclass(frozen=True, slots=True)
 class OwnerSpan:
-    """One extent one owner claims, as the index derived it.
-
-    `source` is `atlas-object` or `declared-extent`, which lets a caller tell a
-    located structure from an extent a configuration vouches for.
-    """
 
     range: RomRange
     owner: str
@@ -656,15 +567,8 @@ class OwnerSpan:
 
 
 @dataclass(frozen=True, slots=True)
+# Declared extents are not a partition and are never wrapped in AtlasObject, whose identities, kinds and confidences are the atlas's to declare.
 class RangeIndex:
-    """Range to owners, owner to ranges, over one validated `Atlas`.
-
-    `declared` are extents a configuration vouches for, as `(range, owner)`
-    pairs, in the order the atlas counts them. They are extents, not a partition:
-    a declared table and an atlas object may cover the same byte, and both are
-    reported. Declared extents are not wrapped in `AtlasObject` because that
-    layer's identities, kinds and confidences are the atlas's to declare.
-    """
 
     atlas: Atlas
     declared: tuple[tuple[RomRange, str], ...] = ()
@@ -696,10 +600,6 @@ class RangeIndex:
         by_owner: dict[str, list[OwnerSpan]] = {}
         for span in spans:
             by_owner.setdefault(span.owner, []).append(span)
-        # Reference candidates, so the reference half of a query does not scan
-        # every edge in the atlas. Targets and sources are each kept in an array
-        # parallel to a start-sorted position array, the source side carrying the
-        # prefix maximum of the ends.
         positions = sorted(range(len(self.atlas.references)),
                            key=lambda index: (self.atlas.references[index].source.value,
                                               self.atlas.references[index].source_range.size))
@@ -726,14 +626,8 @@ class RangeIndex:
         object.__setattr__(self, "_targets", tuple(value for value, _ in targeted))
         object.__setattr__(self, "_target_positions", tuple(index for _, index in targeted))
 
+    # The answer is in_range's reference half: an edge sourced in the range or targeted in it, each reported once.
     def _references_in_range(self, wanted: RomRange) -> tuple:
-        """`refs_from` and `refs_to` for `wanted`, in one pass over candidates.
-
-        The answer is `in_range`'s reference half: an edge sourced in the range or
-        targeted in it, each reported once. Candidate selection is the same
-        bisect bound the owner half uses, so this resolves an edge only when a
-        source or a target could land here.
-        """
         edges = self.atlas.references
         # ASSUMPTION: candidates come back in descending source order, which
         # equals atlas order only while a reference field is 4 bytes wide and
@@ -757,13 +651,6 @@ class RangeIndex:
         return tuple(edges[index] for index in dict.fromkeys(by_source + by_target))
 
     def _hits(self, start: int, end: int) -> Iterator[int]:
-        """Indices of every span that could intersect [start, end), descending.
-
-        `_starts` bounds the candidate set on the left and the prefix maximum of
-        the ends on the right, so neither a long span that begins earlier nor a
-        short one that begins later is missed. The caller still tests the exact
-        predicate it wants; a candidate is not yet an answer.
-        """
         index = bisect_left(self._starts, end) - 1
         floor = bisect_right(self._reaches, start)
         while index >= floor:
@@ -775,13 +662,8 @@ class RangeIndex:
         """Every claimed extent, in offset order."""
         return self._spans
 
+    # A point outside the image is not refused, unlike a range: the one-byte question answers that nobody owns this.
     def spans_at(self, offset: FileOffset) -> tuple[OwnerSpan, ...]:
-        """Every extent claiming one byte. Empty means nobody owns it.
-
-        A point outside the image is not refused, unlike a range: it answers
-        "nobody owns this" for the one-byte question, where `spans_overlapping`
-        has a whole range to justify.
-        """
         if not isinstance(offset, FileOffset):
             raise AtlasError("a range index lookup requires a typed FileOffset")
         return tuple(reversed([self._spans[index]
@@ -810,14 +692,6 @@ class RangeIndex:
         return self._by_owner.get(owner, ())
 
     def at(self, offset: FileOffset) -> dict:
-        """Everything the index knows about one byte.
-
-        Every field is the atlas's own answer: the classification and confidence
-        come from the coverage span containing the byte, the owners are the
-        extents claiming it, and the references are `in_range`'s reference half
-        for the same one-byte range. `owners` empty is an answer, not a gap: the
-        byte is unowned and still carries its atlas classification.
-        """
         point = RomRange(offset, 1)
         spans = self.spans_at(offset)
         coverage = self.atlas.coverage.at(offset)
@@ -830,25 +704,14 @@ class RangeIndex:
             "references": self._references_in_range(point),
         }
 
+    # An owner of two overlapping extents counts those bytes twice here, while overview's byte totals stay exact-once.
     def owner_bytes(self) -> tuple[tuple[str, int], ...]:
-        """The owner leaderboard: claimed bytes per owner, largest first.
-
-        Ranges are summed as the index derived them, so an owner of two
-        overlapping extents counts those bytes twice; the leaderboard ranks
-        owners, and `overview`'s byte totals are what stay exact-once.
-        """
         totals: dict[str, int] = {}
         for span in self._spans:
             totals[span.owner] = totals.get(span.owner, 0) + span.range.size
         return tuple(sorted(totals.items(), key=lambda item: (-item[1], item[0])))
 
     def overview(self) -> dict:
-        """Unowned bytes and byte totals per atlas classification.
-
-        `unowned_bytes` counts the bytes `unknowns()` ranks, and the table sums
-        the atlas's own coverage spans by classification, so this reports the
-        atlas's vocabulary and partition rather than a second of either.
-        """
         by_classification: dict[str, int] = {}
         for span in self.atlas.coverage.spans:
             by_classification[span.classification] = (
@@ -866,19 +729,6 @@ class RangeIndex:
         }
 
     def scan(self, wanted: RomRange) -> dict:
-        """Every owner in a range, the way `search_text` returns every phrase hit.
-
-        One entry per distinct owner intersecting `wanted`, each carrying the
-        lowest byte that owner claims INSIDE `wanted`, the classification and
-        confidence `at` reports for that byte, the owner's own extents, and the
-        references intersecting it. A range no owner claims yields `hits: ()` and
-        an `unowned_bytes` count, so `UNKNOWN` is a first-class answer with a
-        number rather than a silence.
-
-        A hit inside a compressed container would also report the container's
-        offset and the offset within its decoded stream; that half needs the
-        decoded container index and is not built here.
-        """
         wanted.validate(self.atlas.image_size)
         hits = []
         for owner in self.owners_of(wanted):
@@ -906,27 +756,14 @@ class RangeIndex:
         return tuple(dict.fromkeys(edges))
 
 
-# --- Text search ------------------------------------------------------------
-#
-# These read no ROM by themselves: `search_text` recovers a decoded phrase's
-# handle only when the caller hands it `rom_image` bytes, so the atlas module
-# still opens no image of its own. Lifted from `cli.py` so the CLI and the
-# Workbench GUI search through one implementation (WORKBENCH-001).
 
 
 def _collapse_whitespace(value: str) -> str:
-    """Fold every whitespace run to one space. Conservative: nothing else moves."""
     return " ".join(value.split())
 
 
 def text_match(phrase: str, haystack: str) -> str | None:
-    """`"exact"`, `"normalized"`, or None when the phrase is absent.
-
-    Normalization is comparison-only and deliberately small: case folding and
-    whitespace collapsing, nothing fuzzy. A caller must be able to tell which of
-    the two happened, because a normalized hit is a weaker claim than an exact
-    one and silently conflating them would make the result unciteable.
-    """
+    """Normalization is comparison-only and deliberately small, case folding plus whitespace collapsing with nothing fuzzy, because a caller has to tell a weaker normalized hit from an exact one."""
     if phrase in haystack:
         return "exact"
     if (_collapse_whitespace(phrase).casefold()
@@ -937,18 +774,7 @@ def text_match(phrase: str, haystack: str) -> str | None:
 
 def search_text(atlas: Atlas, phrase: str, decoded_rows,
                 *, rom_image: bytes | None = None) -> dict:
-    """Phrase search over raw ROM text runs and the decoded-container index.
-
-    Two surfaces, one phrase. A raw hit is a ROM run and reports its real file
-    offset. A decoded hit lives inside a decompressed container and reports its
-    CONTAINER's ROM offset plus an offset within the decoded stream — never a
-    ROM address for the text itself, because the text has none.
-
-    Returns the full `{"searched", "matched", "raw_matched", "decoded_matched",
-    "runs", "decoded"}` shape. `runs`/`decoded` are unsliced: the caller applies
-    any `[:limit]` and the `0x%06X` field formatting stays where the atlas rows
-    already carry it.
-    """
+    """A decoded hit reports its container ROM offset plus an offset within the decoded stream and never a ROM address for the text, which exists only after decompression."""
     raw_hits = [(o, text_match(phrase, o.detail))
                 for o in atlas.observations if o.kind.startswith("text-run-")]
     raw_hits = [(o, how) for o, how in raw_hits if how is not None]
@@ -970,13 +796,6 @@ def search_text(atlas: Atlas, phrase: str, decoded_rows,
         # No "file_offset" key at this level, deliberately: every other
         # result shape uses that name for a ROM offset, and giving a
         # decoded run one would be a lie a reader could not detect.
-        # Where the PHRASE itself sits, when it can be located exactly.
-        # A run may hold several logical strings (these streams have no
-        # delimiter between some of them), so the run's own start is
-        # often not where the searched phrase begins. Both are reported:
-        # the run's offset, and the phrase's, each in decoded-stream
-        # units. Two UTF-16LE bytes per character is the encoding, so
-        # the character index doubles into a byte offset.
         found = row["text"].find(phrase) if how == "exact" else -1
         phrase_offset = (None if found < 0
                          else row["decoded_offset"] + found * 2)
@@ -1005,9 +824,6 @@ def search_text(atlas: Atlas, phrase: str, decoded_rows,
                                       len(phrase) * 2)
 
         return {"source": "decoded-container-text", "match": how,
-                # ONE identity object, carrying a LIST of reference
-                # sites. Never one row per site: the handle is the
-                # message's name, the sites are where it is referenced.
                 "identity": identity,
                 "container_file_offset":
                     f"0x{row['container_file_offset']:06X}",

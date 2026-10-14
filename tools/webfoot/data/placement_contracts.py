@@ -1,18 +1,8 @@
-"""Trusted, profile-specific TOOLKIT-016 placement ownership metadata.
-
-Numeric provenance only; no commercial bytes. Runs are (ROM address, count).
-Root extents were verified by the existing VM, not inferred from spacing.
-"""
 
 CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          'native_evidence': 'docs/research/BUU_SCRIPT_VM.md:49,64-65',
                                          'native_table': 0x08055098,
                                          'native_opcodes': (2, 3),
-                                         # TOOLKIT-018 docs/research/BUU_MAP_EVENT_REFERENCES.md.
-                                         # Both consumers pop their table index LAST, so it is the
-                                         # value pushed FIRST. Read from the handlers, never assumed
-                                         # from operand position. The mapped value is how many
-                                         # values the handler pops; the index sits at the bottom.
                                          'event_resource': {
                                              'table': 0x0879B704,
                                              'count': 522,
@@ -23,7 +13,6 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                                          '0x08003118 and indexes it at 0x0800311C; '
                                                          'handler 0x0800327E does the same at '
                                                          '0x080032B0',
-                                             # TOOLKIT-019 docs/research/BUU_EVENT_RESOURCE.md.
                                              # A record's first word is dereferenced by the
                                              # consumer, which then branches on the byte at +0x02
                                              # of that target (0x080040BA..0x080040C2). Type 0 runs
@@ -38,10 +27,7 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                              # handlers already declared in script_specs.
                                              'record_evidence': 'docs/research/BUU_EVENT_RESOURCE.md',
                                          },
-                                         # TOOLKIT-020 docs/research/BUU_DIALOG_RUNTIME.md.
-                                         # Of the 107 native slots the 236 type-0 dialogs use,
-                                         # exactly one reaches the verified text pointer table:
-                                         # slot 178 (0x08003031). It pops three values and passes
+                                         # Of the 107 native slots the 236 type-0 dialogs use, exactly one reaches the verified text pointer table: slot 178 (0x08003031) pops three values and passes
                                          # the deepest to 0x0802BFBC, which does
                                          # ldr r1,=0x0806BCE8 / lsls r0,#2 / ldr r4,[r1,r0] - the
                                          # same access shape TOOLKIT-014 proved at 0x0801F85E for
@@ -51,9 +37,6 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          # 8-bit Y and a 9-bit X, so the output is on-screen sprite
                                          # text. The other two popped values are those X/Y
                                          # coordinates; 0x0802BF5E centres the string on X.
-                                         # This is a NEW relation via a new consumer chain, not a
-                                         # reversal of TOOLKIT-018, which refuted three map-scene
-                                         # EVENT consumer families - none of them this slot.
                                          'dialog_text': {
                                              'consumer_slot': 178,
                                              'pops': 3,
@@ -76,7 +59,6 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                                          'slot 29 handler 0x080007E6 calls '
                                                          '0x08004380 (orrs bit set)',
                                          },
-                                         # TOOLKIT-021 docs/research/BUU_MAP_DIALOG_SEMANTICS.md.
                                          # The four map-reachable dialogs act on the same save
                                          # bitfield through RANGE consumers. Three primitives
                                          # share one bit-addressing shape - byte = base + 0x50 + 5
@@ -92,9 +74,6 @@ CONTRACTS = {'buus_fury_usa_rev0_01c1707f': {'encoding': 'stack_be16_buu_v1',
                                          # from the handlers at 0x080032D2/0x080032DC and
                                          # 0x0800331C/0x08003326/0x08003330, never inferred from
                                          # operand position.
-                                         # Kept SEPARATE from save_flag above rather than merged:
-                                         # the two were proven by different consumers, and only
-                                         # this one reaches CLEAR.
                                          'dialog_save_flag': {
                                              'consumers': {186: 'test_range', 187: 'write_range'},
                                              'primitives': {'test': 0x08004364,

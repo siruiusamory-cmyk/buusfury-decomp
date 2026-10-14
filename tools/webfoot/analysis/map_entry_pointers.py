@@ -1,4 +1,3 @@
-"""Read-only census of raw pointer-labelled MapEntry words."""
 
 from __future__ import annotations
 

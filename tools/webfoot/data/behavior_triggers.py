@@ -1,11 +1,4 @@
-"""Narrow, profile-bound authored behavior-trigger evidence contracts.
-
-These declarations are validation data, not a scheduler implementation. The
-engine relationship remains the ordinary placement-record descriptor pointer;
-the contract states the one template family for which runtime evidence has
-established when that relationship is consumed.
-"""
-
+"""Authored behavior-trigger evidence contracts, validation data only and never a scheduler, for the one template family runtime evidence established."""
 
 BEHAVIOR_TRIGGER_CONTRACTS = {
     "buus_fury_usa_rev0_01c1707f": {

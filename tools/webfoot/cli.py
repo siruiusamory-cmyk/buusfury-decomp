@@ -1,4 +1,3 @@
-"""Command-line interface for safe Webfoot ROM research."""
 
 from __future__ import annotations
 
@@ -62,8 +61,6 @@ from .write import (
     ensure_new_destination,
     ensure_not_source_alias,
 )
-# RELEASE-ARTEFACT-001. The patch service is the one authority for the
-# distributable artefact; this command parses arguments and prints the result.
 from .patch import (
     PatchError,
     PatchResult,
@@ -72,8 +69,6 @@ from .patch import (
     read_patch_metadata,
     verify_patch,
 )
-# Compatibility exports for the atlas text-search interface. The implementation
-# lives in ``handles`` so dialogue authoring and CLI lookup share one decoder.
 from .handles import (
     HANDLE_LENGTH_SHIFT,
     HANDLE_SELECTOR_MASK,
@@ -133,7 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
             child.add_argument("identity")
         if command == "list":
             child.add_argument("--map", dest="map_identity")
-    # TOOLKIT-013. Read-only inspection of the verified script/event corpus.
     # There is no event editor and no authoring command: the corpus is
     # fixed-size (free capacity is zero), so anything that could grow a stream
     # is deliberately absent rather than refused at runtime.
@@ -144,15 +138,8 @@ def build_parser() -> argparse.ArgumentParser:
     # `families` and the owner queries exist only because TOOLKIT-014 proved a
     # static owner. Commands are not added for symmetry: a family with no
     # proven owner simply reports no attachments.
-    # TOOLKIT-018 adds two reference queries. `references` reports what an event
-    # selects; `consumers-of` answers the reverse, which is the practically
-    # useful direction: where in the game is this resource used. There is no
-    # text query here because no map-scene event-to-text edge exists.
-    # TOOLKIT-019 adds `resource-show`: the record's exact extent and the
-    # engine's own dialog type. Read-only, like every verb above it.
-    # TOOLKIT-020 adds `dialog-refs` and `dialogs-for-text`: the proven
-    # dialog-to-text edge and its reverse. Read-only, and deliberately silent
-    # for a dialog whose text index is computed at runtime.
+    # There is no text query here because no map-scene event-to-text edge exists.
+    # These queries are deliberately silent for a dialog whose text index is computed at runtime.
     for command in ("summary", "list", "show", "validate-round-trip",
                     "families", "attachments", "for-owner", "owners-of", "for-map",
                     "for-placement", "references", "consumers-of",
@@ -183,8 +170,6 @@ def build_parser() -> argparse.ArgumentParser:
         if command != "families":
             child.add_argument("--family", default=None,
                                help="script family; defaults to the first declared")
-    # TOOLKIT-010. Inspection only: normal project extraction stays the
-    # authoring workflow, and nothing here is a sprite editor.
     graphics_parser = subparsers.add_parser(
         "graphics", help="inspect verified actor sprite assets and their consumers"
     )
@@ -247,11 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="report the graphics referencing this palette index",
     )
 
-    # ROM-ATLAS-001. Queries against the assembled atlas JSONL, never the ROM:
-    # this block opens no image by default, so it is self-contained like
-    # `graphics` and cannot change how any ROM-loading command behaves. Two
-    # commands opt in explicitly: `regenerate`, which requires a ROM, and
-    # `text --rom`, which reads one only to recover packed text handles.
+    # The atlas block opens no image by default, so it is self-contained like `graphics` and cannot change how any ROM-loading command behaves; `regenerate` and `text --rom` opt in explicitly.
     atlas_parser = subparsers.add_parser(
         "atlas",
         help="query the assembled structural atlas; reads no ROM unless "
@@ -271,9 +252,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="artifact directory (default: build/atlas)",
     )
 
-    # The only command in this block that opens a ROM. `build` assembles
-    # artifacts that already exist; `regenerate` produces them first, from the
-    # image, into a directory the caller names.
     atlas_regen = atlas_commands.add_parser(
         "regenerate",
         help="run every evidence producer from the ROM, then assemble the atlas",
@@ -415,7 +393,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--manifest", type=Path, default=None, help="write the change manifest here"
     )
 
-    # TOOLKIT-004. Mirrors `stats`: list, prove the round trip, edit one entry.
     # Deliberately not a research dump - there is no "scan for strings" command,
     # because enumeration comes from the verified pointer table and a heuristic
     # scan would produce a different, unreproducible answer.
@@ -530,8 +507,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     map_round_trip.add_argument("rom", type=Path)
 
-    # TOOLKIT-002. These call the same project/build APIs a GUI or automation
-    # would; the CLI parses arguments and formats output and does nothing else.
     extract = subparsers.add_parser(
         "extract",
         help="extract a verified ROM into a deterministic project directory",
@@ -571,9 +546,6 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument(
         "--output", type=Path, required=True, help="output ROM path (must not exist)"
     )
-    # CQA-12: a normal build publishes its provenance manifest beside the image.
-    # Redirecting and disabling are both explicit and mutually exclusive, so no
-    # caller loses provenance by omission.
     build_manifest = build.add_mutually_exclusive_group()
     build_manifest.add_argument(
         "--manifest", type=Path, default=MANIFEST_BESIDE_OUTPUT,
@@ -586,11 +558,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     randomize_command.add_parser(subparsers)
 
-    # RELEASE-ARTEFACT-001. Two artefacts, two commands, one authority each: the
-    # `build` command produces the playable image, and `patch export` produces the
-    # distributable modification. Export rebuilds through the same `build_project`
-    # the build command calls, so a patch can never describe an image the project
-    # does not currently produce.
     patch = subparsers.add_parser(
         "patch",
         help="export a distributable patch for a project, or verify one",
@@ -616,10 +583,6 @@ def build_parser() -> argparse.ArgumentParser:
     patch_verify.add_argument("patch", type=Path)
     patch_verify.add_argument("--rom", type=Path, required=True)
 
-    # TILESET-COMPOSITOR-001. A derived-resource view: it reads the ROM, learns
-    # tile relationships from how maps actually use the banks, and writes an
-    # authoring atlas. Nothing here edits or writes an image; the write commands
-    # require an output directory under the ignored build/ tree.
     tileset_parser = subparsers.add_parser(
         "tileset",
         help="infer a human-readable authoring atlas from proven map usage",
@@ -1020,7 +983,6 @@ def _print_stats_set(tables, args) -> int:
     return 0
 
 def _parse_text_identity(value: str) -> TextIdentity:
-    """Parse `text:0010`. Accepts unpadded digits, since a person types those."""
     prefix, separator, digits = value.partition(":")
     if prefix != "text" or not separator or not digits.isdigit():
         raise TextTableError(
@@ -1030,7 +992,6 @@ def _parse_text_identity(value: str) -> TextIdentity:
 
 
 def _format_text(text: str) -> str:
-    """One-line form for listings. Real newlines would break column alignment."""
     return text.replace("\n", "\\n")
 
 
@@ -1084,6 +1045,7 @@ def _print_map_placements(maps, identity: MapIdentity | None, limit: int | None)
         if identity is None
         else list(maps.map_placements(identity))
     )
+    # Halfwords are labelled by position in the word, never by axis, because no evidence establishes which one is X.
     print("Map Placements")
     print("--------------")
     print()
@@ -1093,8 +1055,6 @@ def _print_map_placements(maps, identity: MapIdentity | None, limit: int | None)
     print()
     if not items:
         return
-    # Halfwords are labelled by position in the word, never by axis: no
-    # evidence in this project establishes which one is X.
     print("  identity                      type    id   pos.low  pos.high")
     for item in items[:limit] if limit else items:
         record = item.record
@@ -1175,8 +1135,6 @@ def _print_map_show(maps, identity: MapIdentity) -> None:
     print(f"Slot extent: {array.array.slot_count} slot(s), "
           f"{array.array.byte_size} bytes, {array.shape.value}")
     if not array.is_typed:
-        # Stated rather than left implicit: an opaque extent is carried exactly
-        # but this toolkit does not claim what its words mean.
         print("Slot fields: UNKNOWN (carried verbatim; not typed)")
         return
     print()
@@ -1212,7 +1170,6 @@ def _print_map_connections(maps, identity: MapIdentity | None) -> None:
 
 
 def _print_map_round_trip(maps) -> bool:
-    """Re-encode every map record and slot extent; report the whole extent."""
     record_failures = []
     slot_failures = []
     records = 0
@@ -1289,12 +1246,6 @@ def _print_text_show(strings, identity: TextIdentity) -> None:
 
 
 def _print_text_round_trip(strings) -> bool:
-    """Re-encode every string and report whether the whole extent is exact.
-
-    This is the ROUND_TRIP proof in command form: it covers every string the
-    pointer table enumerates, which - because the table tiles the pool - is
-    every byte of the pool.
-    """
     failures = []
     total = 0
     for entry in strings.entries():
@@ -1460,8 +1411,6 @@ def _print_patch_verification(result: "PatchVerification") -> None:
     print(f"Source SHA256:  {result.source_sha256} ({result.source_size} bytes)")
     print(f"Rebuilt SHA256: {result.target_sha256} ({result.target_size} bytes)")
     print()
-    # Provenance is printed when the patch carries it. A patch made elsewhere has
-    # none, and that is not a refusal: verification is about the bytes.
     try:
         document = read_patch_metadata(Path(result.patch_path).read_bytes())
     except ValueError:
@@ -1484,7 +1433,6 @@ def _print_patch_verification(result: "PatchVerification") -> None:
 
 
 def _parse_graphic_identity(value: str):
-    """`<profile>/graphic:NNNN` -> a GraphicIdentity, or a clear refusal."""
     from .graphics import GraphicIdentity
 
     profile_id, separator, digits = value.partition("/graphic:")
@@ -1493,20 +1441,14 @@ def _parse_graphic_identity(value: str):
     return GraphicIdentity(profile_id, int(digits))
 
 
+# The atlas lives next to a frozen exe rather than inside _internal, so it can be regenerated without rebuilding the app.
 def _default_atlas_directory() -> Path:
-    # Frozen (PyInstaller): the atlas lives NEXT TO the exe, not bundled inside
-    # _internal, so it can be regenerated without rebuilding the app. Non-frozen:
-    # derive from the module path as before.
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / "build" / "atlas"
     return Path(__file__).resolve().parents[2] / "build" / "atlas"
 
 
 def _run_atlas(args) -> int:
-    """ROM-ATLAS-001 queries. Reads the assembled JSONL only, and no ROM, unless
-    `text --rom` is given: that opt-in path opens the image read-only to recover
-    packed text handles. Every other command, and `text` without `--rom`, still
-    touches no image."""
     from .atlas import (Atlas, AtlasError, AtlasReference, addr as atlas_addr,
                         in_range, objects_of_kind, refs_from, refs_to,
                         search_text, unknowns)
@@ -1595,12 +1537,6 @@ def _run_atlas(args) -> int:
                                   sorted(found, key=lambda o: o.range.start.value)
                                   [:args.limit]]}
         elif command == "text":
-            # Two surfaces, one phrase. The search itself lives in the SDK
-            # (`atlas.search_text`); the CLI opens the ROM only when `--rom` is
-            # given and applies its own `--limit` slice to the returned rows.
-            # Opened ONCE, and only when asked for. Without `--rom` every
-            # identity reports itself unrecovered, keeping the default search
-            # path free of any image read.
             handle_image = (None if getattr(args, "rom", None) is None
                             else Path(args.rom).read_bytes())
             result = search_text(atlas, args.phrase,
@@ -1646,11 +1582,6 @@ def _run_atlas(args) -> int:
 
 
 def _run_graphics(args) -> int:
-    """TOOLKIT-010 inspection commands.
-
-    Self-contained like the `entity` block: it owns its ROM load and its error
-    handling, so adding graphics cannot change how any existing command behaves.
-    """
     from .formats import indexed_png, sprite_graphics
     from .graphics import GraphicsError, load_actor_sprites
 
@@ -1663,13 +1594,7 @@ def _run_graphics(args) -> int:
         command = args.graphics_command
         if command == "summary":
             assets = sprites.graphics()
-            # ``frames`` is the distinct frame records the corpus reaches, NOT the
-            # sum of the consumer lists: a consumer list is deduplicated per
-            # graphic, so a 2-piece frame that reaches two containers appears in
-            # both and would be counted twice. Those two numbers agreed only under
-            # the refuted one-piece-per-frame model, where every frame reached
-            # exactly one container. ``piece_references`` is the other population
-            # and is reported separately rather than folded into ``frames``.
+            # ``frames`` counts distinct frame records, never the sum of the deduplicated consumer lists, which double-counts a frame reaching two containers.
             frame_offsets = {
                 reference.frame_offset for a in assets for reference in a.consumers
             }
@@ -1748,7 +1673,7 @@ def _run_graphics(args) -> int:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_bytes(blob)
             result = {"id": str(asset.identity), "path": str(out), "bytes": len(blob)}
-        else:  # palette
+        else:
             if args.index is None:
                 result = {
                     "entries": [
@@ -1773,7 +1698,6 @@ def _run_graphics(args) -> int:
 
 
 def _event_instruction_json(instruction, opcode_set) -> dict:
-    """One instruction, named structurally. No gameplay meaning is asserted."""
     spec = opcode_set.lookup(instruction.opcode)
     payload = {
         "offset": instruction.source_offset,
@@ -1895,14 +1819,8 @@ def _run_event(args) -> int:
         return 2
 
 
+# Writes only inside the output directory the caller names, and never to an image.
 def _run_tileset(args) -> int:
-    """TILESET-COMPOSITOR-001. Derived-resource views over the ROM's tile banks.
-
-    Self-contained like the `graphics` block: it owns its ROM load, its census
-    and its error handling, so adding it cannot change how any existing command
-    behaves. It writes nothing outside the output directory the caller names,
-    and never writes to an image.
-    """
     from . import tileset_compositor as compositor
     from .formats import map_graphics as map_graphics
     from .map_render import canonical_profile, load_canonical_rom
@@ -2008,18 +1926,10 @@ def _run_tileset(args) -> int:
         return 2
 
 
+# Every destination policy is answered before the parent directory is created, so a refusal leaves no partial file and no new directory.
 def _write_occurrences(
     rom: Path, path: Path, census, banks, image: bytes
 ) -> dict:
-    """Write the complete per-occurrence record for the retained banks.
-
-    The destination is answered by the policies every ROM writer already asks, in
-    `emit_image`'s own order and before the parent directory is created or the
-    file is opened: the write module's source-alias and new-destination rules,
-    the destination module's protected-input rule, and the content rule a
-    destination holding a copy of the image is refused by. A refusal leaves no
-    partial file and no new directory behind.
-    """
     from .destination import refuse_rom_destination
     from .authored_image import refuse_canonical_destination
 

@@ -1,14 +1,3 @@
-"""TOOLKIT-022 representation and capacity planning, with ownership gates.
-
-No engine termination rule is invented here. A packing request accounts for
-pointer slots plus codec-serialized bodies, but is not an approved ROM layout.
-TOOLKIT-026: the graph now publishes the object-array anchor as relocatable
-wherever its measured references satisfy the relocation safety contract, so the
-remaining boundary is the authored record body, not the array. See
-maps.py:_resolve_placements and entities.py:PlacementTypes.reference_document.
-TOOLKIT-027: `authoring_overlay` gives that body a real anchor and the appended
-array slot a real reference, so both move through the existing relocator.
-"""
 from dataclasses import dataclass, replace
 import re
 
@@ -26,21 +15,10 @@ class PlannedPlacement:
     provenance: str
     clone_from: str | None
     payload: bytes
-    #: TOOLKIT-030. The declared behavior identity, or None when the record simply
-    #: inherits its template's descriptor. Keeping the inherited value alongside the
-    #: effective one is what lets a build PROVE the attachment was authored rather
-    #: than copied - the two differ exactly when project state chose the behavior.
     behavior: str | None = None
     inherited_descriptor_raw: int | None = None
     descriptor_pointer_raw: int | None = None
-    #: TOOLKIT-032. The authored script body's bytes, produced by the production
-    #: `script_vm` codec from the project's mnemonic instruction list, when this
-    #: record declares a behavior whose descriptor AND script this build creates.
-    #: None when the behavior names an existing canonical descriptor, or none at all.
     script_body: bytes | None = None
-    #: TOOLKIT-034. Semantic gameplay condition whose evidence contract was
-    #: validated against this record's canonical template type, or None for the
-    #: legacy dispatch relationship whose exact meaning remains UNKNOWN.
     trigger: BehaviorTrigger | None = None
 
     @property
@@ -51,13 +29,6 @@ class PlannedPlacement:
 
     @property
     def body_is_authored(self):
-        """True when the descriptor and its script are content this build creates.
-
-        TOOLKIT-030 attached descriptors the canonical ROM already contained;
-        `behavior_is_authored` still describes that. This is the stronger case: the
-        descriptor bytes and the script bytes both come from project state, so
-        neither exists in the verified base at any address.
-        """
         return self.script_body is not None
 
     @property
@@ -77,9 +48,6 @@ class PlannedPlacement:
             document.update(behavior=self.behavior,
                             inherited_descriptor=f"0x{self.inherited_descriptor_raw:08X}",
                             behavior_is_authored=self.behavior_is_authored)
-            # An authored body has no descriptor address until the build allocates
-            # one, so reporting a number here would be reporting the inherited one
-            # as though project state had chosen it.
             if self.body_is_authored:
                 document.update(attached_descriptor="ALLOCATED_AT_BUILD",
                                 authored_script_bytes=len(self.script_body),
@@ -99,14 +67,8 @@ class AuthoredTriggerError(LayoutError):
     """A trigger lacks the exact profile/type evidence required to name it."""
 
 
+# on_defeat is proven only for one stable placement-type identity.
 def _require_trigger_contract(clone, maps, source_id, placement_types=None):
-    """Validate one semantic trigger without inventing a ROM-side trigger field.
-
-    `on_defeat` is proven only for one stable placement-type identity. The type
-    is resolved from the clone's canonical template through `PlacementTypes`,
-    and its enemy-stat link is independently required so neither a copied
-    selector nor a broad "enemy-like" guess can satisfy the contract.
-    """
     if clone.trigger is None:
         return placement_types
     from .data.behavior_triggers import BEHAVIOR_TRIGGER_CONTRACTS
@@ -141,21 +103,11 @@ def _require_trigger_contract(clone, maps, source_id, placement_types=None):
     return placement_types
 
 
+# No address is accepted from project source, so a behavior can only name a descriptor this profile has already verified.
 def _resolve_behavior(clone, maps):
-    """Resolve a declared behavior identity to its verified descriptor address.
-
-    Resolution goes through `PlacementEvents`, the same read-only catalog that
-    publishes descriptor identities, so a behavior can only ever name a descriptor
-    this profile has actually verified. Nothing is fabricated and no address is
-    accepted from project source; an unknown identity fails the build.
-    """
     if clone.behavior is None:
         return None
     if clone.authored_behavior:
-        # TOOLKIT-032: this behavior names content the build is about to create, so
-        # there is no verified catalog entry to resolve and no address to return
-        # yet. `plan_authored_materialization` allocates the descriptor and writes
-        # its address into the record's `+0x14` once the address exists.
         return None
     from .placement_events import PlacementEvents
     from .scripts import ScriptError
@@ -175,12 +127,6 @@ def _resolve_behavior(clone, maps):
 
 
 def _expand_semantic_source(source, profile, identity):
-    """Resolve the profile's narrow proven effects to ordinary VM mnemonics.
-
-    The text bound is the profile's own declared `text_strings.count`: this
-    rejects an authored text identity that names no slot in the table the ROM
-    actually has, so it must be the declaration and not a copy of it.
-    """
     from .data.script_effects import SCRIPT_EFFECTS
     text_strings = profile.text_strings
     if text_strings is None:
@@ -223,15 +169,8 @@ def _expand_semantic_source(source, profile, identity):
     return tuple(expanded)
 
 
+# The opcode set is the profile's verified script contract, so an authored body can only be instructions the toolkit has decoded from canonical bytes.
 def _assemble_script(clone, maps):
-    """Assemble one authored script body through the production `script_vm` codec.
-
-    TOOLKIT-032. The opcode set is the one this profile's verified placement
-    contract already names, and `script_vm.assemble_source` refuses any mnemonic
-    or operand width that set does not carry - so an authored body can only ever
-    be instructions the toolkit has actually decoded from canonical bytes. No
-    second encoder exists, and nothing here accepts bytes from project source.
-    """
     from .data.placement_contracts import CONTRACTS
     from .data.script_specs import OPCODE_SETS
     from .formats.script_vm import ScriptError, assemble_source
@@ -272,16 +211,8 @@ class AuthoredRun:
     map_index: int
     records: tuple[PlannedPlacement, ...]
     canonical_count: int
-    #: Every canonical object slot in exact array order, placements and siblings
-    #: alike. TOOLKIT-025: the engine array is heterogeneous, so a run that carried
-    #: only placements would serialize a shorter array and silently drop sibling
-    #: objects the engine still counts and dereferences.
     canonical_slots: tuple = ()
-    #: File offset of this map's MapEntry record, so a derived count write can name
-    #: the exact byte it changes.
     map_entry_offset: int | None = None
-    #: The canonical `MapEntry+0x04` value, read from the record rather than inferred
-    #: from how many slots this toolkit happened to model.
     canonical_engine_count: int | None = None
 
     @property
@@ -298,17 +229,11 @@ class AuthoredRun:
 
     @property
     def target_slot_count(self):
-        """Slots the authored array declares: every canonical slot, plus additions.
-
-        Derived from the modelled array, never supplied by a project. Canonical
-        slots are preserved whole - placements AND siblings - so an expansion can
-        only ever append.
-        """
+        """Slots the authored array declares, derived from the modelled array and never supplied by a project, so an expansion can only append."""
         return len(self.canonical_slots) + len(self.authored_records)
 
     @property
     def allocation_request(self):
-        # A contiguous proposed replacement: target pointer slots + all bodies.
         # No guessed engine count/sentinel or suffix is added to this request.
         # TOOLKIT-025: pointer slots are counted over the full heterogeneous array,
         # because the engine consumes `count * 4` bytes regardless of family.
@@ -326,20 +251,7 @@ class AuthoredRun:
                                           "production transaction")
 
     def derive_count_change(self, image):
-        """The exact `MapEntry+0x04` byte change this authored expansion requires.
-
-        Returns None when the authored array declares the canonical slot count, so a
-        no-op project never emits a count write. The new value is DERIVED from the
-        modelled array and is never accepted from a project: `MAP_FIELDS` still
-        refuses every `*_count_raw` byte as directly editable, and this path is
-        reachable only through a validated AUTHOR_NEW expansion.
-
-        Fails closed rather than emitting a questionable byte:
-          * the canonical count must match what the map actually declares, so a
-            stale model cannot rewrite a field it mis-read;
-          * canonical slots may only be appended to, never removed or reordered;
-          * the derived count must fit the one byte the engine reads.
-        """
+        """The exact `MapEntry+0x04` byte change this authored expansion requires."""
         from .write import ByteChange
         if self.map_entry_offset is None or self.canonical_engine_count is None:
             raise AuthoredCountError(
@@ -390,12 +302,6 @@ class AuthoredRun:
 
 
 def _canonical_slots(entry, image):
-    """Every engine-counted object slot of one map, in exact array order.
-
-    Reads the same two fields the engine reads - `MapEntry+0x04` for the count and
-    `MapEntry+0x14` for the base - so the modelled array is the array the engine
-    traverses, sibling-family objects included.
-    """
     from .binary import BinaryAddressError, GbaRomAddress
     from .formats import map_placements as mp
     pointer = entry.record.scripts_pointer_raw
@@ -410,11 +316,7 @@ def _canonical_slots(entry, image):
 
 
 def prepare_authored_runs(project, maps):
-    """Called only after base identity and exact canonical reconciliation.
-
-    Extracted order is the verified run order, followed by authored ID order.
-    Clone structure comes from canonical bytes, independent of source edits.
-    """
+    """Called only after base identity and exact canonical reconciliation."""
     from .formats.map_placements import PlacementRecord
     from .project import ProjectValidationError
     from .project.placements import validate_templates
@@ -430,10 +332,6 @@ def prepare_authored_runs(project, maps):
         canonical = maps.map_placements(MapIdentity(index))
         if not canonical:
             raise ProjectValidationError(f"map:{index:04d}: authoring requires an existing owned placement run")
-        #: TOOLKIT-025: the canonical array is heterogeneous, so the run carries EVERY
-        #: engine-counted slot, not only the placement-family ones. Modelling
-        #: placements alone would serialize a shorter array and silently drop the
-        #: sibling objects the engine still counts and dereferences.
         entry = maps.entry(MapIdentity(index))
         slots = _canonical_slots(entry, maps.base_bytes)
         rows = {p["index"]: p for p in values.get("placements", ())}
@@ -466,27 +364,13 @@ def prepare_authored_runs(project, maps):
     return tuple(runs)
 
 
-#: TOOLKIT-027: the kind published for an authored record body. It is deliberately
-#: NOT `placement`, because a canonical placement anchor describes bytes that exist
-#: in the verified base and this one describes bytes the build is about to create.
-#: Keeping the kinds distinct is what lets `RELOCATION_ELIGIBLE_KINDS` stay a
-#: statement about measured canonical structure.
+# These kinds describe bytes the build is about to create, unlike the canonical kinds that describe bytes measured in the verified base.
 AUTHORED_BODY_KIND = "authored_placement_body"
 
-#: TOOLKIT-032: the kinds published for an authored behavior. They are distinct from
-#: `placement_descriptor` and from the canonical script family for the same reason
-#: `AUTHORED_BODY_KIND` is not `placement`: those kinds describe bytes measured in
-#: the verified base, and these describe bytes the build is about to create. Keeping
-#: them separate is what stops an authored body from ever satisfying a check that
-#: was written about canonical structure.
 AUTHORED_DESCRIPTOR_KIND = "authored_placement_descriptor"
 AUTHORED_SCRIPT_KIND = "authored_placement_script"
 
-#: `PlacementRecord+0x14` holds the descriptor pointer and `DescriptorRecord+0x04`
-#: holds the script pointer. Both are the fields the engine itself reads
-#: (`placement_links.descriptor_source` / `payload_source`), expressed here as
-#: offsets INSIDE an authored body rather than as absolute file offsets, because the
-#: body does not have an address until the allocator gives it one.
+# PlacementRecord+0x14 holds the descriptor pointer and DescriptorRecord+0x04 the script pointer, the fields the engine reads, as offsets inside an authored body.
 DESCRIPTOR_POINTER_OFFSET = 0x14
 SCRIPT_POINTER_OFFSET = 0x04
 
@@ -496,41 +380,11 @@ class AuthoringOverlayError(LayoutError):
 
 
 def _authored_anchor_id(identity):
-    """The stable semantic ID of an authored body anchor.
-
-    It is the project's own authored identity - `map:NNNN/authored:<name>` - which
-    `project.placements.AuthoredPlacement` already validates as a stable, map-scoped
-    name that is neither a ROM offset nor an engine `id_raw`. Deriving the anchor ID
-    from anything physical would make it move when the allocator moved the body.
-    """
     return AnchorId(identity)
 
 
 def authoring_overlay(document, run):
-    """Describe one authored run's bodies and the array slots that will hold them.
-
-    The relocator's contract is to move EXISTING anchors and rewrite EXISTING
-    references; it creates neither. This is where they are created, and it is the
-    smallest relationship that lets the appended slot point at something:
-
-      * one anchor per authored record, holding exactly the bytes the production
-        codec serialized (`PlannedPlacement.payload`), so no parallel body format
-        exists anywhere in the toolkit;
-      * one `ABSOLUTE_ROM_U32_LE` reference per authored record, sourced at the
-        appended slot inside the EXPANDED array and targeting that body at delta 0 -
-        the same encoding and the same `array_offset + 4 * slot_index` arithmetic
-        `entities.reference_document` uses for canonical slots.
-
-    Both are placed at their POST-relocation addresses, because that is the only
-    image in which they decode: `RomDocument.validate` decodes every reference
-    against the image it holds, and neither the appended slot nor the body exists in
-    the verified base. So this returns a description to be materialized by
-    `plan_authored_materialization`, which owns the ordering, rather than a document
-    that would be invalid the moment it was built.
-
-    The canonical slots are untouched. An authored record only ever appends, which
-    `AuthoredRun.derive_count_change` independently refuses to violate.
-    """
+    """The created anchors and references hold post-relocation addresses, the only image in which the appended slot and the authored bodies decode."""
     array = document.anchor(run.identity)
     if array.range.size != 4 * len(run.canonical_slots):
         raise AuthoringOverlayError(
@@ -564,10 +418,6 @@ def authoring_overlay(document, run):
         # creates no anchors and no references, and neither structure exists in the
         # verified base at any address. Each is reached from a fixed 4-byte field
         # inside the body above it, which is the same edge the engine follows:
-        # `PlacementRecord+0x14` -> descriptor, `DescriptorRecord+0x04` -> script.
-        # The descriptor's payload word is a placeholder until the allocator gives
-        # the script an address; `plan_authored_materialization` writes the real one
-        # through the production `DescriptorRecord` codec before anything is emitted.
         from .formats.map_placements import DescriptorRecord, SCRIPT_DISPATCH_HANDLER
         descriptor = fresh(AnchorId(record.behavior_identity))
         script = fresh(AnchorId(record.script_identity))
@@ -582,14 +432,7 @@ def authoring_overlay(document, run):
 
 @dataclass(frozen=True, slots=True)
 class AuthoredBody:
-    """One authored body, where it is pointed at from, and its inherited provenance.
-
-    TOOLKIT-032. A body is reached either from an appended object-array slot
-    (`slot_index`, the placement record) or from a fixed field inside another
-    authored body (`pointer_source`, the descriptor's `+0x04` and the record's
-    `+0x14`). Exactly one of the two applies, and both are edges the graph
-    publishes as real references rather than bytes written on trust.
-    """
+    """An authored body is reached either by an appended array slot or by a fixed field inside the body above it, and exactly one of slot_index and pointer_source is set."""
 
     identity: AnchorId
     payload: bytes
@@ -597,8 +440,6 @@ class AuthoredBody:
     owner: str
     provenance: object
     kind: str = None
-    #: `(anchor identity, byte offset within that anchor)` of the 4-byte field that
-    #: will hold this body's address, for a body the array does not point at.
     pointer_source: tuple | None = None
 
     def to_json(self):
@@ -610,19 +451,6 @@ class AuthoredBody:
 
 
 def _bind_pointers(bodies, allocations, image_size):
-    """Write each pointing body's allocated address into the field that reaches it.
-
-    TOOLKIT-032. `authoring_overlay` publishes the descriptor with a zero payload
-    word because the script has no address yet; this is where that word becomes
-    real. Both rewrites go through the production codec that owns the record - a
-    `PlacementRecord` for `+0x14`, a `DescriptorRecord` for `+0x04` - so the field
-    is re-encoded from a decoded record rather than patched as a raw word, and a
-    body whose bytes are not a valid record of its family fails here.
-
-    Returns bodies in the same order, with finished payloads. Nothing else sees a
-    placeholder: the array payload, the anchors, the references and the byte
-    changes are all built from what this returns.
-    """
     from .binary import FileOffset
     from .formats.map_placements import DescriptorRecord, PlacementRecord
     from dataclasses import replace as _replace
@@ -654,32 +482,7 @@ def _bind_pointers(bodies, allocations, image_size):
 
 
 def plan_authored_materialization(document, run, reserved=()):
-    """Allocate the expanded array AND one authored body, then wire the new slot.
-
-    Uses production machinery end to end - `relocation.plan_relocation` for the
-    array, `allocation.allocate` for the body, and the existing attributed write
-    path for both - so nothing here is a second allocator or a second writer.
-
-    Ordering is forced by what each step needs to know:
-
-      1. allocate the authored body first, because the array payload has to CONTAIN
-         its address before the array itself can be written;
-      2. build the expanded array payload: every canonical slot pointer carried over
-         byte-for-byte, then one appended pointer per authored body;
-      3. hand that payload to `plan_relocation`, which moves the array, rewrites the
-         `MapEntry+0x14` owner pointer, and validates the result.
-
-    The body allocation reserves the array's own destination too, so the two can
-    never be handed the same bytes. Both requests are deterministic: `allocate`
-    sorts by anchor identity and takes the lowest aligned first fit.
-
-    TOOLKIT-036. `reserved` is the build-scoped reservation set: spans already
-    allocated by an EARLIER allocating domain in this same build. They are withheld
-    from the declared free regions before anything here allocates, by exactly the
-    `withhold` subtraction this module already used internally, so a later domain
-    can never be handed bytes an earlier one took. Empty means "nothing allocated
-    before me", which is what a single-domain build passes.
-    """
+    """reserved is the build-scoped set of spans earlier allocating domains already took, and it is empty when this domain allocates first."""
     from .allocation import AllocationKind, allocate, withhold
     from .binary import FileOffset
     from .layout import Anchor, OwnedRegion, Reference, ReferenceClass, ReferenceEncoding
@@ -696,8 +499,6 @@ def plan_authored_materialization(document, run, reserved=()):
         raise AuthoringOverlayError(f"{run.identity.value}: no authored records to materialize")
     array = document.anchor(run.identity)
 
-    # Allocate the bodies FIRST, reserving everything the base already owns exactly
-    # as `plan_relocation` computes it, so a body can never land on live content.
     occupied = [OwnedRegion(a.range, a.owner) for a in document.anchors]
     for ref in document.references:
         if not any(a.range.contains(ref.source) for a in document.anchors):
@@ -713,9 +514,6 @@ def plan_authored_materialization(document, run, reserved=()):
     # TOOLKIT-032: an authored body that POINTS AT another authored body cannot know
     # the address it must carry until the allocator has placed the target, so its
     # payload is finished here, once, and every later step sees only finished bytes.
-    # The rewrite goes through the production codecs - `PlacementRecord` for the
-    # record's `+0x14`, `DescriptorRecord` for the descriptor's `+0x04` - so no field
-    # is poked as a raw word and a malformed body fails in the codec, not in the ROM.
     bodies = _bind_pointers(bodies, allocations, len(document.image))
 
     # `plan_relocation` runs the allocator AGAIN, deriving its reserved set from the
@@ -731,8 +529,6 @@ def plan_authored_materialization(document, run, reserved=()):
         free_regions=withhold(document.profile.free_regions,
                               tuple(allocations[b.identity].range for b in bodies))))
 
-    # The expanded array: canonical pointers carried over verbatim, then the
-    # authored bodies at their freshly allocated addresses.
     image = document.image
     payload = bytearray(image[array.range.start.value:array.range.end])
     if len(payload) != 4 * len(run.canonical_slots):
@@ -753,9 +549,6 @@ def plan_authored_materialization(document, run, reserved=()):
         raise AuthoringOverlayError(
             f"{run.identity.value}: the expanded array was placed over an authored body")
 
-    # The slot references are published onto the RELOCATED document, where the
-    # appended slot now physically holds each body's address, so `validate` decodes
-    # it rather than taking the reference on trust.
     anchors = list(result.document.anchors)
     references = list(result.document.references)
     changes = []
@@ -764,10 +557,6 @@ def plan_authored_materialization(document, run, reserved=()):
         span = spans[body.identity]
         anchors.append(Anchor(body.identity, span, body.kind, body.owner, 4,
                               False, body.provenance))
-        # Every authored body earns a real reference edge to whatever reaches it: an
-        # appended array slot for a record, and the owning body's own pointer field
-        # for a descriptor or a script. Both decode against the emitted image, so
-        # `validate` checks the edge rather than taking it on trust.
         if body.slot_index is not None:
             source = FileOffset(moved.range.start.value + 4 * body.slot_index)
         else:
@@ -804,7 +593,6 @@ def plan_authored_materialization(document, run, reserved=()):
 
 @dataclass(frozen=True, slots=True)
 class AuthoredMaterialization:
-    """The planned array move plus the authored bodies that fill its new slots."""
 
     run: object
     relocation: object
@@ -828,39 +616,7 @@ class AuthoredMaterialization:
 
 
 def materialize_authored_runs(document, runs, image, reserved=()):
-    """Every attributed byte change one or more authored runs require, in order.
-
-    TOOLKIT-028: capacity is declared, so the plan `plan_authored_materialization`
-    already produced against canonical Buu can be EMITTED rather than described and
-    thrown away. This is the whole of that translation - it introduces no second
-    allocator, writer or codec, and every change it returns was produced by the
-    existing machinery:
-
-      * the relocation's own effective changes (the expanded array's bytes at their
-        allocated home, and the `MapEntry+0x14` owner pointer rewritten to it);
-      * one body change per authored record, writing the production codec's bytes
-        into the allocated body span;
-      * the derived `MapEntry+0x04` count change, which `derive_count_change`
-        independently re-validates against the image actually being built.
-
-    The count and the owner pointer are two fields of ONE MapEntry record, so they
-    are emitted as one change over that record rather than as two changes that would
-    each claim bytes inside it. `Maps.changes` yields the record for exactly these
-    maps, which is what keeps the record single-owner; `derive_count_change` still
-    computes and validates the count byte, and its value is folded into that record
-    rather than written separately.
-
-    Runs are processed in map order so a multi-run build is deterministic. Each run
-    is planned against the same verified base document, which is what `plan_relocation`
-    requires; two runs competing for the same declared bytes therefore surface as an
-    overlap error in the merged `plan_changes`, not as silent last-writer-wins.
-
-    TOOLKIT-036. `reserved` carries in the spans earlier allocating domains of this
-    build already took, and each run's own allocations are added to it before the next
-    run plans, so the reservation history is continuous across runs as well as across
-    domains. Returns `(changes, reserved)` - the same tuple, extended - so the
-    coordinator can hand it to the next domain.
-    """
+    """The relocated owner pointer and the derived count are emitted as one MapEntry-wide change rather than two changes claiming bytes inside that record."""
     from .write import ByteChange
 
     reserved = tuple(reserved)
@@ -880,9 +636,6 @@ def materialize_authored_runs(document, runs, image, reserved=()):
                 changes.append(change)
         changes.extend(plan.body_changes)
 
-        # Fold every field this expansion derives - the relocated owner pointer and
-        # the derived count - into one record-wide change, so the MapEntry has a
-        # single writer instead of one per field.
         base = run.map_entry_offset
         if base is None:
             if entry_changes or count is not None:
@@ -918,40 +671,7 @@ def materialize_authored_runs(document, runs, image, reserved=()):
 
 
 def materialize_for_build(project, maps, document_factory, reserved=()):
-    """Every authored byte change a build must emit, and the maps that yield to it.
-
-    ARCH-REFACTOR-001. This is the orchestration policy that joins the steps this
-    module already owns. It lived in the build driver, which meant the driver had
-    to know that authored materialization has a failure gate at all; the sequencing
-    is domain knowledge and belongs with the domain.
-
-    Four decisions live here and nowhere else:
-
-      1. a missing reference document REPORTS the ownership contract rather than
-         failing on its own terms, because "no graph for this profile" is a fact
-         about the profile and the gate is what states it with measured context;
-      2. a `LayoutError` out of materialization is re-raised THROUGH that same gate,
-         so the blocker carries its full measured context instead of surfacing as a
-         bare allocator or overlay error;
-      3. the authored map identities are derived here, because the caller has to
-         tell `Maps.changes` which maps yield their MapEntry and array to this
-         expansion, and that set is a property of the runs;
-      4. runs that exist against no loaded maps still reach the gate, so an
-         authored project can never be silently dropped.
-
-    `document_factory` is injected rather than imported: the reference graph is the
-    build driver's to supply, and taking it as a callable keeps this function from
-    reaching back into the driver it was extracted from.
-
-    Returns `(authored_changes, authored_map_identities, reserved)`. Merge-plan
-    ORDERING is deliberately not decided here - where the changes join the merged
-    plan is the coordinator's call, and it keeps it.
-
-    TOOLKIT-036. `reserved` is the coordinator's build-scoped reservation set,
-    passed in and returned extended by every span this domain allocated. This domain
-    learns nothing about whoever allocated before or after it - it receives and
-    returns plain spans, which is the whole of the sharing.
-    """
+    """Every authored byte change a build must emit, and the maps that yield to it."""
     authored_runs = prepare_authored_runs(project, maps)
     authored_changes = []
     reserved = tuple(reserved)
@@ -976,13 +696,6 @@ def materialize_for_build(project, maps, document_factory, reserved=()):
 
 @dataclass(frozen=True, slots=True)
 class AuthoredPlacementPolicy:
-    """Domain-owned continuation of authored-placement validation.
-
-    The build driver reconciles generic map records against ``map_view`` and
-    hands each matching placement back here.  Whether a structural comparison
-    applies, which descriptor catalog supplies it, and the terminal authored-run
-    preparation check remain private placement-domain decisions.
-    """
 
     project: object
     map_view: object
@@ -992,9 +705,7 @@ class AuthoredPlacementPolicy:
 
     def placement_problems(self, item, live_placement):
         """Validate domain-owned structure for one reconciled placement."""
-        # Preserve the baseline unsupported structured/non-CONTRACTS path exactly.
-        # In the original `_check_maps`, `relationships` was bound only by the
-        # CONTRACTS branch and its later structural read raised UnboundLocalError.
+        # This preserves the baseline path where relationships was bound only by the CONTRACTS branch and its later structural read raised UnboundLocalError.
         if self._relationships_bound:
             relationships = self._relationships
         if self._legacy:
@@ -1019,24 +730,6 @@ class AuthoredPlacementPolicy:
 
 
 def check_authored_placement_policy(project, maps):
-    """Validate the authored-placement catalogs a project carries against its base.
-
-    ARCH-REFACTOR-001. Extracted whole from `build._check_maps`, whose remaining
-    job is pure project-vs-ROM reconciliation. What moved is everything that
-    reasons about authored placement STRUCTURE rather than about map records:
-    the structured/legacy determination, the `legacy_view()` fallback, the
-    descriptor/event catalog comparison, the placement-type catalog comparison,
-    and the terminal `prepare_authored_runs` validation.
-
-    Returns `(problems, policy)`. The policy supplies the possibly substituted map
-    view and owns every remaining placement-domain decision, so `_check_maps` does
-    not branch on legacy state or handle the relationship catalog itself.
-
-    A structured project against a profile without contract support still reports
-    the baseline problem and, if record reconciliation reaches the structural
-    comparison, still raises the baseline `UnboundLocalError`. This ticket extracts
-    policy; repairing that pre-existing path is a separate decision.
-    """
     from .data.placement_contracts import CONTRACTS
     problems = []
     relationships = None
@@ -1076,36 +769,10 @@ def check_authored_placement_policy(project, maps):
 
 def require_materialization_contract(runs, image=None, document=None):
     """Fail at the exact remaining ownership boundary, before allocation/writes.
-
     TOOLKIT-024 PROVED the outer traversal contract: the map loader at 0x08008C9E
     runs a counted loop over `MapEntry+0x04` (unsigned byte) indexing the pointer
     array at `MapEntry+0x14`; there is no sentinel and no suffix, so a run owns
     exactly `count * 4` array bytes. See BUU_PLACEMENT_RUN_RELOCATION.md.
-
-    TOOLKIT-025 removed the count field from this gate: an authored expansion
-    derives its new `MapEntry+0x04` value from the validated object array and emits
-    it as an attributed `ByteChange` (`AuthoredRun.derive_count_change`).
-
-    TOOLKIT-026 removed the array anchor's relocatability from this gate. The
-    `placement_reference_array` anchor is now published relocatable wherever its
-    measured reference set satisfies the relocation safety contract
-    (`layout.relocation_eligible`), and the map 10 array does: exactly one inbound
-    CONFIRMED reference at `MapEntry+0x14`, no CANDIDATE reference anywhere in the
-    graph, and both slot sources wholly inside the anchor. `plan_relocation` moves
-    it and rewrites that owner pointer.
-
-    TOOLKIT-027 removed the authored record body from this gate. The relocator still
-    creates no anchors and no references - `authoring_overlay` does, publishing one
-    anchor per authored body over exactly the production codec's bytes and one
-    `ABSOLUTE_ROM_U32_LE` reference from the appended slot to it, both at their
-    post-relocation addresses because that is the only image in which they decode.
-    `plan_authored_materialization` then allocates the body and the expanded array
-    together and fills the new slot with the body's real address.
-
-    So this gate no longer asserts a boundary at all. It RUNS the materialization
-    and reports whatever production actually refuses. Against canonical Buu that is
-    capacity: the profile declares no free regions, so `allocate` raises
-    `InsufficientSpaceError` and TOOLKIT-011 free-space work becomes binding.
     """
     if not runs:
         return ()

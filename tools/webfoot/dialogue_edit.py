@@ -1,43 +1,4 @@
-"""Rewrite spoken lines inside a friend image's stored dialogue containers.
-
-WHY A DIRECT SPAN WRITE. The containers this image's live table names (selectors 0..5) are
-Webfoot containers of kind 0, the STORED form: the payload after the 8-byte header is the
-decoded stream itself, and `webfoot_lz.pack` cannot emit kind 0. So the honest route is
-byte-exact: the new text replaces the old inside the stored payload, with no re-encode.
-
-HOW A LINE IS IDENTIFIED, AND WHY WORDING IS NEVER PROOF OF WHO SPEAKS. A target is a RECORD,
-not a string. The engine's own reader enumerates the records the interpreter can reach, so a
-line is matched by asking which records decode to the given wording:
-
-* no record - refused, because there is nothing to edit;
-* more than one record - refused, listing every candidate, because choosing between them would
-  be a guess;
-* exactly one - used, and its handle is then the identity for the rest of the run.
-
-A caller may also state the record's decoded start and length. That is not a second opinion to
-be reconciled: if it disagrees with the wording's own single match, the run is refused.
-
-Wording locates a record. It does NOT establish which character speaks it. A record is reached
-by a scene that names its handle, and the speaker is that scene's actor, which is not a
-property of the text record. So the `speaker` field on an edit is a CALLER CLAIM: it is carried
-into the report and labelled as a claim, and the report separately supplies the evidence a
-human needs to check it (every word that names the record and every record whose span encloses
-it). Nothing here infers a speaker from a label, a name or a position.
-
-WHY ADJACENT RECORDS ARE LAID OUT TOGETHER. A record's length lives in its handle, not in a
-terminator: the records here are back-to-back. A replacement longer than its own span cannot
-grow in place, so when the affected records are contiguous the pair is re-laid out inside their
-own combined region and every handle is rewritten to match. Nothing else in the container moves,
-which is what keeps every other record's absolute offset valid. This is why the engine refuses
-when the records are not adjacent or when the region has no room: either case needs a container
-re-layout, which is a different mechanism.
-
-WHAT THIS REFUSES. A base whose digest is not the expected one, a wording that no record holds,
-a wording more than one record holds, a stated record that does not match the wording, a
-replacement carrying a control unit, records that are not adjacent, a region with too little
-room, a container that is not the stored form, and a handle word that is not the one replaced.
-"""
-
+"""The new text replaces the old inside the stored payload with no re-encode, because webfoot_lz.pack cannot emit kind 0 and the containers this table names are stored verbatim."""
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +14,7 @@ from tools.webfoot.handles import pack_handle
 TABLE_LITERAL = 0x123CC
 ROM_BASE = 0x08000000
 CONTAINER_HEADER = 8
-#: The engine's break-point unit, used to fill the rest of a re-laid out region.
+# The engine's break-point unit, used to fill the rest of a re-laid out region.
 SPACE = 0x0020
 
 
@@ -62,12 +23,7 @@ class DialogueEditError(ValueError):
 
 
 class LineEdit(NamedTuple):
-    """One line to replace.
-
-    ``speaker`` is the caller's claim about who speaks the line and is recorded, not verified.
-    ``decoded_start`` and ``decoded_length`` are optional; when given they must agree with the
-    single record whose text is ``old_text``.
-    """
+    """The caller's claim about who speaks the line, recorded rather than verified."""
 
     speaker: str
     old_text: str
@@ -109,11 +65,7 @@ def stored_payload(image: bytes, offset: int) -> bytes:
 
 
 def find_record(image: bytes, selector: int, old_text: str) -> tuple[int, int]:
-    """The one record whose text is exactly ``old_text``.
-
-    Refuses zero matches and refuses more than one, naming every candidate. Selecting the first
-    match would be a guess about identity, which is the failure this function exists to prevent.
-    """
+    """The one record whose text is exactly old_text, refusing zero matches and more than one because selecting the first would be a guess about identity."""
     offset = container_file_offset(image, selector)
     payload = stored_payload(image, offset)
     wanted = old_text.encode("utf-16le")
@@ -142,7 +94,6 @@ def find_record(image: bytes, selector: int, old_text: str) -> tuple[int, int]:
 
 
 def _resolve(image: bytes, selector: int, edit: LineEdit) -> dict:
-    """The record an edit names, from its wording, with the stated span checked against it."""
     start, length = find_record(image, selector, edit.old_text)
     if edit.decoded_start is not None or edit.decoded_length is not None:
         if (edit.decoded_start, edit.decoded_length) != (start, length):
@@ -158,15 +109,7 @@ def _resolve(image: bytes, selector: int, edit: LineEdit) -> dict:
 
 
 def context(image: bytes, selector: int, start: int, length: int) -> dict:
-    """The evidence a human needs to check a speaker claim, none of it inferred by this module.
-
-    ``sites`` are the words that name the record. ``enclosing`` are records whose span covers it
-    completely, which is how a scene view reaches the same bytes; a record that starts where it
-    starts and runs longer counts, because it still contains the whole line. ``partial_overlaps``
-    are records that would read mixed text, and the planner refuses those rather than writing.
-    ``speaker`` is not derived here: the speaker is the scene's actor, not a property of a text
-    record, so this reports the claim and the evidence and says so.
-    """
+    """The evidence a human needs to check a speaker claim, with a partial overlap reported rather than written because the planner refuses it."""
     offset = container_file_offset(image, selector)
     payload = stored_payload(image, offset)
     sites: list[int] = []
@@ -312,8 +255,6 @@ def verify(base: bytes, out: bytes, planned: dict) -> dict:
         if record is None:
             raise DialogueEditError(f"the output carries no record for {key}")
         text = payload[handle["new_start"]:handle["new_start"] + handle["new_length"]]
-        # Keyed by the written span, not by the speaker: two lines can share a speaker label,
-        # and keying by it would let one quietly overwrite the other's read-back.
         read_back[f"{handle['new_start']}:{handle['new_length']}"] = text.decode("utf-16le")
         if text.decode("utf-16le") != handle["new_text"]:
             raise DialogueEditError(f"{handle['speaker']}: the output does not read the new line")
@@ -334,7 +275,6 @@ def verify(base: bytes, out: bytes, planned: dict) -> dict:
         raise DialogueEditError(
             f"{len(changed_outside_payload)} decoded bytes changed outside the region"
         )
-    # A handle is a 4-byte word, so the allowed bytes are the word, not just its first byte.
     handle_sites = {site + i for handle in planned["handles"]
                     for site in handle["sites"] for i in range(4)}
     image_diff = [i for i in range(len(out)) if out[i] != base[i]]

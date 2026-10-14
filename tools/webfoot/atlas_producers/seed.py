@@ -1,15 +1,3 @@
-"""ROM-ATLAS-001 seed knowledge: `seed_knowledge.jsonl`.
-
-Ported verbatim from the earlier exploratory script `build_seed.py`. Every row is
-harvested from a repository document; **no ROM bytes are read**, which is why
-`build` takes no ROM path.
-
-The only change from the original is that the hardcoded
-`build/atlas/seed_knowledge.jsonl` destination
-(build_seed.py:8) became the `out_dir` parameter. Row order, the
-`(file_offset, identity)` sort key and the `ensure_ascii=False` / unsorted-keys
-serialization (build_seed.py:589) are unchanged.
-"""
 
 from __future__ import annotations
 
@@ -18,9 +6,6 @@ from pathlib import Path
 from ..binary import GBA_ROM_BASE as BASE
 from ._io import write_jsonl
 
-#: Every address in this seed table is a GBA address. `BASE` is the sanctioned
-#: `binary.GBA_ROM_BASE` rather than a second literal of it, so the address
-#: window this table is checked against has one owner.
 
 
 def _rows() -> list[dict]:
@@ -50,7 +35,6 @@ def _rows() -> list[dict]:
             "notes": notes,
         })
 
-    # ---------------------------------------------------------------- header
     add(off=0x000000, addr=BASE, size=0x100, kind="other",
         identity="gba_header",
         conf="CONFIRMED",
@@ -63,7 +47,6 @@ def _rows() -> list[dict]:
               "used is the first 0x100 bytes. Size 0x100 is the control window, not a proven header extent. "
               "ARM entry point 0x080000C0 (docs/PROJECT_STATE.md:162) lies inside.")
 
-    # ---------------------------------------------------------- low code region
     add(addr=0x08004038, size=None, kind="function",
         identity="script_vm.interpreter",
         conf="CONFIRMED",
@@ -229,7 +212,6 @@ def _rows() -> list[dict]:
         notes="size null: extent not stated. target+0x28C is EWRAM runtime state, not a ROM offset, and is "
               "deliberately not emitted as a row.")
 
-    # --------------------------------------------------------- data: low ROM
     add(addr=0x0805632C, size=None, kind="palette",
         identity="background_palette",
         conf="CANDIDATE",
@@ -276,7 +258,6 @@ def _rows() -> list[dict]:
         notes="Size from docs/research/TEXT_FORMAT.md:86 (6,136 bytes = 1534*4). Five entries (indices 689, 818, "
               "819, 856, 1342) carry a second aligned word and are refused per entry as coincidence candidates.")
 
-    # ---------------------------------------------------- placement / map data
     PLACEMENT_STREAM = 0x080728CC
     add(addr=PLACEMENT_STREAM, size=112916, kind="placement_data",
         identity="mapentry_2c_content_stream",
@@ -336,7 +317,6 @@ def _rows() -> list[dict]:
                  "delta-coded u16 selectors consumed by map_background.character_assembler.",
         notes="Packed ROM extent is decoder-measured at use time; no size asserted in the seed row.")
 
-    # ------------------------------------------------------------- script VM
     add(addr=0x080554C0, size=31 * 4, kind="pointer_table",
         identity="script_vm.primary_dispatch_table",
         conf="CONFIRMED",
@@ -421,7 +401,6 @@ def _rows() -> list[dict]:
         notes="Size = 83 * 52 = 4,316 bytes, derived from the declared count and stride. Halfwords at +0x02, "
               "+0x04, +0x06, +0x08 are proven text indices into 0x0806BCE8.")
 
-    # ------------------------------------------------- stats / sprites / types
     add(addr=0x086B6BDC, size=297 * 4, kind="pointer_table",
         identity="actor_sprites.character_table",
         conf="CONFIRMED",
@@ -507,7 +486,6 @@ def _rows() -> list[dict]:
               "states max_selector is NOT a total count. Six selectors (141,142,146,147,148,149) used by 11 "
               "placements remain reference-only with no record extent or enemy claim.")
 
-    # --------------------------------------------------- free region / authored
     FREE = 0x007EA400
     add(off=FREE, addr=BASE + FREE, size=256, kind="free_region",
         identity="free_region.toolkit028",
@@ -565,7 +543,6 @@ def _rows() -> list[dict]:
               "(TOOLKIT-028) is SUPERSEDED by TOOLKIT-032: map 40 has 4 canonical slots so its array is 5*4=20 "
               "(docs/PROJECT_STATE.md:41).")
 
-    # --------------------------------------------------- shop dialogue / events
     SHOP_START = 0x0877F09A
     SHOP_END = 0x087801D4
     add(addr=SHOP_START, size=SHOP_END - SHOP_START, kind="dialogue_store",
@@ -588,7 +565,6 @@ def _rows() -> list[dict]:
     # TOOLKIT-038 measured the six shop scenarios inside that region. Each is an
     # event record whose body is a stride-4 array of script pointers, preceded by
     # an 8-byte type-0x05 descriptor whose u16 count equals the entry count.
-    # (array address, entry count, event pointer-table index)
     SHOP_SCENARIOS = (
         (0x0877F3B0, 10, 28),
         (0x0877F73C, 10, 30),
@@ -632,9 +608,6 @@ def _rows() -> list[dict]:
         notes="size null: extent not measured. CANDIDATE, not CONFIRMED: the run's bounds and its consumer were "
               "not established, and it lies just past event_resource.pointer_table's end at 0x0879BF2C.")
 
-    # TOOLKIT-038: the shop object records that carry a scenario pointer. This is
-    # Data Crystal's "NPC structure contains a dialogue pointer" in stronger
-    # form - the pointer is to a scenario, not to a string.
     for _record, _scenario in ((0x08074360, 0x0877F3B0), (0x080743C4, 0x0877F73C),
                                (0x08074450, 0x0877FAB8), (0x080744B4, 0x0877FE00),
                                (0x0807451C, 0x08780008)):
@@ -710,12 +683,7 @@ def _rows() -> list[dict]:
               "NOT be widened, because the 6-bit selector field can encode 64 values while only 7 are backed by "
               "a real pointer.")
 
-    # ------------------------------------------- TEXT-HANDLE-001 packed handle
-    # The packed compressed-text handle consumed from a runtime object's +0x04.
-    # TEXT-HANDLE-001 asked which code WRITES it and measured that none does:
-    # the "runtime object" pointer is a pointer INTO the ROM-resident dialog
-    # record pool, so the field is already in the image and the record is its
-    # durable owner. Producer Stop Condition A.
+    # TEXT-HANDLE-001 asked which code WRITES the packed handle and measured that none does, so the field is already in the image and the record is its durable owner.
     add(addr=0x08012230, size=None, kind="function",
         identity="compressed_text.consumer_08012230",
         conf="RUNTIME_CONFIRMED",
@@ -839,7 +807,6 @@ def _rows() -> list[dict]:
               "41 selector-1, because the single container-1 object was re-read 41 times. Both denominators are "
               "recorded so neither is mistaken for the other.")
 
-    # ---------------------------------------------------------- rejected tail
     add(off=0x007B89A8, addr=0x087B89A8, size=0x00800000 - 0x007B89A8, kind="other",
         identity="upstream_tail_candidate",
         conf="UNKNOWN",

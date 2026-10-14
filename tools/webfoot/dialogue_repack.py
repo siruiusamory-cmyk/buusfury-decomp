@@ -1,34 +1,3 @@
-"""Rebuild a friend image's stored dialogue containers without the rename padding.
-
-WHY A WHOLE-CONTAINER REBUILD, AND WHAT THE UNIT IS. A retail container is one decoded
-stream whose record spans OVERLAP: 1,102 of 2,814 records share bytes with another. A
-record's text is read by its handle's decoded length, so a shorter text cannot occupy
-the same span unless the characters after it move - and moving them changes what every
-overlapping record reads. The unit that can be rewritten safely is therefore not a
-record but a CHAIN:
-
-    the maximal runs of the decoded stream that no record boundary cuts.
-
-Every record's span is a union of whole chains, and each chain's entire content is
-witnessed by the same set of records, so a chain can be rewritten only if the longest
-record covering its tail agrees on the content. Trimming is decided per chain by the
-FURTHEST read, never per record: a chain's tail may be dropped only when no record reads
-that far, which is exactly the set of units whose only readers are shorter records that
-never needed them.
-
-WHAT IT DOES NOT DO. It never inserts, deletes or reorders a byte it was not entitled
-to. Chains keep their order, so every record's span remains contiguous and its text is
-the concatenation of the chains it covered. If the rebuilt stream does not fit the
-container's existing decoded size the rebuild is REFUSED with the overrun, because
-naming a new home for a container is an allocation decision with its own evidence.
-
-Every handle site is rewritten, because a length lives in the handle word and one handle
-can be carried by several sites.
-
-Usage:
-  python -m tools.webfoot.dialogue_repack --image IN.gba --expect-sha256 <hex> \
-      --out OUT.gba --manifest OUT.json [--selector N ...]
-"""
 
 from __future__ import annotations
 
@@ -48,9 +17,7 @@ ROM_BASE = 0x08000000
 TABLE_LITERAL = 0x123CC
 CONTAINER_HEADER = 8
 SPACE = 0x0020
-#: How many characters the walk may fail to match before its result is not an alignment.
-#: A name substitution is a short run of differing characters; a drifted cursor differs
-#: for the rest of the record, so the two are far apart and this limit sits between them.
+# How many characters the walk may fail to match before its result is not an alignment, a limit that sits between a short name substitution and a drifted cursor.
 BLIND_LIMIT = 12
 SELECTOR_SLOTS = 64
 
@@ -93,21 +60,11 @@ def text_of(stream: bytes, start: int, length: int) -> str:
 
 
 def normalised(text: str) -> str:
-    """Whitespace-insensitive form, for comparing a rebuilt view with its intent.
-
-    A pad the rebuild drops may sit INSIDE a record's own span (a shorter record's name
-    was paid for at a unit position a longer record also covers), so the rebuilt view can
-    legitimately lose interior spaces. What must not change is the words, the punctuation
-    and every control unit, and this comparison is what states that.
-    """
+    """A dropped pad may sit inside a record's own span, so the rebuilt view can lose interior spaces while the words, the punctuation and every control unit must survive."""
     return " ".join(part for part in text.split(" ") if part)
 
 
 def plan_container(image: bytes, selector: int, stream: bytes, records):
-    """The rebuilt stream, the chains, and every record's new span.
-
-    Returns a dict with the rebuilt bytes, the chain table, and per-record new spans.
-    """
     chains = chains_of(records)
     if not chains:
         raise RepackError(f"selector {selector}: no record spans, nothing to rebuild")
@@ -115,10 +72,6 @@ def plan_container(image: bytes, selector: int, stream: bytes, records):
     def read(offset: int) -> int:
         return stream[offset] | (stream[offset + 1] << 8)
 
-    # The furthest end any record reads at each unit position. A chain's tail unit may
-    # only be dropped when nothing reads past it, which is what makes the drop invisible
-    # to every overlapping record: a unit whose furthest reader ends exactly there is
-    # read by nobody who asked for what follows it.
     furthest_end: dict[int, int] = {}
     for record in records:
         for position in range(record.handle.decoded_start, record.handle.decoded_end, 2):
@@ -132,9 +85,6 @@ def plan_container(image: bytes, selector: int, stream: bytes, records):
         readers = [record for record in records
                    if record.handle.decoded_start <= start
                    and end <= record.handle.decoded_end]
-        # Every unit at or below reach_bound is inside a record that reads past it, so a
-        # unit there can never be dropped whatever it holds. Above it, a trailing pad is
-        # read by nobody: the only records covering it end inside or at reach_bound.
         reach_bound = max((record.handle.decoded_end for record in records
                            if record.handle.decoded_end > start
                            and record.handle.decoded_start <= start), default=start)
@@ -206,23 +156,7 @@ def plan_container(image: bytes, selector: int, stream: bytes, records):
 
 
 def target_text(original: str, retail: str | None) -> str:
-    """The record's text with the rename's pad runs reduced to one space.
-
-    WHY THIS IS NOT A POSITION-BY-POSITION COMPARISON. The pad exists so that every
-    character AFTER the substituted name keeps the position retail gave it, which means
-    the text between the name and the rest of the line is what moved - at the pad's own
-    index the two images hold different characters by construction. A positional test
-    therefore never sees a pad: at `#Get him, Uub![4]You` the retail string has `Trunks!`
-    running through that index and reads no space at all.
-
-    The test that does work compares what FOLLOWS the run. A playtest run of two or more
-    spaces is the pad when the text right after it is the text right after retail's own
-    run at the same index; then the run is reduced to one, and where retail had a longer
-    run the run is retail's own spacing and is copied unchanged. Nothing else is touched.
-
-    `retail` may be None, and then the text is returned unchanged: with no baseline there
-    is no evidence that any run is a pad.
-    """
+    """A positional comparison never sees a pad because the characters after the substituted name keep retail's position, so a run is the pad only when the text after it matches the text after retail's own run."""
     if retail is None:
         return original
     out: list[str] = []
@@ -272,13 +206,7 @@ def reference_text(stream: bytes | None, record) -> str | None:
 
 
 def verify_plan(selector: int, stream: bytes, records, plan: dict) -> list[str]:
-    """Every record must read, in the rebuilt stream, exactly its target text.
-
-    This is the check the writer's own intent cannot satisfy: the target text is derived
-    from the record's ORIGINAL text plus the retail reference, and the rebuilt bytes are
-    read back independently, so an off-by-one in a span, a mis-ordered block or a shared
-    byte would appear here as a mismatch.
-    """
+    """The target is derived from the record's original text plus the retail reference and the rebuilt bytes are read back independently, so an off-by-one in a span or a shared byte appears here as a mismatch."""
     problems: list[str] = []
     spans = {span["record"]: span for span in plan["spans"]}
     for record in records:
@@ -293,9 +221,6 @@ def verify_plan(selector: int, stream: bytes, records, plan: dict) -> list[str]:
             problems.append(f"{key}: the rebuilt stream is too short for this span")
             continue
         text = bytes(got).decode("utf-16le")
-        # The plan does not recompute the target here: the plan RECORDS the text it meant
-        # to place, and this reads the rebuilt bytes back. Two different predicates would
-        # only prove they disagree.
         want = span["target"]
         if text != want:
             problems.append(f"{key}: rebuilt text {text[:48]!r} != expected {want[:48]!r}")
@@ -303,20 +228,7 @@ def verify_plan(selector: int, stream: bytes, records, plan: dict) -> list[str]:
 
 
 def plan_selective(selector: int, stream: bytes, records, reference: bytes | None) -> dict:
-    """Duplicate the least that a pad repair requires, and share everything else.
-
-    A chain whose units carry a pad a shorter record would drop cannot stay where it is:
-    the pad is inside bytes a longer record also reads. The repair therefore copies that
-    chain - and then every record that reads it must stop straddling a shared byte and a
-    private one, so its OWN chains must be copied too, which pulls in their readers, and
-    so on. The set is the closure of the pad chains under "a reader of a copied chain is
-    copied". Everything outside the closure keeps its original offsets, so only the
-    closure is laid out fresh and the stream grows by the closure's readers, not by the
-    whole container.
-
-    This is the layout the handle's 15-bit start field forces: a container may not exceed
-    65,534 bytes, so copying every record is not available.
-    """
+    """Only the closure of the pad chains is laid out fresh because the handle's 15-bit start field caps a container at 65,534 bytes, so copying every record is not available."""
     chains = chains_of(records)
     chain_readers = {chain: [record for record in records
                              if record.handle.decoded_start <= chain[0]
@@ -407,10 +319,6 @@ def plan_selective(selector: int, stream: bytes, records, reference: bytes | Non
         block = next(item for item in blocks if item["start"] <= offset < item["end"])
         return block["new_offset"] + (offset - block["start"])
 
-    # THE REBUILD IS THE ORIGINAL STREAM WITH THE COPIED REGION COMPACTED. Every un-copied
-    # byte keeps its offset, so a record that touches no copied chain stays valid for free;
-    # the copied groups are packed end to end at the start of that region, and the room
-    # they free up becomes trailing space units that no record's span contains.
     first = min((chain[0] for chain in copied), default=0)
     last = max((chain[1] for chain in copied), default=0)
     packed = bytearray()
@@ -467,30 +375,11 @@ def plan_selective(selector: int, stream: bytes, records, reference: bytes | Non
 
 def plan_group(selector: int, stream: bytes, records, region: tuple[int, int],
                replacements: dict[str, str] | None = None) -> dict:
-    """Re-lay one group of records inside its own region, changing only named wording.
-
-    THE PROBLEM THIS SOLVES, AND WHY IT IS NOT A CONTAINER REBUILD. A record's text can be
-    changed in place only when its own span is not read by another record. When it is, the
-    group that reads it has to be re-laid out as a unit: the texts are written back to back
-    from the region's start, each record's span is recomputed from where its text landed,
-    the tail is filled with space units, and NOTHING OUTSIDE THE REGION MOVES, so every
-    handle of every record outside it stays valid. That is the mechanism the merged dialog
-    editor already uses for two adjacent records; this generalises it to the whole group.
-
-    `replacements` maps a record key (`selector:start:length`) to the wording it must read
-    afterwards. Every other record in the region must read exactly what it read before, and
-    the rebuild REFUSES rather than writes if that fails.
-
-    The region must not be crossed by a record that is not part of it: such a record would
-    have to change content, and no evidence says how the engine expects that expressed.
-    """
+    """Re-lay one group of records inside its own region, changing only named wording."""
     start, end = region
     if start % 2 or end % 2 or not start < end <= len(stream):
         raise RepackError(f"selector {selector}: region 0x{start:X}..0x{end:X} is not a "
                           "legal aligned range of the decoded stream")
-    # A region is only a group when no record leaves it. Any record that reaches past an
-    # edge drags the whole region it belongs to along, so the region is grown until it is
-    # closed rather than guessed at; the caller's range is the seed.
     while True:
         grown = [start, end]
         for record in records:
@@ -530,9 +419,6 @@ def plan_group(selector: int, stream: bytes, records, region: tuple[int, int],
     # Collect every claim first, then require the claims about any one unit to agree. A
     # last-write-wins composition would silently let one record's wording win over another
     # that reads the same byte, which is the corruption mode this project measured twice.
-    # A caller that passes no replacement map is asking for a pure re-layout; treating it as
-    # an empty map is what the docstring already describes. Indexing it would raise
-    # AttributeError on None, which is what an earlier revision did.
     replacements = replacements or {}
     claims: dict[tuple[int, int], str] = {}
     for record in inside:
@@ -560,9 +446,6 @@ def plan_group(selector: int, stream: bytes, records, region: tuple[int, int],
         if len(value) * 2 == seg_end - seg_start:
             rebuilt += value.encode("utf-16le")
         else:
-            # No record reads this run, and the gap is filled with space units, never a
-            # terminator: a zero would end an enclosing view early and truncate what
-            # follows it.
             rebuilt += SPACE.to_bytes(2, "little") * ((seg_end - seg_start) // 2)
 
     spans: list[dict] = []
@@ -595,19 +478,7 @@ def plan_group(selector: int, stream: bytes, records, region: tuple[int, int],
 
 
 def plan_duplicated(selector: int, stream: bytes, records, reference: bytes | None) -> dict:
-    """One copy of every record's own text, so a shared pad can be dropped for good.
-
-    WHY THIS IS THE ROUTE FOR A SHARED PAD. When a pad unit sits inside a chain a longer
-    record also covers, no trimming can remove it: that longer record reads through the
-    unit and would lose a character. The pad can only go if the shorter record stops
-    sharing its bytes, which means giving it a copy of its own. Records whose spans touch
-    no pad keep sharing nothing and are copied once each, because nothing about them is
-    ambiguous.
-
-    The price is paid in bytes, not in correctness: the stream becomes roughly the sum of
-    the record texts instead of their union. That is a deliberate trade the caller chose
-    by asking for duplication, and the caller owns where the grown container lives.
-    """
+    """A shared pad can be dropped only by giving the shorter record a copy of its own, which buys correctness with bytes the caller owns the placement of."""
     blocks: list[dict] = []
     new_offset = 0
     spans: list[dict] = []
@@ -726,9 +597,6 @@ def main() -> int:
             output[payload_at:payload_at + len(stream)] = payload
             for span in result["spans"]:
                 for site in span["sites"]:
-                    # The handle fields are BYTE values; pack_handle divides them into
-                    # halfwords itself. Passing halves here wrote half of every start and
-                    # length, which the earlier revision did.
                     word = span["handle"].replace(
                         decoded_start=span["new_start"],
                         decoded_length=span["new_length"]).encode().to_bytes(4, "little")
@@ -790,9 +658,6 @@ def main() -> int:
                          "key": span["record"], "new_key": span["new_key"]})
                     output[site:site + 4] = handle
         target = Path(args.out)
-        # THE INPUT IS NEVER THE OUTPUT, and the write is staged and read back before it is
-        # published. The sibling writers in tools/research already did this; this module was
-        # the one write path without it, which is what the second review found.
         try:
             ensure_not_source_alias(source, target)
         except WriteError as error:

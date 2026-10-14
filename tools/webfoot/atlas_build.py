@@ -1,19 +1,3 @@
-"""ROM-ATLAS-001 assembler: loose evidence artifacts -> one validated `Atlas`.
-
-Seven discovery passes each wrote a JSONL artifact under `build/atlas/`. None of
-them merged, so "what is at this offset" was still unanswerable. This module is
-the merge, and it is deliberately a single non-quadratic pass:
-
-`CoverageMap.refine` rebuilds the whole span tuple per call (atlas.py:235), so
-calling it once per artifact row would be O(rows * spans). Instead every claim is
-reduced to a (start, end, classification, confidence, evidence) tuple, the claims
-are painted weakest-first onto one byte-interval sweep, and the resulting span
-list is handed to `CoverageMap` directly. `refine`'s anti-downgrade rule
-(atlas.py:229) is honoured by the paint order rather than by catching its error:
-a stronger claim already on a byte is never repainted by a weaker one, and an
-equal-strength claim of a different classification is recorded as a CONFLICT and
-resolved by provenance specificity rather than by whichever ran last.
-"""
 
 from __future__ import annotations
 
@@ -32,19 +16,11 @@ from .layout import LayoutError, Provenance, ReferenceEncoding, RomRange
 from .project.atomic import replace_document
 
 
-#: The canonical image the artifacts were measured against. The assembler
-#: refuses to stamp any other identity onto their provenance.
-#:
-#: The id below is the one provenance label this module chooses; the hash and
-#: the image size are taken from that profile's declaration rather than
-#: restated, because the atlas identity is one of the load-bearing duplicates
-#: CQA-15 found and a second literal here would be free to drift from the
-#: profile the session compares an opened atlas against.
+# The canonical image the artifacts were measured against, and the assembler refuses to stamp any other identity onto their provenance.
 PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
 
 
 def _canonical_identity():
-    """The packaged profile's identity for `PROFILE_ID`, as one object."""
     from .capability import Capability, packaged_contract
     return packaged_contract(PROFILE_ID, Capability.MAP_ENTRIES).identity
 
@@ -53,9 +29,7 @@ _BASE_IMAGE = _canonical_identity()
 BASE_SHA256 = _BASE_IMAGE.sha256
 IMAGE_SIZE = _BASE_IMAGE.image_size
 
-#: The ONE region a ticket has proven free (config/roms.yaml, TOOLKIT-028).
-#: Anything else claiming VERIFIED_FREE is demoted, because "looks like fill" is
-#: not a proof of freedom.
+# The ONE region a ticket has proven free (config/roms.yaml, TOOLKIT-028), and any other claim of freedom is demoted because looking like fill is not a proof.
 VERIFIED_FREE_OFFSET = 0x007EA400
 VERIFIED_FREE_SIZE = 256
 
@@ -63,28 +37,15 @@ ARTIFACTS = ("seed_knowledge", "graphics_extents", "code_functions", "code_regio
              "scan_text", "scan_pointers", "scan_pointer_tables", "scan_entropy",
              "scan_compression", "scan_code_shape")
 
-#: The decoded-container text index, deliberately NOT in `ARTIFACTS`.
-#: Every artifact above is coverage or observation evidence about ROM BYTES, and
-#: each is addressed by a file offset. A decoded run has no ROM offset of its
-#: own — only its container does — so it cannot become an `Observation`, whose
-#: identity IS a `RomRange`, without inventing an address the ROM does not have.
-#: It is a sibling index instead: produced by the same regeneration, read
-#: alongside the atlas, never merged into coverage.
+# Deliberately not an ARTIFACTS member, because a decoded run has no ROM offset of its own and cannot become an Observation without inventing an address the ROM does not have.
 DECODED_TEXT_ARTIFACT = "scan_decoded_text"
 
 
 def load_decoded_text(directory: Path) -> list[dict]:
-    """Read the decoded-container text index, or nothing if it was not built.
-
-    Missing is not an error: an atlas directory generated before this index
-    existed is still a valid atlas, it simply has no decoded text to search.
-    """
     path = Path(directory) / f"{DECODED_TEXT_ARTIFACT}.jsonl"
     return _read_jsonl(path) if path.is_file() else []
 
-#: One stable evidence string per pass. `Provenance.evidence` is part of a span's
-#: coalescing key (atlas.py:143), so a per-row string would defeat `_coalesce`
-#: and leave tens of thousands of one-row spans.
+# One evidence string per pass, because Provenance.evidence is part of a span's coalescing key and a per-row string would defeat _coalesce and leave tens of thousands of one-row spans.
 EVIDENCE = {
     "entropy": "scan_entropy.jsonl: per-block entropy classification",
     "code_shape": "scan_code_shape.jsonl: per-block Thumb code-shape density",
@@ -101,11 +62,6 @@ class AtlasBuildError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Conflict:
-    """Two equal-strength claims disagreeing about the same bytes.
-
-    Recorded rather than resolved silently: the winner is the more specific
-    provenance, and the loser stays visible so a later ticket can arbitrate.
-    """
 
     start: int
     end: int
@@ -129,20 +85,10 @@ class BuildReport:
     rows_read: tuple[tuple[str, int], ...]
 
 
-# --- artifact loading --------------------------------------------------------
 
 
+# Converted rather than left as JSONDecodeError, which no SDK family owns and which reached stderr where the GUI has no console (audit finding CQA-06).
 def _read_jsonl(path: Path) -> list[dict]:
-    """Read an artifact, reporting a malformed one as this module's own error.
-
-    The decode failure is converted rather than left as a bare
-    `json.JSONDecodeError`, which is what `Atlas.from_jsonl_lines` already does
-    for the assembled atlas. An artifact read through here is consumed by the
-    Workbench's Open ROM path (`load_decoded_text`), and an unwrapped
-    `JSONDecodeError` is a `ValueError` that belongs to no SDK family, so it
-    escaped both the session's conversion and the slot's catch list and reached
-    stderr - where the GUI has no console (audit finding CQA-06).
-    """
     if not path.is_file():
         raise AtlasBuildError(f"missing artifact {path}")
     with path.open(encoding="utf-8") as handle:
@@ -157,9 +103,6 @@ def _read_jsonl(path: Path) -> list[dict]:
         return rows
 
 
-#: Delta artifacts, folded into the base artifact they extend. A later traversal
-#: pass emits only its new rows, so the base file stays the record of what that
-#: earlier pass alone established and the merge happens here.
 DELTAS = {"code_functions": ("code_functions_wave4",)}
 
 
@@ -174,20 +117,16 @@ def load_artifacts(directory: Path) -> dict[str, list[dict]]:
     return loaded
 
 
-# --- Layer A: coverage -------------------------------------------------------
 
-#: A coverage claim, flattened out of whatever artifact produced it.
 Claim = tuple[int, int, str, Confidence, str]  # start, end, classification, confidence, evidence
 
 
-#: Provenance specificity, used only to break an equal-strength tie. A seed cites
-#: a ticket and a document line; a whole-block scanner cites a heuristic.
+# Provenance specificity breaks an equal-strength tie only, because a seed cites a ticket and a document line while a whole-block scanner cites a heuristic.
 _SPECIFICITY = {EVIDENCE["seed"]: 5, EVIDENCE["graphics"]: 4, EVIDENCE["code_region"]: 3,
                 EVIDENCE["code_shape"]: 2, EVIDENCE["entropy"]: 1, EVIDENCE["base"]: 0}
 
 
 def _clip(start: int, size: int) -> tuple[int, int] | None:
-    """Clip a claim to the image, refusing sizes `RomRange` would reject."""
     if not isinstance(start, int) or not isinstance(size, int):
         return None
     end = min(start + size, IMAGE_SIZE)
@@ -203,24 +142,14 @@ def _confidence(value: str, cap: Confidence | None = None) -> Confidence:
 
 
 def _unfree(claims: Iterable[Claim]) -> Iterator[Claim]:
-    """Demote VERIFIED_FREE to PADDING_CANDIDATE on every non-seed claim.
-
-    Freedom is not a shape a scanner can see. Only the TOOLKIT-028 window is
-    proven free, and it reaches the map through `_seed_claims`, which refuses
-    any other window outright. Every other producer passes its artifact's own
-    classification string through verbatim, so this is applied once to all of
-    them rather than trusted to each one: a graphics or code-region row naming
-    VERIFIED_FREE would otherwise publish free space at CONFIRMED.
-    """
     for start, end, classification, confidence, evidence in claims:
         if classification == VERIFIED_FREE:
             classification = PADDING_CANDIDATE
         yield (start, end, classification, confidence, evidence)
 
 
+# Only the 4 KiB grid: the 1 KiB rows cover the same bytes and two grids would be two equal-strength claims per byte for no added information.
 def _entropy_claims(rows: Iterable[dict]) -> Iterator[Claim]:
-    # Only the 4 KiB grid: the 1 KiB rows cover the same bytes, and two grids
-    # would be two equal-strength claims per byte for no added information.
     for row in rows:
         if row.get("block_size") != 4096:
             continue
@@ -234,7 +163,7 @@ def _entropy_claims(rows: Iterable[dict]) -> Iterator[Claim]:
 def _code_shape_claims(rows: Iterable[dict]) -> Iterator[Claim]:
     for row in rows:
         if row["suggested_class"] == UNKNOWN:
-            continue  # nothing added over the entropy grid
+            continue
         clipped = _clip(row["file_offset"], row["size"])
         if clipped is not None:
             yield (*clipped, row["suggested_class"], Confidence.OBSERVED,
@@ -261,7 +190,7 @@ def _graphics_claims(rows: Iterable[dict]) -> Iterator[Claim]:
 def _seed_claims(rows: Iterable[dict]) -> Iterator[Claim]:
     for row in rows:
         if row.get("size") is None:
-            continue  # no justified extent; it still becomes an object
+            continue
         clipped = _clip(row["file_offset"], row["size"])
         if clipped is None:
             continue
@@ -276,22 +205,13 @@ def _seed_claims(rows: Iterable[dict]) -> Iterator[Claim]:
         yield (*clipped, kind, _confidence(row["confidence"]), EVIDENCE["seed"])
 
 
+# Weakest-first on one linear per-byte sweep, and deliberately a flat 8 MiB array: an interval tree would only earn its complexity if the image grew large enough for the memory to matter.
+# A content claim always beats an equal-strength free claim, because prior tickets have authored into the proven-free window and the free claim would otherwise win on start address alone.
 def _paint(claims: Sequence[Claim]) -> tuple[list[CoverageSpan], list[Conflict]]:
-    """Paint claims weakest-first onto one per-byte sweep.
-
-    Linear in painted bytes rather than the O(rows * spans) a `refine` loop
-    costs, and the weakest-first order is what keeps `refine`'s anti-downgrade
-    rule satisfied: nothing ever repaints a stronger byte.
-
-    Deliberately an 8 MiB `array` of palette codes, painted by flat slice
-    assignment. An interval tree would only earn its complexity if the image
-    grew large enough for the memory to matter; at 8 MiB a flat array is
-    simpler and fast enough.
-    """
     palette: list[tuple[str, Confidence, str]] = [(UNKNOWN, Confidence.UNKNOWN,
                                                    EVIDENCE["base"])]
     code_of: dict[tuple[str, Confidence, str], int] = {palette[0]: 0}
-    owners = array("H", bytes(IMAGE_SIZE * 2))  # palette code per byte
+    owners = array("H", bytes(IMAGE_SIZE * 2))
     conflicts: list[Conflict] = []
 
     def intern(entry: tuple[str, Confidence, str]) -> int:
@@ -317,18 +237,12 @@ def _paint(claims: Sequence[Claim]) -> tuple[list[CoverageSpan], list[Conflict]]
                 run += 1
             held = palette[held_code]
             if strength(held[1]) > strength(confidence):
-                cursor = run  # anti-downgrade: a stronger claim already owns it
+                cursor = run
                 continue
             if (strength(held[1]) == strength(confidence)
                     and held[0] != classification
                     and held[1] is not Confidence.UNKNOWN):
                 held_rank = _SPECIFICITY.get(held[2], 0)
-                # Freedom is the one claim an equal-strength rival always wins
-                # against: a region is only free if NOTHING occupies it, so a
-                # claim naming content is evidence the free claim is stale.
-                # Prior tickets have authored into the proven-free window, and
-                # without this the free claim wins on start address alone and
-                # the atlas reports occupied bytes as available.
                 if held[0] == VERIFIED_FREE and classification != VERIFIED_FREE:
                     winner, loser = incoming, held
                 elif classification == VERIFIED_FREE and held[0] != VERIFIED_FREE:
@@ -343,8 +257,6 @@ def _paint(claims: Sequence[Claim]) -> tuple[list[CoverageSpan], list[Conflict]]
                 owners[cursor:run] = array("H", [incoming_code]) * (run - cursor)
             cursor = run
 
-    # A span boundary can only fall on a claim edge, so only those need checking
-    # instead of all 8,388,608 byte positions.
     edges = sorted({0, IMAGE_SIZE} | {c[0] for c in claims} | {c[1] for c in claims})
     spans: list[CoverageSpan] = []
     start, held_code = 0, owners[0]
@@ -373,7 +285,6 @@ def _coalesced(spans: Sequence[CoverageSpan]) -> tuple[CoverageSpan, ...]:
     return tuple(merged)
 
 
-# --- Layers B, C, D ----------------------------------------------------------
 
 
 def _proof(evidence: str) -> Provenance:
@@ -393,6 +304,7 @@ def _object(identity: str, start: int, size: int, kind: str, confidence: Confide
         return None
 
 
+# A seed with no justified extent is still a located thing: it gets a one-byte marker object and an attribute saying the extent is unknown.
 def _objects(artifacts: dict[str, list[dict]], shop: dict | None) -> tuple[AtlasObject, ...]:
     found: list[AtlasObject] = []
     seen: set[str] = set()
@@ -403,8 +315,6 @@ def _objects(artifacts: dict[str, list[dict]], shop: dict | None) -> tuple[Atlas
             found.append(object)
 
     for row in artifacts["seed_knowledge"]:
-        # A seed with no justified extent is still a located thing; it gets a
-        # one-byte marker object and an attribute saying the extent is unknown.
         size = row["size"] if row["size"] else 1
         add(_object(f"seed:{row['identity']}", row["file_offset"], size, row["kind"],
                     _confidence(row["confidence"]), EVIDENCE["seed"],
@@ -433,8 +343,6 @@ def _objects(artifacts: dict[str, list[dict]], shop: dict | None) -> tuple[Atlas
                     (("entry_count", str(row["entry_count"])),
                      ("stride", str(row["stride"])))))
 
-    # Text runs are clustered by the scanner; one object per cluster, spanning
-    # its first byte to its last, is the useful located unit.
     clusters: dict[int, list[dict]] = {}
     for row in artifacts["scan_text"]:
         clusters.setdefault(row["cluster_id"], []).append(row)
@@ -506,7 +414,6 @@ def _observations(artifacts: dict[str, list[dict]]) -> tuple[Observation, ...]:
     return tuple(found)
 
 
-# --- assembly ----------------------------------------------------------------
 
 
 def build_atlas(directory: Path) -> BuildReport:
@@ -515,8 +422,6 @@ def build_atlas(directory: Path) -> BuildReport:
     shop_path = directory / "shop_dialogue_ownership.json"
     shop = json.loads(shop_path.read_text(encoding="utf-8")) if shop_path.is_file() else None
 
-    # Every scanner-derived claim goes through `_unfree`; only the seed pass,
-    # which proves its one window, may name VERIFIED_FREE.
     claims: list[Claim] = list(_unfree(
         [*_entropy_claims(artifacts["scan_entropy"]),
          *_code_shape_claims(artifacts["scan_code_shape"]),
@@ -537,13 +442,6 @@ def build_atlas(directory: Path) -> BuildReport:
 
 
 def _refuse_canonical_destination(path: Path) -> None:
-    """Refuse an atlas destination that is a copy of the canonical image.
-
-    The atlas is derived evidence and may replace an ordinary existing file, but
-    the canonical image is the one input every guard here protects, and the
-    ``--atlas`` path is caller-supplied, so it can name it. Identity is the
-    content hash, from the shared owner of that rule, never the file name.
-    """
     try:
         refuse_canonical_destination(path, BASE_SHA256)
     except AuthoredImageError as exc:
@@ -551,29 +449,13 @@ def _refuse_canonical_destination(path: Path) -> None:
 
 
 def write_atlas(report: BuildReport, path: Path) -> None:
-    """Write the atlas, replacing any existing file as a whole or not at all.
-
-    N-13's remaining atomic-write half (audit row 13). The atlas used to be written
-    in place, so an interrupted or failed write could leave a truncated table that
-    the next reader would load as if it were complete. It now goes through the same
-    replacement the project documents use: a sibling temporary file, flushed and
-    synced, then moved over the destination. The two files this writes - the atlas
-    and its conflicts sibling - are each replaced atomically; the pair is not one
-    transaction, which is the same limit the project's multi-document writes record.
-    """
+    """The atlas and its conflicts sibling are each replaced atomically, but the pair is not one transaction."""
     _refuse_canonical_destination(path)
     replace_document(path, "".join(report.atlas.to_jsonl_lines()))
     write_conflicts(report, path.with_name("atlas_conflicts.jsonl"))
 
 
 def write_conflicts(report: BuildReport, path: Path) -> None:
-    """Serialize the losing side of every equal-strength disagreement.
-
-    The atlas records one classification per byte, so a conflict's loser has
-    nowhere to live in the coverage layer. Counting them and discarding the
-    detail would make "recorded, not silently resolved" untrue, so the pairs
-    are written beside the atlas for a later ticket to arbitrate.
-    """
     _refuse_canonical_destination(path)
     lines = (
         json.dumps(
@@ -602,12 +484,7 @@ def load_atlas(path: Path) -> Atlas:
 
 
 def parse_offset(text: str) -> tuple[int, str]:
-    """Parse an offset, reporting which address space it was read in.
-
-    A bare number in the GBA ROM window is converted, and the caller is told, so
-    a number is never silently read in the wrong space
-    (docs/ROM_SAFETY.md, "Addresses and offsets").
-    """
+    """A bare number in the GBA ROM window is converted and the caller is told, so a number is never silently read in the wrong address space."""
     value = int(text, 0)
     if value >= GBA_ROM_BASE:
         offset = value - GBA_ROM_BASE

@@ -1,4 +1,3 @@
-"""Small binary-address primitives with explicit GBA ROM semantics."""
 
 from __future__ import annotations
 

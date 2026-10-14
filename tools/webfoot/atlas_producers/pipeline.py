@@ -1,28 +1,3 @@
-"""ROM-ATLAS-001 canonical regeneration: every artifact, one deterministic order.
-
-This is the only chain claimed to be reproducible. Run it against an EMPTY output
-directory; no stage reads an artifact it did not itself produce in this run, and
-none reads its own previous output.
-
-The order below is fixed by real data dependencies, not by chasing the historical
-run's timestamps:
-
-1. `seed`               — reads documents only, writes `seed_knowledge.jsonl`.
-2. `graphics_extents`   — needs only the ROM and the profile catalog.
-3. `scan`               — needs the seed rows (for `in_claimed_region`); runs all
-                          six passes plus the decoded-text index.
-4. `code_functions.build_wave2` — needs the seed rows.
-5. `code_functions.build_wave4` — needs wave 2's function set for its delta rule.
-6. `regions`            — needs both traversals' reach records.
-7. `code_coverage_wave4.json` — needs both traversals.
-
-`atlas_build.build_atlas` then assembles the result; `run` does that last unless
-`assemble=False`.
-
-Steps 2 and 3 are independent of each other, as are 1 and 2 apart from step 3's
-seed dependency; the order here is the documented canonical one, chosen so each
-stage's inputs exist when it starts and nothing else.
-"""
 
 from __future__ import annotations
 
@@ -31,7 +6,6 @@ from pathlib import Path
 
 from . import code_functions, graphics_extents, regions, scan, seed
 
-#: Relative to the repository root, for the default config catalog.
 DEFAULT_CONFIG = Path("config") / "roms.yaml"
 
 
@@ -39,13 +13,10 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+# Run against an empty output directory: no stage reads an artifact it did not itself produce in this run.
 def run(rom_path: Path, out_dir: Path, *, config_path: Path | None = None,
         assemble: bool = True, atlas_path: Path | None = None) -> dict:
-    """Regenerate every atlas input from `rom_path` into `out_dir`.
-
-    Returns a summary dict. The ROM is opened read-only and its SHA-256 is
-    checked before and after the whole run.
-    """
+    """Regenerates every atlas input from rom_path into out_dir and checks the ROM SHA-256 before and after, so a run that changes the image is refused."""
     rom_path = Path(rom_path)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

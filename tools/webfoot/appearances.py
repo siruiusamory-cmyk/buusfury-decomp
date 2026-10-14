@@ -1,38 +1,13 @@
-"""The verified character appearance-definition table and its reference graph.
-
-APPEARANCE-AUTHORING-GATE-001. The engine addresses a fixed 232-record,
-`0x10`-stride table whose only bound is three compiled `cmp rN,#0xE8` loop
-bounds. There is no count word and no terminator, and the byte immediately after
-the extent already begins a literal-named structure, so the table can neither be
-grown in place nor told how long it is from its own bytes.
-
-What this module owns is the table's identity and its VERIFIED inbound surface:
-
-* the profile declares the table (address, count, stride), so an extent is a
-  project fact rather than a literal in a consuming module;
-* the five literal-pool words that name it are published as
-  `CONFIRMED_REFERENCE` / `ABSOLUTE_ROM_U32_LE`, each re-checked against the
-  image before it is published, so a build can refuse rather than repoint a word
-  that no longer names the table;
-* the three compiled count bounds are named here as the code offsets they are.
-
-The census behind the constants below is
-`docs/research/APPEARANCE_TABLE_GROWTH.md`. They are a census result for one
-image, which is why every consumer re-checks the bytes it is about to change.
-"""
 
 from __future__ import annotations
 
 import struct
 from dataclasses import dataclass, replace
 
-#: Bytes per record, as the engine's own `index << 4` states it.
+# Bytes per record, as the engine's own left shift by four states it.
 APPEARANCE_RECORD_SIZE = 0x10
 
-#: File offsets of the five literal-pool words that hold the table address.
-#: Measured by decoding every PC-relative literal load over the whole image and
-#: reading each pool word, then confirmed by a raw four-byte search at every byte
-#: offset: exactly these five words equal the canonical address.
+# Measured by decoding every PC-relative literal load over the whole image and reading each pool word, then confirmed by a raw four-byte search at every byte offset.
 APPEARANCE_TABLE_REFERENCE_OFFSETS: tuple[int, ...] = (
     0x00025310,
     0x000256B8,
@@ -41,23 +16,14 @@ APPEARANCE_TABLE_REFERENCE_OFFSETS: tuple[int, ...] = (
     0x000279D8,
 )
 
-#: File offsets of the three `cmp rN,#0xE8` halfwords that bound the record
-#: index. Each is the low byte of a Thumb `cmp` immediate, so the count is
-#: patched in place rather than through a table.
+# Each is the low byte of a Thumb compare immediate, so the count is patched in place rather than through a table.
 APPEARANCE_COUNT_OFFSETS: tuple[int, ...] = (0x00024F92, 0x00027998, 0x000279CC)
 
-#: The canonical count's own encoding in those halfwords.
 APPEARANCE_CANONICAL_COUNT = 0xE8
 
-#: The largest count a Thumb `cmp rN,#imm8` can state. Beyond this the bound
-#: would need code widening, so a build refuses instead. This is the ENCODING
-#: limit and it is NOT the limit a build may use: see the flag array below.
+# The encoding limit a Thumb compare immediate can state, and NOT the limit a build may use: that is the flag ceiling below.
 APPEARANCE_COUNT_CEILING = 0xFF
 
-#: The engine keeps one "seen" bit per record in the block it holds at
-#: `[reader+8]`. The bit for record `i` is bit `i & 7` of the byte at
-#: `block + 0xC5 + (i >> 3)`, so the 232 canonical records fill bytes
-#: `block+0xC5` through `block+0xE1` exactly: 29 bytes, 232 bits.
 APPEARANCE_FLAG_ARRAY_BYTES = 29
 
 #: The block initializer at file offset 0x00004838 zeroes a WORD at `block+0xE4`
@@ -66,37 +32,13 @@ APPEARANCE_FLAG_ARRAY_BYTES = 29
 #: established owner.
 APPEARANCE_BLOCK_FIRST_OWNED_WORD = 0xE4
 
-#: The largest count a build may state, from the flag array rather than from the
-#: encoding. Record indices at or above the canonical count write past the array:
-#: index 232 writes `block+0xE2`, and eight appended records all land in that one
-#: byte. Index 240 would write `block+0xE3`, which has no established owner, and
-#: index 248 would overwrite the word the initializer zeroes at `block+0xE4`. So
-#: eight is the largest number of appended records whose flag storage is confined
-#: to the single byte immediately after the array. INFERRED, not confirmed: no
-#: writer to `block+0xE2` was found, which is the same evidence that leaves
-#: `block+0xE3` unestablished, so this bound rests on the initializer zeroing a
-#: WORD at `block+0xE4` and on nothing else. Confirming it means showing that
-#: neither byte is read by any consumer of the block.
 APPEARANCE_COUNT_FLAG_CEILING = APPEARANCE_CANONICAL_COUNT + 8
 
-#: The roster object the engine builds from the seen-flag array, and the one
-#: structure whose compiled offsets have to move when the count grows. It is
-#: heap-allocated (the builder's single caller passes a null argument) and its
-#: layout is `0x40 + 12 * count`: `+0x14` holds `4 * count` bytes of index
-#: entries, then the display-list count, then `8 * count` bytes of display
-#: entries, then a `0x28`-byte tail.
 ROSTER_CANONICAL_COUNT = APPEARANCE_CANONICAL_COUNT
 
-#: The count this build relocates the roster object for. Eight records is what
-#: the flag array admits, so 240 is the largest count that can be built at all,
-#: and sizing every build for it needs no per-count encoding: the additions all
-#: land inside one `movs`/`lsls` pair whatever the authored count is.
-#: The flag array's ceiling IS the largest buildable count, so the roster is sized
-#: for exactly that.
+# The flag array's ceiling is the largest count that can be built at all, and the roster object is sized for exactly that so one layout serves every authored count.
 ROSTER_SUPPORTED_COUNT = APPEARANCE_COUNT_FLAG_CEILING
 
-#: The canonical object size and the supported one, with the three offsets that
-#: follow from them.
 ROSTER_CANONICAL_OBJECT_SIZE = 0x40 + 12 * ROSTER_CANONICAL_COUNT
 ROSTER_OBJECT_SIZE = 0x40 + 12 * ROSTER_SUPPORTED_COUNT
 ROSTER_CANONICAL_SECOND_COUNT = 0x14 + 4 * ROSTER_CANONICAL_COUNT
@@ -106,9 +48,6 @@ ROSTER_TAIL_A = 0x18 + 12 * ROSTER_SUPPORTED_COUNT
 ROSTER_CANONICAL_TAIL_B = ROSTER_CANONICAL_TAIL_A + 8
 ROSTER_TAIL_B = ROSTER_TAIL_A + 8
 
-#: One compiled statement of the roster layout that has to change with the count.
-#: `expected` is what the canonical image holds, checked before anything is
-#: written, and `replacement` is what states the grown offset.
 @dataclass(frozen=True)
 class RosterPatchSite:
     offset: int
@@ -126,21 +65,14 @@ class RosterPatchSite:
             )
 
 
+# Eight groups, not five, because in three of them the compiler put other instructions between the move and its shift, and requiring the pair to be adjacent would leave three functions addressing the canonical tail.
 def _roster_sites() -> tuple[RosterPatchSite, ...]:
-    """The twenty-nine halfwords and immediate bytes the roster layout lives in.
-
-    Four groups, each an idiom the engine already uses: the object size, the
-    display-list count's offset, and the two tail bases. The tail bases are
-    `movs` plus `lsls` pairs, so both halves are stated.
-    """
     sites = [RosterPatchSite(0x00024F42, b"\x59", b"\x5c", "object size")]
 
-    # The display-list count's offset: 0xED << 2 becomes 0xF5 << 2.
     for offset in (0x00024F60, 0x00025112, 0x0002541C, 0x00025514):
         sites.append(RosterPatchSite(offset, b"\xed", b"\xf5",
                                      "display-list count offset"))
 
-    # The first tail base: 0x2B << 6 becomes 0x59 << 5, same object address.
     for movs, shift, rd in ((0x00024FD6, 0x00024FD8, 0),
                             (0x0002502C, 0x0002502E, 0),
                             (0x00025106, 0x00025108, 1),
@@ -151,11 +83,6 @@ def _roster_sites() -> tuple[RosterPatchSite, ...]:
             ((5 << 6) | (rd << 3) | rd).to_bytes(2, "little"),
             "tail base A shift"))
 
-    # The second tail base: 0x0B << 8 becomes 0x5B << 5, same object address.
-    # Eight, not five: in three of them the compiler put other instructions
-    # between the `movs` and its `lsls`, so a scan that requires the pair to be
-    # adjacent misses them and leaves three functions addressing the canonical
-    # tail inside what the grown layout uses for display entries.
     for movs, shift, rd in ((0x00024FE0, 0x00024FE2, 0),
                             (0x0002500E, 0x00025010, 0),
                             (0x0002505A, 0x00025066, 0),
@@ -172,33 +99,24 @@ def _roster_sites() -> tuple[RosterPatchSite, ...]:
     return tuple(sites)
 
 
-#: Every compiled statement of the roster layout, in file-offset order.
 ROSTER_PATCH_SITES: tuple[RosterPatchSite, ...] = _roster_sites()
 
-#: The record-index bound enforced by the engine's `blt` after each `cmp`.
+# The record-index bound enforced by the engine's branch after each compare.
 APPEARANCE_COUNT_OFFSET_WIDTH = 1
 
-#: Field offsets. Names are positions, and the widths are the widths the
-#: engine's own loads state: two halfword loads at `+0x00`/`+0x02` and three
-#: word loads at `+0x04`/`+0x08`/`+0x0C`.
+# Field offsets, whose widths are the ones the engine's own loads state: two halfword loads at +0x00 and +0x02 and three word loads at +0x04, +0x08 and +0x0C.
 FIELD_TEXT_INDEX = 0x00
 FIELD_DESCRIPTION_INDEX = 0x02
 FIELD_SPRITE_ID = 0x04
 FIELD_PORTRAIT_SLOT = 0x08
 FIELD_STAT_INDEX = 0x0C
 
-#: The one value of `+0x08` this write path authors: 98 of the 232 canonical
-#: records carry it, and every non-zero value names one of the 155 portrait
-#: slots, which no shipped surface authors. The field is written, not omitted,
-#: so the new record is a complete record rather than a truncated one.
+# The field is written rather than omitted, so an authored record is complete rather than truncated.
 DEFAULT_PORTRAIT_SLOT = 0
 
-#: The one value of `+0x0C` this write path authors. It is negative, which the
-#: engine's own `blt` reads as "no stat record"; 88 of the 232 canonical records
-#: carry a negative index, so the value is corpus-legal rather than invented.
+# The value is negative, which the engine's own branch reads as no stat record, and it is corpus-legal rather than invented.
 DEFAULT_STAT_INDEX = -1
 
-#: What every anchor and reference this domain publishes cites as its ground.
 EVIDENCE = "APPEARANCE-AUTHORING-GATE-001; docs/research/APPEARANCE_TABLE_GROWTH.md"
 
 
@@ -208,7 +126,6 @@ class AppearanceError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class AppearanceRecord:
-    """One 16-byte appearance definition, in field order."""
 
     text_index: int
     description_index: int
@@ -244,7 +161,6 @@ def _require_u16(value: object, what: str) -> None:
         raise AppearanceError(f"{what} {value!r} is not an unsigned 16-bit value")
 
 
-# --- the declared table ------------------------------------------------------
 
 
 def table_identity(profile) -> str:
@@ -274,7 +190,7 @@ def record_count(profile) -> int:
 
 
 def read_records(image: bytes, profile) -> tuple[AppearanceRecord, ...]:
-    """Every record the profile declares, refusing a short or overrun table."""
+    """Every record the profile declares, refusing a short or overrun table, because no count word or terminator is stored and the extent is the profile's declaration, not a number the image carries."""
     layout = declared(profile)
     if layout.record_size != APPEARANCE_RECORD_SIZE:
         raise AppearanceError(
@@ -301,22 +217,10 @@ def canonical_table(image: bytes, profile) -> bytes:
     return image[offset:offset + record_count(profile) * APPEARANCE_RECORD_SIZE]
 
 
-# --- the published reference graph -------------------------------------------
 
 
 def reference_document(profile, image: bytes):
-    """The table's anchor and its five verified inbound words.
-
-    The words are `CONFIRMED_REFERENCE` because each was measured twice: the
-    consuming instruction was decoded and the pool word it loads was read, and
-    the value is re-checked against this image here. A word that no longer holds
-    the table address is a refusal rather than a repoint, because the constant is
-    a census result for one image and not a guarantee about another.
-
-    The anchor's `relocatable` flag is decided by the shared contract
-    (`layout.relocation_eligible`), not asserted: a kind whose inbound surface a
-    ticket has not proven the graph expresses stays fixed.
-    """
+    """A word that no longer holds the table address is a refusal rather than a repoint, and the anchor's relocatable flag comes from layout.relocation_eligible rather than being asserted."""
     from .binary import FileOffset
     from .document import RomDocument
     from .layout import (Anchor, AnchorId, Provenance, Reference, ReferenceClass,
@@ -360,19 +264,12 @@ def reference_document(profile, image: bytes):
                                   references=tuple(references))
 
 
-#: The anchor kind this domain publishes. Listed in
-#: `layout.RELOCATION_ELIGIBLE_KINDS`, because the five-word inbound surface
-#: above is a measured, closed census rather than a scan result.
+# Listed in layout.RELOCATION_ELIGIBLE_KINDS because the five-word inbound surface is a measured, closed census rather than a scan result.
 APPEARANCE_TABLE_KIND = "appearance_record_table"
 
 
 def name_vocabulary(image: bytes, profile) -> tuple[int, ...]:
-    """The distinct text indices the canonical records use, in first-use order.
-
-    This is the vocabulary an authored definition may draw its on-screen name
-    from, because creating a new text-table id is not shipped. Ordering by first
-    use rather than numerically keeps the retail order a reader recognises.
-    """
+    """No shipped surface creates a new text-table id, so these indices are the whole vocabulary an authored name may draw from, in first-use order."""
     seen: dict[int, None] = {}
     for record in read_records(image, profile):
         seen.setdefault(record.text_index, None)
@@ -381,12 +278,7 @@ def name_vocabulary(image: bytes, profile) -> tuple[int, ...]:
 
 def sprite_vocabulary(image: bytes, profile, *, extra: int | None = None
                       ) -> tuple[int, ...]:
-    """The sprite ids the canonical records select, ascending.
-
-    The engine's accessor also accepts the id an authored actor-sprite identity
-    takes, which is not in any canonical record, so a caller that has one passes
-    it as ``extra`` rather than this function inventing it.
-    """
+    """A caller that holds an authored actor-sprite id passes it as extra rather than this function inventing one, and the canonical ids come first in ascending order."""
     ids = {record.sprite_id for record in read_records(image, profile)}
     if extra is not None:
         ids.add(extra)

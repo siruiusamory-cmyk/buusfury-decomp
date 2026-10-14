@@ -1,12 +1,4 @@
-"""One evidence-backed authored Buu script effect; not a native-handler census.
-
-The text-table bound this effect's `text` argument is checked against is the
-profile's own declared `text_strings.count`, read by the consumers that hold a
-loaded text domain (`scene.visible_text_options`, the specialized placement
-editor). It is deliberately NOT restated here: a second copy of a per-game count
-inside a contract is exactly the duplicate-authority defect CQA-15 closed.
-"""
-
+"""One evidence-backed authored Buu script effect, whose text bound is the profile's declared text_strings.count and is never restated here."""
 
 SCRIPT_EFFECTS = {
     'buus_fury_usa_rev0_01c1707f': {

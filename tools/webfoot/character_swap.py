@@ -1,47 +1,4 @@
-"""Swap a character's sprites or portrait, or rewrite spoken lines, in a friend image.
-
-ONE COMMAND, ONE SPEC. This is the invocable front end for the friend chain's two edits, so a
-later swap does not need a new script. Both engines are pure (bytes in, bytes out); this module
-owns the file system, which is where the two rules that must not be duplicated live:
-
-* the source is an input on every path and an output on none, checked by file identity before
-  anything is read, so a hard link of the image cannot be written through;
-* both destinations answer the shared R3 protected-input policy, twice: once before the image is
-  read and again at the staged write, so a protected destination is refused before a directory or
-  a `.partial` file exists;
-* an image and a report are staged into sibling temporary files and renamed into place, so a
-  reader never sees a partial write.
-
-SPEC. A JSON document, relative to which any asset name resolves against the spec file's own
-directory::
-
-    {
-      "operations": [
-        {"kind": "sprite", "sprite_id": 41,
-         "slots": [{"slot": 0, "sheet": "stand.png", "frames": 2},
-                   {"slot": 1, "sheet": "walk.png", "frames": 4}],
-         "frame": [16, 32], "cell": 32, "crop_x": 8,
-         "anchor": [0, -24], "composition_size": 512},
-        {"kind": "portrait", "slot": 17, "png": "portrait.png", "side": 64},
-        {"kind": "dialogue", "selector": 2,
-         "lines": [{"speaker": "tulma",
-                    "old": "the wording the record holds now",
-                    "new": "the wording to write",
-                    "record": [60182, 112]}]}
-      ]
-    }
-
-``frame``, ``cell``, ``crop_x``, ``anchor`` and ``composition_size`` are optional and default to
-the geometry every donor measured so far uses. A dialogue ``record`` is optional: the line is
-found by its wording, and that wording must match exactly one record, or the run is refused.
-The ``speaker`` is the caller's claim about who says the line, recorded in the report and
-labelled as a claim, never inferred from the wording, a label or a position.
-
-ORDER. Every sprite and portrait operation is applied in one pass; dialogue operations are
-applied afterwards in spec order. Each pass proves its own diff confinement, so disjoint
-regions make the final bytes independent of that order.
-"""
-
+"""Swap a character's sprites or portrait, or rewrite spoken lines, in a friend image."""
 from __future__ import annotations
 
 import argparse
@@ -69,13 +26,7 @@ def sha256(data: bytes) -> str:
 
 
 def write_staged(path: Path, data: bytes, source: Path) -> None:
-    """Write through a sibling temporary file, then rename, so a partial is never visible.
-
-    `refuse_rom_destination` is the first statement, because this is the last code that runs
-    before the destination directory and its `.partial` file are created: a protected
-    destination is refused before either exists. OWNER R3, the same policy every other writer
-    answers, re-applied here rather than assumed from the caller's earlier check.
-    """
+    """Write through a sibling temporary file, then rename, so a partial is never visible."""
     refuse_rom_destination(source, path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + ".",
@@ -90,8 +41,7 @@ def write_staged(path: Path, data: bytes, source: Path) -> None:
     staged.replace(path)
 
 
-#: Keys a spec may carry, per operation kind. An unknown key is refused rather than ignored,
-#: because a typo like "cropx" would otherwise silently write the wrong window.
+# An unknown key is refused rather than ignored, because a typo like "cropx" would otherwise silently write the wrong window.
 _SPRITE_KEYS = {"kind", "sprite_id", "slots", "frame", "cell", "crop_x", "anchor",
                 "composition_size"}
 _PORTRAIT_KEYS = {"kind", "slot", "png", "side"}
@@ -118,19 +68,12 @@ def _require(entry: dict[str, Any], key: str, where: str) -> Any:
 
 
 def _integer(value: Any, where: str) -> int:
-    """A real integer. A bool is not one, and a float is not truncated into one."""
     if isinstance(value, bool) or not isinstance(value, int):
         raise SwapSpecError(f"{where} must be an integer, not {value!r}")
     return value
 
 
 def _text(value: Any, where: str) -> str:
-    """A real string, required.
-
-    Coercing with ``str()`` is how a JSON ``null`` becomes the literal line "None" and then
-    passes its own read-back, because the read-back compares the sentence the engine was given.
-    Refusing here is the only place that can be caught.
-    """
     if not isinstance(value, str):
         raise SwapSpecError(
             f"{where} must be a string, not {value!r}; a null or a number here would be written "
@@ -274,16 +217,7 @@ def apply_spec(image: bytes, spec_path: Path) -> tuple[bytes, dict]:
 def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
                   report_path: Path | None, transform, *,
                   error: type[ValueError] = SwapSpecError) -> dict:
-    """The guard, the read, the caller's transform, the staged write, and the source re-hash.
-
-    One implementation of the two rules that must not be duplicated: the source-alias refusal
-    and the staged write. A caller supplies its own transform (bytes to bytes plus a report)
-    and its own error type, so a preset refuses in the vocabulary its callers already match.
-
-    Both destinations answer OWNER R3's protected-input policy here, before the image is read
-    and before the transform runs, so a refusal costs nothing and creates nothing. The publish
-    boundary re-checks in `write_staged`, which is where the destination directory is made.
-    """
+    """The one implementation of the source-alias refusal and the staged write, applied before any read so a refusal creates nothing."""
     ensure_not_source_alias(image_path, out_path)
     if report_path is not None:
         ensure_not_source_alias(image_path, report_path)
@@ -304,8 +238,6 @@ def guarded_apply(image_path: Path, expect_sha256: str, out_path: Path,
     try:
         out, report = transform(image)
     except OSError as exc:
-        # A missing sheet or portrait is an operator error, not a crash: report it as a refusal
-        # so the message names the file rather than a traceback.
         raise error(f"a file the swap needs could not be read: {exc}") from exc
     report["image"] = {
         "path": str(image_path), "sha256": digest, "size": len(image),

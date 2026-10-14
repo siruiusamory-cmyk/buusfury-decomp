@@ -1,26 +1,3 @@
-"""The supported product path for a project's authored appearance definitions.
-
-APPEARANCE-AUTHORING-GATE-001. `appearances/appearances.toml` is created,
-replaced and removed here and nowhere else, and this module owns the plan that
-turns one authored definition into engine bytes.
-
-**Why the whole table moves.** The engine addresses record `i` as
-`table + 16 * i` with no bound check, and the canonical extent ends exactly where
-a literal-named descriptor block begins, so there is no room for a 233rd record
-where the table is. The plan therefore re-emits the table in expanded storage
-with the authored records appended, repoints the five literal-pool words that
-name it and patches the three compiled count bounds. The canonical records are
-copied verbatim rather than re-encoded, so every existing definition keeps its
-own bytes.
-
-**What this does not author.** `+0x08` (a portrait slot) and `+0x0C` (a stat
-record index) stay at the two corpus-legal defaults this domain states, because
-no shipped surface authors either target table and neither field is needed for
-an identity to be reachable. `+0x02` is authored as `+0x00 + 1`, which holds on
-232 of 232 canonical records; that is a data invariant of the corpus rather than
-an engine rule, and it is stated as such in
-`docs/research/APPEARANCE_TABLE_GROWTH.md`.
-"""
 
 from __future__ import annotations
 
@@ -37,21 +14,16 @@ from .layout import (AnchorId, OwnedRegion, ReferenceClass, ReferenceEncoding,
                      RomRange)
 from .write import ByteChange, ReferenceRewrite, RelocationProvenance
 
-#: This domain's name in every provenance record it writes.
 DOMAIN = "appearance_authoring"
 
-#: The semantic owner of every byte this plan writes.
 TABLE_OWNER = "appearance_authoring:table"
 
-#: The alignment the table's own record stride implies.
 ALIGNMENT = 4
 
-#: The lowest logical sprite id the engine's accessor resolves from the character
-#: registry. Ids below it are party-slot aliases and take a different path.
+# The lowest logical sprite id the engine's accessor resolves from the character registry, since ids below it are party-slot aliases and take a different path.
 SPRITE_ID_FLOOR = 10
 
-#: The sprite id the engine remaps before the search compares it, so no
-#: record bound to it is ever returned.
+# The sprite id the engine remaps before its search compares anything, so no record bound to it is ever returned.
 UNMATCHABLE_SPRITE_ID = 149
 
 
@@ -65,7 +37,6 @@ class AppearanceAuthoringProfileError(AppearanceAuthoringError, CapabilityError)
 
 @dataclass(frozen=True, slots=True)
 class AppearanceMaterialization:
-    """What the plan placed, and what the build may write."""
 
     record_count: int
     table_range: RomRange
@@ -77,7 +48,6 @@ class AppearanceMaterialization:
     relocations: tuple[RelocationProvenance, ...]
 
 
-# --- the document's values, resolved against the image -----------------------
 
 
 def _require_declared(identification, profile, capability: Capability, subsystem: str):
@@ -113,8 +83,8 @@ def _sprite_ceiling(profile, authored_sprite_id: int | None) -> int:
     return ceiling
 
 
+# One statement of the count bound, so the two entry points cannot drift.
 def _refuse_over_the_flag_ceiling(added, count) -> None:
-    """One statement of the count bound, so the two entry points cannot drift."""
     if count > ap.APPEARANCE_COUNT_FLAG_CEILING:
         raise AppearanceAuthoringError(
             f"{len(added)} new appearance definition(s) would raise the record count "
@@ -126,27 +96,15 @@ def _refuse_over_the_flag_ceiling(added, count) -> None:
 def authorable_sprite_ids(image: bytes, profile, *,
                           authored_sprite_id: int | None = None) -> tuple[int, ...]:
     """The sprite ids a new appearance definition may bind, ascending.
-
     Every id a canonical record selects is excluded, because binding one redirects
     an existing object's resolution rather than extending the table. That is the
     engine's two-loop search at `0x08027948`, measured:
-
     * loop 1, `0x08027960`-`0x0802799A`, returns the first record whose sprite
       matches AND whose `+0x0C` is negative, skipping every non-negative one;
     * loop 2, `0x0802799C`-`0x080279CE`, runs only when loop 1 found nothing, and
       when the second argument is zero it skips the stat test altogether
       (`0x080279A6`-`0x080279A8`) and returns the first record whose sprite matches
       whatever its sign.
-
-    A retail object carrying sprite 209 therefore resolves through loop 2 to
-    canonical record 42. An appended record carries `+0x0C = -1`, so loop 1
-    returns it *before* loop 2 is reached, and the object's resolution moves from
-    the retail record to the authored one. Admitting a canonically-selected id is
-    thus a takeover, not a free extension. It is refused by default and permitted
-    only when that definition opts in, which is `new_records`' rule; this function
-    lists the ids no canonical record selects. The authored actor-sprite identity is
-    admissible when the same project defines it, since no canonical record selects
-    it.
     """
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
     used = {record.sprite_id for record in ap.read_records(image, profile)}
@@ -166,18 +124,9 @@ def authorable_sprite_ids(image: bytes, profile, *,
 def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
                 canonical=()) -> tuple[ap.AppearanceRecord, ...]:
     """The records the document asks for, each checked against the image's own
-    sibling tables before anything is planned.
-
-    The checks are the whole admissibility rule: a text pair that resolves inside
-    the declared text table, a sprite id the accessor resolves, and a sprite id that
-    is either selected by no canonical record or deliberately taken over by this
-    definition's own ``override``. A value outside any of them is refused rather
-    than written and left for the engine to misread.
-
     The sprite-id rule is not cosmetic. The engine's search at 0x08027948 has two
     loops and the first one runs first, and what each returns depends on the
     caller's second argument:
-
     * with the second argument ZERO - the caller at 0x08010312 - loop 1 returns the
       first record whose sprite matches AND whose ``+0x0C`` is negative
       (``0x0802798E``-``0x08027992``); loop 2 runs only if loop 1 found nothing and
@@ -190,13 +139,6 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
       stat-record pointer to equal that argument (``0x08027978``-``0x08027988`` and
       ``0x080279AA``-``0x080279BA``), so an appended record is never returned on
       that path at all.
-
-    Two consequences the rule follows. An id a canonical record with a NEGATIVE stat
-    selects can never be taken over, because that record is returned by loop 1
-    before the appended one, so it is refused outright, on the same grounds as id
-    149. An id whose canonical records are all non-negative can be taken over, but
-    only on the zero-argument path, which is why the opt-in exists and why the
-    surface says which lookups it redirects.
     """
     text_count = _text_count(profile)
     ceiling = _sprite_ceiling(profile, authored_sprite_id)
@@ -263,17 +205,10 @@ def new_records(profile, definitions, *, authored_sprite_id: int | None = None,
     return tuple(records)
 
 
-# --- the plan ----------------------------------------------------------------
 
 
+# Every check is a way the relocation contract could be false for this image, and each is a refusal rather than a workaround, because moving a table whose anchor is not published relocatable would strand whatever really reaches it.
 def _table(image: bytes, profile):
-    """The published anchor, its verified inbound words, and a refusal otherwise.
-
-    Every check here is a way the relocation contract could be false for this
-    image, and each is a refusal rather than a workaround: a table whose anchor is
-    not published relocatable has an inbound surface the reference graph does not
-    fully express, and moving it would strand whatever really reaches it.
-    """
     document = ap.reference_document(profile, image)
     anchor = document.anchor(AnchorId(ap.table_identity(profile)))
     expected_offset = ap.table_offset(profile, len(image))
@@ -319,7 +254,6 @@ def _table(image: bytes, profile):
 
 
 def _occupied(document, reserved: tuple[OwnedRegion, ...]) -> tuple[OwnedRegion, ...]:
-    """Everything the allocator must place clear of, in the established form."""
     occupied = [OwnedRegion(anchor.range, anchor.owner) for anchor in document.anchors]
     for reference in document.references:
         if not any(anchor.range.contains(reference.source)
@@ -341,24 +275,8 @@ def _expansion(profile):
     return expansion
 
 
+# The builder sizes one object as four bytes of index entries per record, then the display-list count, then eight bytes of display entries per record and a 0x28 tail, so a count raise that leaves the object canonical would let the builder write an index entry over the display-list count.
 def _roster_changes(image: bytes, count: int) -> list[ByteChange]:
-    """The roster object's grown layout, stated in the twenty-three sites that hold it.
-
-    The engine's roster builder sizes one heap object for the count it can scan:
-    `4 * count` bytes of index entries, then the display-list count, then
-    `8 * count` bytes of display entries, then a `0x28`-byte tail. Raising the
-    count from the canonical 232 therefore moves three things past where they were
-    - the end of the index array, the display-list count, and both tail bases - and
-    the patch that raises the count is the same one that lets the builder reach the
-    new index. Leaving the object at its canonical size would let the builder write
-    an entry over the display-list count, and the display loop would then read that
-    clobbered word as its own count and walk off the object.
-
-    Every site is checked against the canonical bytes before anything is written,
-    which is what makes the patch safe on an image that is not the one the census
-    was taken from. The object is sized for the supported maximum rather than the
-    authored count, so one statement of the layout serves every build.
-    """
     if count > ap.ROSTER_SUPPORTED_COUNT:
         raise AppearanceAuthoringError(
             f"a {count}-record table needs roster storage for {count} entries and "
@@ -384,14 +302,8 @@ def _roster_changes(image: bytes, count: int) -> list[ByteChange]:
     return changes
 
 
+# The count is code rather than a reference field, so it cannot be expressed as a relocation rewrite.
 def _count_changes(image: bytes, count: int) -> list[ByteChange]:
-    """The three compiled count bounds, patched or refused.
-
-    The count is CODE rather than a reference field, so it cannot be expressed as
-    a relocation rewrite. Each halfword is checked to hold the canonical count
-    first, which is what makes the patch safe on an image that is not the one the
-    census was taken from.
-    """
     changes = []
     for offset in ap.APPEARANCE_COUNT_OFFSETS:
         old = image[offset:offset + ap.APPEARANCE_COUNT_OFFSET_WIDTH]
@@ -416,13 +328,7 @@ def materialize_authored_appearances(
     authored_sprite_id: int | None = None,
     reserved: tuple[OwnedRegion, ...] = (),
 ) -> AppearanceMaterialization:
-    """Compile the project's new appearance definitions into attributed changes.
-
-    ``reserved`` is the build-scoped reservation set every allocating domain
-    shares; the span this domain places is returned for the domains after it.
-    ``authored_sprite_id`` is the engine id an authored actor-sprite identity in
-    the same project will take, when there is one, so an appearance may bind it.
-    """
+    """reserved is the build-scoped reservation set every allocating domain shares, the span this domain places is returned for the domains after it, and authored_sprite_id is the engine id an authored actor-sprite identity in the same project will take."""
     _require_declared(identification, profile, Capability.APPEARANCES,
                       "authored appearance definitions")
     _require_declared(identification, profile, Capability.TEXT_STRINGS,
@@ -454,10 +360,6 @@ def materialize_authored_appearances(
     table_at = allocation.range.start.value
     table_address = FileOffset(table_at).to_gba_address(expansion.output_size).raw
 
-    # The canonical bytes verbatim, then the authored records. Re-encoding the
-    # canonical records would be a second implementation of the record layout that
-    # could drift from the reader, and the requirement is that an untouched record
-    # keeps its bytes.
     block = ap.canonical_table(image, profile) + b"".join(
         record.encode() for record in added)
     changes = [ByteChange(
@@ -508,7 +410,6 @@ def materialize_authored_appearances(
     )
 
 
-# --- the project surface -----------------------------------------------------
 
 
 def authored_appearances(project_dir: str | Path):
@@ -526,14 +427,7 @@ def validate_authored_appearances(
     *,
     authored_sprite_id: int | None = None,
 ) -> None:
-    """The field-level half of the plan, for a surface that must answer quickly.
-
-    Every refusal that precedes allocation runs here: the capability gates, the
-    text-table and sprite-id admissibility of each definition, the count ceiling
-    and the published reference census. A draft that returns from this has no
-    field the build would refuse on sight. The allocation itself, and therefore
-    the deterministic address, remains the build's.
-    """
+    """The field-level half of the plan, for a surface that must answer quickly."""
     _require_declared(identification, profile, Capability.APPEARANCES,
                       "authored appearance definitions")
     _require_declared(identification, profile, Capability.TEXT_STRINGS,
@@ -549,11 +443,7 @@ def validate_authored_appearances(
 
 
 def apply_authored_appearances(project_dir: str | Path, appearances) -> bool:
-    """Write the authored-appearance document, or remove it when it is empty.
-
-    The ONE write path for this document. Returns whether the project changed, so a
-    surface can leave the project revision and the build state alone on a no-op.
-    """
+    """The one write path for the document, returning whether the project changed so a surface leaves the project revision alone on a no-op."""
     from .project.model import read_project, write_authored_appearances
 
     committed = read_project(project_dir).appearances

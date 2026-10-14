@@ -1,5 +1,4 @@
-"""Verified immutable ROM document and reference graph. No filesystem access."""
-
+"""Verified immutable ROM document and reference graph with no filesystem access."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -101,8 +100,6 @@ class RomDocument:
         for ref in refs:
             self._check_provenance(ref.provenance)
             ref.source_range.validate(len(self.image))
-            # Only the anchor containing the start and its successor can
-            # intersect a reference field; anchors are already disjoint.
             at = max(0, bisect_right(anchor_starts, ref.source.value) - 1)
             for anchor in ordered_anchors[at:at + 2]:
                 if ref.source_range.overlaps(anchor.range) and not (
@@ -130,11 +127,6 @@ class RomDocument:
                 "retired": [{"range": r.range.to_json(), "owner": r.owner} for r in self.retired]}
 
     def to_compact_json(self) -> dict:
-        """Deterministic project snapshot with shared strings/provenance interned.
-
-        This is the same reference graph, stored as explicitly labelled tables.
-        Integer table indices are serialization references, not public identities.
-        """
         expanded = self.to_json()
         strings = set()
         provenances = {}
@@ -171,11 +163,7 @@ class RomDocument:
 
 
 def scan_pointer_candidates(document: RomDocument, scan_range: RomRange, *, stride: int = 4) -> tuple[Reference, ...]:
-    """Bounded absolute-u32 numeric scan only; known source fields are excluded.
-
-    This is not complete reference discovery. It confers no relocation authority.
-    Callers must add returned candidates to the document to apply the safety gate.
-    """
+    """Not complete reference discovery, and it confers no relocation authority: a caller must add the candidates to the document to apply the safety gate."""
     document.validate()
     scan_range.validate(len(document.image))
     if type(stride) is not int or stride <= 0:

@@ -1,9 +1,3 @@
-"""Shared GBA ROM address model and Thumb decoders for static research.
-
-All scanners must use these helpers instead of duplicating arithmetic.
-The historical scanner bug was Python precedence: ``h & 0xF800 == 0xF000``
-parses as ``h & (0xF800 == 0xF000)``. Every bit test here is parenthesized.
-"""
 
 from __future__ import annotations
 
@@ -30,7 +24,6 @@ def offset_to_addr(offset: int, rom_size: int) -> int:
 
 
 class RomReader:
-    """Bounds-checked little-endian reader keyed by GBA ROM virtual addresses."""
 
     def __init__(self, data: bytes) -> None:
         self.data = data
@@ -73,7 +66,6 @@ def _sign_extend(value: int, bits: int) -> int:
 
 @dataclass(frozen=True, slots=True)
 class BlInstruction:
-    """A decoded Thumb BL pair. ``target`` is the fetch address (bit 0 clear)."""
 
     site_address: int
     halfword1: int
@@ -82,13 +74,6 @@ class BlInstruction:
 
 
 def decode_bl(halfword1: int, halfword2: int, site_address: int) -> BlInstruction | None:
-    """Decode a Thumb BL long branch pair, or return None if not a BL.
-
-    Encoding: h1 = 11110 S imm10, h2 = 11111 J1 J2 imm11.
-    offset = sign_extend_23(S:I1:I2:imm11) << 1 where
-    I1 = ~(J1 ^ S), I2 = ~(J2 ^ S).
-    Target = site_address + 4 + offset (fetch address, Thumb bit cleared).
-    """
     if type(halfword1) is not int or type(halfword2) is not int:
         raise BinaryAddressError("halfwords must be integers")
     if not 0 <= halfword1 <= 0xFFFF or not 0 <= halfword2 <= 0xFFFF:
@@ -142,6 +127,7 @@ def encode_bl(site_address: int, target: int) -> tuple[int, int]:
     return halfword1, halfword2
 
 
+# Every bit test here is parenthesized because ``h & 0xF800 == 0xF000`` parses as ``h & (0xF800 == 0xF000)`` in Python.
 def is_push_with_lr(halfword: int) -> bool:
     """True for ``push {..., lr}`` (0xB5xx), the common Thumb prologue."""
     return (halfword & 0xFF00) == 0xB500
@@ -163,10 +149,6 @@ def b_short_target(halfword: int, site_address: int) -> int:
 
 
 def ldr_literal_address(halfword: int, instruction_address: int) -> int | None:
-    """Return the literal word address for ``ldr rX, [pc, #imm]``, else None.
-
-    Base is Align(instruction_address + 4, 4) per ARMv4T Thumb semantics.
-    """
     if (halfword & 0xF800) != 0x4800:
         return None
     imm8 = halfword & 0xFF

@@ -1,9 +1,4 @@
-"""Read-only, static placement/type relationships. Evidence: PLACEMENT_TYPES.md.
-
-An engine selector is identity; the table address is provenance. The selected
-record is shared with the existing enemy-stat subsystem where that subsystem's
-verified extent covers it. There is no second editable copy of those records.
-"""
+"""Read-only, static placement/type relationships. Evidence: PLACEMENT_TYPES.md."""
 from __future__ import annotations
 
 from collections import Counter
@@ -152,11 +147,7 @@ class PlacementTypes:
                 "type_reassignment": "UNSUPPORTED"}
 
     def project_document(self) -> dict:
-        """Optional v1 read-only catalog: links, never duplicate stat bytes.
-
-        No physical addresses required for consumers; the profile resolves them.
-        Unknown targets have identity but deliberately no invented record extent.
-        """
+        """Optional v1 read-only catalog: links, never duplicate stat bytes."""
         return {"placement_types": {
             str(t.identity): {"selector": t.identity.selector,
                               "factory_family": f"{self.profile.id}/placement_factory:0000",
@@ -168,12 +159,7 @@ class PlacementTypes:
             "placements": {str(p): {"type_id": str(t)} for p, t in sorted(self._placements.items())}}
 
     def reference_document(self) -> RomDocument:
-        """Use the common graph, including explicit read-only indexed references.
-
-        A type's anchor is the existing enemy owner where verified. Unknown
-        targets are one-byte entry anchors, NOT a claim of one-byte records.
-        Code entry anchors preserve the raw Thumb state bit as target_delta=1.
-        """
+        """Use the common graph, including explicit read-only indexed references."""
         image = self.maps.base_bytes
         provenance = Provenance(self.profile.id, self.profile.sha256, self.layout.evidence)
         anchors = []
@@ -219,10 +205,6 @@ class PlacementTypes:
                 ref(p.file_offset + 8, str(self.type_of(p.identity).identity),
                     ReferenceEncoding.INDEX_U32_LE, index_base=FileOffset(self.table_offset),
                     index_stride=self.layout.stride)
-        #: TOOLKIT-026: relocation eligibility is decided AFTER the whole graph exists,
-        #: because the contract is a statement about an anchor's measured references,
-        #: not about the anchor alone. `relocation_eligible` reads the same rules
-        #: `plan_relocation` enforces; nothing here consults a map index or address.
         anchors = tuple(replace(a, relocatable=True)
                         if relocation_eligible(a, refs) else a for a in anchors)
         document = RomDocument.from_bytes(image, self.profile, anchors=anchors, references=tuple(refs))

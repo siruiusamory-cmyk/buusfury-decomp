@@ -1,4 +1,4 @@
-"""Verified VM variants as data; evidence: docs/research/SCRIPT_VM.md."""
+"""The VM variants are data whose evidence is docs/research/SCRIPT_VM.md."""
 from ..formats.script_vm import Evidence, Opcode, OpcodeSet
 
 _E = Evidence.CONFIRMED_ROM
@@ -51,8 +51,7 @@ _BUU_FLOW = {17:'stop',18:'forward',19:'if_zero',28:'count_back'}
 _BUU_STACK = {0:(0,1),1:(0,1),3:(1,0),6:(1,1),17:(0,0),18:(0,0),19:(1,0),
               20:(1,0),27:(1,0),30:(1,0)}
 _BUU_STACK.update({i:(2,1) for i in (4,5,7,8,9,10,11,12,13,14,15,16)})
-# Native dispatch and the operations whose callees are runtime-selected keep
-# UNKNOWN semantics; structural decoding does not require knowing what they do.
+# Native dispatch and the operations whose callees are runtime-selected keep UNKNOWN semantics, because structural decoding does not require knowing what they do.
 _BUU_UNKNOWN_SEMANTICS = {2,3,10,21,22,23,24,25,26,30}
 
 
@@ -80,7 +79,6 @@ STACK_BE16_BUU_V1 = OpcodeSet('stack_be16_buu_v1', tuple(
 OPCODE_SETS = {STACK_BE7_V1.name: STACK_BE7_V1,
                STACK_BE16_BUU_V1.name: STACK_BE16_BUU_V1}
 
-# No fixed text operand proven. These native operations access runtime-selected slots.
 REFERENCE_RULES = {'stack_be7_v1': {
     (2,12): ('text','runtime_byte + 48','docs/research/SCRIPT_VM.md; fetch 0x080094B0'),
     (2,75): ('text','runtime_byte + 54','docs/research/SCRIPT_VM.md; fetch 0x080094CC'),

@@ -1,19 +1,3 @@
-"""ROM-ATLAS-001 graphics extents: `graphics_extents.jsonl`.
-
-Ported from the earlier exploratory script `gen_graphics_extents.py`, recovered
-separately from the other five producers.
-
-Records where the existing walker already goes: `graphics.load_actor_sprites`
-(graphics.py:612) is called and one row is written per distinct container file
-offset. No new parsing — `file_offset` is `Graphic.file_offset` (graphics.py:122)
-and `size` is `Graphic.packed_size` (graphics.py:128), which comes from
-`Container.packed_end` (webfoot_lz.py:99).
-
-Changes from the original: the hardcoded repository root, ROM path and output
-path (gen_graphics_extents.py:15-25) became parameters, and the `os.chdir` the
-original used to resolve `config/roms.yaml` became an explicit `config_path`.
-The before/after ROM SHA assertions (gen_graphics_extents.py:28,127) are kept.
-"""
 
 from __future__ import annotations
 
@@ -26,13 +10,6 @@ from ..profile import RomProfileCatalog, VerificationStatus
 from ..rom import identify_rom
 from ._io import write_jsonl
 
-#: `GBA_BASE` is `binary.GBA_ROM_BASE`, the one owner of address-window
-#: semantics, rather than a second literal of it.
-#:
-#: The image identity this pass requires is NOT restated here: it is read from
-#: the profile the catalog matches, which is the one authority for it (CQA-15).
-#: A second literal would be free to drift from the catalog the pass itself
-#: loads, so the check below compares the bytes against the matched profile.
 
 
 def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
@@ -90,7 +67,6 @@ def build(rom_path: Path, out_dir: Path, config_path: Path) -> Path:
     rows.sort(key=lambda r: r["file_offset"])
     assert len({r["file_offset"] for r in rows}) == len(rows), "duplicate offsets"
 
-    # Overlap detection on the sorted extents.
     for earlier, later in zip(rows, rows[1:]):
         if earlier["file_offset"] + earlier["size"] > later["file_offset"]:
             for this, other in ((earlier, later), (later, earlier)):

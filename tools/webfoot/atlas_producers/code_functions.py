@@ -1,23 +1,3 @@
-"""ROM-ATLAS-001 code cartography: `code_functions.jsonl` and the wave-4 delta.
-
-Ported from the earlier exploratory scripts `trace.py` and `wave4.py`. Read-only
-against the ROM; the shared traversal body lives in `traversal.py`.
-
-`build_wave2` is trace.py's seed set and worklist: seed functions from
-`seed_knowledge.jsonl`, the two doc-evidenced PC4 entry points, the two dispatch
-tables, then jump-table entries found by scanning ROM bytes.
-
-`build_wave4` is wave4.py's delta pass over the 25 dispatch-table seeds. Two
-changes from the original: the hardcoded repository root is a parameter, and the
-coverage report no longer reads `code_regions.jsonl` for its "before" figures
-(wave4.py:396-405). That read made the wave-4 artifact depend on the very file
-the broken `regen.py` then overwrote; the "before" baseline is now recomputed
-from the wave-2 traversal that is run in the same pipeline, which is the same
-evidence without the loop. `code_functions_wave4.jsonl` itself is unaffected —
-it never depended on the regions file.
-
-Neither function writes `code_regions.jsonl`. That artifact is `regions.py`'s.
-"""
 
 from __future__ import annotations
 
@@ -30,22 +10,18 @@ from ..capability import Capability, packaged_contract
 from ._io import read_jsonl, write_jsonl
 from .traversal import BASE, MAX_DEPTH, MAX_FUNC_SCAN, Traversal
 
-#: The image this pass was measured against. Read from the packaged profile -
-#: the one authority for that identity - rather than restated as a literal that
-#: could drift from it (CQA-15).
+# The image this pass was measured against, read from the packaged profile rather than restated as a literal that could drift from it (CQA-15).
 _CANONICAL_PROFILE_ID = "buus_fury_usa_rev0_01c1707f"
 EXPECTED_SHA = packaged_contract(
     _CANONICAL_PROFILE_ID, Capability.MAP_ENTRIES
 ).identity.sha256
-#: The ticket's dark code region, in file offsets. Reporting only.
 REGION_LO, REGION_HI = 0x0012846, 0x00554C0
-#: trace.py scanned this window for jump tables (trace.py:248-249).
+# The window the historical pass scanned for jump tables, and the scan stops there.
 WAVE2_JUMP_TABLE_SCAN_HI = 0x60000
-#: The GBA header's ARM entry. Recorded, never traversed: thumb.py has no ARM
-#: decoder, so an ARM walk would be invention rather than evidence.
+# The GBA header's ARM entry, recorded but never traversed, because thumb.py has no ARM decoder and an ARM walk would be invention rather than evidence.
 ARM_ENTRY = 0x080000C0
 
-#: wave4.py:54-60 — the 25 dispatch-table targets absent from the wave-2 set.
+# The 25 dispatch-table targets absent from the wave-2 set, out of the 31-slot primary table and the 283-slot native table measured in BUU_SCRIPT_VM.md.
 _WAVE4_TABLES = (
     (0x080728AC, (0x080123E8, 0x080123FA, 0x0801240A, 0x0801241C,
                   0x0801242C, 0x0801243A, 0x0801244A, 0x08012464)),
@@ -96,11 +72,6 @@ def _row(walker: Traversal, fetch: int, seed_function_addrs: set[int],
 
 
 def build_wave2(rom_path: Path, out_dir: Path) -> tuple[Path, Traversal]:
-    """Traverse from the evidenced seeds; write `code_functions.jsonl`.
-
-    Returns the artifact path and the live `Traversal`, whose reached bytes and
-    literal pools are the upstream evidence `regions.py` needs.
-    """
     out_dir = Path(out_dir)
     data = _load_rom(rom_path)
     walker = Traversal(data)
@@ -144,7 +115,6 @@ def build_wave2(rom_path: Path, out_dir: Path) -> tuple[Path, Traversal]:
         walker.seed(fetch, 0, raw_hex, via)
     walker.drain()
 
-    # Jump tables: derived from ROM bytes, then every entry seeded.
     for table in walker.jump_tables(0, min(walker.size, WAVE2_JUMP_TABLE_SCAN_HI)):
         address = int(table["gba_address"], 16)
         for index in range(table["entries"]):
@@ -165,12 +135,7 @@ def build_wave2(rom_path: Path, out_dir: Path) -> tuple[Path, Traversal]:
 
 def build_wave4(rom_path: Path, out_dir: Path,
                 wave2: Traversal) -> tuple[Path, Traversal]:
-    """Re-run the traversal from the 25 dispatch-table seeds; write the delta.
-
-    Only functions absent from the wave-2 set are emitted; edges are still
-    followed THROUGH known functions. `wave2` supplies the "before" coverage
-    baseline that the original read out of `code_regions.jsonl`.
-    """
+    """Only functions absent from the wave-2 set are emitted, while edges are still followed through known functions."""
     out_dir = Path(out_dir)
     data = _load_rom(rom_path)
     walker = Traversal(data)
@@ -198,7 +163,7 @@ def build_wave4(rom_path: Path, out_dir: Path,
             via = (f"dispatch_table:0x{table:08X}[{index}]" if index is not None
                    else f"dispatch_table:0x{table:08X}[?]")
             provenance[target] = via
-            raw = target | 1  # the raw pointer as stored in the table (odd)
+            raw = target | 1
             fetch = raw & ~1
             if walker.in_rom(fetch) and not fetch % 2:
                 seeds.setdefault(fetch, (f"0x{raw:08X}", via))
@@ -208,8 +173,6 @@ def build_wave4(rom_path: Path, out_dir: Path,
         walker.seed(fetch, 0, raw_hex, via)
     walker.drain()
 
-    # Jump tables found in-flight: a run of >= 8 aligned odd in-ROM words
-    # intersecting the span this pass actually reached. Every entry is seeded.
     reached = set(walker.reached_bytes)
     scan_lo = max(0, (min(reached) - 0x400) & ~3) if reached else 0
     scan_hi = min(walker.size, (max(reached) + 0x400) | 3) if reached else 0
@@ -235,11 +198,6 @@ def build_wave4(rom_path: Path, out_dir: Path,
 
 def write_coverage(out_dir: Path, rom_path: Path, wave2: Traversal,
                    wave4: Traversal) -> Path:
-    """Write `code_coverage_wave4.json`: what the wave-4 pass added.
-
-    The "before" figures come from the wave-2 traversal directly (wave4.py read
-    them out of `code_regions.jsonl`, which is the dependency this chain breaks).
-    """
     import json
 
     rom_path, out_dir = Path(rom_path), Path(out_dir)

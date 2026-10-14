@@ -1,4 +1,3 @@
-"""Read exactly the first u32 at each MapEntry variation-array target."""
 
 from __future__ import annotations
 

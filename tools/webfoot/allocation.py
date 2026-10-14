@@ -1,43 +1,4 @@
-"""The ONE production allocation authority: deterministic placement from declared regions.
-
-There is exactly one allocator in this toolkit, and this is it. Nothing else may
-search for space: a second implementation is how a build silently diverges from
-the capacity its profile actually declared. Research code may *measure* free space
-(`tools/research/capacity_model.py`), but only a reviewed profile declaration and
-an explicit expanded-storage declaration can be allocated.
-
-Four rules shape everything below.
-
-**The allocator never inspects bytes.** It does not scan for `FF` or `00` runs, it
-does not read the structural atlas, and it does not look at the image at all. Its
-input is a :class:`StorageModel` - declared regions with an evidence string each -
-so "free" means "a reviewed declaration says free", never "these bytes look
-empty". `FF` fill is a candidate until a ticket proves it.
-
-**Only two classes are allocatable.** :data:`ALLOCATABLE_REGION_CLASSES` is the
-single decision point: `VERIFIED_FREE` and authorized `PADDING_EXPANDED`.
-`OWNED`, `REFERENCED` and `UNKNOWN` are exclusion evidence - `UNKNOWN` most of all,
-because it is the class this project's own measurements could not classify.
-A model whose allocatable region overlaps an exclusion region is refused at
-construction rather than resolved by precedence.
-
-**Expanded storage is not implied by a larger file.** A generated image being
-bigger than the canonical ROM authorizes nothing by itself. An expanded region
-enters the model only through an explicit declaration
-(:meth:`StorageModel.from_profile`, which reads `profile.generated_expansion` and
-its recorded evidence), only a request that states
-:attr:`Addressability.EXPANDED_PERMITTED` may use one, and the resulting
-:class:`Allocation` is what later authorizes the *write*
-(:meth:`Allocation.generated_allocation_provenance`). No allocation record, no
-expanded write.
-
-**Determinism is a stated policy, not an accident.** :data:`ALLOCATION_POLICY`
-names the version and the rule; :func:`allocate` sorts its requests by anchor
-identity (a total order, and duplicate identities are refused, so there are no
-ties) and takes the lowest aligned first fit. No dict, set or filesystem order is
-consulted anywhere.
-"""
-
+"""The one production allocation authority: 'free' means a reviewed declaration says free, never that these bytes look empty."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -62,9 +23,6 @@ class RegionClassError(AllocationError):
     """A region model is internally inconsistent or claims unallocatable bytes."""
 
 
-#: The policy version and rule recorded on every allocation. Bump the version when
-#: the rule changes, because a stored allocation was produced under one policy and
-#: a rebuild under another must be visible rather than silent.
 ALLOCATION_POLICY = (
     "lowest-aligned-first-fit/v2: requests ordered by anchor identity "
     "(total, no ties); each takes the lowest aligned address that fits in the "
@@ -73,12 +31,6 @@ ALLOCATION_POLICY = (
 
 
 class RegionClass(str, Enum):
-    """What a span of the image has been *established* to be.
-
-    The vocabulary is the ticket's: a byte is owned by a known structure, reached
-    by a known reference, declared free by review, an authorized generated-image
-    pad, or none of those. There is no "probably free".
-    """
 
     VERIFIED_FREE = "VERIFIED_FREE"
     PADDING_EXPANDED = "PADDING_EXPANDED"
@@ -87,174 +39,43 @@ class RegionClass(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
-#: THE single decision point for what may be allocated. Every other part of this
-#: module asks the model, and the model asks this.
 ALLOCATABLE_REGION_CLASSES = frozenset({RegionClass.VERIFIED_FREE,
                                         RegionClass.PADDING_EXPANDED})
 
 
 class AllocationKind(str, Enum):
-    """Semantic classes of authored content that ask for storage.
 
-    One member per allocating call site that exists today - nothing speculative.
-    A caller states WHAT it is placing, never "find me N empty bytes": the kind is
-    what a policy can reason about, and the addressability default that follows
-    from it is the one the capacity evidence supports.
-    """
-
-    #: A packed container payload (compressed dialogue). The only domain whose
-    #: pointer is engine-proven above canonical EOF.
     PACKED_STREAM = "packed_stream"
-    #: An authored placement body, descriptor or script payload.
     PLACEMENT_BODY = "placement_body"
-    #: The map object array that points at placement bodies.
     PLACEMENT_REFERENCE_ARRAY = "placement_reference_array"
-    #: A relocated text-table entry's string body.
     TEXT_STRING = "text_string"
-    #: A relocated anchor payload whose anchor kind this build does not model by
-    #: name. `layout.RELOCATION_ELIGIBLE_KINDS` is the authority for what MAY be
-    #: relocated and `plan_relocation` refuses anything outside it, so this covers
-    #: an eligible-but-unmodelled kind - a synthetic fixture anchor, or a kind a
-    #: later ticket publishes before it names a class here. It is conservative:
-    #: canonical-only, exactly like the two named relocation kinds.
     RELOCATED_ANCHOR_PAYLOAD = "relocated_anchor_payload"
-    #: The contiguous whole-map proposal (pointer slots plus every body). Modelled
-    #: and pinned by test, but NOT issued by the production transaction, which
-    #: allocates the bodies and the array separately so the array can carry the
-    #: bodies' finished addresses.
     AUTHORED_MAP_EXPANSION = "authored_map_expansion"
-    #: MAP-CHUNK-AUTHORING-001. One project-authored dominant chunk body: the
-    #: packed container a map cell's four-byte reference points at.
     CHUNK_BODY = "chunk_body"
-    #: MAP-RESIZE-AND-LAYERS-001. One relocated or project-authored dominant layer
-    #: record: the header plus the chunk-pointer window a map root's layer slot
-    #: points at. A dominant record carries its window inline and the bytes
-    #: immediately after the window belong to the next structure, so a grid that
-    #: grows cannot stay where it was and the whole record is re-emitted.
     LAYER_RECORD = "layer_record"
-    #: MAP-WARP-CREATE-PROJECT-001. One project-authored selector-1 transition
-    #: record: the 24 bytes a map's expanded pointer array element names. The
-    #: canonical corpus's arrays are packed against their own root and against
-    #: neighbouring records - map 40's three-element growth would land on its own
-    #: root - so a created record has nowhere canonical to go.
     TRANSITION_RECORD = "transition_record"
-    #: MAP-WARP-CREATE-PROJECT-001. The expanded ``root + 0x44`` array: the
-    #: canonical element pointers plus one 4-byte pointer per created transition. A
-    #: count can only grow by re-emitting the whole array, because the canonical
-    #: array's following bytes are the root itself.
     TRANSITION_POINTER_ARRAY = "transition_pointer_array"
-    #: GRAPHICS-IMPORT-BOUNDARY-001. One re-encoded actor-sprite graphics
-    #: container: the compressed payload a frame piece's ``+0x08`` word names,
-    #: re-emitted because its authored pixels no longer fit the extent the
-    #: original container occupied. The container is a leaf - the reference walk
-    #: publishes no reference sourced inside one - so its whole inbound surface is
-    #: the set of CONFIRMED piece references the graphics reference document
-    #: carries, and relocation rewrites exactly those.
     GRAPHICS_CONTAINER = "graphics_container"
-    #: SPRITE-NEW-RUNTIME-001. The actor-sprite identity domain: the relocated
-    #: character pointer registry together with the new character structure,
-    #: animation record and frame record that one additional sprite identity is
-    #: made of. They are ONE kind because they are one indivisible authored
-    #: object - a structure with no animation resolves to nothing, and an
-    #: animation with no frame is a null dereference - and because a caller that
-    #: allocated them under separate kinds could place them non-contiguously.
-    #:
-    #: The registry must be re-emitted WHOLE to grow: entry ``i`` is sprite id
-    #: ``i + 10`` and the engine indexes ``registry + 4 * (id - 10)`` with no
-    #: bound check, so a 298th identity means a 298-entry table in fresh space,
-    #: with the two literal-pool words that name the old table repointed.
-    #:
-    #: The extent the canonical image offers is a single 256-byte VERIFIED_FREE
-    #: region and the registry alone is 1,192 bytes, so this kind is
-    #: `EXPANDED_ONLY` for the same reason `LAYER_RECORD` is: no canonical
-    #: placement exists and a canonical-only request would fail closed every
-    #: time.
     SPRITE_IDENTITY_RECORD = "sprite_identity_record"
-    #: SPRITE-NEW-ATTACHMENT-CORE-001. One new map object record: the actor entity
-    #: appended to a map's engine-counted object array, for the one object family
-    #: that ticket's runtime evidence covers. It is new content with no canonical
-    #: extent to fit, and the array slot that names it is written in the same
-    #: transaction, so it is `EXPANDED_ONLY` by the same argument
-    #: `SPRITE_IDENTITY_RECORD` records.
     MAP_OBJECT_RECORD = "map_object_record"
-    #: APPEARANCE-AUTHORING-GATE-001. The character appearance-definition table,
-    #: re-emitted WHOLE with the authored records appended. The canonical table
-    #: ends exactly where a literal-named descriptor block begins, so a 233rd
-    #: record has nowhere canonical to go and the whole table moves: entry `i` is
-    #: at `table + 16 * i` and the engine indexes with no bound check, so the
-    #: existing 232 records and the new ones are one indivisible placement.
-    #:
-    #: `EXPANDED_ONLY` for the same reason `SPRITE_IDENTITY_RECORD` is: the
-    #: canonical image declares one 256-byte verified-free region and the table
-    #: alone is 3,712 bytes, so a canonical-only request would fail closed every
-    #: time.
     APPEARANCE_RECORD_TABLE = "appearance_record_table"
-    #: MAP-NEW-AUTHORING-001. The MapEntry table, re-emitted WHOLE with the
-    #: authored rows appended. The table carries no count word and no terminator:
     #: the engine's key lookup `0x080089FC` walks `base + 0x38 * i` below a count
     #: it reads from `0x080125E0`, and the byte after the last canonical record is
     #: a live tileset container, so a 453rd row has nowhere canonical to go. The
     #: canonical records are copied verbatim and the one literal-pool word that
     #: names the table is repointed, so the 452 existing rows move as one
     #: indivisible placement.
-    #:
-    #: `EXPANDED_ONLY` on the same argument as `APPEARANCE_RECORD_TABLE`: the
-    #: table is 25 KB and the canonical image declares one 256-byte verified-free
-    #: region.
     MAP_ENTRY_TABLE = "map_entry_table"
-    #: MAP-NEW-AUTHORING-001. One authored map's root: the selector word that
-    #: `MapEntry+0x2C` names, followed by the engine's own load template for the
-    #: map. They are ONE kind because they are one indivisible object - the word is
-    #: four bytes and carries the root's address, and a word without its root is a
-    #: null dereference on the map-load path.
-    #:
-    #: `EXPANDED_ONLY`: no canonical extent can host it (the record is new
-    #: content with no prior home and the one free region is shared), and the
-    #: addressability this capability must prove is the one where a `+0x2C` word
-    #: reaches generated storage.
     MAP_ROOT_RECORD = "map_root_record"
 
 
 class Addressability(str, Enum):
-    """Which storage a request's pointer/domain is allowed to reach.
 
-    ROM-CAPACITY-AND-ALLOCATION-001 Phase A inventoried sixteen pointer domains
-    and found exactly one engine-proven above canonical EOF. The default is
-    therefore the conservative one, and a caller that has not proven otherwise
-    cannot silently receive an expanded address.
-    """
-
-    #: The domain's pointers are not proven above canonical EOF. Layout still uses
-    #: the lowest canonical address, so a canonical result is unchanged.
     CANONICAL_ONLY = "canonical_only"
-    #: The domain's pointers are proven able to reach generated expanded storage.
     EXPANDED_PERMITTED = "expanded_permitted"
-    #: The domain's pointers are proven above canonical EOF **and** the domain is
-    #: placed there by policy rather than by first fit.
-    #:
-    #: MAP-RESIZE-AND-LAYERS-001 introduces it for the layer-record domain, and the
-    #: reason is a property of the domain rather than a preference: a dominant layer
-    #: record is ``0x18 + 4 * columns * rows`` bytes, so it grows with the authored
-    #: grid, and the canonical image declares exactly one 256-byte VERIFIED_FREE
-    #: region. A project may author one record per resize and per authored layer, so
-    #: the domain's aggregate demand is unbounded and a policy that spent the single
-    #: canonical free region on it would both exhaust it and take a resource other
-    #: domains depend on. Placing the domain above EOF is additionally exactly the
-    #: addressability this capability has to prove, so the policy and the proof are
-    #: the same decision.
-    #:
-    #: MAP-WARP-CREATE-PROJECT-001 reuses it for the transition record and pointer
-    #: array on that same argument. "Proven" here is the ENCODING claim, not the
-    #: runtime one: the domain's pointer field can carry an above-EOF value, which is
-    #: what the entry asserts. Whether the retail engine follows it is a separate,
-    #: runtime claim that no entry in :data:`DEFAULT_ADDRESSABILITY` makes.
     EXPANDED_ONLY = "expanded_only"
 
 
-#: The addressability each kind defaults to, from the Phase A addressability
-#: matrix. Only the compressed-dialogue selector domain is proven above EOF; the
-#: other kinds are canonical-only until a bounded experiment says otherwise.
-#:
 #: MAP-CHUNK-AUTHORING-001 adds one entry, and states its standing precisely
 #: because the roadmap's rule is that *encoding-capable* is not *engine-proven*
 #: and *engine-proven* is not *runtime-proven*. The dominant layer's chunk window
@@ -269,7 +90,6 @@ class Addressability(str, Enum):
 #: `InsufficientSpaceError` every time. Whether the retail engine actually READS
 #: a chunk above EOF is the runtime proof this ticket owns; until that proof
 #: lands, capability must not be advanced on the strength of this constant.
-#:
 #: MAP-WARP-CREATE-PROJECT-001 adds the two transition-creation entries, both
 #: `EXPANDED_ONLY`, and states their standing with the same split the two entries
 #: above use. What is measured: a map root's ``+0x44`` word and every array element
@@ -281,14 +101,6 @@ class Addressability(str, Enum):
 #: engine actually follows ``+0x44`` and an array element above EOF at runtime;
 #: a human-operated emulator run is the proof that owns that claim, and the
 #: capability must not be advanced on the strength of these constants.
-#:
-#: The policy is `EXPANDED_ONLY` rather than first fit for a reason of the domain:
-#: the aggregate demand is one 24-byte record plus a 4*(N+1)-byte array per authored
-#: transition, so it grows with the project, while the canonical image declares a
-#: single 256-byte VERIFIED_FREE region that other domains already draw on. It is
-#: also exactly the addressability this capability has to prove, so the policy and
-#: the proof are the same decision - the same argument `LAYER_RECORD` records.
-#:
 #: GRAPHICS-IMPORT-BOUNDARY-001 adds one entry and states both halves separately,
 #: because for this domain they came apart. What IS measured: a piece's ``+0x08``
 #: container word is a full 32-bit little-endian GBA address over all 11,005
@@ -299,17 +111,7 @@ class Addressability(str, Enum):
 #: actually decodes a container it reaches above EOF. A human-operated emulator run
 #: owns that claim, and the capability must not advance on the strength of this
 #: mapping alone.
-#:
-#: `EXPANDED_PERMITTED` rather than `EXPANDED_ONLY` is the conservative choice here,
-#: and it is the opposite of `LAYER_RECORD`'s for a reason of the domain. A layer
-#: record's aggregate demand is unbounded and would consume the single 256-byte
-#: canonical region for nothing; a re-encoded graphics container is usually larger
-#: than that region anyway, so first-fit canonical placement is only reachable by a
-#: payload that genuinely fits trusted, declared, verified-free bytes. Where it does
-#: fit, a canonical address is a strictly weaker addressability claim than an
-#: expanded one, so preferring it cannot overstate what has been proven. Where it
-#: does not fit, the request moves to the declared expansion - the case the runtime
-#: proof owns.
+# The addressability each kind defaults to, from the Phase A addressability matrix; only the compressed-dialogue selector domain is proven above EOF.
 DEFAULT_ADDRESSABILITY = {
     AllocationKind.PACKED_STREAM: Addressability.EXPANDED_PERMITTED,
     AllocationKind.PLACEMENT_BODY: Addressability.CANONICAL_ONLY,
@@ -323,33 +125,15 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
     AllocationKind.GRAPHICS_CONTAINER: Addressability.EXPANDED_PERMITTED,
     AllocationKind.SPRITE_IDENTITY_RECORD: Addressability.EXPANDED_ONLY,
-    #: SPRITE-NEW-ATTACHMENT-CORE-001. A new map object record is placed by
-    #: policy rather than by first fit, on the same argument as the identity
-    #: record above: it is new content whose canonical home does not exist, and
-    #: the one declared canonical free region is a shared resource.
     AllocationKind.MAP_OBJECT_RECORD: Addressability.EXPANDED_ONLY,
-    #: APPEARANCE-AUTHORING-GATE-001. The appearance table is placed above
-    #: canonical EOF by policy, on the argument its own `AllocationKind` member
-    #: states: no canonical extent can host it and the addressability this
-    #: capability has to prove is exactly the expanded one.
     AllocationKind.APPEARANCE_RECORD_TABLE: Addressability.EXPANDED_ONLY,
-    #: MAP-NEW-AUTHORING-001. The MapEntry table is placed above canonical EOF by
-    #: policy for the same reason the appearance table is: the byte after its last
-    #: record is a live tileset container, so a 453rd row has nowhere canonical to
-    #: go, and the moved table is 25 KB against a single declared 256-byte
-    #: verified-free region.
     AllocationKind.MAP_ENTRY_TABLE: Addressability.EXPANDED_ONLY,
-    #: MAP-NEW-AUTHORING-001. The root a new map's `MapEntry+0x2C` names is placed
-    #: above canonical EOF by policy. The field is a full 32-bit word, so the
-    #: encoding claim holds; whether the engine follows it there is the runtime
-    #: proof this capability owns, and this member does not assert it.
     AllocationKind.MAP_ROOT_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 
 @dataclass(frozen=True, slots=True)
 class StorageRegion:
-    """One declared span of the image, with the class it was established to be."""
 
     range: RomRange
     classification: RegionClass
@@ -372,24 +156,9 @@ class StorageRegion:
 
 
 @dataclass(frozen=True, slots=True)
+# A larger generated image authorizes nothing by itself; expansion enters only through the profile's declaration.
 class StorageModel:
-    """The declared image the allocator may reason about. Inspected, never scanned.
-
-    `canonical_size` and `image_size` are separate on purpose: expanded bytes are
-    outside the canonical image, and a model that could not tell them apart would
-    let a canonical-only request land there.
-
-    Invariants, all enforced here because every one of them is a way an allocation
-    could otherwise be handed bytes that are not free:
-
-    * regions are sorted and pairwise disjoint, so a span has one class;
-    * every region lies inside `image_size`, and a canonical region inside
-      `canonical_size`;
-    * the expanded region, if any, begins exactly at canonical EOF and lies wholly
-      above it - the same append-only contract `write.GeneratedImage` enforces, so
-      a model and a write plan cannot disagree about where expansion starts;
-    * no allocatable region overlaps an exclusion region.
-    """
+    """The declared image the allocator may reason about. Inspected, never scanned."""
 
     canonical_size: int
     image_size: int
@@ -431,17 +200,10 @@ class StorageModel:
                         f"allocatable region {region.range.to_json()} overlaps "
                         f"{other.classification.value} {other.range.to_json()}")
 
-    # --- construction -------------------------------------------------------
 
     @classmethod
     def from_profile(cls, profile: RomProfile) -> "StorageModel":
-        """Canonical VERIFIED_FREE plus the profile's authorized expansion.
-
-        The expanded region is added ONLY from `profile.generated_expansion`, which
-        carries the evidence a ticket recorded for it. An image that is merely
-        larger than the canonical ROM produces no model entry, which is what
-        "a bigger file authorizes nothing" means in practice.
-        """
+        """Adds an expanded region only from the profile's declared generated expansion, so a file that is merely larger than the canonical ROM produces no model entry."""
         regions = [
             StorageRegion(region.range, RegionClass.VERIFIED_FREE,
                           region.evidence, "profile.free_regions")
@@ -456,7 +218,6 @@ class StorageModel:
             image_size = expansion.output_size
         return cls(profile.size, image_size, tuple(regions))
 
-    # --- queries ------------------------------------------------------------
 
     def allocatable_regions(self) -> tuple[StorageRegion, ...]:
         """The regions a request may be placed in. THE allocatability decision."""
@@ -491,13 +252,6 @@ class StorageModel:
 
 @dataclass(frozen=True, slots=True)
 class AllocationRequest:
-    """A semantic request for storage.
-
-    `kind` is required and keyword-only: a caller must say what it is placing, and
-    an omission is a TypeError rather than a silently permissive default. The
-    older positional form `(anchor, owner, size, alignment)` still reads naturally;
-    what it no longer permits is leaving the semantic class unstated.
-    """
 
     anchor: AnchorId
     owner: str
@@ -536,7 +290,6 @@ class AllocationRequest:
 
 @dataclass(frozen=True, slots=True)
 class Allocation:
-    """One placement, with everything needed to justify, serialize and re-reserve it."""
 
     request: AllocationRequest
     range: RomRange
@@ -545,9 +298,6 @@ class Allocation:
     source_region: RomRange
     canonical_size: int
     image_size: int
-    #: Position in the deterministic request sequence. `-1` while a placement is
-    #: still provisional: `_place` finds one span without knowing the batch, and
-    #: `allocate` stamps the final order on every allocation it returns.
     order: int = -1
     policy: str = ALLOCATION_POLICY
 
@@ -570,9 +320,6 @@ class Allocation:
             "addressability": self.request.addressability.value,
             "constraints": list(self.request.constraints),
             "request_evidence": self.request.evidence,
-            # `range` is the existing typed-span spelling this record has always
-            # published (the `relocation-proof` CLI contract reads it); the flat
-            # fields beside it are the same numbers, stated once each.
             "range": self.range.to_json(),
             "file_offset": self.range.start.value,
             "end": self.range.end,
@@ -592,16 +339,7 @@ class Allocation:
     def generated_allocation_provenance(self, *, domain: str, resource: str,
                                         pointer_offset: int,
                                         source_range: RomRange):
-        """The write-layer authorization for this span, or fail closed.
-
-        This is the ONLY way an expanded span acquires permission to be written:
-        `write.plan_changes` refuses an appended change that no
-        `GeneratedAllocationProvenance` owns, and this builds that record from the
-        allocation the allocator actually made. A canonical allocation needs no
-        such authorization - it is ordinary attributed overwriting - and asking
-        for one is refused rather than silently returning a span that would
-        authorize bytes outside the declared expansion.
-        """
+        """The only way an expanded span acquires permission to be written; a canonical allocation is ordinary attributed overwriting and asking for one is refused."""
         from .write import GeneratedAllocationProvenance
 
         if not self.is_expanded:
@@ -622,17 +360,7 @@ class Allocation:
 
 def withhold(free_regions: Iterable[FreeRegion],
              taken: Iterable[RomRange]) -> tuple[FreeRegion, ...]:
-    """The same declared free regions, minus spans already spoken for.
-
-    Subtraction only. A region is split or trimmed around each taken span and is
-    never grown, merged or moved, so this can only ever offer LESS capacity than the
-    profile declared - it cannot manufacture space that was not already trusted.
-
-    TOOLKIT-036 moved this out of `authored_placements`, where it was private. It
-    carries no domain semantics - it is span arithmetic over declared regions - and
-    it is the primitive a build-scoped reservation set is threaded with, so every
-    allocating domain subtracts what earlier domains already took the same way.
-    """
+    """The same declared free regions minus spans already taken: subtraction only, never grown, merged or moved, so it can only ever offer less capacity than the profile declared."""
     taken = tuple(taken)
     result = []
     for region in free_regions:
@@ -653,13 +381,8 @@ def withhold(free_regions: Iterable[FreeRegion],
     return tuple(result)
 
 
+# Overlapping reservations are refused rather than merged, because two owners of one span means at least one is wrong.
 def _reservation_spans(occupied: Iterable[OwnedRegion]) -> tuple[RomRange, ...]:
-    """Reservations in a deterministic order, refusing an inconsistent set.
-
-    Overlapping reservations are refused rather than merged. Two owners claiming
-    one span means at least one of them is wrong, and an allocator that quietly
-    unioned them would place the next request against a map nobody agreed on.
-    """
     spans = tuple(sorted((region.range for region in occupied),
                          key=lambda span: (span.start.value, span.end)))
     for left, right in zip(spans, spans[1:]):
@@ -671,12 +394,6 @@ def _reservation_spans(occupied: Iterable[OwnedRegion]) -> tuple[RomRange, ...]:
 
 def _candidate_regions(storage: StorageModel,
                        request: AllocationRequest) -> tuple[StorageRegion, ...]:
-    """The regions this request may use, in ascending start order.
-
-    Addressability is applied here and nowhere else: a canonical-only request never
-    sees the expanded region, so it cannot be handed an address its domain has not
-    been proven able to reach.
-    """
     allowed = storage.allocatable_regions()
     if request.addressability is Addressability.EXPANDED_ONLY:
         return tuple(region for region in allowed
@@ -691,23 +408,7 @@ def allocate(profile: RomProfile, requests: Iterable[AllocationRequest], *,
              storage: StorageModel | None = None,
              occupied: Iterable[OwnedRegion] = (),
              ) -> tuple[Allocation, ...]:
-    """Place `requests` deterministically. No mutable allocator state, no writes.
-
-    The input contract is explicit and complete: a resolved profile (canonical
-    identity and size), a :class:`StorageModel` (the declared regions, which may be
-    built from the profile or supplied whole by a test), the reservations already
-    spoken for, and the requests themselves. Nothing here reads image bytes.
-
-    Policy: see :data:`ALLOCATION_POLICY`. Requests are ordered by anchor identity,
-    which is a total order and whose duplicates are refused, so the ordering has no
-    ties to break. Each request takes the lowest aligned address that fits, in the
-    first allocatable region that can host it, skipping any span that collides with
-    a reservation. Every completed placement joins the reservation set before the
-    next request is placed, so two requests in one batch cannot overlap.
-
-    Fails closed with :class:`InsufficientSpaceError` when no placement exists. A
-    request is never truncated, split or partially satisfied.
-    """
+    """Fails closed with InsufficientSpaceError and never truncates a request, since a partially satisfied request would place bytes nobody asked for."""
     model = StorageModel.from_profile(profile) if storage is None else storage
     if model.canonical_size != profile.size:
         raise AllocationError(
@@ -736,7 +437,6 @@ def allocate(profile: RomProfile, requests: Iterable[AllocationRequest], *,
 
 def _place(model: StorageModel, request: AllocationRequest,
            reserved: tuple[RomRange, ...]) -> Allocation | None:
-    """Lowest aligned first fit for one request, or None. Pure."""
     for region in _candidate_regions(model, request):
         position = region.range.start.value
         while position + request.size <= region.range.end:
@@ -758,7 +458,6 @@ def _place(model: StorageModel, request: AllocationRequest,
     return None
 
 
-# --- reservations from provenance -------------------------------------------
 
 
 def _span_from_json(value: Mapping) -> RomRange:
@@ -772,13 +471,6 @@ def _span_from_json(value: Mapping) -> RomRange:
 
 def reservations_from_allocations(
         allocations: Iterable[Allocation]) -> tuple[OwnedRegion, ...]:
-    """The reservations a batch of allocations implies, for the next batch.
-
-    Reopening a derivative means re-establishing what it already owns. This is the
-    allocator-side half of that: the spans an earlier run placed become ordinary
-    reservations, indistinguishable from any other occupied region, so the next
-    allocation cannot be handed the same bytes.
-    """
     regions = [OwnedRegion(allocation.range,
                            f"allocated:{allocation.request.anchor.value}")
                for allocation in allocations]
@@ -786,13 +478,6 @@ def reservations_from_allocations(
 
 
 def reservations_from_manifest(document: Mapping) -> tuple[OwnedRegion, ...]:
-    """Reservations recovered from a serialized `WriteManifest` document.
-
-    Reads the established provenance the writer already emits - the generated
-    allocation spans and the relocation destinations - and turns them back into
-    reservations. No second sidecar format: this is the same document
-    `write.WriteManifest.dumps()` produces and `emit_image` publishes.
-    """
     if not isinstance(document, Mapping):
         raise AllocationError("a manifest document is required")
     regions = []

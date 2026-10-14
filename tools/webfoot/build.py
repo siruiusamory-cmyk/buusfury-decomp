@@ -1,29 +1,4 @@
-"""Extract, validate and build: the project lifecycle.
-
-TOOLKIT-002. This module orchestrates and owns no format of its own. It reads a
-ROM through `webfoot.stats`, writes text through `webfoot.project`, and emits an
-image through `webfoot.write`. There is exactly one write path in this toolkit
-and this module calls it rather than reimplementing it - a second writer is how
-a project silently diverges from the ROM-first path it is supposed to replace.
-
-The lifecycle:
-
-    extract   verified ROM  -> project directory        (never copies the ROM)
-    validate  project + ROM -> pass/fail, writing nothing
-    build     project + ROM -> NEW image + manifest      (base untouched)
-
-**Determinism is asserted, not assumed.** Nothing here consults the clock, the
-filesystem's ordering, the machine's name, or a random source. Extraction sorts
-by durable identity; the build applies changes in offset order because
-`plan_changes` already sorts them. `reproducible-builds.org` lists timestamps,
-build paths, and unstable input order as the standard sources of variance, and
-each is excluded structurally here rather than scrubbed afterwards.
-
-**A build validates before it writes.** Schema, profile, base identity and
-every semantic value are checked while the output does not yet exist, so a
-rejected build leaves nothing behind to clean up or mistake for a good one.
-"""
-
+"""Nothing on this path consults the clock, the filesystem order, the machine name or a random source, because the same project must produce the same bytes."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -130,7 +105,6 @@ class ProjectRomMismatchError(BuildError):
 
 @dataclass(frozen=True, slots=True)
 class ValidationReport:
-    """What `validate` found. Empty `problems` means semantic validation passed."""
 
     project_name: str
     profile_id: str
@@ -138,9 +112,7 @@ class ValidationReport:
     enemy_count: int
     character_count: int
     problems: tuple[str, ...]
-    #: TOOLKIT-004. Zero when the project authors no text, which is legal.
     string_count: int = 0
-    #: TOOLKIT-007. Zero when the project authors no maps, which is legal.
     map_count: int = 0
 
     @property
@@ -150,7 +122,6 @@ class ValidationReport:
 
 @dataclass(frozen=True, slots=True)
 class BuildResult:
-    """One completed build."""
 
     manifest: WriteManifest
     output_path: Path
@@ -159,22 +130,6 @@ class BuildResult:
 
 
 class _ManifestBesideOutput:
-    """Sentinel for :func:`build_project`'s ``manifest_path`` argument.
-
-    The three behaviours are genuinely different and a caller must not receive one
-    by omission, so the default is a distinct sentinel rather than ``None``:
-
-    * :data:`MANIFEST_BESIDE_OUTPUT` (the DEFAULT) - publish the provenance
-      manifest beside the emitted image, at the same sibling path the
-      authored-image transaction already owns;
-    * ``None`` - write no manifest at all, for a caller that genuinely has no
-      provenance to publish. This has to be asked for explicitly;
-    * a path - redirect the manifest there.
-
-    CQA-12 measured the defect this closes: the GUI never supplied a manifest path
-    and the CLI only recorded one when asked, so the primary authoring surface
-    emitted an 8 MiB derivative whose only provenance was in memory.
-    """
 
     __slots__ = ()
 
@@ -182,22 +137,11 @@ class _ManifestBesideOutput:
         return "MANIFEST_BESIDE_OUTPUT"
 
 
-#: The default ``manifest_path``: derive it from the output image.
+# Pass None for no manifest at all and a path to redirect it, because the default publishes the provenance manifest beside the emitted image.
 MANIFEST_BESIDE_OUTPUT = _ManifestBesideOutput()
 
 
 def manifest_path_for_build(manifest_path, output_path: str | Path) -> Path | None:
-    """Resolve ``build_project``'s ``manifest_path`` argument to a real path.
-
-    Exposed as its own function because the default is the whole of CQA-12's
-    allocation-critical slice and it has to be testable without extracting a
-    project or holding a ROM.
-
-    The sibling convention is NOT restated here: it is
-    `authored_image.manifest_path_for`, which already owns it, so a build output
-    and an authored-image save put their manifest beside their image the same way
-    and nothing has to reconcile two spellings.
-    """
     from .authored_image import manifest_path_for
 
     if manifest_path is MANIFEST_BESIDE_OUTPUT:
@@ -205,11 +149,8 @@ def manifest_path_for_build(manifest_path, output_path: str | Path) -> Path | No
     return None if manifest_path is None else Path(manifest_path)
 
 
-# --- extract -------------------------------------------------------------
 
 
-#: Capabilities `extract` knows how to write into a project. A profile must
-#: declare at least one; which ones it declares decides what the project holds.
 _EXTRACTABLE = (
     capability.Capability.ENEMY_STATS,
     capability.Capability.CHARACTER_BASE_STATS,
@@ -219,14 +160,6 @@ _EXTRACTABLE = (
 
 
 def _require_extractable_profile(identification: RomIdentification) -> RomProfile:
-    """The verified profile, if it declares anything this toolkit can extract.
-
-    Verification is delegated to the subsystem gates that follow, which each
-    re-check identity and the packaged contract for the capability they use.
-    This function answers only the prior question - is there anything here to
-    extract at all - so that a profile with no readable content is refused with
-    that reason instead of with whichever subsystem happened to be tried first.
-    """
     match = identification.profile_match
     if match.status is not VerificationStatus.VERIFIED or match.profile is None:
         raise BuildError("extraction requires an exactly verified ROM")
@@ -248,34 +181,7 @@ def extract_project(
     name: str | None = None,
     graphics: bool = True,
 ) -> list[Path]:
-    """Read a verified ROM and write a deterministic project. Never writes the ROM.
-
-    The ROM is not copied into the project. A project is source; the base image
-    is a separately-held input referenced by hash, which is what lets a mod be
-    published without redistributing the game.
-
-    `name` defaults to the profile id rather than to the directory name,
-    because a directory name is a fact about where the project currently sits -
-    exactly the kind of mutable filesystem detail `project.toml` must not pin.
-
-    Every subsystem is extracted when the profile declares it and omitted when it
-    does not, so one project layout serves games with different capabilities
-    rather than forking per game. A profile declaring nothing this toolkit can
-    read is refused outright: an empty project would be a misleading artifact
-    rather than a useful one.
-
-    `graphics=False` skips the sprite assets. They are by far the most expensive
-    part of an extraction - 7,390 distinct container offsets reachable by a
-    piece, one indexed PNG each, against a few dozen TOML files -
-    and someone editing stats or text has no use for them. Everything else is
-    unaffected, and a build from such a project is still exact, because
-    unchanged graphics are re-emitted from the base image rather than from the
-    project. Omitting them therefore costs authoring reach, not correctness.
-
-    The destination must be empty or absent. Extraction writes a fresh tree and
-    would otherwise overwrite authored files in place, so a non-empty
-    destination is refused before the image is even opened.
-    """
+    """Read a verified ROM and write a deterministic project. Never writes the ROM, and graphics=False skips 7,390 sprite payloads at the cost of authoring reach only, because a build from such a project still re-emits unchanged graphics from the base."""
     target = Path(project_dir)
     if target.exists() and (not target.is_dir() or any(target.iterdir())):
         raise BuildError(
@@ -296,11 +202,6 @@ def extract_project(
         name=name if name is not None else profile.id,
     )
 
-    # Stats are extracted when the verified profile declares both stat tables.
-    # `StatProfileError` here means "this ROM has no stats this toolkit can
-    # read" - true of Legacy of Goku II, whose stat tables match none of this
-    # toolkit's record shapes - which is a fact about the profile rather than a
-    # failure of the extraction, so the rest of the project is still written.
     try:
         tables = load_stat_tables(rom_path, catalog)
     except StatProfileError:
@@ -308,9 +209,6 @@ def extract_project(
         characters: list = []
     else:
         enemies = [
-            # Alias is None: this project has verified NAMES for the 9 characters
-            # and for no enemy. Emitting an invented label would put a fabricated
-            # fact into authored source, where it would then look extracted.
             (entry.identity, entry.record, entry.original_bytes, None)
             for entry in tables.enemies()
         ]
@@ -380,17 +278,6 @@ def _extract_graphics(
     project_dir: str | Path,
     identification: RomIdentification,
 ) -> list[Path]:
-    """Write the graphics manifest and one indexed PNG per distinct payload.
-
-    Shared payloads are extracted **once**. Writing a private copy per consumer
-    would turn 7,390 real payloads into 11,005 fictional piece references and
-    make an edit look local when the ROM makes it global, so the manifest
-    records each asset's consumers instead and the file count matches the corpus.
-
-    PNGs are ROM-derived and therefore project *output*, never committed here;
-    the deterministic part - the same ROM always producing the same bytes - is
-    what makes a project directory diffable and a rebuild reproducible.
-    """
     from .formats import indexed_png, sprite_graphics
     from .graphics import load_actor_sprites
     from .project.format import dump_toml
@@ -406,8 +293,6 @@ def _extract_graphics(
     written: list[Path] = []
     assets: dict[str, dict] = {}
     for graphic in sprites.graphics():
-        # The filename carries the numeric part of the stable identity, so it is
-        # deterministic and independent of any address.
         filename = f"graphic_{graphic.identity.index:04d}.png"
         target = asset_root / filename
         encoded = indexed_png.encode(
@@ -430,13 +315,6 @@ def _extract_graphics(
             "shared": graphic.shared,
             "consumer_count": len(graphic.consumers),
             "characters": [str(c) for c in graphic.characters],
-            # GRAPHICS-IMPORT-BOUNDARY-001: the baseline an authored PNG is
-            # compared against at build time. `png_sha256` is the digest of the
-            # file written just above, so an unchanged asset is decided by
-            # hashing a small file; `pixels_sha256` is the digest of the linear
-            # indices, so an editor that re-saved identical art is recognised as
-            # a no-op rather than a change. Both are ROM-derived output and are
-            # regenerated by every extraction.
             "png_sha256": sha256(encoded).hexdigest(),
             "pixels_sha256": sha256(graphic.pixels).hexdigest(),
         }
@@ -468,7 +346,6 @@ def _extract_graphics(
 
 
 def _map_documents(maps: Maps) -> list[dict]:
-    """Flatten loaded maps into the authored form `write_project` expects."""
     documents: list[dict] = []
     from .data.placement_contracts import CONTRACTS
     from .placement_events import PlacementEvents
@@ -484,13 +361,9 @@ def _map_documents(maps: Maps) -> list[dict]:
         }
         for name in MAP_FIELDS:
             document[name] = maps.field(entry.identity, name)
-        # TOOLKIT-008. Placements are authored as semantic halfwords, ordered by
-        # placement index so the file is deterministic and diffs stay readable.
-        # The halfwords are named by position in the word, never by axis: this
-        # project has not established which one is X, and an authored file that
-        # said `x` would assert what the evidence does not.
         placements = maps.map_placements(entry.identity)
         if placements:
+            # The halfwords are named by position in the word and never by axis, because this project has not established which one is X.
             document["placements"] = [
                 {
                     "index": item.identity.placement_index,
@@ -508,7 +381,6 @@ def _map_documents(maps: Maps) -> list[dict]:
     return documents
 
 
-# --- shared validation ---------------------------------------------------
 
 
 def _check_identity(
@@ -516,13 +388,6 @@ def _check_identity(
     identification: RomIdentification,
     profile: RomProfile,
 ) -> list[str]:
-    """Confirm the project was authored against exactly this base image.
-
-    Takes the identification directly rather than reaching through a loaded stat
-    table, because identity must be checkable for a profile that declares no
-    stats at all - and because reading it off whichever subsystem happened to
-    load was always incidental.
-    """
     problems: list[str] = []
     actual_sha256 = identification.hashes.sha256
 
@@ -546,16 +411,6 @@ def _check_identity(
 
 
 def _check_records(project: StatProject, tables: StatTables | None) -> list[str]:
-    """Check every authored record against the loaded tables.
-
-    Three distinct failures, each reported against the offending entity:
-    a record the ROM does not have, a record the project omitted, and a field
-    whose value the semantic layer refuses.
-
-    ``tables`` is None when the profile declares no stat tables. Mirrors
-    `_check_strings`: only a project that *authors* records against such a ROM
-    is a problem, and it is reported as one.
-    """
     problems: list[str] = []
     if tables is None:
         if project.enemies or project.characters:
@@ -610,18 +465,6 @@ def _check_records(project: StatProject, tables: StatTables | None) -> list[str]
 
 
 def _check_strings(project: StatProject, strings: TextStrings | None) -> list[str]:
-    """Check every authored string against the loaded string table.
-
-    Mirrors `_check_records`: a string the ROM does not have, a string the
-    project omitted, and text the codec or the allocation refuses. The last of
-    those is the one specific to variable-length content - a stat field fails on
-    its value, a string fails on its *size*.
-
-    Encodability is checked here rather than at project load, because whether a
-    string can be encoded depends on the profile's encoding and a project is not
-    paired with a profile until a build. `set_text` raises `TextCodecError` for
-    text this ROM's codec cannot produce, which arrives below as a `ValueError`.
-    """
     problems: list[str] = []
     if not project.strings:
         return problems
@@ -655,26 +498,6 @@ def _check_strings(project: StatProject, strings: TextStrings | None) -> list[st
 def _check_layout(
     project: StatProject, profile: RomProfile, canonical_image: bytes | None
 ) -> list[str]:
-    """Check every authored layout paint against the base image.
-
-    MAP-TILE-PAINT-001. Every authored cell edit is resolved through the same
-    :class:`tools.webfoot.map_paint.MapPainter` a build uses, BEFORE anything is
-    emitted, so an illegal paint is a named validation problem rather than a
-    build that half-applies a project.
-
-    The check is gated on the profile's own identity, because layout painting is
-    a canonical-image capability: an image that is not the profile's image cannot
-    be painted at all, so a profile that declares no layout domain reports no
-    layout problems. That is the same "unsupported, not broken" state
-    `_check_maps` uses for a ROM whose profile declares no map table - and the
-    build refuses the authored edit separately, where it can name the reason.
-
-    MAP-CHUNK-AUTHORING-001 adds the other value form a cell may now hold. An
-    integer is resolved by `map_paint`; a ``chunk:name`` reference is resolved by
-    `map_chunk`, which also resolves the chunk's own body against its declared
-    template. Both are checked here so an unresolved identity or a body that
-    cannot be composed is a named validation problem before anything is planned.
-    """
     edits = project.layout.cells()
     chunks = project.chunks
     structure = project.structure
@@ -740,18 +563,6 @@ def _check_layout(
 
 
 def _check_graphics(project, profile, project_dir, image, identification) -> list[str]:
-    """Validate authored graphic pixels without planning a placement.
-
-    GRAPHICS-IMPORT-BOUNDARY-001. These are the checks that need no allocator and
-    no reference graph: the extracted manifest agrees with this ROM, every
-    authored PNG decodes as the indexed form the export writes, its dimensions and
-    index range match what the piece record declares, and its pixels really do
-    differ from the base image. Whether a re-encoded stream then fits its original
-    container extent or has to be allocated somewhere else is decided by `build`,
-    against the SAME resolved override set, so `validate` and `build` cannot
-    disagree about which graphics a project authors. Only the build decides where
-    the bytes go.
-    """
     from .graphics_authoring import (CanonicalGraphics, GraphicsAuthoringError,
                                      read_graphics_manifest, resolve_pixel_overrides)
 
@@ -784,41 +595,17 @@ def _check_graphics(project, profile, project_dir, image, identification) -> lis
     return []
 
 
-#: Every error family the transition authority and its codec raise. The authority's
-#: own errors are one tree; the codec's are a second, because a *record* that is an
-#: unmeasured form is refused by `formats.map_transitions` while an *edit* is refused
-#: by `map_transitions`. A build boundary reports both as one authored-transition
-#: problem rather than letting either escape as an unhandled ValueError.
 _TRANSITION_ERRORS = (MapTransitionsError, MapTransitionError)
 
-#: Every error family the authored-sprite domain can raise. The document's own
-#: refusals are one tree; each planner's are a second; and the codec's and the
-#: allocator's are the third, because a container the packer refuses and a plan
-#: with nowhere legitimate to place are problems with this project against this
-#: image rather than escaping library errors. A build boundary reports all of them
-#: as one authored-sprite problem.
 _SPRITE_ERRORS = (SpriteAuthoringError, SpriteIdentityError, SpriteAttachmentError,
                   SpriteFormatError, AllocationError)
 
-#: APPEARANCE-AUTHORING-GATE-001. One family at the build boundary for the same
-#: reason `_SPRITE_ERRORS` is one: the document's own refusals and the allocator's
-#: are all problems with this project against this image, so they are reported in
-#: the same family rather than raw.
 _APPEARANCE_ERRORS = (AppearanceAuthoringError, AllocationError)
 
-#: MAP-NEW-AUTHORING-001. The refusals the authored-map domain can raise at the
-#: build boundary: the domain's own terms, and the allocator's when the declared
-#: expansion cannot host the moved table.
 _MAP_AUTHORING_ERRORS = (MapAuthoringError, AllocationError)
 
 
 def _map_authoring_requests(project: StatProject) -> tuple[AuthoredMapRequest, ...]:
-    """The project's authored maps, in the one order the document defines.
-
-    The document stores the engine identity as its two explicit bytes and the
-    donor as a canonical index; nothing here is inferred, and the order is
-    `ordered()`'s so two builds of one document append the same rows.
-    """
     return tuple(
         AuthoredMapRequest(name=item.name, donor=item.donor, key=item.key)
         for item in project.authored_maps.ordered()
@@ -828,16 +615,6 @@ def _map_authoring_requests(project: StatProject) -> tuple[AuthoredMapRequest, .
 def _check_authored_maps(
     project: StatProject, profile: RomProfile, canonical_image, identification,
 ) -> list[str]:
-    """Check every authored map against the base image.
-
-    `materialize_authored_maps` *is* the check, the way
-    `materialize_authored_appearances` is for an authored appearance: it re-checks
-    the published inbound word against the image, every donor's record and root,
-    the key admissibility and the row ceiling before anything is emitted. Running
-    it here reports the same refusals a build would raise, as validation problems
-    rather than as a half-applied build, and the work is repeated by the build on
-    purpose.
-    """
     if project.authored_maps.is_empty():
         return []
     if not capability.declared(profile, capability.Capability.MAP_ENTRIES):
@@ -856,29 +633,16 @@ def _check_authored_maps(
 
 
 def _authored_sprite_id(project: StatProject) -> int | None:
-    """The engine id the project's authored sprite identity will take, if any.
-
-    An appearance definition may bind it, which is the one case where the sprite
-    id an authored record names is not an id the canonical image already has.
-    """
     if project.sprites.is_empty():
         return None
     return project.sprites.only().sprite_id
 
 
 def _sprite_maps(project: StatProject) -> frozenset[MapIdentity]:
-    """The maps an authored actor is appended to, as map-domain identities."""
     return frozenset(MapIdentity(index) for index in project.sprites.actor_maps())
 
 
 def _sprite_map_clashes(project: StatProject, maps) -> list[str]:
-    """The two shapes that would give one map's object array two writers.
-
-    Run by `validate` and again by the build, from this one function, so a
-    project that cannot be built says so when it is validated rather than at the
-    end of a build. Each is a silent drop or a byte-range overlap otherwise: the
-    attachment plan emits that map's `MapEntry` record itself.
-    """
     problems: list[str] = []
     for index in project.sprites.actor_maps():
         values = project.maps.get(index)
@@ -908,20 +672,6 @@ def _check_sprites(
     project: StatProject, profile: RomProfile, project_dir, canonical_image,
     identification, maps,
 ) -> list[str]:
-    """Check every authored actor sprite against the base image.
-
-    SPRITE-NEW-PROJECT-SURFACE-001. `materialize_authored_sprites` *is* the check,
-    the way `materialize_transition_creations` is for created transitions: it
-    resolves every sheet PNG, every free palette entry against the decoded
-    corpus, the behaviour template against the map's own object array, and both
-    placements, before anything is emitted. Running it here reports the same
-    refusals a build would raise, as validation problems rather than as a
-    half-applied build, and the work is repeated by the build on purpose - a
-    second, lighter check is exactly how "what may be authored" and "what may be
-    built" drift apart.
-
-    Nothing here reads the plan it produces.
-    """
     if project.sprites.is_empty():
         return []
     problems = _sprite_map_clashes(project, maps)
@@ -945,16 +695,6 @@ def _check_sprites(
 def _check_appearances(
     project: StatProject, profile: RomProfile, canonical_image, identification,
 ) -> list[str]:
-    """Check every authored appearance definition against the base image.
-
-    `materialize_authored_appearances` *is* the check, the way
-    `materialize_authored_sprites` is for an authored sprite: it re-checks the
-    published inbound words against the image, the text and sprite admissibility of
-    every definition and the count ceiling before anything is emitted. Running it
-    here reports the same refusals a build would raise, as validation problems
-    rather than as a half-applied build, and the work is repeated by the build on
-    purpose.
-    """
     if project.appearances.is_empty():
         return []
     for name, required in (("an appearance table", capability.Capability.APPEARANCES),
@@ -978,33 +718,12 @@ def _check_appearances(
 
 
 def _transition_requests(project: StatProject) -> dict[TransitionIdentity, AuthoredTransitionEdit]:
-    """The project's stored transition edits, resolved to SDK identities.
-
-    MAP-WARP-PROJECT-AUTHORING-001 introduced this conversion; MAP-WARP-WORKBENCH-001
-    moved it to the transition authority (`transition_edits_to_requests`) so the
-    Workbench surface that displays an author their current connections and this
-    build that writes them read one implementation rather than two that could
-    disagree. The behaviour is unchanged: the document stores map identities as
-    their durable ``map:NNNN`` keys and regions as the record codec's own positional
-    pairs, and nothing here is inferred.
-    """
     return transition_edits_to_requests(project.transitions)
 
 
 def _authored_facts(
     project: StatProject, canonical: RomProfile, canonical_image: bytes | None
 ):
-    """The authored-map facts the transition domain resolves destinations against.
-
-    MAP-NEW-AUTHORING-001. Both the checks that run before a build and the build
-    itself have to hand the SAME facts to `plan_transition_edits` and
-    `materialize_transition_creations`. When only the build passed them, a project
-    that authors a map and a transition into it validated as "map:0452 is outside
-    this profile's 0..451 declared map-entry range" and then built perfectly - and
-    the Workbench refuses to build a project that did not validate, so the authored
-    map was unreachable through the product's own UI. One function, so a check
-    cannot forget what the build remembers.
-    """
     if canonical_image is None:
         return None
     return authored_map_facts(canonical_image, canonical, project.authored_maps)
@@ -1013,19 +732,6 @@ def _authored_facts(
 def _check_transitions(
     project: StatProject, profile: RomProfile, canonical_image: bytes | None
 ) -> list[str]:
-    """Check every authored transition edit against the base image.
-
-    MAP-WARP-PROJECT-AUTHORING-001. Every stored prior and every authored value is
-    resolved through the same authority a build uses, before anything is emitted, so
-    a stale project (one authored against a different image), an unsupported record,
-    an invalid identity, an invalid destination and an invalid region are all named
-    validation problems rather than a build that half-applies a project.
-
-    Gated on the profile's own identity for the reason `_check_layout` is: a
-    transition edit is a canonical-image capability, so an image that is not this
-    profile's image cannot be authored at all, and the build refuses it separately
-    where it can name the reason.
-    """
     requests = _transition_requests(project)
     if not requests:
         return []
@@ -1049,31 +755,12 @@ def _check_transitions(
 def _creation_requests(
     project: StatProject,
 ) -> dict[CreatedTransitionIdentity, AuthoredTransitionCreation]:
-    """The project's stored created transitions, resolved to SDK identities.
-
-    MAP-WARP-CREATE-PROJECT-001. The creation-side mirror of
-    :func:`_transition_requests`, and the same single conversion the authoring API
-    uses, so a surface and the build cannot disagree about what a document means.
-    """
     return transition_creations_to_requests(project.transition_creations)
 
 
 def _check_transition_creations(
     project: StatProject, profile: RomProfile, canonical_image: bytes | None
 ) -> list[str]:
-    """Check every created transition against the base image.
-
-    MAP-WARP-CREATE-PROJECT-001. `materialize_transition_creations` *is* the check:
-    it resolves every creation - source map, template, class, root sharing, template
-    priors, destination, region, arrival bounds, composed record and count overflow -
-    before it allocates anything, so running it here reports the same refusals a
-    build would raise, as validation problems rather than as a half-applied build.
-
-    Nothing here reads the plan it produces. The allocation is deterministic and
-    side-effect free, so validating by materializing is the same work the build then
-    repeats; that is deliberate, because a second, lighter check is exactly how
-    "what may be authored" and "what may be built" drift apart.
-    """
     requests = _creation_requests(project)
     if not requests:
         return []
@@ -1095,20 +782,6 @@ def _check_transition_creations(
 
 
 def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
-    """Check every authored map against the loaded table.
-
-    Mirrors `_check_records`: a map the ROM does not have, a map the project
-    omitted, a record whose bytes came from a different image, and a field value
-    the codec refuses. The slot extent is checked as bytes, because the project
-    carries it as bytes - that is what makes the opaque 117 arrays rebuildable
-    at all.
-
-    Every problem is reported before anything is emitted, which is the
-    fail-closed ordering ticket TOOLKIT-007 sec 18 requires.
-    """
-    # ARCH-REFACTOR-001: the placement domain supplies its validation context and
-    # possibly substituted map view. This function only reconciles generic map
-    # records; structural policy and final authored-run checks stay behind it.
     from .authored_placements import check_authored_placement_policy
     problems, authored_policy = check_authored_placement_policy(project, maps)
     maps = authored_policy.map_view
@@ -1167,8 +840,6 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
                 f"not match this ROM's {array.shape.value!r}"
             )
 
-        # TOOLKIT-008. Placements are checked the same way and before any
-        # output exists: count, identity, provenance bytes, and halfword range.
         owned = maps.map_placements(identity)
         authored_placements = values.get("placements", [])
         expected_indices = [p.identity.placement_index for p in owned]
@@ -1223,15 +894,6 @@ def _check_maps(project: StatProject, maps: Maps | None) -> list[str]:
 
 def _check_dialogues(project: StatProject, profile: RomProfile,
                      rom_path: str | Path) -> list[str]:
-    """Validate semantic dialogue identities before any build writes exist.
-
-    The base image is supplied so the *layout* half of DIALOGUE-VARIABLE-LENGTH-001
-    runs here: a replacement the owning container cannot hold - because another
-    record crosses the edited span, because the rebuilt container would exceed
-    the toolkit's decoded size limit, or because a displaced record's start
-    would overflow the handle's field - is reported as a project problem rather
-    than surfacing mid-build. Nothing is written or allocated on this path.
-    """
     if not project.dialogues:
         return []
     from .compressed_dialogue import CompressedDialogueError, target_named
@@ -1254,26 +916,6 @@ def _check_dialogues(project: StatProject, profile: RomProfile,
 def _check_raw_bytes(
     project_dir: str | Path, image: bytes | None
 ) -> list[str]:
-    """Report the raw byte document's problems, resolved against the image.
-
-    LOG1-RAW-WRITE-BUILD-001. A raw write is a change like any other, and this is
-    its half of the fail-closed ordering every other subsystem already has: the
-    document is read, every write is resolved against the canonical image, and a
-    write that reaches outside the image, or one that is already the image's own
-    bytes and so changes nothing, is a named problem here rather than a build that
-    quietly leaves it out.
-
-    A MALFORMED document does not reach this function's problem list: the reader
-    itself raises `RawByteDocumentError`, and both callers let that raise, so a
-    build that cannot read the document stops before anything is emitted instead
-    of reading it as "this project authors no raw byte". Both paths are
-    fail-closed, which is the property that matters; this function does not claim
-    the reader's own refusals.
-
-    A `None` image means the caller has no canonical bytes to resolve against; the
-    document is then read for its own shape alone, which is still a stronger
-    answer than skipping it.
-    """
     if image is None:
         read_raw_bytes(project_dir)
         return []
@@ -1283,7 +925,6 @@ def _check_raw_bytes(
 
 
 def _identity_order(identity: object) -> int:
-    """Sort key for reporting. Only table-indexed identities reach this."""
     return getattr(identity, "index", -1)
 
 
@@ -1299,12 +940,6 @@ def _load_for_project(
     TextStrings | None,
     Maps | None,
 ]:
-    """Read the project and whichever subsystems this ROM's profile declares.
-
-    A None subsystem means the profile does not declare it, which is a supported
-    state rather than an error - only a project that *authors* content against a
-    ROM lacking it is a problem, and the `_check_*` functions report that.
-    """
     project = read_project(project_dir)
     identification = identify_rom(rom_path, catalog)
     profile = _require_extractable_profile(identification)
@@ -1323,7 +958,6 @@ def _load_for_project(
     return project, identification, profile, tables, strings, maps
 
 
-# --- validate ------------------------------------------------------------
 
 
 def validate_project(
@@ -1337,21 +971,10 @@ def validate_project(
     )
 
     problems = _check_identity(project, identification, profile)
-    # Record checks are meaningful only against the right image; running them
-    # after an identity failure would bury the real cause under 150 mismatches.
     if not problems:
-        # The canonical image is read once for the domains that have to resolve
-        # an authored address against it, rather than once per domain. Graphics
-        # needs it whenever the project has an extracted graphics manifest, which
-        # is a fact about the project directory rather than about the model, so it
-        # is decided here from the same path the other domains key on.
         from .project.model import GRAPHICS_FILE
 
         authored_graphics = (Path(project_dir) / GRAPHICS_FILE).is_file()
-        # LOG1-RAW-WRITE-BUILD-001. A raw byte write is resolved against the
-        # canonical image, so the document's own presence is what decides whether
-        # that image has to be read here - reading it for no reason would be the
-        # only cost this ticket adds to a project that authors no raw byte.
         authored_raw_bytes = read_raw_bytes(project_dir)
         canonical_image = (
             Path(rom_path).read_bytes()
@@ -1394,15 +1017,9 @@ def validate_project(
     )
 
 
-# --- build ---------------------------------------------------------------
 
 
 def _apply_project_to_tables(project: StatProject, tables: StatTables) -> None:
-    """Push authored semantic values into the loaded tables.
-
-    Only fields that actually differ are set, so `plan()`'s reason strings name
-    the real edits rather than reporting every record as touched.
-    """
     for identity, values in project.enemies.items():
         entry = tables.enemy(identity)
         for field in ENEMY_FIELDS:
@@ -1417,11 +1034,6 @@ def _apply_project_to_tables(project: StatProject, tables: StatTables) -> None:
 
 
 def _apply_project_to_maps(project: StatProject, maps: Maps) -> None:
-    """Push authored semantic map values into the loaded table.
-
-    Only fields that actually differ are set, so the manifest's reason strings
-    name the real edits rather than reporting every map as touched.
-    """
     for index, values in project.maps.items():
         identity = MapIdentity(index)
         for name in MAP_FIELDS:
@@ -1454,17 +1066,7 @@ def build_project(
     *,
     manifest_path: str | Path | None | _ManifestBesideOutput = MANIFEST_BESIDE_OUTPUT,
 ) -> BuildResult:
-    """Build a project into a NEW ROM image. The base is never modified.
-
-    Fails closed before writing: a project that does not validate produces an
-    error and no output file. That ordering is the reason `validate_project`
-    exists as its own step rather than as a flag - the check has to be usable
-    without the build, and the build has to run it regardless.
-
-    ``manifest_path`` defaults to :data:`MANIFEST_BESIDE_OUTPUT`, so a normal
-    build publishes its provenance document beside the image it describes
-    (CQA-12). Pass ``None`` to write no manifest, or a path to redirect it.
-    """
+    """Build a project into a NEW ROM image; the base is never modified, and a project that does not validate produces an error and no output file."""
     project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog
     )
@@ -1481,8 +1083,6 @@ def build_project(
     raw_edits = read_raw_bytes(project_dir)
     raw_image = Path(rom_path).read_bytes() if raw_edits else None
 
-    # `_check_strings` applies the authored text as it checks it, so it runs
-    # before `_apply_project_to_tables` and its problems join the same gate.
     problems = (
         _check_records(project, tables)
         + _check_strings(project, strings)
@@ -1529,8 +1129,6 @@ def build_project(
     sprite_maps = _sprite_maps(project)
     sprite_clashes = _sprite_map_clashes(project, maps)
     if sprite_maps & authored_map_identities:
-        # The authoritative form of the document check above: these are the maps
-        # the placement domain actually took ownership of.
         clash = ", ".join(sorted(str(identity)
                                  for identity in sprite_maps & authored_map_identities))
         sprite_clashes.append(
@@ -1542,11 +1140,6 @@ def build_project(
         raise ProjectValidationError("; ".join(sprite_clashes))
     authored_map_identities = authored_map_identities | sprite_maps
 
-    # One plan for every subsystem, not one plan each. Overlap detection is
-    # per-plan, so two plans could each validate while together writing the
-    # same bytes; merging makes a stat record and a string that claimed the
-    # same span a hard error instead of a silent last-writer-wins.
-    #
     # Every declared subsystem contributes every record, edited or not - that is
     # what proves the round trip, since an unedited record must re-encode to its
     # original bytes and `plan_changes` then drops it as a no-op.
@@ -1566,9 +1159,6 @@ def build_project(
     # a write authored against a different image a refusal rather than a guess.
     if raw_image is not None:
         changes += raw_byte_changes(raw_edits, raw_image)
-        # A pure raw write is a legal whole build, so the base image it was
-        # validated against becomes the plan's own base rather than being left to
-        # whichever domain happens to have loaded one.
         base_bytes = raw_image
 
     if tables is not None:
@@ -1585,10 +1175,6 @@ def build_project(
         base_bytes = strings.base_bytes if base_bytes is None else base_bytes
     if maps is not None:
         _apply_project_to_maps(project, maps)
-        # TOOLKIT-028: an authored expansion derives its map's MapEntry record and
-        # moves its object array, so `maps` yields both structures to it rather than
-        # re-encoding them at their canonical values and colliding.
-        #
         # SPRITE-NEW-PROJECT-SURFACE-001 extends that yield to a map an authored
         # actor is appended to. An authored FIELD on such a map was already refused
         # above, because this domain emits the whole record.
@@ -1599,17 +1185,8 @@ def build_project(
             changes += PlacementEvents(maps).changes()
         base_bytes = maps.base_bytes if base_bytes is None else base_bytes
 
-    # TOOLKIT-028: the authored expansion joins the SAME merged plan as every other
-    # subsystem, so an authored body that claimed bytes another subsystem also wrote
-    # is a hard overlap error rather than a silent last-writer-wins.
     changes += authored_changes
 
-    # WORKBENCH-005: authored palette recolours contribute ByteChanges the same
-    # way every other subsystem does. Each override is packed RGB->GBA word and
-    # planned through `ActorSprites.plan_palette_entry`, so the change is an exact
-    # two-byte in-place write; it merges into the one plan below, where an overlap
-    # with another owner is a hard error rather than a silent last-writer-wins.
-    #
     # GRAPHICS-IMPORT-BOUNDARY-001 extends the same block to authored pixels, and
     # the two are resolved together on purpose: they are one authored surface
     # (`project.graphics_overrides`), they are validated by one gate, and they must
@@ -1669,11 +1246,6 @@ def build_project(
     # last-writer-wins. A non-canonical profile cannot be painted at all, and
     # that is refused here rather than silently dropping the authored cells.
     layout_edits = project.layout.cells()
-    # MAP-RESIZE-AND-LAYERS-001. A layout cell on a slot the project's structural
-    # document owns is not an in-place edit at all: the record that would hold it
-    # does not exist in the canonical image, so the whole window is emitted by the
-    # structure domain below. Splitting here is what keeps one cell from being
-    # written by two domains.
     structural_slots = project.structure.structural_slots()
     if structural_slots:
         layout_edits = {
@@ -1681,12 +1253,6 @@ def build_project(
             for key, value in layout_edits.items()
             if (key[0], key[1]) not in structural_slots
         }
-    # MAP-CHUNK-AUTHORING-001 splits the one authored layout document by the two
-    # value forms a cell may hold. An integer is the canonical-chunk ordinal
-    # `map_paint` has always resolved in place; a string is the identity of a
-    # chunk this project authored, which has no address until the allocator below
-    # gives it one. Both merge into the same single plan, so a cell can never be
-    # written by two domains.
     ordinal_edits = {
         key: value for key, value in layout_edits.items() if type(value) is int
     }
@@ -1708,7 +1274,6 @@ def build_project(
         try:
             changes += plan_layout_cells(image, ordinal_edits, profile=canonical)
         except MapPaintError as exc:
-            # One validation family at the build boundary, naming the edit.
             raise ProjectValidationError(f"authored map layout: {exc}") from exc
         base_bytes = image if base_bytes is None else base_bytes
 
@@ -1726,10 +1291,6 @@ def build_project(
                 "canonical chunk domain; a build would silently drop them"
             )
         image = Path(rom_path).read_bytes()
-        # A structural edit's initialization chunk, and any authored cell content
-        # on a structurally authored layer, are references a build-materialized
-        # record will hold. They are site-less placements: they materialize the
-        # body, and the structure domain's own record write carries the address.
         structural_refs: tuple = ()
         if not project.structure.is_empty():
             try:
@@ -1748,7 +1309,6 @@ def build_project(
                 structural=structural_refs,
             )
         except ChunkAuthoringError as exc:
-            # One validation family at the build boundary, naming the chunk.
             raise ProjectValidationError(f"authored map chunk: {exc}") from exc
         changes += chunk_materialization.changes
         reserved += chunk_materialization.reserved
@@ -1794,13 +1354,6 @@ def build_project(
         structure_edits = structure_materialization.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
-    # MAP-WARP-PROJECT-AUTHORING-001's domain: the one domain that allocates
-    # nothing and relocates nothing. A transition edit is a fixed-width overwrite of
-    # exactly one 24-byte record the canonical image already contains, so it takes
-    # no bytes from the reservation set and returns none to it - the ordering
-    # against every allocating domain above is therefore irrelevant, and the
-    # authority's own `changes()` is the only thing that serializes a record. A
-    # project whose authored values all equal the base contributes no change here.
     transition_edits: tuple = ()
     if not project.transitions.is_empty():
         canonical = packaged_profile()
@@ -1817,7 +1370,6 @@ def build_project(
                 authored=_authored_facts(project, canonical, image),
             )
         except _TRANSITION_ERRORS as exc:
-            # One validation family at the build boundary, naming the transition.
             raise ProjectValidationError(f"authored map transition: {exc}") from exc
         changes += transition_application.changes
         transition_edits = transition_application.provenance
@@ -1846,7 +1398,6 @@ def build_project(
                 authored=_authored_facts(project, canonical, image),
             )
         except _TRANSITION_ERRORS as exc:
-            # One validation family at the build boundary, naming the creation.
             raise ProjectValidationError(f"created map transition: {exc}") from exc
         changes += creation_materialization.changes
         reserved += creation_materialization.reserved
@@ -1854,11 +1405,7 @@ def build_project(
         transition_creations = creation_materialization.provenance
         base_bytes = image if base_bytes is None else base_bytes
 
-    # MAP-NEW-AUTHORING-001 runs last among the writing domains, just above.
 
-    # ROM-EXPAND-001: compressed dialogue is a normal allocating build domain. It
-    # receives every span reserved by earlier domains and returns its own span to
-    # the same build-scoped set before the one final plan is formed.
     dialogue_image = None
     dialogue_provenance: tuple = ()
     dialogue_edits: tuple = ()
@@ -1875,19 +1422,6 @@ def build_project(
         reserved += dialogue_reserved
         generated_allocations += list(dialogue_provenance)
 
-    # SPRITE-NEW-PROJECT-SURFACE-001's domain: the two production planners, run in
-    # the order this domain is defined by. The identity is planned first - it grows
-    # the character registry, appends the new structure, its animation and frame
-    # records and the packed containers, and writes the object-palette entries the
-    # art needs - and its reserved spans are handed straight to the attachment
-    # planner as the shared reservation set, so the appended object record and the
-    # re-emitted object array can only land clear of it. Both change lists reach the
-    # ONE plan below, exactly like every other domain.
-    #
-    # It runs after the dialogue domain and before the graphics pixel domain, which
-    # the comment above already pins as last: a sprite allocation here takes bytes
-    # no earlier domain wanted, and the graphics relocation still runs after every
-    # other allocating domain.
     sprite_relocations: tuple = ()
     sprite_authoring: tuple = ()
     if not project.sprites.is_empty():
@@ -1897,10 +1431,6 @@ def build_project(
                 image, identification, profile, project.sprites, project_dir,
                 reserved=reserved, corpus=sprites)
         except _SPRITE_ERRORS as exc:
-            # One validation family at the build boundary, naming the domain. The
-            # document's own refusals, both planners' and the allocator's are all
-            # problems with this project against this image, not escaping library
-            # errors, so they are reported in the same family rather than raw.
             raise ProjectValidationError(f"authored actor sprite: {exc}") from exc
         changes += sprite_materialization.changes
         reserved += sprite_materialization.reserved
@@ -1909,11 +1439,6 @@ def build_project(
         sprite_authoring = (sprite_materialization.provenance(),)
         base_bytes = image if base_bytes is None else base_bytes
 
-    # APPEARANCE-AUTHORING-GATE-001. The character appearance-definition table is
-    # re-emitted whole, with the project's authored records appended and the five
-    # words and three count halfwords that reach it updated in the same change
-    # list. It runs after the sprite identity so a definition can bind the id that
-    # identity takes, and before the graphics pixel domain, which is last.
     appearance_relocations: tuple = ()
     if not project.appearances.is_empty():
         image = Path(rom_path).read_bytes()
@@ -1982,11 +1507,6 @@ def build_project(
                 sprites=sprites,
             )
         except (GraphicsAuthoringError, SpriteFormatError, AllocationError) as exc:
-            # One validation family at the build boundary, naming the graphic. The
-            # codec's own refusals (a malformed or unproven container) and the
-            # allocator's (nowhere legitimate to place the payload) are build
-            # problems for this project, not escaping library errors, so they are
-            # reported in the same family rather than surfacing raw.
             raise ProjectValidationError(f"authored graphic pixels: {exc}") from exc
         changes += materialization.changes
         reserved += materialization.reserved
@@ -2002,13 +1522,6 @@ def build_project(
             f"profile {profile.id!r} declares no buildable content"
         )
 
-    # One expansion policy for the whole plan, not one per domain. `plan_changes`
-    # requires the generated image's allocated spans to equal the allocation
-    # provenance exactly, so two domains that each expanded above canonical EOF
-    # could not both be described by either domain's own image document. Deriving
-    # the single image from the union of every domain's allocations states the
-    # same thing when only one domain expands - the same size, the same padding,
-    # the same spans - and states something true when more than one does.
     generated_image = dialogue_image
     if generated_allocations:
         expansion = profile.generated_expansion
@@ -2061,13 +1574,6 @@ def build_project(
 
 
 def _placement_document(maps):
-    """The production reference graph for `maps`, or None where unavailable.
-
-    TOOLKIT-026: the authored gate reports the array anchor's MEASURED relocation
-    eligibility, so it needs the same document the relocator would receive. A
-    profile without placement-type capability simply has no such graph; the gate
-    then reports eligibility as not established rather than guessing.
-    """
     from .entities import PlacementTypes, PlacementTypeError
     from .capability import CapabilityError
     try:
@@ -2077,11 +1583,6 @@ def _placement_document(maps):
 
 
 def authored_capacity_plan(project_dir, rom_path, catalog):
-    """Validate and serialize authored records into explicit capacity requests.
-
-    Planning evidence only: returned packing is not approved for ROM emission.
-    Existing build safety checks and exact canonical reconciliation run first.
-    """
     project, identification, profile, tables, strings, maps = _load_for_project(
         project_dir, rom_path, catalog)
     problems = _check_identity(project, identification, profile)

@@ -7,8 +7,12 @@ moved.
 
 The guard covers:
 
-* the whole tracked ``tools/`` tree, as the ``HEX5`` census whose parent pair
-  ``INVENTORY.md`` section 4 reports;
+* the whole tracked ``tools/`` tree, as the ``HEX5`` token census, both as it
+  measures today and as the single line by which it differs from
+  ``INVENTORY.md`` section 4's published pair;
+* what an address looks like when you write it: an uppercase prefix and a digit
+  separator are counted, a Java suffix does not break the count, and an
+  identifier that merely ends in something hex-shaped is not a literal;
 * the enforcement set (that tree minus the four instrument directories) for
   conventional hex, complete ROM-space hex, and decimal ROM-range literals. The
   decimal unit is the one a hex-only guard cannot see, and it is 404 lines in a
@@ -28,7 +32,10 @@ The guard does NOT cover, and no node here should be read as covering:
   on purpose;
 * the disk. The set is ``git ls-files``, so a path that exists only on disk is
   invisible: the guard governs the committed tree and never fires on a bytecode
-  cache, an editor backup or generated output.
+  cache, an editor backup or generated output;
+* ``0o`` and ``0b`` spellings, and any other exotic form of the same integer.
+  The token patterns are hexadecimal and decimal, and no such spelling is in the
+  tracked tree today.
 """
 
 from __future__ import annotations
@@ -81,12 +88,71 @@ def test_the_census_set_is_the_tracked_index_and_not_the_disk() -> None:
     )
 
 
-def test_the_tools_hex5_census_reproduces_the_inventory_parent_pair() -> None:
+def test_the_tools_hex5_census_matches_the_widened_measurement() -> None:
     measured = census.totals(census.scan(census.census_paths()))[0]
-    pinned = census.CENSUS_INVENTORY_S4
+    pinned = census.CENSUS_HEX5
     assert measured == pinned, (
         f"HEX5 census: {measured[0]} lines / {measured[1]} files, pinned "
         f"{pinned[0]} lines / {pinned[1]} files"
+    )
+
+
+def test_the_widened_census_differs_from_section_4_by_that_one_spelled_line() -> None:
+    """The widened token finds one line section 4's pattern cannot see.
+
+    tools/runtime/rom008_query_probe.py:105 spells its literal with a digit
+    separator, which is the same integer in any interpreter. Section 4's pair
+    stays quoted and the difference stays exactly one line and no files, so a
+    further drift in either number fails here instead of being absorbed.
+    """
+    measured = census.totals(census.scan(census.census_paths()))[0]
+    published = census.CENSUS_INVENTORY_S4
+    assert measured == census.CENSUS_HEX5, (
+        f"HEX5 census: {measured[0]} lines / {measured[1]} files, pinned "
+        f"{census.CENSUS_HEX5[0]} lines / {census.CENSUS_HEX5[1]} files"
+    )
+    difference = (measured[0] - published[0], measured[1] - published[1])
+    assert difference == (1, 0), (
+        f"the census moved {difference} against INVENTORY.md section 4's published "
+        f"{published[0]} lines / {published[1]} files; the only expected difference "
+        f"is 1 line / 0 files, at tools/runtime/rom008_query_probe.py:105"
+    )
+
+
+def test_the_uppercase_prefix_and_the_digit_separator_are_both_counted(
+    tmp_path: Path,
+) -> None:
+    """Two spellings of the same integer used to evade every unit.
+
+    Driven through ``scan`` and not through a pattern, so what is tested is the
+    file-reading path. ``scan`` joins a path onto the repository root, and an
+    absolute operand passes that join unchanged, which is what lets the probe
+    live in the temporary directory.
+    """
+    probe = tmp_path / "hex_spellings.py"
+    probe.write_text("A = 0X0879B704\nA = 0x0879_B704\n", encoding="utf-8")
+    measured = census.scan([str(probe)])
+    assert measured == {str(probe): (2, 2, 0)}, (
+        f"both lines must count in hex5 and in rom_hex, measured {measured}"
+    )
+
+
+def test_an_identifier_that_ends_in_something_hex_shaped_is_not_a_literal(
+    tmp_path: Path,
+) -> None:
+    probe = tmp_path / "identifier.py"
+    probe.write_text('    "byte_at_0x10_census": {\n', encoding="utf-8")
+    measured = census.scan([str(probe)])
+    assert measured == {}, f"a name is not a literal; measured {measured}"
+
+
+def test_the_historical_coverage_survives_the_widened_token(tmp_path: Path) -> None:
+    probe = tmp_path / "suffixes.py"
+    probe.write_text("A = 0x080126D4L\nA = 0x1_234\n", encoding="utf-8")
+    measured = census.scan([str(probe)])
+    assert measured == {str(probe): (1, 1, 0)}, (
+        f"a Java L suffix must not stop the count, and four digits are not five: "
+        f"{measured}"
     )
 
 

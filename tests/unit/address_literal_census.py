@@ -11,15 +11,30 @@ instrument directories named in ``INSTRUMENT_DIRECTORIES``. Three units are
 counted, always per line and never per match, so a line carrying eleven
 addresses counts once:
 
-* ``HEX5`` - a hexadecimal literal of five or more digits. Its parent pair is
-  the one ``INVENTORY.md`` section 4 reports, 2884 lines in 272 files.
-* ``ROM_HEX`` - a complete ROM-space word. A bare ``0x08...`` prefix inside a
-  longer constant is not a hit, and the octal-hazard ``0x0[89]`` form is
-  included on purpose.
+* ``HEX5`` - a hexadecimal literal token of five or more digits. The metric was
+  widened once, after a review found two spellings that evaded it, an uppercase
+  prefix and a digit separator; it measures 2885 lines in 272 files.
+* ``ROM_HEX`` - a hexadecimal token whose parsed integer lands in
+  ``[0x08000000, 0x0A000000)``. Deciding by value rather than by the ``0[89]``
+  digit shape is what makes a seven-digit spelling such as ``0x82ed222`` count.
 * ``DECIMAL`` - an integer token whose value lands in
   ``[0x08000000, 0x0A000000)``. The decimal spelling is invisible to every
   hexadecimal pattern, which is the falsifier the migration order names; the
   value is range-checked as an integer, never by a pattern.
+
+``INVENTORY.md`` section 4 publishes the parent pair 2884 lines in 272 files for
+its ``0x[0-9A-Fa-f]{5,}`` count. That pattern and the token measured here differ
+by exactly one line, ``tools/runtime/rom008_query_probe.py:105``, which spells
+its literal with a digit separator. Both pairs are pinned and the difference is
+asserted to be exactly one line and no files, so the reconciliation with section
+4 is machine-checked rather than discarded.
+
+Named limits: ``0o`` and ``0b`` spellings are not detected at all, and no such
+spelling exists in the tracked tree today. The two hex boundary rules differ on
+purpose: the historical lowercase form keeps the historical boundary so a Java
+suffix such as ``0x080126D4L`` still counts and no line that used to count stops
+counting, while the widened form must also exclude identifier characters, or the
+name ``byte_at_0x10_census`` reads as the literal ``0x10ce``.
 
 What this module does NOT cover, stated so a reader does not expect more:
 
@@ -42,16 +57,20 @@ stated aim is that this surface does not grow, so the digest is not built.
 from __future__ import annotations
 
 import re
-from typing import Mapping, NamedTuple, Sequence
+from typing import Iterable, Mapping, NamedTuple, Sequence
 
 from tools.quality.architecture import REPOSITORY_ROOT, tracked_files
 
-#: A hexadecimal literal of five or more digits.
-HEX5 = re.compile(r"0x[0-9A-Fa-f]{5,}")
-
-#: A complete ROM-space hexadecimal word. Both boundaries are load-bearing: the
-#: lookarounds keep a longer constant from matching at its prefix.
-ROM_HEX = re.compile(r"(?<![0-9A-Fa-f])0x0[89][0-9A-Fa-f]{6}(?![0-9A-Fa-f])")
+#: A hex literal token, two spellings of boundary on purpose. The first
+#: alternative is the historical spelling and keeps the historical boundary, so
+#: a Java suffix such as 0x080126D4L still counts and nothing already counted
+#: stops counting. The second adds the upper-case prefix and the digit separator;
+#: its boundary must also exclude identifier characters, or the name
+#: byte_at_0x10_census reads as the literal 0x10ce.
+HEX_TOKEN = re.compile(
+    r"(?<![0-9A-Fa-f])0x[0-9A-Fa-f]{5,}(?![0-9A-Fa-f])"
+    r"|(?<![0-9A-Za-z_.])0[xX][0-9A-Fa-f_]*[0-9A-Fa-f](?![0-9A-Za-z_])"
+)
 
 #: A decimal integer token of eight digits or more, underscores allowed.
 DECIMAL = re.compile(r"(?<![\w.])\d[\d_]{7,}\d(?![\w.])")
@@ -60,14 +79,20 @@ DECIMAL = re.compile(r"(?<![\w.])\d[\d_]{7,}\d(?![\w.])")
 ROM_START = 0x08000000
 ROM_END = 0x0A000000
 
-#: ``INVENTORY.md`` section 4's parent pair: conventional hex lines and files in
-#: the whole tracked ``tools/`` tree. The per-file rows that document reports are
-#: lane-reported and are not reproducible under any single unit, so only this
-#: pair is pinned.
+#: ``INVENTORY.md`` section 4's published parent pair, quoted as published: its
+#: ``0x[0-9A-Fa-f]{5,}`` count, per line, over the 560 tracked ``tools/`` files.
+#: The per-file rows that document reports are lane-reported and are not
+#: reproducible under any single unit, so only this pair is quoted.
 CENSUS_INVENTORY_S4 = (2884, 272)
 
+#: The whole-tree measurement under this module's widened token: one more hex
+#: line than section 4, because a literal with a digit separator is a literal.
+#: The file count does not move.
+CENSUS_HEX5 = (2885, 272)
+
 #: The enforcement set at the baseline: conventional hex, ROM-space hex, and the
-#: decimal ROM-range corpus, each as (lines, files).
+#: decimal ROM-range corpus, each as (lines, files). None of the three moved when
+#: the token was widened.
 ENFORCEMENT_HEX5 = (661, 70)
 ENFORCEMENT_ROM_HEX = (486, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
@@ -498,12 +523,42 @@ def decimal_in_rom_space(line: str) -> bool:
     return False
 
 
+def count_line(line: str) -> tuple[int, int, int]:
+    """``(hex5, rom_hex, decimal)`` for one line, each 0 or 1.
+
+    The whole parser lives here, so a spelling is exercised at the level the
+    patterns live and ``scan`` stays a file-reading wrapper.
+    """
+    hex5 = rom_hex = 0
+    for match in HEX_TOKEN.finditer(line):
+        token = match.group()
+        if len(token[2:].replace("_", "")) >= 5:
+            hex5 = 1
+        try:
+            value = int(token, 16)  # accepts 0x / 0X and the digit separators
+        except ValueError:
+            continue  # a token that will not parse counts by length, not as address
+        if ROM_START <= value < ROM_END:
+            rom_hex = 1
+    return hex5, rom_hex, 1 if decimal_in_rom_space(line) else 0
+
+
+def count_lines(lines: Iterable[str]) -> tuple[int, int, int]:
+    """The three per-line counts summed over ``lines``."""
+    total = [0, 0, 0]
+    for line in lines:
+        for index, value in enumerate(count_line(line)):
+            total[index] += value
+    return total[0], total[1], total[2]
+
+
 def scan(paths: Sequence[str]) -> dict[str, tuple[int, int, int]]:
     """Per-line counts for every path that carries a literal.
 
     Returns only the paths with at least one hit. An empty path list, or a path
     that cannot be read, is a ``CensusError``: a measurement nobody can trust is
-    never reported as a count of zero.
+    never reported as a count of zero. An absolute path is read where it points,
+    which is what lets a caller measure a file outside the worktree.
     """
     if not paths:
         raise CensusError("the scan was handed no path to read")
@@ -513,12 +568,9 @@ def scan(paths: Sequence[str]) -> dict[str, tuple[int, int, int]]:
             text = (REPOSITORY_ROOT / path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as error:
             raise CensusError(f"{path}: cannot be read ({error})") from error
-        lines = text.splitlines()
-        hex5 = sum(1 for line in lines if HEX5.search(line))
-        rom_hex = sum(1 for line in lines if ROM_HEX.search(line))
-        decimal = sum(1 for line in lines if decimal_in_rom_space(line))
-        if hex5 or rom_hex or decimal:
-            counted[path] = (hex5, rom_hex, decimal)
+        counts = count_lines(text.splitlines())
+        if any(counts):
+            counted[path] = counts
     return counted
 
 

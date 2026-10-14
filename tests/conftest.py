@@ -803,8 +803,9 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
     An xdist controller owns no items, so a worker reports the nodes it ran and the
     failed report it emits is what carries the verdict back.
     """
-    if getattr(session.config, "workerinput", None) is None and session.config.getoption(
-            "numprocesses", None):
+    getoption = getattr(session.config, "getoption", None)
+    if (getattr(session.config, "workerinput", None) is None and getoption is not None
+            and getoption("numprocesses", None)):
         return False
     breaches = []
     for nodeid, seconds in sorted(_TEST_SECONDS.items()):

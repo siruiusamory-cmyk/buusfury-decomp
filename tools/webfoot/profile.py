@@ -34,8 +34,31 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
     "generated_expansion",
+    "code_anchors",
 }
 _ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites", "appearances"}
+_ALLOWED_CODE_ANCHOR_KEYS = {"name", "address", "kind", "evidence", "role"}
+
+#: The two ARMv4T states an anchored address can be entered in. Closed: a third
+#: name would claim a decoder this tree does not have.
+_SUPPORTED_CODE_ANCHOR_KINDS = {"arm", "thumb"}
+
+#: The five evidence classes `PINNED-MAP-DESIGN.md` section 2 defines, each
+#: with a producer that exists. Closed, so an anchor cannot carry a class as
+#: free text and a reader cannot meet a sixth name at the point of use.
+_SUPPORTED_CODE_ANCHOR_EVIDENCE = {
+    "byte-proven",
+    "ghidra",
+    "runtime-proven",
+    "declared",
+    "inferred",
+}
+
+#: The Game Pak window is 32 MiB above the base address. It is the widest ROM a
+#: profile can describe, so an anchor above it is not a ROM address for any
+#: image, and it is the only upper bound checkable before an image is in hand.
+#: Spelled as a shift so the declaration adds no address literal to the tree.
+_GBA_ROM_WINDOW_BYTES = 2 ** 25
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_TEXT_TABLE_KEYS = {
@@ -628,6 +651,107 @@ def _optional_placement_types(tables, size):
 
 
 @dataclass(frozen=True, slots=True)
+class CodeAnchor:
+    """One named ROM address the engine enters as code.
+
+    `kind` states the state the address is entered in, `arm` or `thumb`, and
+    `evidence` is the closed class that justifies the claim. They travel with
+    the address because an address alone says neither how to decode it nor why
+    it is believed, and a consumer that guessed either would be guessing about
+    bytes rather than reading a declaration.
+    """
+
+    name: str
+    address: GbaRomAddress
+    kind: str
+    evidence: str
+    role: str | None = None
+
+
+def _optional_code_anchors(value: Any) -> tuple[CodeAnchor, ...]:
+    """The profile's declared code anchors, or a refusal.
+
+    Absent means "nothing declared", which is the shipped state of every
+    profile and therefore an empty tuple rather than `None`. Every entry is
+    validated here, entry by entry; no index, key or length is trusted.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ProfileConfigError("code_anchors must be a list of anchor mappings")
+
+    anchors: list[CodeAnchor] = []
+    names: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise ProfileConfigError(f"code_anchors entry {index} must be a mapping")
+        unexpected = set(item) - _ALLOWED_CODE_ANCHOR_KEYS
+        if unexpected:
+            joined = ", ".join(sorted(str(key) for key in unexpected))
+            raise ProfileConfigError(
+                f"code_anchors entry {index} contains unexpected fields: {joined}"
+            )
+
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ProfileConfigError(
+                f"code_anchors entry {index} name must be a non-empty string"
+            )
+        name = name.strip()
+        if name in names:
+            raise ProfileConfigError(
+                f"code_anchors contains duplicate anchor name: {name!r}"
+            )
+        names.add(name)
+
+        address = item.get("address")
+        if type(address) is not int:
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} address must be an integer GBA address"
+            )
+        try:
+            GbaRomAddress(address).to_file_offset(_GBA_ROM_WINDOW_BYTES)
+        except BinaryAddressError as exc:
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} address {address!r} is outside the "
+                f"GBA ROM window: {exc}"
+            ) from exc
+
+        kind = item.get("kind")
+        if not isinstance(kind, str) or kind not in _SUPPORTED_CODE_ANCHOR_KINDS:
+            supported = ", ".join(sorted(_SUPPORTED_CODE_ANCHOR_KINDS))
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} kind {kind!r} is not supported; "
+                f"supported: {supported}"
+            )
+
+        evidence = item.get("evidence")
+        if not isinstance(evidence, str) or evidence not in _SUPPORTED_CODE_ANCHOR_EVIDENCE:
+            supported = ", ".join(sorted(_SUPPORTED_CODE_ANCHOR_EVIDENCE))
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} evidence {evidence!r} is not a "
+                f"supported class; supported: {supported}"
+            )
+
+        role = item.get("role")
+        if role is not None and (not isinstance(role, str) or not role.strip()):
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} role must be a non-empty string"
+            )
+
+        anchors.append(
+            CodeAnchor(
+                name=name,
+                address=GbaRomAddress(address),
+                kind=kind,
+                evidence=evidence,
+                role=role.strip() if role is not None else None,
+            )
+        )
+    return tuple(anchors)
+
+
+@dataclass(frozen=True, slots=True)
 class RomProfile:
     id: str
     game: str
@@ -656,6 +780,10 @@ class RomProfile:
     #: `actor_sprites` is for the character registry.
     appearances: RecordTableProfile | None = None
     generated_expansion: GeneratedExpansionProfile | None = None
+    #: PINMAP-03. Named code entry points this profile declares: handler words,
+    #: constructors, factories and patch sites. Absent is an empty tuple, so a
+    #: profile written before the key existed parses exactly as it did.
+    code_anchors: tuple[CodeAnchor, ...] = ()
 
     @property
     def identity(self) -> AtlasIdentity:
@@ -769,6 +897,7 @@ class RomProfile:
             generated_expansion=_optional_generated_expansion(
                 data.get("generated_expansion"), size
             ),
+            code_anchors=_optional_code_anchors(data.get("code_anchors")),
         )
 
 

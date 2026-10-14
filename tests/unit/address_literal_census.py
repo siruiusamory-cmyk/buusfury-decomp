@@ -32,8 +32,8 @@ asserted to be exactly one line and no files, so the reconciliation with section
 Named limits: ``0o`` and ``0b`` spellings are not detected at all, and no such
 spelling exists in the tracked tree today. The two hex boundary rules differ on
 purpose: the historical lowercase form keeps the historical boundary so a Java
-suffix such as ``0x080126D4L`` still counts and no line that used to count stops
-counting, while the widened form must also exclude identifier characters, or the
+suffix such as ``0x080126D4L`` still counts and no tracked line lost a count
+(measured), while the widened form must also exclude identifier characters, or the
 name ``byte_at_0x10_census`` reads as the literal ``0x10ce``.
 
 What this module does NOT cover, stated so a reader does not expect more:
@@ -63,8 +63,8 @@ from tools.quality.architecture import REPOSITORY_ROOT, tracked_files
 
 #: A hex literal token, two spellings of boundary on purpose. The first
 #: alternative is the historical spelling and keeps the historical boundary, so
-#: a Java suffix such as 0x080126D4L still counts and nothing already counted
-#: stops counting. The second adds the upper-case prefix and the digit separator;
+#: a Java suffix such as 0x080126D4L still counts, and no tracked line lost a count
+#: (measured). The second adds the upper-case prefix and the digit separator;
 #: its boundary must also exclude identifier characters, or the name
 #: byte_at_0x10_census reads as the literal 0x10ce.
 HEX_TOKEN = re.compile(

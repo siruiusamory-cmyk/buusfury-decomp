@@ -146,143 +146,85 @@ _SPEED_ROM_BUDGET_SECONDS = 30.0
 _SPEED_EXCEPTION_SLACK = 1.5
 _BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str, str]] = {
     "tests/unit/test_architecture.py::test_observations_never_fail_the_run":
-        (6.853, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-GATE-001"),
-    "tests/unit/test_architecture.py::test_the_real_tree_respects_the_import_direction":
-        (3.243, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture (headroom below the budget)", "SPEED-GATE-001"),
+        (6.853, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_architecture.py::test_the_report_is_deterministic":
-        (6.504, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-GATE-001"),
-    "tests/unit/test_architecture.py::test_the_repository_passes_its_own_purity_check":
-        (3.541, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_dev_tools.py::test_the_writer_refuses_an_empty_message":
-        (3.614, "38610899807 89fb181b", "drives the commit message probe over a throwaway repository (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_dragonbyte_foundation.py::test_the_application_starts_and_stays_alive_offscreen":
-        (3.013, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture, plus an AST parse (headroom below the budget)", "SPEED-GATE-001"),
+        (6.504, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_dragonbyte_foundation.py::test_the_real_tree_passes_the_gate_and_the_package_never_imports_the_beta":
-        (6.296, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.architecture, plus an AST parse", "SPEED-GATE-001"),
-    "tests/unit/test_frozen_containers.py::test_no_frozen_dataclass_in_tools_hands_out_a_mutable_container":
-        (4.406, "38610899807 89fb181b", "walks every frozen dataclass in tools/ (headroom below the budget)", "SPEED-GATE-001"),
+        (6.296, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.architecture, plus an AST parse", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_graphics_override_sdk.py::test_pack_gba_colour_is_the_exact_inverse_of_the_word_decode":
-        (8.376, "38600996718 f55e32d8", "an exhaustive 32768 colour round trip", "SPEED-GATE-001"),
+        (8.376, "38600996718 f55e32d8", "an exhaustive 32768 colour round trip", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_local_ci_script.py::test_a_cleanup_failure_reaches_the_record":
-        (36.700, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (36.700, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_a_failed_step_keeps_its_captured_output":
-        (40.480, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (40.480, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_a_green_run_passes_so_the_red_guard_is_not_vacuous":
-        (37.450, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (37.450, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_a_green_run_passes_when_the_pinned_files_are_present":
-        (36.980, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (36.980, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_a_later_run_keeps_the_earlier_runs_artifacts_and_names_do_not_collide":
-        (69.550, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (69.550, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_a_red_quality_step_fails_the_record":
-        (40.060, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (40.060, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_an_early_failure_leaves_no_clone_or_worktree":
-        (54.220, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
+        (54.220, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_local_ci_script.py::test_the_gate_refuses_when_the_record_directory_cannot_be_computed":
-        (38.680, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-GATE-001"),
-    "tests/unit/test_logx_synthesis_audit.py::test_live_code_carries_no_superseded_assumption_of_an_unrecorded_kind":
-        (3.156, "38610899807 89fb181b", "reads and compares the recorded synthesis reports (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_logx_synthesis_audit.py::test_recorded_production_defects_are_exactly_the_ones_the_synthesis_names":
-        (3.057, "38610899807 89fb181b", "reads and compares the recorded synthesis reports (headroom below the budget)", "SPEED-GATE-001"),
+        (38.680, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
     "tests/unit/test_logx_synthesis_audit.py::test_the_audit_is_deterministic":
-        (6.179, "38610899807 89fb181b", "reads and compares the recorded synthesis reports", "SPEED-GATE-001"),
-    "tests/unit/test_logx_synthesis_audit.py::test_the_corrected_files_no_longer_carry_a_superseded_assumption":
-        (3.175, "38600996718 f55e32d8", "reads and compares the recorded synthesis reports (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_logx_synthesis_audit.py::test_the_recorded_stale_text_set_is_exactly_what_remains":
-        (3.350, "38610899807 89fb181b", "reads and compares the recorded synthesis reports (headroom below the budget)", "SPEED-GATE-001"),
+        (6.179, "38610899807 89fb181b", "reads and compares the recorded synthesis reports", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_mgba_launch_coverage.py::test_every_registered_site_uses_the_gate_its_proof_names":
-        (7.575, "38600996718 f55e32d8", "the scan of every test module for launch sites", "SPEED-GATE-001"),
+        (7.575, "38600996718 f55e32d8", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_mgba_launch_coverage.py::test_no_exemption_names_a_registered_launch_site":
-        (11.600, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-GATE-001"),
+        (11.600, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_mgba_launch_coverage.py::test_the_current_tree_has_no_unregistered_launch_site":
-        (10.129, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-GATE-001"),
+        (10.129, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_pre_merge_check.py::test_a_master_commit_on_a_disjoint_path_passes":
-        (5.357, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-GATE-001"),
-    "tests/unit/test_pre_merge_check.py::test_a_supplied_merged_tree_digest_that_does_not_match_fails":
-        (4.055, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_pre_merge_check.py::test_an_unchanged_master_is_a_pass":
-        (3.123, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories (headroom below the budget)", "SPEED-GATE-001"),
+        (5.357, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_pre_merge_check.py::test_the_focused_run_refuses_a_missing_or_empty_inventory":
-        (5.010, "local 2026-10-14 venv 3.12.10", "drives the pre-merge gate over throwaway repositories", "SPEED-GATE-001"),
-    "tests/unit/test_pre_merge_check.py::test_the_primary_a_subdirectory_of_it_and_a_linked_worktree":
-        (4.269, "38600996718 f55e32d8", "drives the pre-merge gate over throwaway repositories (headroom below the budget)", "SPEED-GATE-001"),
+        (5.010, "local 2026-10-14 venv 3.12.10", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_pre_merge_check.py::test_the_primary_checkout_is_refused_and_a_linked_worktree_is_not":
-        (6.887, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-GATE-001"),
+        (6.887, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_project_safety.py::test_built_wheel_uses_packaged_profile_catalog":
-        (6.192, "38610899807 89fb181b", "builds a wheel with pip", "SPEED-GATE-001"),
+        (6.192, "38610899807 89fb181b", "builds a wheel with pip", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_public_surface.py::test_the_public_surface_is_clean":
-        (22.902, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-GATE-001"),
+        (22.902, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_public_surface.py::test_the_report_is_deterministic":
-        (36.608, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-GATE-001"),
+        (36.608, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_a_load_bearing_exception_suppresses_exactly_its_own_hits":
-        (10.004, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (10.004, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_findings_are_ordered_by_path_line_signal":
-        (9.858, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (9.858, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_the_enemy_behaviour_sense_is_covered_by_a_written_exception":
-        (9.858, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (9.858, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_the_json_document_has_a_stable_schema":
-        (9.972, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (9.972, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_the_real_tree_reports_nothing_in_the_shipping_toolkit":
-        (10.264, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (10.264, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_the_summary_says_advisories_never_change_the_exit_code":
-        (7.126, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+        (7.126, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_readability.py::test_two_runs_write_byte_identical_json":
-        (18.255, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_list.py::test_a_badge_is_as_wide_as_its_own_word_and_not_the_whole_cell":
-        (4.552, "38610899807 89fb181b", "builds and themes a real Qt list view (headroom below the budget)", "SPEED-GATE-001"),
+        (18.255, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
     "tests/unit/test_text_tool_list.py::test_a_map_heading_carries_the_inference_its_link_rests_on":
-        (5.151, "38610899807 89fb181b", "builds and themes a real Qt list view", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_list.py::test_the_empty_speaker_state_says_drawn_and_never_claims_a_stored_speaker":
-        (3.987, "38610899807 89fb181b", "builds and themes a real Qt list view (headroom below the budget)", "SPEED-GATE-001"),
+        (5.151, "38610899807 89fb181b", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_list.py::test_the_export_window_shows_the_facts_the_digest_and_one_close_action":
-        (7.990, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_list.py::test_the_row_is_drawn_with_one_divider_the_selection_and_the_state_badge":
-        (3.028, "38600996718 f55e32d8", "builds and themes a real Qt list view (headroom below the budget)", "SPEED-GATE-001"),
+        (7.990, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_list.py::test_the_state_chips_narrow_the_list_and_the_clear_action_restores_it":
-        (8.397, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-GATE-001"),
+        (8.397, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_list.py::test_the_status_cell_paints_no_fill_of_its_own_and_the_divider_runs_its_width":
-        (5.659, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_a_closed_window_does_not_leave_its_export_summary_shown":
-        (3.983, "38610899807 89fb181b", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_a_corrupt_settings_file_answers_the_defaults":
-        (4.832, "38610899807 89fb181b", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_a_saved_project_edit_survives_editing_and_undoing_in_the_window":
-        (4.352, "38610899807 89fb181b", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_a_status_message_hands_the_row_identity_back_on_the_next_selection":
-        (4.796, "38610899807 89fb181b", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
+        (5.659, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_shell.py::test_an_export_clears_the_unsaved_marker_and_reports_its_digest":
-        (9.314, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_smoke_exits_zero":
-        (4.906, "38600996718 f55e32d8", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
+        (9.314, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_shell.py::test_smoke_exits_zero_over_the_synthetic_image":
-        (6.756, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_shell.py::test_the_window_without_an_image_shows_what_to_do":
-        (4.732, "38610899807 89fb181b", "builds and themes the shell window (headroom below the budget)", "SPEED-GATE-001"),
+        (6.756, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_shell.py::test_undo_of_a_rename_beside_a_line_edit_restores_and_does_not_wedge":
-        (6.341, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_theme.py::test_every_control_class_is_painted_in_the_theme_ink":
-        (3.716, "38600996718 f55e32d8", "paints every control class in the theme ink (headroom below the budget)", "SPEED-GATE-001"),
+        (6.341, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_theme.py::test_the_extra_control_classes_are_painted_in_the_theme_ink":
-        (5.139, "38610899807 89fb181b", "paints every control class in the theme ink", "SPEED-GATE-001"),
-    "tests/unit/test_text_tool_theme_handback.py::test_taking_the_theme_back_restores_an_untouched_control":
-        (3.573, "38610899807 89fb181b", "applies the theme and hands it back around a control (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_ui_graphics_probe.py::test_enumeration_reports_the_literal_container_and_its_owner":
-        (3.017, "38600996718 f55e32d8", "runs the graphics probe report over its corpus (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_ui_graphics_probe.py::test_report_records_the_pre_filter_corpus_hits":
-        (4.602, "38610899807 89fb181b", "runs the graphics probe report over its corpus (headroom below the budget)", "SPEED-GATE-001"),
+        (5.139, "38610899807 89fb181b", "paints every control class in the theme ink", "SPEED-DEBT-QT-001"),
     "tests/unit/test_warp_randomizer_gui.py::test_the_application_is_configured_with_the_shared_dragonbyte_z_theme":
-        (8.210, "38615873476 a762e52", "applies the shared DragonByte Z theme in a cold process", "SPEED-GATE-001"),
-    "tests/unit/test_write_invariants_property.py::test_a_no_op_plan_reproduces_the_base":
-        (3.852, "38610899807 89fb181b", "a hypothesis search over generated span pairs (headroom below the budget)", "SPEED-GATE-001"),
+        (8.210, "38615873476 a762e52", "applies the shared DragonByte Z theme in a cold process", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_write_invariants_property.py::test_applying_a_plan_changes_exactly_the_declared_bytes":
-        (5.340, "38615873476 a762e52", "a hypothesis search over generated span pairs", "SPEED-GATE-001"),
-    "tests/unit/test_write_invariants_property.py::test_identical_physical_writes_collapse_deterministically":
-        (3.608, "38610899807 89fb181b", "a hypothesis search over generated span pairs (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_write_invariants_property.py::test_normalized_changes_do_not_depend_on_input_order":
-        (3.757, "38600996718 f55e32d8", "a hypothesis search over generated span pairs (headroom below the budget)", "SPEED-GATE-001"),
-    "tests/unit/test_write_invariants_property.py::test_overlapping_spans_fail_closed_in_the_planner":
-        (4.736, "38610899807 89fb181b", "a hypothesis search over generated span pairs (headroom below the budget)", "SPEED-GATE-001"),
+        (5.340, "38615873476 a762e52", "a hypothesis search over generated span pairs", "SPEED-DEBT-MISC-001"),
     "tests/unit/test_write_invariants_property.py::test_writes_that_disagree_about_one_span_fail_closed":
-        (6.471, "38600996718 f55e32d8", "a hypothesis search over generated span pairs", "SPEED-GATE-001"),
+        (6.471, "38600996718 f55e32d8", "a hypothesis search over generated span pairs", "SPEED-DEBT-MISC-001"),
 }
 
 

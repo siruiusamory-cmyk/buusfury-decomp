@@ -13,6 +13,7 @@ import re
 import yaml
 
 from tests.gates import REPOSITORY_ROOT
+from tools.quality import architecture
 
 WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 
@@ -115,6 +116,16 @@ def test_the_upload_step_always_runs_and_carries_the_report_and_the_captures():
 def test_the_checkout_keeps_no_credential_in_the_worktree():
     """Prevents: the job credential being left in the checkout's git config."""
     assert _step("actions/checkout")["with"]["persist-credentials"] is False
+
+
+def test_the_checkout_fetches_the_history_the_gate_diffs():
+    """Prevents: a shallow clone failing the gate's own history check."""
+    assert _step("actions/checkout")["with"]["fetch-depth"] == 0
+
+
+def test_the_workflow_directory_is_a_declared_top_level_root():
+    """Prevents: the workflow tripping the repository purity rule it lives under."""
+    assert architecture._rule_top_level_roots([".github/workflows/ci.yml"]) == []
 
 
 def test_the_workflow_names_no_rom_file_and_no_secret():

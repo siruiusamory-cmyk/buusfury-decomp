@@ -18,10 +18,10 @@ What travels, and what does not
 
 ``tools/buufury_text/icons`` is the only bundled data file set: the Tabler SVGs the
 theme draws every state glyph from. Nothing else is needed at runtime - the engine's
-title profiles are literals in ``tools/webfoot/textedit/engine.py``, so no ROM
-profile catalog is declared and none is missing. The canonical image is never
-bundled: the application reads an image the user names, and no ROM, save or save
-state can be staged by this file.
+title row is read from the packaged ROM profile catalogue in
+``tools/webfoot/data/roms.yaml``, so one more title is a catalogue entry and the
+canonical image is never bundled: the application reads an image the user names, and no
+ROM, save or save state can be staged by this file.
 
 The Qt SVG image plugin, on purpose
 -----------------------------------

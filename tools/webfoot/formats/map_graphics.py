@@ -1,58 +1,3 @@
-"""The one production reader for the accepted map/graphics binary concepts.
-
-CQA-04-DECODE-STACK-AUTHORITY-001. Before this module the same map and graphics
-concepts were decoded twice in production - once by the export-side readers
-(``tools/export/canonical.py`` and ``tools/export/render.py``) and once by the
-SDK's own map renderer (``tools/webfoot/map_render.py`` and
-``tools/webfoot/formats/bg_tilemap.py``) - with no shared code, no cross-import
-and no test comparing them. The two copies had already drifted observably: one
-read every tile bank at exactly ``0x4000`` bytes and the other at whatever the
-container declared, and only one of them understood the map-side layer handlers
-beyond the dominant chunk grid.
-
-This module is the reader of record for the map-side binary concepts. The export
-stack consumes it instead of re-deriving it, and the SDK renderer consumes it
-instead of re-deriving it, so a newly proven field or a corrected offset has one
-place to change.
-
-**What lives here, and why.** Everything below is a property of the ROM's bytes
-or of the *shape* of the records in them:
-
-* the MapEntry table and one MapEntry record's semantic fields;
-* one layer record: its handler, and the grid/window or grid/container fields
-  that handler gives meaning to;
-* a dominant chunk container's screen-entry words and the stitched grid;
-* the selector stream's delta decode;
-* a screen-entry plane's decode, for the two handlers that carry one;
-* a terrain field's container run (the Map 19 form);
-* the animated-tile records and their first packed frame;
-* the assembled character block the layers index into, including the bank
-  containers and the animation overlay;
-* the tile-entry bit fields, tile geometry and the OAM dimension table;
-* the engine-global background palette's requantisation.
-
-**What deliberately does not live here.** Which layers a surface chooses to
-draw, in what order, with which overlays, is presentation policy and is allowed
-to differ between the two surfaces - CQA-04 does not ask for one renderer. The
-sprite/frame/animation-record graph the resource exporter walks is a separate
-domain whose single owner is already ``tools/webfoot/formats/sprite_graphics.py``
-and is not restated here.
-
-**Addresses are the profile's, never this module's.** The MapEntry table
-address, its record count and its stride are read from the resolved
-``RomProfile``; the map root and layer records are read from the pointers the
-record itself holds. Two literals that are *not* profile declarations do appear
-here, and both are stated as what they are: the number of layer slots a map root
-carries (four, the GBA's regular-BG layer count) and the tile geometry of the
-platform. Nothing here restates a per-game extent - that is
-CQA-03-15-IDENTITY-AND-EXTENTS-001's reviewed property and it is preserved.
-
-**Error discipline.** Every refusal is a typed :class:`MapGraphicsError`, and no
-decode recovers by substituting a zero, an empty value or a default. A caller
-that needs its own error family translates at its boundary; a caller that needs
-a *weaker* container contract passes a weaker decoder, which is why container
-decoding is injected rather than fixed here (see :class:`ContainerDecoder`).
-"""
 
 from __future__ import annotations
 
@@ -119,104 +64,52 @@ class MapGraphicsError(ValueError):
     """
 
 
-# --- platform geometry -------------------------------------------------------
-#
-# Tiles, chunk grids and screenblocks are properties of the GBA's regular tiled
-# background, not of any one game, so they carry no profile declaration. The
-# same values are already the format layer's: `bg_tilemap` owns the screenblock
-# shape and `sprite_graphics` owns the tile side, and this module reads them
-# from there rather than restating the numbers a third time.
 
-#: One tile is 8x8 pixels, always.
 TILE_PIXELS = _sg.TILE_SIDE
 
-#: One 8bpp tile: 64 decoded bytes. A bank, a character block and a selector all
-#: measure in these, so the width has one owner.
 TILE_BYTES = _sg.TILE_SIDE * _sg.TILE_SIDE
 
-#: A dominant chunk's screen-entry plane: 32x32 entries, 2 bytes each.
 CHUNK_SIDE_TILES = _bg.SCREEN_CHUNK_SIDE
 CHUNK_ENTRY_COUNT = CHUNK_SIDE_TILES * CHUNK_SIDE_TILES
 CHUNK_ENTRY_BYTES = 2
 CHUNK_DECODED_BYTES = CHUNK_ENTRY_COUNT * CHUNK_ENTRY_BYTES
 
-#: A chunk covers 256x256 pixels.
 CHUNK_PIXELS = CHUNK_SIDE_TILES * TILE_PIXELS
 
-#: The encoded width of the four-byte chunk reference a dominant layer's window
-#: stores per cell. The field is a full little-endian GBA address, so nothing here
-#: masks or truncates it; MAP-CHUNK-AUTHORING-001 established the width by reading
-#: the window, and the addressability that follows from a full u32 is recorded
-#: beside :data:`CHUNK_CONTAINER_KIND`.
 CHUNK_POINTER_BYTES = 4
 
-#: The container kind every canonical dominant chunk uses.
-#:
-#: CONFIRMED by measurement over the canonical image: all 3,745 distinct chunk
-#: bodies reachable from the 1,516 dominant layers are `kind 1`, and every one
-#: declares exactly :data:`CHUNK_DECODED_BYTES`. Kinds 0 (stored) and 2 appear
-#: nowhere in the chunk corpus, which is why an authored chunk is emitted as
-#: kind 1 rather than in the encoder's own default kind - see
-#: :func:`pack_dominant_chunk`.
 CHUNK_CONTAINER_KIND = 1
 
-#: A screen-entry layer's plane has the same shape as a dominant chunk's: 1024
-#: little-endian screen entries = 0x800 decoded bytes = 32x32 tiles.
 SCREENBLOCK_ENTRY_COUNT = CHUNK_ENTRY_COUNT
 SCREENBLOCK_DECODED_BYTES = CHUNK_DECODED_BYTES
 SCREENBLOCK_PIXELS = CHUNK_PIXELS
 
-#: Tile-entry bit fields the accepted corpus establishes. They are re-exported
-#: from the screen-entry codec that decodes them, so a map reader and a layer
-#: renderer cannot disagree about which bit is which.
 TILE_ENTRY_ORDINAL_MASK = _bg.TILE_ENTRY_ORDINAL_MASK
 TILE_ENTRY_BIT_10 = _bg.TILE_ENTRY_BIT_10
 TILE_ENTRY_BIT_11 = _bg.TILE_ENTRY_BIT_11
 TILE_ENTRY_HIGH_NIBBLE = _bg.TILE_ENTRY_HIGH_NIBBLE
 
-#: A regular-BG screen entry addresses at most 1024 tiles.
 MAX_TILE_INDEX = TILE_ENTRY_ORDINAL_MASK
 
-#: OAM shape/size -> pixel dimensions (GBATEK). The table is the format layer's
-#: (`sprite_graphics`), re-exported so a piece reader and a map reader cannot
-#: disagree about what a piece's stored extents mean.
 OBJECT_DIMENSIONS = _sg.OBJECT_DIMENSIONS
 
-#: Engine-global background palette: 256 RGB888 triples, uncompressed. The ENTRY
-#: COUNT and byte size are format facts; the ADDRESS is the profile's
-#: (`tables.actor_sprites.bg_palette_address`), read through the reader's profile.
 BG_PALETTE_ENTRIES = 256
 BG_PALETTE_BYTES = BG_PALETTE_ENTRIES * 3
 
-#: Object palette entries: one 256-word palette is the OAM palette size, a
-#: format fact. Its address is the profile's too.
 OBJECT_PALETTE_ENTRIES = _sg.PALETTE_ENTRIES
 OBJECT_PALETTE_BYTES = _sg.PALETTE_BYTES
 
-#: One pointer-table entry is one little-endian GBA address; the width is the
-#: text codec's, not restated here.
 TEXT_POINTER_SIZE = _tt.TEXT_POINTER_SIZE
 
 
-# --- map root / layer record fields ------------------------------------------
 
-#: MapEntry fields the accepted discovery route uses.
-MAP_ENTRY_KEY_OFFSET = 0x00        # two ordered key bytes
-MAP_ENTRY_TEXT_OFFSET = 0x0C       # u32; low half indexes the text pointer table
-MAP_ENTRY_SOURCE_OFFSET = 0x2C     # u32; indexed-word source (selector 1 = word[0])
+MAP_ENTRY_KEY_OFFSET = 0x00
+MAP_ENTRY_TEXT_OFFSET = 0x0C
+MAP_ENTRY_SOURCE_OFFSET = 0x2C
 
-#: Map root (the load-time definition template) fields.
-#:
-#: Four layer slots, because a GBA regular-BG scene has four. This is the
-#: hardware's BG count and not a per-game extent, which is why it is a constant
-#: here rather than a profile declaration.
 ROOT_LAYER_SLOTS = (0x14, 0x18, 0x1C, 0x20)
-#: Four bytes the engine adds to `BG0CNT..BG3CNT`, one per slot. The arithmetic
-#: is CONFIRMED; the per-slot assignment is PARTIALLY CONFIRMED, and both the
-#: accepted renderer and the exporter use the byte as a draw-order key. It is
-#: recorded as the addend rather than promoted to a semantic "priority".
 ROOT_BG_ADDEND_OFFSET = 0x04
-ROOT_EXTENT_X_OFFSET = 0x08        # ldrh, extent stored as extent - 1
+ROOT_EXTENT_X_OFFSET = 0x08
 ROOT_EXTENT_Y_OFFSET = 0x0A
 ROOT_SELECTOR_STREAM_OFFSET = 0x48
 ROOT_BANK_TABLE_OFFSET = 0x4C
@@ -226,51 +119,21 @@ ROOT_BG_CONTROL_OFFSET = 0x3C
 ROOT_ANIMATED_COUNT_OFFSET = 0x0C
 ROOT_ANIMATED_ARRAY_OFFSET = 0x10
 
-#: Layer-record fields for the dominant form.
 LAYER_HANDLER_OFFSET = 0x00
-LAYER_CHUNK_X_OFFSET = 0x14        # unsigned chunk-grid X count
-LAYER_CHUNK_Y_OFFSET = 0x15        # unsigned chunk-grid Y count
-LAYER_CHUNK_WINDOW_OFFSET = 0x18   # chunk-pointer window, 4-byte elements
+LAYER_CHUNK_X_OFFSET = 0x14
+LAYER_CHUNK_Y_OFFSET = 0x15
+LAYER_CHUNK_WINDOW_OFFSET = 0x18
 
-#: The bytes of a dominant layer record that precede its chunk window. The record
-#: is `header + window` and nothing else: measured over all 1,516 canonical
-#: dominant records, the record's size is exactly `0x18 + 4 * chunk_x * chunk_y`
-#: with no trailing field, and the bytes immediately after the window belong to the
-#: next structure (on map 40 the word after slot 0's single-cell window is the
-#: kind-1 container header slot 1's cell 0 points at). That is why a grid that
-#: grows needs the record relocated rather than extended in place, and why every
-#: header byte must be copied verbatim - the header's `+0x04`, `+0x08`, `+0x0C`,
-#: `+0x10` and `+0x16` fields have no established semantics (LOGX-SYNTHESIS
-#: section 2.1 records them as UNKNOWN/UNRESOLVED), so they are carried, never
-#: derived.
 LAYER_RECORD_HEADER_BYTES = LAYER_CHUNK_WINDOW_OFFSET
 
-#: The GBA's visible viewport, the unit a map root's declared extent is stated
-#: against. Platform geometry, like the tile size above, so it carries no profile
-#: declaration.
 VIEWPORT_PIXELS_X = 240
 VIEWPORT_PIXELS_Y = 160
-#: A dominant record's own field is one unsigned byte per axis, so 255 is the
-#: encoding ceiling. The supported authoring range is deliberately far below it and
-#: is a policy limit, not an engine measurement: the canonical corpus's largest
-#: dominant grid is 5x5 (measured over all 1,516 dominant records), and nobody has
-#: established how large a grid the engine's own per-layer upload loop tolerates.
-#: A request above this is refused with its reason rather than attempted.
 MAX_LAYER_GRID_SIDE = 8
 
-#: The five accepted layer `+0x00` handler values. A handler value is ROM content
-#: - the address of the engine routine that consumes the record - so it is stated
-#: once here and every surface classifies from this table rather than from a
-#: second copy of the list.
 DOMINANT_LAYER_HANDLER = 0x08008087
 ABSENT_LAYER_HANDLER = 0x08007A41
 ABSENT_LAYER_RECORD = 0x080707FC
 
-#: Handlers whose layer is a 32x32 screen-entry plane, mapped to the record field
-#: that names its container. Both carry 1024 little-endian screen entries =
-#: 0x800 decoded bytes, the same form a dominant chunk carries, but they reach
-#: it by different code:
-#:
 #: * `0x08007B63` - tail-branch stub `0x08007B62` into constructor `0x08007A60`,
 #:   which decompresses `record + 0x04` (and `record + 0x08`, the same container
 #:   on the canonical record) into the object's own buffers.
@@ -281,9 +144,6 @@ ABSENT_LAYER_RECORD = 0x080707FC
 #:   `0x0600E000 + slot * 0x800`. Method 2 (`0x08008924`) then programs
 #:   `BGxHOFS`/`BGxVOFS` at `0x04000010 + 4*slot` from the record's `+0x04`,
 #:   `+0x0C`, `+0x10`, `+0x14`, `+0x18` and a viewport object.
-#:
-#: So neither handler is a marker without pixels: both name a screen-entry plane
-#: and both are static graphical layers.
 SCREENBLOCK_HANDLERS: dict[int, int] = {
     0x08007B63: 0x04,
     0x0800897B: 0x1C,
@@ -312,49 +172,22 @@ TERRAIN_FIELD_CELL_TILES = 32
 TERRAIN_FIELD_TILE_ORDINAL_MASK = 0xFF
 TERRAIN_FIELD_RESIDENT_SLOTS = 9
 
-#: A bank's addressed tile capacity under the selector's 8-bit tile field, and
-#: the declared number of banks in the accepted graph. The COUNT is the accepted
-#: table's own length - a property of the map asset graph rather than a profile
-#: declaration - so it is a statement here with its provenance rather than a
-#: second copy beside it.
 BANK_TILE_BYTES = TILE_BYTES
 BANK_COUNT = 187
 
 
-# --- container decoding ------------------------------------------------------
 
 class ContainerDecoder(Protocol):
-    """Decode one packed/stored container at a file offset.
-
-    The two production stacks legitimately differ in how strictly they decode a
-    container, and CQA-04 does not ask them to stop: the export path requires the
-    packed stream's own end marker to fall at the declared size (a canonical
-    postcondition it proved over 11,712 reachable containers), while the SDK's
-    renderer accepts the project decoder's exact-declared-size contract. That is
-    a *policy* difference at the outer edge, not a second reading of the map
-    format, so the shape of the reader is shared and the strictness is injected.
-
-    ``expected`` is the decoded size the caller can prove from the record that
-    named the container (an animated tile's frame, for instance); a decoder must
-    return data of exactly that length or raise.
-    """
 
     def __call__(
         self, data: bytes, offset: int, *, expected: int | None = ...
-    ) -> "_lz.Container":  # pragma: no cover - protocol
+    ) -> "_lz.Container":
         ...
 
 
 def project_container_decoder(
     data: bytes, offset: int, *, expected: int | None = None
 ) -> "_lz.Container":
-    """The SDK's own container decode: exact declared size, no marker rule.
-
-    This is the default, because it is the decoder the shipping product writes
-    against and the one the map renderer already used. A caller that wants the
-    export path's stronger stream postcondition passes its own decoder; the
-    reader's record semantics are unchanged either way.
-    """
     container = _lz.unpack(data, offset)
     if expected is not None and len(container.data) != expected:
         raise MapGraphicsError(
@@ -364,16 +197,8 @@ def project_container_decoder(
     return container
 
 
-# --- the reader --------------------------------------------------------------
 
 class MapGraphicsReader:
-    """Bounds-checked, profile-aware reader over one immutable ROM image.
-
-    Every address is a GBA address and every access is bounds-checked against the
-    image, so a misread pointer refuses loudly instead of wrapping. The profile is
-    the one authority for the MapEntry table's address, count and stride and for
-    the two palette addresses; nothing in this class restates them.
-    """
 
     __slots__ = ("data", "size", "_profile", "_decode")
 
@@ -399,14 +224,8 @@ class MapGraphicsReader:
     def profile(self) -> RomProfile:
         return self._profile
 
-    # -- the profile's declared extents -----------------------------------
 
     def map_entry_table(self) -> MapEntryTableProfile:
-        """The profile's MapEntry table, or a refusal naming what is missing.
-
-        One lookup point, so no caller restates the table address and no caller
-        can silently fall back to a table belonging to another image.
-        """
         table = self._profile.map_entries
         if table is None:
             raise MapGraphicsError(
@@ -424,12 +243,6 @@ class MapGraphicsReader:
         return self.map_entry_table().record_size
 
     def bg_palette_address(self) -> int:
-        """The profile-declared engine-global background palette address.
-
-        A profile that declares no palette cannot be rendered: every map's
-        colours come from it, and defaulting to some other image's address would
-        requantise unrelated bytes into a plausible-looking palette.
-        """
         sprites = self._profile.actor_sprites
         if sprites is None:
             raise MapGraphicsError(
@@ -446,7 +259,6 @@ class MapGraphicsReader:
             )
         return sprites.object_palette_address.raw
 
-    # -- raw access --------------------------------------------------------
 
     def offset(self, address: int) -> int:
         """GBA address -> file offset, refusing anything outside the image."""
@@ -506,7 +318,6 @@ class MapGraphicsReader:
                 f"raw packed stream at {offset:#x} did not decode: {exc}"
             ) from exc
 
-    # -- convenience wrappers, so a caller imports one name ----------------
 
     def map_entry(self, index: int) -> "MapEntry":
         return read_map_entries(self)[index]
@@ -524,15 +335,6 @@ class MapGraphicsReader:
         return assemble_map_char_block(self, root_address)[0]
 
     def text(self, index: int) -> str | None:
-        """The ROM string a text-table index resolves to, or ``None``.
-
-        The pointer table, its count, its stride and its UTF-16LE pool are the
-        profile's and the codec's; only the resolution is performed here. An
-        index that does not resolve returns ``None`` rather than being guessed
-        at. The index bound is the profile's declaration, read here rather than
-        held as a constant, because it decides which slot a MapEntry label
-        resolves through.
-        """
         table = self._profile.text_strings
         if table is None or not 0 <= index < table.count:
             return None
@@ -557,19 +359,9 @@ class MapGraphicsReader:
             return None
 
 
-# --- record types -------------------------------------------------------------
 
 @dataclass(frozen=True, slots=True)
 class MapEntry:
-    """One MapEntry record's semantic fields, without dereferencing pointers.
-
-    This is the single semantic reader for the fields both stacks parse, and
-    ``record`` carries the full byte-exact physical record from
-    :mod:`tools.webfoot.formats.map_entry` - the module that owns the record's
-    shape and that the writer serializes. Unresolved fields stay unresolved here:
-    they are not renamed into stronger claims, and the evidence labels in
-    ``map_entry.MAP_ENTRY_LAYOUT`` remain the record of what each byte is.
-    """
 
     index: int
     address: int
@@ -593,14 +385,6 @@ class MapEntry:
 
 @dataclass(frozen=True, slots=True)
 class LayerRecord:
-    """One layer record reached from a map root's four slots.
-
-    ``chunk_x``/``chunk_y`` are the dominant form's own grid at `+0x14`/`+0x15`.
-    ``terrain_x``/``terrain_y`` are the terrain-field form's grid at `+0x04`/
-    `+0x05`. They are held separately on purpose: on a terrain-field record the
-    dominant offsets carry unrelated bytes, and filling the grid fields from
-    them would invent a grid the record does not state.
-    """
 
     slot: int
     address: int
@@ -665,15 +449,6 @@ class LayerRecord:
 
     @property
     def classification(self) -> str:
-        """The structural class of this record, named by handler.
-
-        The names are structural, not semantic. `dominant` is the accepted
-        chunk-grid form and `absent_placeholder` is the shared zero-dimension
-        record an unused slot points at. The three remaining handlers are
-        classified by what their own code does, which ASSET-EXPORT-MAP-
-        HANDLERS-001 established from the engine's instructions; the evidence for
-        each is recorded beside its handler constant above.
-        """
         if self.handler == DOMINANT_LAYER_HANDLER:
             if self.chunk_x == 0 and self.chunk_y == 0:
                 return "dominant_zero_grid"
@@ -699,14 +474,6 @@ class LayerRecord:
 
     @property
     def resolved(self) -> bool:
-        """Whether the record form this slot carries is established.
-
-        A handler outside the ones the engine's own instructions account for, and
-        a dominant record whose grid has a zero dimension, are classed but not
-        understood. Their being unclassifiable is not evidence that the slot draws
-        nothing, so a composite is refused for them rather than assembled from a
-        record that has not been accounted for.
-        """
         return self.classification not in (
             "unclassified_handler",
             "dominant_zero_grid",
@@ -715,30 +482,15 @@ class LayerRecord:
 
     @property
     def graphical(self) -> bool:
-        """Whether the engine evidence establishes this slot draws pixels.
-
-        `absent_placeholder` is the only class established as drawing nothing: it
-        is a zero-dimension record with no payload. The dominant, screenblock and
-        terrain-field classes all draw. An unclassified class establishes neither,
-        so this is false for it without asserting that it draws nothing.
-        """
         return self.renderable
 
     @property
     def blocks_composite(self) -> bool:
-        """Whether this slot prevents a faithful static composite.
-
-        A slot that draws nothing cannot make a composite unfaithful. A graphical
-        slot whose pixels cannot be assembled does. A slot whose record form is
-        not established does too: unknown means unknown, so the composite is
-        withheld rather than assembled from an unaccounted record.
-        """
         return not self.resolved or (self.graphical and not self.renderable)
 
 
 @dataclass(frozen=True, slots=True)
 class SelectorStream:
-    """A decoded selector stream: the absolute ``bank:tile`` selectors in order."""
 
     address: int
     selectors: tuple[int, ...]
@@ -746,12 +498,7 @@ class SelectorStream:
 
 @dataclass(frozen=True, slots=True)
 class AnimatedTileSource:
-    """One animated-tile record reached from ``root + 0x10``.
-
-    ``first_frame_bytes`` is the record's first packed frame decoded, because
-    that is what the static character block overlays. Later frames are runtime
-    state and are deliberately not decoded here.
-    """
+    """One animated-tile record reached from ``root + 0x10``."""
 
     index: int
     address: int
@@ -764,22 +511,16 @@ class AnimatedTileSource:
 
 @dataclass(frozen=True, slots=True)
 class CharBlock:
-    """The assembled 8bpp character data a map's layers index into."""
 
     data: bytes
     tile_count: int
     selector_count: int
     animated_tile_count: int
-    #: Tile ordinals the caller asked about that no selector or animation
-    #: supplies. Empty whenever the caller did not ask, and the reason a renderer
-    #: passes ``require_referenced``: an empty tuple means "not asked", not
-    #: "nothing missing".
     missing_tile_indices: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class Bank:
-    """One entry of a bank table, decoded."""
 
     index: int
     pointer_field_address: int
@@ -790,16 +531,9 @@ class Bank:
     payload: bytes
 
 
-# --- MapEntry reading --------------------------------------------------------
 
 def read_map_entry_table(reader: MapGraphicsReader) -> MapEntryTableProfile:
-    """The profile's MapEntry table, after refusing a record shape this codec
-    cannot read.
-
-    ``map_entry.resolve_map_entry_table_range`` makes the same refusal for the
-    file-based path; stating it here as well keeps a synthetic or relocated
-    profile from being read at a stride the record type does not have.
-    """
+    """Refuses a record shape this codec does not have, so a profile is never read at the wrong stride."""
     table = reader.map_entry_table()
     if table.record_size != _me.MAP_ENTRY_SIZE:
         raise MapGraphicsError(
@@ -810,16 +544,6 @@ def read_map_entry_table(reader: MapGraphicsReader) -> MapEntryTableProfile:
 
 
 def read_map_entries(reader: MapGraphicsReader) -> tuple[MapEntry, ...]:
-    """Read every MapEntry record this profile declares and resolve its root.
-
-    The count, base address and stride all come from the profile through the
-    reader, so a profile that declares a different table is enumerated at its own
-    extent rather than at Buu's. The fields are read through
-    :data:`tools.webfoot.formats.map_entry.MAP_ENTRY_LAYOUT` - the one owner of
-    the record's physical shape - rather than by offsets restated here, so a
-    field this reader publishes cannot drift from the record the writer
-    serializes.
-    """
     table = read_map_entry_table(reader)
     entries: list[MapEntry] = []
     for index in range(table.count):
@@ -845,19 +569,10 @@ def read_map_entries(reader: MapGraphicsReader) -> tuple[MapEntry, ...]:
     return tuple(entries)
 
 
-# --- layer records -----------------------------------------------------------
 
 def read_layer(
     reader: MapGraphicsReader, root_address: int, slot: int
 ) -> LayerRecord:
-    """Read one of a root's four layer slots at the accepted offsets.
-
-    The dominant form states its chunk grid at `+0x14`/`+0x15` and its chunk
-    window at `+0x18`. The terrain-field form states its cell grid at
-    `+0x04`/`+0x05` and its container run at `+0x08`, so its grid is read from
-    there into ``terrain_x``/``terrain_y`` and the dominant fields are left alone
-    rather than filled with the unrelated bytes those offsets happen to hold.
-    """
     if not 0 <= slot < len(ROOT_LAYER_SLOTS):
         raise MapGraphicsError(f"layer slot {slot!r} is outside 0..3")
     record = reader.u32(root_address + ROOT_LAYER_SLOTS[slot])
@@ -894,13 +609,7 @@ def read_layers(reader: MapGraphicsReader, root_address: int) -> tuple[LayerReco
 
 
 def layer_record_size(columns: int, rows: int) -> int:
-    """A dominant layer record's exact byte size: ``0x18 + 4 * columns * rows``.
-
-    Measured, not derived from a stride guess: over all 1,516 canonical dominant
-    records the record length is exactly this for every grid shape in the corpus
-    (28 bytes for 1x1 through 104 for 5x4), and the word after it is never a
-    pointer of the record's own.
-    """
+    """A dominant layer record's exact byte size: ``0x18 + 4 * columns * rows``."""
     if not isinstance(columns, int) or not isinstance(rows, int):
         raise MapGraphicsError("a layer grid is stated in whole columns and rows")
     if columns <= 0 or rows <= 0:
@@ -911,12 +620,7 @@ def layer_record_size(columns: int, rows: int) -> int:
 
 
 def layer_record_header(reader: MapGraphicsReader, layer: LayerRecord) -> bytes:
-    """The dominant record's own ``0x18``-byte header, byte for byte.
-
-    The header's ``+0x04``, ``+0x08``, ``+0x0C``, ``+0x10`` and ``+0x16`` fields
-    have no established semantics, so a relocated record carries them rather than
-    reconstructing them. Copying is the only operation that cannot invent a value.
-    """
+    """The dominant record's own ``0x18``-byte header, byte for byte."""
     if layer.classification not in ("dominant", "dominant_zero_grid",
                                     "dominant_partial_zero_grid"):
         raise MapGraphicsError(
@@ -929,16 +633,6 @@ def layer_record_header(reader: MapGraphicsReader, layer: LayerRecord) -> bytes:
 def compose_layer_record(
     header: bytes, columns: int, rows: int, window: Sequence[int]
 ) -> bytes:
-    """Emit a dominant layer record: the header copied, then the chunk window.
-
-    ``header`` must be a canonical record's own leading bytes; ``columns`` and
-    ``rows`` are written over its two grid bytes, so a resize states its new grid
-    in the record rather than inheriting the old one. ``window`` is
-    ``columns * rows`` four-byte little-endian addresses in row-major order. A
-    null address is refused: the window is the record's whole reason to exist and a
-    cell the author did not choose must be filled from a chunk the layer already
-    uses, never left pointing at nothing.
-    """
     if len(header) != LAYER_RECORD_HEADER_BYTES:
         raise MapGraphicsError(
             f"a dominant layer header is {LAYER_RECORD_HEADER_BYTES} bytes; got "
@@ -978,7 +672,6 @@ def root_layer_slot_address(root_address: int, slot: int) -> int:
 
 def declared_extent_raw(pixels: int, viewport: int) -> int:
     """The root extent field's stored value that makes ``pixels`` reachable.
-
     The engine loads the selector-1 root into its per-map camera state as
     ``dest+0x9C = (root + 0x08) - 1`` and ``dest+0x9E = (root + 0x0A) - 1``
     (``ldrh`` at ``0x0800958A``/``0x08009592``, ``subs #1``, stored at
@@ -987,9 +680,6 @@ def declared_extent_raw(pixels: int, viewport: int) -> int:
     pair is re-read by the in-play camera clamp at ``0x08009744``. So the stored
     value is the map's **maximum camera scroll**, and the camera can show a plane
     ``P`` pixels wide only when ``stored + viewport >= P``.
-
-    The floor is 1: all 452 canonical values are non-zero, and 1 (extent 2) is the
-    single-screen declaration retail uses for a map that does not scroll at all.
     """
     if not isinstance(pixels, int) or not isinstance(viewport, int):
         raise MapGraphicsError("an extent is stated in whole pixels")
@@ -1004,13 +694,6 @@ def dominant_layer_geometry(
     *,
     addresses: tuple[int, ...] | None = None,
 ) -> tuple[int, int, int, int]:
-    """``(tile_columns, tile_rows, pixel_width, pixel_height)`` of a dominant layer.
-
-    The one statement of a dominant layer's extent: the grid is the record's own
-    ``+0x14``/``+0x15`` counts of 32x32-entry chunks. Reading it here rather than
-    multiplying at each call site is what kept the two stacks from disagreeing
-    about what a 2x3 grid covers.
-    """
     del reader, addresses
     return (
         layer.chunk_tiles_x,
@@ -1023,14 +706,6 @@ def dominant_layer_geometry(
 def dominant_chunk_words(
     reader: MapGraphicsReader, address: int
 ) -> tuple[int, ...]:
-    """Decode a dominant chunk container into 1024 little-endian u16 entries.
-
-    A chunk pointer the engine's occupancy test reads as unoccupied is *not*
-    decoded here: a null pointer is a caller-visible state (an empty cell) and
-    resolving it silently to 1024 zero entries would hide which cells the map
-    actually fills. Callers that want the engine's blank plane ask
-    :func:`stitch_dominant_entries`, which substitutes it explicitly.
-    """
     container = reader.container(address, expected=CHUNK_DECODED_BYTES)
     if container.declared_size != CHUNK_DECODED_BYTES:
         raise MapGraphicsError(
@@ -1041,17 +716,7 @@ def dominant_chunk_words(
 
 
 def chunk_body_bytes(entries: object) -> bytes:
-    """Encode one dominant chunk's screen-entry plane as its 0x800-byte payload.
-
-    This is the exact inverse of the payload :func:`dominant_chunk_words`
-    decodes: 1,024 little-endian 16-bit screen entries. It validates the shape
-    and every value rather than masking, so a caller cannot hand it a plane that
-    would silently lose bits - a truncated tile ordinal would otherwise render as
-    a plausible but wrong tile instead of refusing.
-
-    What an entry may *hold* is the hardware's own 16 bits; what an author may
-    place is the narrower question the authoring surface answers.
-    """
+    """Encode one dominant chunk's screen-entry plane as its 0x800-byte payload."""
     if isinstance(entries, (str, bytes, bytearray)) or not hasattr(entries, "__len__"):
         raise MapGraphicsError(
             "a dominant chunk plane must be a sequence of screen entries"
@@ -1071,14 +736,6 @@ def chunk_body_bytes(entries: object) -> bytes:
 
 
 def pack_dominant_chunk(entries: object) -> bytes:
-    """Encode a screen-entry plane as the packed container a chunk lives in.
-
-    Emitted as :data:`CHUNK_CONTAINER_KIND` - the kind every canonical chunk
-    uses - so an authored chunk is the same *kind of object* the retail engine
-    already reads 3,745 times, and the only genuinely new property of an authored
-    chunk is the address it is placed at. See :func:`webfoot_lz.pack` for why the
-    two packed kinds share one token stream.
-    """
     return _lz.pack(chunk_body_bytes(entries), kind=CHUNK_CONTAINER_KIND)
 
 
@@ -1091,24 +748,8 @@ def stitch_dominant_entries(
     entries_by_cell: Mapping[int, tuple[int, ...]] | None = None,
 ) -> tuple[int, ...]:
     """Stitch a dominant layer's chunk grid into one logical entry array.
-
     The accepted loader order, which the engine's own indexing at
     `0x08007C82..0x08007C90` establishes and both surfaces already implement:
-    for every chunk row, for every local row, for every chunk in that row, that
-    local row's 32 entries. A null chunk pointer contributes entry 0, the value
-    the engine's own occupancy test treats as unoccupied.
-
-    ``addresses`` optionally substitutes the layer's own window - the layout
-    editor's in-memory replacement set - and must stay exactly as long as the grid
-    the record states. ``cache`` lets a caller decode a chunk once across calls,
-    which is what keeps a repeated preview from re-decoding the same container.
-
-    ``entries_by_cell`` substitutes a whole *plane* for a named cell, keyed by
-    row-major cell index. It exists for the one case a chunk pointer cannot
-    express: a project-authored chunk, which has no address in the canonical
-    image and therefore nothing for ``addresses`` to name. The plane is used
-    verbatim and is checked against the chunk shape, so a preview of authored
-    content goes through this same stitch rather than through a second renderer.
     """
     side = CHUNK_SIDE_TILES
     if addresses is None:
@@ -1159,11 +800,9 @@ def stitch_dominant_entries(
     return tuple(out)
 
 
-# --- selector stream ---------------------------------------------------------
 
 def selectors_from_payload(payload: bytes, address: int) -> tuple[int, ...]:
     """Delta-decode an already-decoded selector payload.
-
     Entry zero is absolute; every later little-endian u16 is a delta from the
     preceding absolute selector, biased by one, wrapping to u16 exactly as the
     engine's own prefix-decode loop does (``ldrh/add/strh`` at
@@ -1191,7 +830,6 @@ def decode_selector_stream(
     )
 
 
-# --- screen-entry layers -----------------------------------------------------
 
 def screenblock_container_offset(handler: int) -> int:
     """The record field a screen-entry layer's handler reads its container from."""
@@ -1206,12 +844,6 @@ def screenblock_container_offset(handler: int) -> int:
 def read_screenblock_entries(
     reader: MapGraphicsReader, record_address: int
 ) -> tuple[int, ...]:
-    """Read the screen-entry plane a screen-entry layer's handler decompresses.
-
-    Two handlers carry the same 32x32 plane and reach it by different code, so
-    the container field is taken from the record's own `+0x00` word. The payload
-    is 1024 little-endian screen entries either way.
-    """
     handler = reader.u32(record_address)
     offset = screenblock_container_offset(handler)
     container_address = reader.u32(record_address + offset)
@@ -1225,17 +857,10 @@ def read_screenblock_entries(
     return struct.unpack("<1024H", container.data)
 
 
-# --- terrain field (the Map 19 form) ----------------------------------------
 
 def read_terrain_field_containers(
     reader: MapGraphicsReader, record_address: int
 ) -> tuple[int, ...]:
-    """The container addresses a terrain-field record names, in raster order.
-
-    The record states its cell grid at `+0x04`/`+0x05` and names `grid_x *
-    grid_y` consecutive container pointers from `+0x08`. A pointer outside the
-    image is a structural mismatch rather than something to skip.
-    """
     grid_x = reader.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
     grid_y = reader.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
     targets: list[int] = []
@@ -1255,11 +880,6 @@ def read_terrain_field_containers(
 def read_terrain_field_cells(
     reader: MapGraphicsReader, record_address: int
 ) -> tuple[bytes, ...]:
-    """Read a terrain-field record's container payloads in its own raster order.
-
-    An empty grid (either dimension zero) is an empty field: the engine's own
-    constructor skips the eager load when the product is not positive.
-    """
     grid_x = reader.u8(record_address + TERRAIN_FIELD_GRID_X_OFFSET)
     grid_y = reader.u8(record_address + TERRAIN_FIELD_GRID_Y_OFFSET)
     if grid_x * grid_y == 0:
@@ -1276,7 +896,6 @@ def stitch_terrain_field_plane(
     grid_y: int,
 ) -> tuple[int, int, bytes]:
     """Lay a terrain field's containers out as one plane of tile ordinals.
-
     ASSET-EXPORT-MAP19-001 recovered this record form from the engine's own code
     and its payload's semantics: the `0x080088BD` constructor streams
     `grid_x * grid_y` containers of :data:`TERRAIN_FIELD_CELL_BYTES` decoded
@@ -1284,12 +903,6 @@ def stitch_terrain_field_plane(
     of 8-bit tile ordinals. Container ``y * grid_x + x`` covers the cell at
     ``(x * 32, y * 32)``, so the whole field is ``32 * grid_x`` by ``32 * grid_y``
     ordinals.
-
-    The plane is returned as ``(width, height, ordinals)`` in tile units. It is
-    not an image: the ordinals resolve through the owning map's assembled
-    character block, which the caller already holds. The layout is here because
-    both surfaces that render a terrain field must agree on which container
-    covers which cell.
     """
     if grid_x <= 0 or grid_y <= 0:
         raise MapGraphicsError(
@@ -1320,19 +933,10 @@ def stitch_terrain_field_plane(
     return width, height, bytes(plane)
 
 
-# --- animated tiles ----------------------------------------------------------
 
 def read_animated_tiles(
     reader: MapGraphicsReader, root_address: int
 ) -> tuple[AnimatedTileSource, ...]:
-    """Read the animated-tile records and decode each one's first packed frame.
-
-    The accepted root pair at `+0x0C`/`+0x10` is a count and a null-coupled
-    pointer. The record is `u8 frame_count`, `u8 tile_count`, `u16 destination`,
-    then a pointer to the first packed frame; the frame is a *headerless* stream
-    whose size the record's tile count gives, which is why it is decoded through
-    the raw-stream entry point rather than the container one.
-    """
     count = reader.u32(root_address + ROOT_ANIMATED_COUNT_OFFSET)
     if count == 0:
         return ()
@@ -1372,7 +976,6 @@ def read_animated_tiles(
     return tuple(sources)
 
 
-# --- character block ---------------------------------------------------------
 
 def assemble_char_block(
     reader: MapGraphicsReader,
@@ -1382,24 +985,6 @@ def assemble_char_block(
     *,
     require_referenced: tuple[int, ...] | None = None,
 ) -> CharBlock:
-    """Assemble character data: selector ordinal -> tile, animated tiles overlaid.
-
-    A selector writes exactly one 8x8 tile to character memory at
-    ``64 * ordinal``; an animated-tile record writes ``tile_count`` tiles starting
-    at its own destination ordinal. Both come from the engine's own loaders.
-    ``bank_table_address`` is the value stored at `root + 0x4C` - the table of
-    bank *container pointers* - so a bank index is dereferenced through it before
-    the container is decoded. Bank containers are decoded once per bank and
-    cached, because a map's selector stream names a bank many times over.
-
-    ``require_referenced`` is the tile ordinals the caller's layers actually
-    index. Passed, the assembly reports which of them no selector or animation
-    supplies, because that is a silently-wrong-pixels failure otherwise: a layer
-    naming a tile the block does not hold would read a neighbouring tile's bytes
-    rather than refuse. The renderer passes it and refuses on a non-empty result;
-    the exporter does not. That difference is a caller policy, not a second
-    reading of the format, so it is a parameter rather than two implementations.
-    """
     tiles: list[bytes] = []
     cache: dict[int, bytes] = {}
     for selector in selectors:
@@ -1468,19 +1053,12 @@ def assemble_map_char_block(
     return block, stream, animated
 
 
-# --- banks -------------------------------------------------------------------
 
 def read_banks(
     reader: MapGraphicsReader,
     table_address: int,
     count: int = BANK_COUNT,
 ) -> tuple[Bank, ...]:
-    """Read a bank table and decode every bank container.
-
-    ``table_address`` is a map root's ``+0x4C`` field, which is where the
-    accepted graph stores it. It is required rather than defaulted so a caller
-    cannot silently decode a table belonging to another image.
-    """
     banks: list[Bank] = []
     for index in range(count):
         field = table_address + index * 4
@@ -1505,21 +1083,10 @@ def read_banks(
     return tuple(banks)
 
 
-# --- palette -----------------------------------------------------------------
 
 def decode_bg_palette(
     reader: MapGraphicsReader,
 ) -> tuple[tuple[int, int, int], ...]:
-    """The profile's 256-colour global BG palette, as display RGB.
-
-    Stored as RGB888 but the hardware keeps 5 bits per channel, so each channel
-    is requantised to 5 bits and expanded back, which reproduces live VRAM at
-    full brightness rather than the raw ROM bytes. The address comes from the
-    profile, so a profile that moves its BG palette is read at its own address.
-
-    This is the one implementation of that transform; the export stack calls it
-    rather than carrying a second copy free to requantise differently.
-    """
     address = reader.bg_palette_address()
     offset = reader.span(address, BG_PALETTE_BYTES)
     raw = reader.data[offset : offset + BG_PALETTE_BYTES]
@@ -1538,7 +1105,6 @@ def decode_bg_palette(
     )
 
 
-# --- tile entries ------------------------------------------------------------
 
 def read_tile_entry(word: int) -> "_bg.ScreenEntry":
     """Decode one 16-bit tile entry with the format layer's own decoder."""
@@ -1551,12 +1117,6 @@ def tile_entry_ordinal(word: int) -> int:
 
 
 def tile_entry_horizontal_flip(word: int) -> bool:
-    """Whether the entry sets bit 10, the platform's horizontal flip selector.
-
-    The accepted work marks the *direction* assignment `PARTIALLY CONFIRMED`;
-    the hardware flips the tile and both renderers apply it, so the bit is
-    decoded here once rather than re-tested at each call site.
-    """
     return bool(word & TILE_ENTRY_BIT_10)
 
 

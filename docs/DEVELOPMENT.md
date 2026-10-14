@@ -223,7 +223,14 @@ dynamically. The default is a hypothesis, never a `CONFIRMED` claim.
 6. Put measured values into shipped metadata only after adequate evidence.
 7. Add discriminating tests, including a case that would distinguish the
    hypothesis from its plausible alternative.
-8. Keep source comments semantic: say what the code does.
+8. Keep source comments to rule C1: the code explains itself through names and
+   structure. A comment is allowed only as one line stating a non-obvious WHY
+   that the code cannot show, and an evidence comment must cite its evidence id
+   (an address, a measurement, or a ticket or memory id where that id is the
+   evidence). Narration, ticket histories and multi-paragraph docstrings are not
+   evidence, and text the product shows to users is not a comment. The
+   measurable bar is a comment+docstring share under 10 percent per file, with
+   the median at or below 3 percent.
 9. Put the proof in an evidence document, never in production source.
 10. Complete independent review before closure.
 
@@ -395,9 +402,9 @@ request description or release notes.
 Three kinds of file answer three different questions. Keep them separate.
 
 - **Production source answers "what does the SDK do?"** It carries the
-  implementation, concise semantic comments, safety invariants and the
-  explanation of anything architecture-sensitive. It does not carry research
-  narrative.
+  implementation, safety invariants and the explanation of anything
+  architecture-sensitive, under rule C1: comments are one-line WHYs, not
+  narration, and the research narrative belongs in an evidence document.
 - **Tests answer "what proves this behavior?"** They carry discriminating cases,
   failure paths, round-trip checks, mutation and regression cases, and
   deterministic-output assertions.
@@ -406,8 +413,8 @@ Three kinds of file answer three different questions. Keep them separate.
   validation counts and the research narrative.
 
 A future reverse-engineering change must not put its proof transcript into
-production source. Put it in the evidence document and leave a semantic comment
-behind.
+production source. Put it in the evidence document, and leave at most a one-line
+WHY comment citing the evidence id.
 
 Write documentation for a contributor who has none of the research history.
 A reader should be able to understand the project from the repository alone,

@@ -1,12 +1,3 @@
-"""Pure codec for the TOOLKIT-016 factory-led variable-length placement family.
-
-CONFIRMED: 0x1C + 4*n bytes; +14 descriptor pointer, +18 child count,
-+1C ordered child pointers. Evidence: BUU_FD55_SCRIPT_OWNER.md, constructor
-0800F6D2 -> 0800A93C. Position halfwords stay lossless raw bits at this layer;
-for the supported Buu placement constructor, their signed interpretations are
-map/world X (low) and Y (high) pixels; see PLACEMENT_POSITION_PROVENANCE.md.
-TOOLKIT-008's 32-byte fixed-tail shape remains a legacy subset predicate only.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -16,8 +7,8 @@ from ..binary import GBA_ROM_BASE as ROM_BASE
 
 FACTORY_RAW = 0x0800FD55
 PREFIX_SIZE = 0x1C
-PLACEMENT_SIZE = 32  # Legacy size only; never a production stride.
-RECORD_TAIL = (0x080555A0, 1, 0x080716EC)  # Legacy subset, not layout semantics.
+PLACEMENT_SIZE = 32
+RECORD_TAIL = (0x080555A0, 1, 0x080716EC)
 MAX_CHILDREN = 4  # Verified supported corpus bound, not an engine maximum.
 HANDLERS = {0x0800421D: 'handler_0800421d',
             0x0800421F: 'handler_0800421f',
@@ -104,7 +95,6 @@ class PlacementRecord:
     def consumed_length(self) -> int:
         return record_size(self.child_count)
 
-    # Read compatibility for the former opaque tail API.
     tail0_raw = property(lambda self: self.descriptor_pointer_raw)
     tail1_raw = property(lambda self: self.child_count)
     tail2_raw = property(lambda self: self.child_pointers_raw[0])
@@ -189,7 +179,6 @@ SIBLING_FACTORIES = (0x08017DA3, 0x080111A9)
 @dataclass(frozen=True, slots=True)
 class ObjectSlot:
     """One physical 4-byte pointer slot of a map's engine-owned object array.
-
     The engine's outer loop (`0x08008C9E`, proven in TOOLKIT-024) consumes exactly
     `MapEntry+0x04` slots of `MapEntry+0x14`, dereferencing each without inspecting
     the target's family. The array is therefore HETEROGENEOUS: placement-family
@@ -198,12 +187,9 @@ class ObjectSlot:
     """
 
     index: int
-    #: File offset of the 4-byte slot itself, not of its target.
     source_offset: int
     pointer_raw: int
-    #: File offset of the target, or None when the pointer leaves the image.
     target_offset: int | None
-    #: Leading word of the target - the factory that leads its family.
     family_raw: int | None
 
     @property
@@ -226,13 +212,6 @@ class ObjectSlot:
 
 
 def iter_object_slots(data, array_offset: int, count: int) -> tuple[ObjectSlot, ...]:
-    """Every slot of one engine-counted map object array, in exact array order.
-
-    This is the authoritative traversal: it reproduces the engine's counted loop and
-    classifies each target instead of terminating at the first non-placement pointer.
-    `iter_placement_offsets` below keeps the placement-only view for the codec's
-    existing consumers, and is a filtered projection of this sequence.
-    """
     if type(count) is not int or count < 0:
         raise MapPlacementLengthError('object-array count must be a non-negative integer')
     if array_offset < 0 or array_offset + 4 * count > len(data):
@@ -252,12 +231,7 @@ def iter_object_slots(data, array_offset: int, count: int) -> tuple[ObjectSlot, 
 
 
 def iter_placement_offsets(data, array_offset: int, *, count: int | None = None) -> tuple[int, ...]:
-    """Walk a pointer run; only a non-family target terminates an unbounded run.
-
-    A family-led malformed record is an error, never silent truncation. Trusted
-    production metadata supplies count; the unbounded form serves synthetic and
-    legacy comparison tooling. Record bodies must be pairwise disjoint.
-    """
+    """Walk a pointer run; only a non-family target terminates an unbounded run."""
     if array_offset < 0 or array_offset + 4 > len(data):
         if count is not None:
             raise MapPlacementLengthError('pointer array outside image')

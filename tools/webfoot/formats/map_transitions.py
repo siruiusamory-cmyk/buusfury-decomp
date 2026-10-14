@@ -1,14 +1,4 @@
 """Pure codec for the Buu's Fury selector-1-root connection records.
-
-MAP-WARP-FORMAT-001. This module owns exactly one structure and nothing else:
-the 24-byte record a map's selector-1 root reaches through its ``+0x40`` count /
-``+0x44`` array pair. It performs no I/O, knows no profile and reaches no
-address; a caller hands it 24 bytes and gets named fields back, or hands it
-fields and gets 24 bytes.
-
-**Evidence.** Every claim encoded here is established in
-``docs/research/LOGX_CONNECTOR_PROVENANCE.md`` and nowhere else:
-
 * the record's engine-accessed extent is ``+0x00..+0x17`` - 24 bytes, read at
   the engine's own access widths (claims 8, 11, 15, 16, 18, 20);
 * ``+0x00`` is the constructor/class word the registry calls through the
@@ -35,14 +25,6 @@ fields and gets 24 bytes.
   docstrings rather than implied here;
 * ``+0x04`` is one invariant word on all 735 canonical records, and no evidence
   establishes what it is. It is preserved and deliberately **not** validated:
-  enforcing a constant read off one image would turn a corpus coincidence into
-  a format rule.
-
-**Fail closed.** :meth:`TransitionRecord.validate` refuses a record whose class
-word is outside the measured corpus, and refuses a region whose intervals are
-unordered or degenerate. Both are refusals of *forms this project has not
-measured*, not claims about what the engine would accept: the engine's own
-limits are unknown, and the rule is stated as the corpus invariant it is.
 """
 
 from __future__ import annotations
@@ -50,32 +32,16 @@ from __future__ import annotations
 from dataclasses import dataclass, replace, fields
 import struct
 
-#: The record's engine-accessed extent, `+0x00..+0x17`.
 TRANSITION_SIZE = 24
 
-#: The two class words the canonical corpus tags records with.
 TRANSITION_CLASS_A_RAW = 0x08007675
 TRANSITION_CLASS_B_RAW = 0x080072CD
 
-#: Every class word this codec has measured.
 SUPPORTED_CLASS_RAW = frozenset({TRANSITION_CLASS_A_RAW, TRANSITION_CLASS_B_RAW})
 
-#: ``u16`` endpoints are unsigned by their physical width. No evidence
-#: establishes a signed interpretation, so none is applied.
 BOUND_MINIMUM = 0x0000
 BOUND_MAXIMUM = 0xFFFF
 
-#: MAP-WARP-RUNTIME-EDIT-001. The record's arrival point, measured.
-#:
-#: ``x`` is the ``u16`` at ``+0x14``; ``y`` is the ``u16`` at ``+0x16`` (low byte)
-#: with ``+0x17`` (high byte). The reading is **INFERRED**, not confirmed: no
-#: instruction trace yet shows the pair being consumed as a coordinate. What
-#: establishes it is a corpus regularity measured over all 735 canonical records -
-#: the point lies at the destination map's *reciprocal door* (the record in the
-#: destination that leads back to the source) for **670 of 735**, within 16 pixels
-#: of that door's rectangle: 325 inside it and the rest just outside it, by a few
-#: pixels on exactly one axis, which is where a player stands after stepping
-#: through rather than on the trigger that would send them straight back.
 #: Supporting engine evidence: the 566-class method ``0x080075AC`` passes
 #: ``record + 0x14`` itself to the warp routine (``08007600 adds r3,#0x14`` then
 #: ``0800760A bl 0x08008d44``), and the 169-class method ``0x080071F8`` reads
@@ -99,12 +65,7 @@ class MapTransitionValueError(MapTransitionError):
 
 
 class MapTransitionFamilyError(MapTransitionError):
-    """Raised when a record is a transition form this project has not measured.
-
-    Raised for an unrecognised class word. The supported family is the one the
-    canonical corpus produced; anything else is refused rather than carried
-    through a schema nothing establishes.
-    """
+    """Raised when a record is a transition form this project has not measured."""
 
 
 class MapTransitionRegionError(MapTransitionError):
@@ -118,9 +79,6 @@ class TransitionField:
     name: str
 
 
-#: The record's physical layout, in the order the bytes appear. Names are
-#: positional wherever the engine does not name the field, and a name never
-#: claims a semantic the evidence does not carry.
 TRANSITION_LAYOUT = (
     TransitionField(0x00, 4, "class_raw"),
     TransitionField(0x04, 4, "constant_raw"),
@@ -137,7 +95,6 @@ TRANSITION_LAYOUT = (
     TransitionField(0x17, 1, "byte_0x17_raw"),
 )
 
-#: `class_raw`, `constant_raw`, four `u16`, four bytes, one `u16`, two bytes.
 _RECORD_STRUCT = struct.Struct("<IIHHHHBBBBHBB")
 
 
@@ -162,7 +119,6 @@ def _require_uint(value: int, bits: int, name: str) -> int:
 
 
 def _require_interval(pair: object, name: str) -> tuple[int, int]:
-    """Validate one ``(low, high)`` pair against the measured corpus rule."""
     if not isinstance(pair, tuple) or len(pair) != 2:
         raise MapTransitionRegionError(
             f"{name} must be a (low, high) pair, got {pair!r}"
@@ -187,17 +143,6 @@ _REGION_STRUCT = struct.Struct("<HHHH")
 
 @dataclass(frozen=True, slots=True)
 class TransitionRegion:
-    """The record's two ordered intervals, named by position, not by axis.
-
-    ``first`` is the pair stored at ``+0x08`` (low) and ``+0x0C`` (high);
-    ``second`` the pair at ``+0x0A`` (low) and ``+0x0E`` (high). The engine
-    copies these eight bytes into an object it compares as ordered intervals,
-    which is what makes "two ordered pairs" a CONFIRMED reading. Whether
-    ``first`` is horizontal or vertical, and what unit the endpoints are in, is
-    **UNRESOLVED**; no axis name is used here for that reason.
-
-    Both intervals are non-degenerate and no wider than their ``u16`` fields.
-    """
 
     first: tuple[int, int]
     second: tuple[int, int]
@@ -215,7 +160,6 @@ class TransitionRegion:
 
 @dataclass(frozen=True, slots=True)
 class TransitionRecord:
-    """One connection record, decoded without interpreting an unknown field."""
 
     class_raw: int
     constant_raw: int
@@ -231,16 +175,10 @@ class TransitionRecord:
     byte_0x16_raw: int
     byte_0x17_raw: int
 
-    # --- physical access -------------------------------------------------
 
     @classmethod
     def from_bytes(cls, data: bytes | bytearray | memoryview) -> "TransitionRecord":
-        """Decode exactly 24 bytes. Length is the only thing checked here.
-
-        A caller that needs the record to be a *supported* form asks
-        :meth:`validate`; keeping the two apart is what lets an unsupported
-        record be reported with its own reason rather than as a decode failure.
-        """
+        """Decode exactly 24 bytes. Length is the only thing checked here."""
         if len(data) != TRANSITION_SIZE:
             raise MapTransitionLengthError(
                 f"a transition record is {TRANSITION_SIZE} bytes; got {len(data)}"
@@ -259,7 +197,6 @@ class TransitionRecord:
             _require_uint(value, item.width * 8, item.name)
         return values
 
-    # --- semantic access -------------------------------------------------
 
     @property
     def destination_key(self) -> bytes:
@@ -277,22 +214,8 @@ class TransitionRecord:
     def is_supported_class(self) -> bool:
         return self.class_raw in SUPPORTED_CLASS_RAW
 
-    # --- validation ------------------------------------------------------
 
     def validate(self) -> "TransitionRecord":
-        """Refuse an unsupported form. Returns ``self`` so a caller can chain.
-
-        Refused here, each because this project has not measured the form and a
-        schema for it would therefore be invented:
-
-        * a class word outside :data:`SUPPORTED_CLASS_RAW`;
-        * a region whose intervals are unordered or degenerate.
-
-        Deliberately **not** checked: ``constant_raw``, whose single canonical
-        value is a corpus coincidence rather than a rule, and the four
-        `UNRESOLVED` bytes at ``+0x10``, ``+0x13``, ``+0x16`` and ``+0x17``,
-        whose canonical spread is real retail data.
-        """
         self._values()
         if not self.is_supported_class:
             raise MapTransitionFamilyError(
@@ -306,15 +229,8 @@ class TransitionRecord:
         self.region
         return self
 
-    # --- controlled edits ------------------------------------------------
 
     def with_destination_key(self, key: bytes | bytearray | memoryview) -> "TransitionRecord":
-        """Return this record pointed at the two-byte destination ``key``.
-
-        The key is the destination map's own ``MapEntry`` two-byte lookup key,
-        which is the only thing the engine resolves from a record. Nothing else
-        in the record moves.
-        """
         raw = bytes(key)
         if len(raw) != 2:
             raise MapTransitionValueError(
@@ -327,11 +243,6 @@ class TransitionRecord:
         )
 
     def with_region(self, region: TransitionRegion) -> "TransitionRecord":
-        """Return this record with a different pair of intervals.
-
-        ``region`` is validated before it is written, so an unordered or
-        degenerate interval never reaches a plan.
-        """
         if not isinstance(region, TransitionRegion):
             raise MapTransitionRegionError(
                 f"region must be a TransitionRegion, got {region!r}"
@@ -346,22 +257,10 @@ class TransitionRecord:
             bound_d_raw=second_high,
         )
 
-    # --- the measured arrival point --------------------------------------
-
     @property
     def raw_coordinate_pair(self) -> "TransitionArrival | None":
-        """The stored ``+0x14``/``+0x16`` pair verbatim, with NO semantics.
-
-        Sentinel-aware and nothing else. For the 566 class this pair *is* the
-        arrival, so :attr:`arrival` returns it; for the 169 class it is a
-        scene-relative delta, and only :meth:`arrival_relative` turns it into a
-        point. This accessor exists so the literal field can still be read for a
-        169 record - the project round trip and the prior checks need the bytes -
-        without claiming the value is a position.
-        """
+        """The stored ``+0x14``/``+0x16`` pair verbatim, with NO semantics."""
         x = self.word_0x14_raw
-        # y is the halfword at +0x16, so its high byte is +0x17; the sentinel
-        # test belongs on the COMPOSED value, not on either byte.
         y = self.byte_0x16_raw | (self.byte_0x17_raw << 8)
         if x >= ARRIVAL_UNSET_MINIMUM or y >= ARRIVAL_UNSET_MINIMUM:
             return None
@@ -369,16 +268,6 @@ class TransitionRecord:
 
     @property
     def arrival(self) -> "TransitionArrival | None":
-        """Where the player is placed in the destination, or None when unset.
-
-        **Refuses the 169 class**, loudly. Its stored pair is a delta that has no
-        meaning without the scene origin, and this accessor previously returned
-        that delta as a point - which every downstream check then accepted, since
-        a delta is a small number well inside any map's bounds. A caller that
-        wants a point for a 169 record must supply the origin through
-        :meth:`arrival_relative`; a caller that only wants the bytes wants
-        :attr:`raw_coordinate_pair`.
-        """
         if not self.has_raw_arrival_pair:
             raise MapTransitionValueError(
                 "a 169-class record's +0x14/+0x16 pair is a scene-relative delta, "
@@ -388,11 +277,6 @@ class TransitionRecord:
         return self.raw_coordinate_pair
 
     def with_arrival(self, arrival: "TransitionArrival | None") -> "TransitionRecord":
-        """Return this record placing the player at ``arrival``.
-
-        ``None`` writes the measured sentinel, which is how a record says "no
-        authored arrival" rather than "arrive at the map's origin".
-        """
         if arrival is None:
             return replace(
                 self,
@@ -411,14 +295,10 @@ class TransitionRecord:
             byte_0x17_raw=(arrival.y >> 8) & 0xFF,
         )
 
-    # --- the class split: only one family passes the pair raw ------------
 
     @property
     def has_raw_arrival_pair(self) -> bool:
         """Whether ``+0x14``/``+0x16`` is the arrival **as stored**.
-
-        Measured at instruction level, and the two classes are NOT the same:
-
         * the **566 class** (``0x08007675``) passes the pair itself -
           ``08007600 adds r3,#0x14`` then ``0800760A bl 0x08008d44`` - so the
           stored pair IS the coordinate handed to the warp routine, and
@@ -428,31 +308,11 @@ class TransitionRecord:
           rec[+0x0A])`` before handing that over, so the stored pair is a
           **scene-relative delta**, not an arrival. See
           :meth:`arrival_relative`.
-
-        Anything that treats the pair as an arrival without asking this first is
-        wrong for 169 of the 735 canonical records.
         """
         return self.class_raw == TRANSITION_CLASS_A_RAW
 
     def arrival_relative(self, scene_x: int, scene_y: int) -> "TransitionArrival":
-        """The 169 class's arrival, given the scene origin that produces it.
-
-        The transform is the one the engine performs, recorded here rather than
-        approximated: the stored pair is a delta from the region's low corner, and
-        the scene's own origin is added to it::
-
-            08007234 ldrsh r0,[r4,r3]   r3 = 0x14   ; delta x
-            08007238 ldrsh r1,[r4,r3]   r3 = 0x08   ; region low x
-            0800723C subs  r0, r0, r1
-            08007240 adds  r0, r0, r1   r1 = [scene+0x1A0] >> 8
-            ... the same for y against +0x16 and +0x0A with [scene+0x1A4] >> 8
-            08007256/08007258 strh     ; truncated to 16 bits, twice
-
-        Both halves are read as SIGNED halfwords and the results are written with
-        ``strh``, so this reproduces the truncation rather than widening it. It is
-        only valid for the 169 class; asking a 566-class record for it is refused,
-        because there the stored pair is already absolute.
-        """
+        """Only valid for the 169 class; a 566-class record is refused rather than given a delta."""
         if self.has_raw_arrival_pair:
             raise MapTransitionValueError(
                 "a 566-class record's pair is already an absolute arrival; "
@@ -476,15 +336,10 @@ class TransitionRecord:
             )
         return TransitionArrival(x=x, y=y)
 
-    # --- the arrival facing ---------------------------------------------
 
     @property
     def facing(self) -> "TransitionFacing":
         """The ``+0x10`` byte, split the way the engine splits it.
-
-        CONFIRMED at instruction level, and NOT the naive "direction plus unknown
-        flags" reading an earlier revision of this file carried:
-
         * the **low two bits are the door gate**, not the arrival facing. The 566
           constructor masks them - ``08007696 ldrb r0,[r5,#0x10]``,
           ``08007698 lsls r0,r0,#0x1c``, ``0800769A lsrs r0,r0,#0x1c`` - and uses
@@ -492,13 +347,6 @@ class TransitionRecord:
           storing ``1 << (7 - (v & 3))`` at object ``+0x11``. That bit is compared
           against the door gate word at ``*(u16*)0x03003302``
           (``080075C2``/``080075C6``/``080075C8``).
-        * the **high nibble is an arrival-facing override**:
-          ``08007638 ldrb r0,[r4,#0x10]``, ``0800763A``/``0800763C`` test
-          ``v & 0xF0``, and ``08007642 adds r0,#0xff`` computes ``(v >> 4) - 1``,
-          which ``08007644``/``08007648`` store into the player at ``+0x10``.
-        * the engine **never derives a direction from geometry**, so "face away
-          from the nearest edge" is an authoring convention and not engine law.
-
         **Two different gate words, and they are not interchangeable.** This
         field's low bits select a bit of the door gate word at ``*(u16*)0x03003302``
         (compared at ``080075C6``). The word ``0x03001A34`` used by the runtime
@@ -509,12 +357,6 @@ class TransitionRecord:
         return TransitionFacing(raw=self.byte_0x10_raw)
 
     def with_gate_direction(self, direction: int) -> "TransitionRecord":
-        """Return this record gating on ``direction``, preserving the override.
-
-        Only the low two bits are written. The high nibble is carried through
-        because it is the arrival-facing override, and clearing it would silently
-        turn an override off.
-        """
         if type(direction) is not int or not 0 <= direction <= FACING_MASK:
             raise MapTransitionValueError(
                 f"a gate direction is 0..{FACING_MASK}, got {direction!r}"
@@ -525,19 +367,6 @@ class TransitionRecord:
         )
 
     def with_arrival_facing(self, direction: "int | None") -> "TransitionRecord":
-        """Return this record arriving facing ``direction``, or None to not say.
-
-        ``None`` clears the override, which is the engine's own "leave the actor
-        facing the way it was walking" state - the behaviour a runtime observation
-        caught when a retarget left the sprite walking West out of a south door.
-
-        Only the high nibble is written. The whole LOW nibble is carried through -
-        not merely the two gate bits - so a write that only means to turn the player
-        cannot clear one of the bits at 2-3 that the engine is not shown to read.
-        ``.2`` is the asymmetry this rule exists for: a record stored as ``0x02``
-        states NO facing, and a naive "preserve the gate" edit would keep the low
-        bits while a naive direction-plus-flags edit would report West.
-        """
         if direction is None:
             return replace(
                 self, byte_0x10_raw=self.byte_0x10_raw & FACING_PRESERVED_MASK
@@ -561,27 +390,6 @@ class TransitionRecord:
 @dataclass(frozen=True, slots=True)
 class TransitionFacing:
     """The ``+0x10`` byte: a door gate direction and an arrival-facing override.
-
-    ``raw`` is carried whole. Derived, without interpreting anything else:
-
-    * :attr:`gate_direction` - the low two bits, which select the gate bit the
-      door must have set. The engine masks these even in the class that does not
-      mask the override, so they are a genuine two-bit field.
-    * :attr:`override_raw` - the high nibble, exactly as stored.
-    * :attr:`arrival_direction` - ``override_raw - 1`` when the high nibble is
-      non-zero, and ``None`` when it is zero.
-
-    ``None`` is not "face South": a zero high nibble means the record does not
-    state an arrival facing at all, so the actor keeps the direction it was
-    already walking. Conflating that with a direction is what made an earlier
-    revision of this module wrong.
-
-    **Do NOT read the low two bits as a facing.** A record whose ``+0x10`` is
-    ``0x02`` does **not** mean "face West" - it requests no override at all, and
-    its low bits gate the door. Several of the canonical records that a
-    nearest-edge heuristic "confirmed" as facing are exactly this case, and the
-    agreement was the level design, not the field.
-
     The direction order is ``0 = South, 1 = North, 2 = West, 3 = East``: the axis
     split (``{0,1}`` vertical by the sign of ``dy`` at actor ``+0x1A4``, ``{2,3}``
     horizontal by ``dx`` at ``+0x1A0``) is CONFIRMED at ``0x080159B0`` and
@@ -619,25 +427,14 @@ class TransitionFacing:
         return self.arrival_direction
 
 
-#: ``+0x10``'s gate-direction bits. The direction order is the engine's axis
-#: split (CONFIRMED) with an INFERRED South/North/West/East labelling.
 FACING_MASK = 0x03
 
-#: The low nibble of ``+0x10``, which an arrival-facing write must carry through
-#: untouched. Bits 0-1 are the door gate and bits 2-3 are read by nothing this
-#: project has traced, so the whole nibble is preserved rather than the gate alone:
-#: an edit that only means to turn the player must not clear a bit whose meaning is
-#: UNRESOLVED. Every low nibble in the canonical corpus is ``0..3`` (the ``+0x10``
-#: census is 0, 1, 2, 3 plus ten outliers above 3), so this is byte-identical to
-#: masking the gate for all 735 measured records and strictly more conservative
-#: for any other image.
 FACING_PRESERVED_MASK = 0x0F
 FACING_SOUTH = 0
 FACING_NORTH = 1
 FACING_WEST = 2
 FACING_EAST = 3
 
-#: Human names for the direction order, for reports and error messages.
 FACING_NAMES = {
     FACING_SOUTH: "South",
     FACING_NORTH: "North",
@@ -646,9 +443,6 @@ FACING_NAMES = {
 }
 
 
-#: MAP-WARP-CREATE-PROJECT-001. The ONE class word a *created* transition may
-#: carry: the 566 class (:data:`TRANSITION_CLASS_A_RAW`).
-#:
 #: Creation does not support the 169 class, and the reason is measured rather than
 #: stylistic: the 169 record's ``+0x14``/``+0x16`` pair is a **scene-relative
 #: delta** - the engine builds ``(scene + delta - region_low)`` before handing the
@@ -660,12 +454,6 @@ FACING_NAMES = {
 CREATED_CLASS_RAW = TRANSITION_CLASS_A_RAW
 
 
-#: The bits of each physical field a CREATED record takes from its project.
-#:
-#: ``0`` means the field is copied from the template **verbatim**; an all-ones mask
-#: means the project authored the whole field; anything between is a split, and
-#: exactly one field is:
-#:
 #: * ``byte_0x10_raw`` - the high nibble is the authored arrival-facing override
 #:   (``(direction + 1) << 4``, or ``0`` for "the record states none"), and the low
 #:   nibble - the door gate bits and the two bits nothing was traced reading - is
@@ -677,10 +465,6 @@ CREATED_CLASS_RAW = TRANSITION_CLASS_A_RAW
 #: * ``byte_0x13_raw`` is ``0`` for the same reason - an engine-read field
 #:   (``0x08007282``) whose census is ``{0: 561, 1: 174}`` and whose meaning is
 #:   UNRESOLVED.
-#:
-#: This table is the whole statement of "which bytes are authored, which are copied
-#: invariant bytes and which are preserved unresolved bytes"; the build publishes it
-#: per created record so the answer is auditable from the manifest alone.
 CREATED_FIELD_AUTHORED_MASKS: dict[str, int] = {
     "class_raw": 0x00000000,
     "constant_raw": 0x00000000,
@@ -712,29 +496,6 @@ def compose_created_record(
     arrival: "TransitionArrival | None",
     facing: int | None,
 ) -> "TransitionRecord":
-    """The record a project's *creation* authors, over its structural ``template``.
-
-    A new transition has no canonical bytes to edit, so its initialization has to
-    come from a record the engine already consumes. This function states that
-    mapping once, from :data:`CREATED_FIELD_AUTHORED_MASKS`:
-
-    * the four region ``u16``, the two destination-key bytes and the arrival pair
-      are the project's;
-    * ``+0x00``, ``+0x04`` and ``+0x13`` are the template's, verbatim;
-    * ``+0x10``'s high nibble is the project's arrival facing (``None`` writes no
-      override, which is the engine's own "keep walking" state) and its low nibble
-      is the template's, preserved so an unresolved bit is never cleared.
-
-    Every field is written through the same controlled-edit methods an in-place edit
-    uses (:meth:`TransitionRecord.with_destination_key`, :meth:`with_region`,
-    :meth:`with_arrival`), so the record's byte layout is stated in one place and a
-    created record cannot drift from an edited one.
-
-    **The class is not a parameter.** A creation composes over whatever template it
-    is handed; the policy that the template must be the 566 class, and that its
-    ``+0x13`` and ``+0x10`` are the values the project recorded, belongs to the
-    authority that owns the project format.
-    """
     _require_uint(
         facing if facing is not None else 0, 8, "created arrival facing"
     )
@@ -756,15 +517,6 @@ def compose_created_record(
 
 @dataclass(frozen=True, slots=True)
 class TransitionArrival:
-    """The point a transition places the player at, in the destination's pixels.
-
-    Read from ``+0x14`` (x) and ``+0x16``/``+0x17`` (y). Both endpoints are
-    ``u16`` by their physical width, and neither is clamped against a map extent
-    here: whether a point is *on* a map is a question about that map, which the
-    authority answers, not a property of the record.
-
-    The reading is INFERRED; see :data:`ARRIVAL_UNSET_MINIMUM`.
-    """
 
     x: int
     y: int

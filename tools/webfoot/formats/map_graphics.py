@@ -6,6 +6,7 @@ import struct
 from typing import Mapping, Protocol
 
 from ..binary import GBA_ROM_BASE
+from ..packaged import packaged_profile
 from ..profile import MapEntryTableProfile, RomProfile
 from . import bg_tilemap as _bg
 from . import map_entry as _me
@@ -130,8 +131,13 @@ VIEWPORT_PIXELS_X = 240
 VIEWPORT_PIXELS_Y = 160
 MAX_LAYER_GRID_SIDE = 8
 
-DOMINANT_LAYER_HANDLER = 0x08008087
-ABSENT_LAYER_HANDLER = 0x08007A41
+
+def _anchor_address(name: str) -> int:
+    return packaged_profile().require_code_anchor(name).address.raw
+
+
+DOMINANT_LAYER_HANDLER = _anchor_address('dominant_layer_handler')
+ABSENT_LAYER_HANDLER = _anchor_address('absent_layer_handler')
 ABSENT_LAYER_RECORD = 0x080707FC
 
 #: * `0x08007B63` - tail-branch stub `0x08007B62` into constructor `0x08007A60`,
@@ -163,7 +169,7 @@ SCREENBLOCK_HANDLERS: dict[int, int] = {
 #: assignment destroys the correspondence. `record + 0x04` x `record + 0x05`
 #: containers lay out in raster order, container `y * grid_x + x` covering the
 #: 32x32-tile cell at `(x * 32, y * 32)`.
-TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
+TERRAIN_FIELD_LAYER_HANDLER = _anchor_address('terrain_field_layer_handler')
 TERRAIN_FIELD_GRID_X_OFFSET = 0x04
 TERRAIN_FIELD_GRID_Y_OFFSET = 0x05
 TERRAIN_FIELD_CONTAINER_OFFSET = 0x08

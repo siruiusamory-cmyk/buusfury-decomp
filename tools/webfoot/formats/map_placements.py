@@ -4,16 +4,22 @@ from dataclasses import dataclass, replace
 import struct
 
 from ..binary import GBA_ROM_BASE as ROM_BASE
+from ..packaged import packaged_profile
 
-FACTORY_RAW = 0x0800FD55
+
+def _anchor_address(name: str) -> int:
+    return packaged_profile().require_code_anchor(name).address.raw
+
+
+FACTORY_RAW = packaged_profile().placement_types.factory_raw
 PREFIX_SIZE = 0x1C
 PLACEMENT_SIZE = 32
 RECORD_TAIL = (0x080555A0, 1, 0x080716EC)
 MAX_CHILDREN = 4  # Verified supported corpus bound, not an engine maximum.
-HANDLERS = {0x0800421D: 'handler_0800421d',
-            0x0800421F: 'handler_0800421f',
-            0x0800424F: 'handler_0800424f'}
-SCRIPT_DISPATCH_HANDLER = 0x0800421F
+HANDLERS = {_anchor_address('handler_0800421d'): 'handler_0800421d',
+            _anchor_address('script_dispatch_handler'): 'handler_0800421f',
+            _anchor_address('handler_0800424f'): 'handler_0800424f'}
+SCRIPT_DISPATCH_HANDLER = _anchor_address('script_dispatch_handler')
 
 
 class MapPlacementError(ValueError):
@@ -173,7 +179,8 @@ def is_placement_record(data, offset: int) -> bool:
 #: and zero out-of-image targets. These are recorded so a slot can be CLASSIFIED and
 #: round-tripped, never decoded: nothing here claims any gameplay semantics for them,
 #: and TOOLKIT-025 explicitly does not authorize reverse engineering their payloads.
-SIBLING_FACTORIES = (0x08017DA3, 0x080111A9)
+SIBLING_FACTORIES = (_anchor_address('sibling_factory_08017da3'),
+                     _anchor_address('sibling_factory_080111a9'))
 
 
 @dataclass(frozen=True, slots=True)

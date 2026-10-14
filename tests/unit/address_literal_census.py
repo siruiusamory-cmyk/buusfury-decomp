@@ -111,15 +111,17 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: PINMAP-05 moved 2882 -> 2879; the entry it appended names all nineteen lines.
 #: PINMAP-06 moved 2879 -> 2877; the entry it appended names both lines.
 #: PINMAP-07a moved 2877 -> 2887; the entry it appended names all ten lines.
-CENSUS_HEX5 = (2887, 272)
+#: PINMAP-07b moved 2887 -> 2875; the entry it appended names all twelve lines.
+CENSUS_HEX5 = (2875, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
 #: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
 #: enforcement set is the whole-tree set minus the four instrument directories, so
 #: the three move together. PINMAP-07a then moved the first two, ten lines each.
-ENFORCEMENT_HEX5 = (663, 70)
-ENFORCEMENT_ROM_HEX = (495, 53)
+#: PINMAP-07b moved them back down by the twelve hex lines it removed.
+ENFORCEMENT_HEX5 = (651, 70)
+ENFORCEMENT_ROM_HEX = (483, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -351,20 +353,21 @@ EXEMPTIONS: tuple[Row, ...] = (
         "entry count. No ticket covers this file yet: recorded debt.",
     ),
     Row(
-        "tools/webfoot/formats/map_graphics.py", 20, 17, 0,
-        "the layer-handler words DOMINANT_LAYER_HANDLER 0x08008087, "
-        "ABSENT_LAYER_HANDLER 0x08007A41 and ABSENT_LAYER_RECORD 0x080707FC, "
+        "tools/webfoot/formats/map_graphics.py", 17, 14, 0,
+        "the layer-handler words DOMINANT_LAYER_HANDLER, "
+        "ABSENT_LAYER_HANDLER and ABSENT_LAYER_RECORD, "
         "plus citations of the container constructors 0x08007B63, 0x0800897B and "
-        "the descriptor reads 0x080088E6, 0x08008924. PINMAP-07 moves every "
-        "handler word into a named code anchor.",
+        "the descriptor reads 0x080088E6, 0x08008924. PINMAP-07b resolved the two "
+        "handler words by name through the profile's code anchors; the record "
+        "address and the constructor citations stay because they are citations "
+        "rather than consumers.",
     ),
     Row(
-        "tools/webfoot/formats/map_placements.py", 12, 9, 0,
-        "FACTORY_RAW 0x0800FD55, RECORD_TAIL, the three script handler words "
-        "0x0800421D, 0x0800421F and 0x0800424F, and citations of the layout and "
-        "loader sites 0x080555A0, 0x080716EC, 0x08017DA3, 0x080111A9 and "
-        "0x08008C9E. PINMAP-07 reads FACTORY_RAW from "
-        "placement_types.factory_raw and names the handler words as anchors.",
+        "tools/webfoot/formats/map_placements.py", 6, 3, 0,
+        "the record tail 0x080555A0 and 0x080716EC plus citations of the layout "
+        "and loader sites 0x08008C9E and 0x08017DA3. PINMAP-07b read FACTORY_RAW "
+        "from placement_types.factory_raw and the handler and sibling words from "
+        "their named anchors, which removed three hex lines.",
     ),
     Row(
         "tools/webfoot/formats/map_slots.py", 3, 1, 0,
@@ -442,11 +445,12 @@ EXEMPTIONS: tuple[Row, ...] = (
         "debt.",
     ),
     Row(
-        "tools/webfoot/map_render.py", 4, 4, 0,
-        "SUPPORTED_LAYER_HANDLER 0x08008087, the background palette address "
+        "tools/webfoot/map_render.py", 3, 3, 0,
+        "the background palette address "
         "0x080701B0 repeated in two provenance strings, and a comment citing the "
-        "engine loop 0x08009C02..0x08009C12. PINMAP-07 names this file and moves "
-        "the handler word into a code anchor.",
+        "engine loop 0x08009C02..0x08009C12. PINMAP-07b resolved "
+        "SUPPORTED_LAYER_HANDLER by name; the palette strings stay because they "
+        "are provenance text that shadows a profile key rather than code words.",
     ),
     Row(
         "tools/webfoot/map_resize.py", 3, 3, 0,
@@ -469,8 +473,9 @@ EXEMPTIONS: tuple[Row, ...] = (
     Row(
         "tools/webfoot/placement_events.py", 2, 2, 0,
         "the two script dispatch handler words 0x0800424F and 0x0800421F, cited "
-        "in comments over the counts the codec already verifies. PINMAP-07 names "
-        "this file and moves the handler words into code anchors.",
+        "in comments over the counts the codec already verifies. PINMAP-07b did "
+        "not need a line here: the module already reads HANDLERS and "
+        "SCRIPT_DISPATCH_HANDLER from map_placements by name.",
     ),
     Row(
         "tools/webfoot/project/model.py", 6, 3, 0,
@@ -491,11 +496,12 @@ EXEMPTIONS: tuple[Row, ...] = (
         "yet: recorded debt.",
     ),
     Row(
-        "tools/webfoot/sprite_attachment.py", 9, 7, 0,
-        "the object factory words 0x08017DA3 and 0x080111A9, the entry class "
-        "0x0800A7A1, the placement family 0x0800FD55 and the record run the "
-        "comment measures from 0x0807831C. PINMAP-07 names this file and moves "
-        "the handler and factory words into code anchors.",
+        "tools/webfoot/sprite_attachment.py", 7, 5, 0,
+        "the object factory word 0x08017DA3 and the other sibling factory "
+        "0x080111A9 in the module docstring, the entry class 0x0800A7A1, the "
+        "placement family 0x0800FD55 and the record run the comment measures "
+        "from 0x0807831C. PINMAP-07b resolved the two live words by name; the "
+        "docstring and comment citations stay.",
     ),
     Row(
         "tools/webfoot/sprite_swap.py", 6, 6, 0,
@@ -734,6 +740,33 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "class, which the profile's resolver now reads by name. No line left and no "
         "file arrived, so the tree pair is +10 lines and the enforcement pair moved "
         "with it; the catalogue row rose 51 -> 61 and its ROM-space count 45 -> 55",
+    ),
+    LedgerEntry(
+        "PINMAP-07b", -12, 0,
+        (
+            "tools/webfoot/formats/map_placements.py:8",
+            "tools/webfoot/formats/map_placements.py:13",
+            "tools/webfoot/formats/map_placements.py:14",
+            "tools/webfoot/formats/map_placements.py:15",
+            "tools/webfoot/formats/map_placements.py:16",
+            "tools/webfoot/formats/map_placements.py:176",
+            "tools/webfoot/formats/map_graphics.py:133",
+            "tools/webfoot/formats/map_graphics.py:134",
+            "tools/webfoot/formats/map_graphics.py:166",
+            "tools/webfoot/map_render.py:73",
+            "tools/webfoot/sprite_attachment.py:218",
+            "tools/webfoot/sprite_attachment.py:228",
+        ),
+        "twelve counted lines left the three consuming modules and none arrived, so the "
+        "tree pair is -12 lines and no files and the enforcement pair fell with it. "
+        "map_placements.py lines 8, 13, 14, 15, 16 and 176 held FACTORY_RAW, the three "
+        "handler keys, SCRIPT_DISPATCH_HANDLER and SIBLING_FACTORIES; map_graphics.py "
+        "lines 133, 134 and 166 held DOMINANT_LAYER_HANDLER, ABSENT_LAYER_HANDLER and "
+        "TERRAIN_FIELD_LAYER_HANDLER; map_render.py line 73 held SUPPORTED_LAYER_HANDLER; "
+        "sprite_attachment.py lines 218 and 228 held the family factory and the entry "
+        "class. Those are pre-move line numbers, because the lines no longer exist: each "
+        "word now reads its declared anchor by name. placement_events.py keeps its two "
+        "citations and is not in the census set",
     ),
 )
 

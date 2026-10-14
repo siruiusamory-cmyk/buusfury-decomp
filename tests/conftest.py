@@ -76,6 +76,8 @@ import tempfile
 
 import pytest
 
+from _pytest.runner import runtestprotocol
+
 from tests.gates import (
     ARTEFACT_DEPENDENT_TESTS,
     GATE_DESCRIPTIONS,
@@ -110,6 +112,17 @@ _REQUIRE_GUI_TESTS_VARIABLE = "WEBFOOT_REQUIRE_GUI_TESTS"
 #: module is a pipeline defect rather than a local environment choice".
 _CI_ENVIRONMENT_VARIABLES = ("GITLAB_CI", "CI")
 
+
+def _speed_guard_fails() -> bool:
+    """Whether a rule-S breach fails this run, which only the GitHub runner does.
+
+    The runner is the reference machine for the test budgets, so a breach there is a
+    defect. A developer machine is not calibrated and its load is not ours, so the
+    same breach is printed and does not fail the run.
+    """
+    return bool(os.environ.get("GITHUB_ACTIONS"))
+
+
 #: Option destination that means "this run's result is read from a machine-readable
 #: report", which is what both CI and the local full-CI record gate do and what no
 #: local developer run does. The record gate cannot set ``CI`` itself: it is
@@ -134,6 +147,96 @@ _RECORDED_REPORT_OPTION = "xmlpath"
 #: exists to avoid. Measured: a sessionstart that raises exits 3 without CI, 0 with
 #: CI=1, and 3 again with ``WEBFOOT_KEEP_INTERPRETER_EXIT=1``.
 _SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
+
+#: Rule S (ticket SPEED-GATE-001) budgets one test at 5 s, or 30 s for the integration
+#: directory, which is the rom gate. Each entry is (measured seconds, the run and SHA it
+#: was measured on, why it is slow, owning ticket); its allowance is
+#: max(measured * `_SPEED_EXCEPTION_SLACK`, budget), so the budget is the floor.
+_SPEED_BUDGET_SECONDS = 5.0
+_SPEED_ROM_BUDGET_SECONDS = 30.0
+_SPEED_EXCEPTION_SLACK = 1.5
+_BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str, str]] = {
+    "tests/unit/test_architecture.py::test_observations_never_fail_the_run":
+        (6.853, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_architecture.py::test_the_report_is_deterministic":
+        (6.504, "38610899807 89fb181b", "duplicates the gates job: tools.quality.architecture", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_dragonbyte_foundation.py::test_the_real_tree_passes_the_gate_and_the_package_never_imports_the_beta":
+        (6.296, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.architecture, plus an AST parse", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_graphics_override_sdk.py::test_pack_gba_colour_is_the_exact_inverse_of_the_word_decode":
+        (8.376, "38600996718 f55e32d8", "an exhaustive 32768 colour round trip", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_local_ci_script.py::test_a_cleanup_failure_reaches_the_record":
+        (36.700, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_a_failed_step_keeps_its_captured_output":
+        (40.480, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_a_green_run_passes_so_the_red_guard_is_not_vacuous":
+        (37.450, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_a_green_run_passes_when_the_pinned_files_are_present":
+        (36.980, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_a_later_run_keeps_the_earlier_runs_artifacts_and_names_do_not_collide":
+        (69.550, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_a_red_quality_step_fails_the_record":
+        (40.060, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_an_early_failure_leaves_no_clone_or_worktree":
+        (54.220, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_local_ci_script.py::test_the_gate_refuses_when_the_record_directory_cannot_be_computed":
+        (38.680, "local 2026-10-14 venv 3.12.10", "drives scripts/local-ci.ps1 in a throwaway worktree", "SPEED-DEBT-LOCALCI-001"),
+    "tests/unit/test_logx_synthesis_audit.py::test_the_audit_is_deterministic":
+        (6.179, "38610899807 89fb181b", "reads and compares the recorded synthesis reports", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_every_registered_site_uses_the_gate_its_proof_names":
+        (7.575, "38600996718 f55e32d8", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_no_exemption_names_a_registered_launch_site":
+        (11.600, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_the_current_tree_has_no_unregistered_launch_site":
+        (10.129, "38610899807 89fb181b", "the scan of every test module for launch sites", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_pre_merge_check.py::test_a_master_commit_on_a_disjoint_path_passes":
+        (5.357, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_pre_merge_check.py::test_the_focused_run_refuses_a_missing_or_empty_inventory":
+        (5.010, "local 2026-10-14 venv 3.12.10", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_pre_merge_check.py::test_the_primary_checkout_is_refused_and_a_linked_worktree_is_not":
+        (6.887, "38610899807 89fb181b", "drives the pre-merge gate over throwaway repositories", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_project_safety.py::test_built_wheel_uses_packaged_profile_catalog":
+        (6.192, "38610899807 89fb181b", "builds a wheel with pip", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_public_surface.py::test_the_public_surface_is_clean":
+        (22.902, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_public_surface.py::test_the_report_is_deterministic":
+        (36.608, "38610899807 89fb181b", "duplicates the gates job: tools.quality.public_surface --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_a_load_bearing_exception_suppresses_exactly_its_own_hits":
+        (10.004, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_findings_are_ordered_by_path_line_signal":
+        (9.858, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_the_enemy_behaviour_sense_is_covered_by_a_written_exception":
+        (9.858, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_the_json_document_has_a_stable_schema":
+        (9.972, "38610899807 89fb181b", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_the_real_tree_reports_nothing_in_the_shipping_toolkit":
+        (10.264, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_the_summary_says_advisories_never_change_the_exit_code":
+        (7.126, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_readability.py::test_two_runs_write_byte_identical_json":
+        (18.255, "38600996718 f55e32d8", "duplicates the gates job: tools.quality.readability --all", "SPEED-DEBT-QUALITY-001"),
+    "tests/unit/test_text_tool_list.py::test_a_map_heading_carries_the_inference_its_link_rests_on":
+        (5.151, "38610899807 89fb181b", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_list.py::test_the_export_window_shows_the_facts_the_digest_and_one_close_action":
+        (7.990, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_list.py::test_the_state_chips_narrow_the_list_and_the_clear_action_restores_it":
+        (8.397, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_list.py::test_the_status_cell_paints_no_fill_of_its_own_and_the_divider_runs_its_width":
+        (5.659, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_shell.py::test_an_export_clears_the_unsaved_marker_and_reports_its_digest":
+        (9.314, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_shell.py::test_smoke_exits_zero_over_the_synthetic_image":
+        (6.756, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_shell.py::test_undo_of_a_rename_beside_a_line_edit_restores_and_does_not_wedge":
+        (6.341, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_text_tool_theme.py::test_the_extra_control_classes_are_painted_in_the_theme_ink":
+        (5.139, "38610899807 89fb181b", "paints every control class in the theme ink", "SPEED-DEBT-QT-001"),
+    "tests/unit/test_warp_randomizer_gui.py::test_the_application_is_configured_with_the_shared_dragonbyte_z_theme":
+        (8.210, "38615873476 a762e52", "applies the shared DragonByte Z theme in a cold process", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_write_invariants_property.py::test_applying_a_plan_changes_exactly_the_declared_bytes":
+        (5.340, "38615873476 a762e52", "a hypothesis search over generated span pairs", "SPEED-DEBT-MISC-001"),
+    "tests/unit/test_write_invariants_property.py::test_writes_that_disagree_about_one_span_fail_closed":
+        (6.471, "38600996718 f55e32d8", "a hypothesis search over generated span pairs", "SPEED-DEBT-MISC-001"),
+}
 
 
 # --- a mutable ROM fixture that cannot share a file with a protected input -----
@@ -195,6 +298,10 @@ _COLLAPSED_REASONS: dict[str, str] = {}
 #: Populated by :func:`pytest_runtest_logreport` and reported once by
 #: :func:`pytest_sessionfinish`.
 _SKIPPED_TEST_REASONS: dict[str, str] = {}
+
+#: Every test's call-phase wall time in this session, as ``{node id: seconds}``.
+#: On the controller under xdist this holds the whole session.
+_TEST_SECONDS: dict[str, float] = {}
 
 #: pytest's rootdir, captured by :func:`pytest_configure`. Collection reports
 #: identify a file by a node id, which is relative to this root.
@@ -431,6 +538,9 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     it for each report a worker sends, which is what keeps the census complete
     there rather than silently empty.
     """
+    if report.when == "call":
+        _TEST_SECONDS[report.nodeid] = max(_TEST_SECONDS.get(report.nodeid, 0.0),
+                                           report.duration)
     if report.skipped:
         _SKIPPED_TEST_REASONS[report.nodeid] = _skip_reason(report)
 
@@ -459,6 +569,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             # the only collected module collapsed); a collapsed shipping surface is
             # a test failure, and the summary below says which one.
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if _report_speed_breaches(session):
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        if getattr(session.config, "workerinput", None) is not None:
+            session.shouldfail = "a test ran over its rule-S budget"
     _report_skipped_tests(session.config)
     global _SESSION_EXIT_STATUS
     _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
@@ -597,6 +711,92 @@ def _report_skipped_tests(config: pytest.Config) -> None:
     terminal.write_sep("=", f"tests skipped ({len(entries)})")
     for line in lines:
         terminal.write_line(line)
+
+
+def _speed_budget(nodeid: str, rom: bool) -> tuple[float, float, str]:
+    """The budget, the allowance and the owning ticket for one node."""
+    budget = _SPEED_ROM_BUDGET_SECONDS if rom else _SPEED_BUDGET_SECONDS
+    entry = _BUDGET_EXCEPTIONS.get(nodeid)
+    if entry is None:
+        return budget, budget, "SPEED-GATE-001"
+    measured, _source, _why, ticket = entry
+    return budget, max(measured * _SPEED_EXCEPTION_SLACK, budget), ticket
+
+
+def _remeasure_item(session: pytest.Session, nodeid: str) -> float | None:
+    """One in-process re-run of a single node, timed on its call report.
+
+    pytest's own re-run path re-initialises the request and runs setup again; the
+    re-run is not logged, so it reaches no report and only its time is read.
+    """
+    item = next((candidate for candidate in session.items if candidate.nodeid == nodeid), None)
+    if item is None:
+        return None
+    for report in runtestprotocol(item, nextitem=None, log=False):
+        if report.when == "call":
+            return report.duration
+    return None
+
+
+def _breach_report(item, message: str) -> pytest.TestReport:
+    """One failed report for a node over its allowance, so the failure travels."""
+    return pytest.TestReport(
+        nodeid=item.nodeid,
+        location=item.location,
+        keywords={},
+        outcome="failed",
+        longrepr=message,
+        when="call",
+    )
+
+
+def _report_speed_breaches(session: pytest.Session) -> bool:
+    """Name every test over its rule-S allowance; fail only on the reference machine.
+
+    An xdist controller owns no items, so a worker reports the nodes it ran and the
+    failed report it emits is what carries the verdict back. The runner is the
+    reference machine (see _speed_guard_fails), so off it a breach is printed and
+    the session continues.
+    """
+    enforcing = _speed_guard_fails()
+    getoption = getattr(session.config, "getoption", None)
+    if (getattr(session.config, "workerinput", None) is None and getoption is not None
+            and getoption("numprocesses", None)):
+        return False
+    breaches = []
+    for nodeid, seconds in sorted(_TEST_SECONDS.items()):
+        # The rom gate is the integration directory (tests/gates.py:54), which is
+        # what every report carries; the marked items are not collected on an
+        # xdist controller.
+        budget, allowance, ticket = _speed_budget(nodeid, nodeid.startswith("tests/integration/"))
+        if seconds <= allowance:
+            continue
+        item = next((candidate for candidate in session.items if candidate.nodeid == nodeid),
+                    None)
+        again = _remeasure_item(session, nodeid) if item is not None else None
+        if again is not None and again <= allowance:
+            continue
+        signal = "unmeasured" if again is None else f"{again:.2f}s"
+        breaches.append((
+            item,
+            f"{nodeid} took {seconds:.2f}s, re-run {signal}, over its {allowance:.1f}s "
+            f"allowance (budget {budget:.1f}s), owned by {ticket}",
+            enforcing,
+        ))
+    if not breaches:
+        return False
+    terminal = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminal is None:  # pragma: no cover - only in an embedded/plugin run
+        for _, message, _ in breaches:
+            print(message)
+    else:
+        terminal.write_sep("=", f"tests over the rule-S budget ({len(breaches)})", red=True)
+        for _, message, _ in breaches:
+            terminal.write_line(message)
+    for item, message, fails in breaches:
+        if item is not None and fails:
+            session.config.hook.pytest_runtest_logreport(report=_breach_report(item, message))
+    return enforcing
 
 
 def _required_gui_surface_is_enforced() -> bool:

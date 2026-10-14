@@ -76,6 +76,8 @@ import tempfile
 
 import pytest
 
+from _pytest.runner import runtestprotocol
+
 from tests.gates import (
     ARTEFACT_DEPENDENT_TESTS,
     GATE_DESCRIPTIONS,
@@ -135,11 +137,10 @@ _RECORDED_REPORT_OPTION = "xmlpath"
 #: CI=1, and 3 again with ``WEBFOOT_KEEP_INTERPRETER_EXIT=1``.
 _SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
 
-#: Rule S (ticket SPEED-GATE-001) budgets one test at 5 s, or 30 s for the
-#: integration directory, which is the rom gate. Each entry is (measured seconds, the
-#: run and SHA it was measured on, why it is slow, owning ticket), and its allowance is
-#: max(measured * `_SPEED_EXCEPTION_SLACK`, budget): the budget is the floor, so slack is
-#: proportional and only a node measured over the budget gets more than the budget.
+#: Rule S (ticket SPEED-GATE-001) budgets one test at 5 s, or 30 s for the integration
+#: directory, which is the rom gate. Each entry is (measured seconds, the run and SHA it
+#: was measured on, why it is slow, owning ticket); its allowance is
+#: max(measured * `_SPEED_EXCEPTION_SLACK`, budget), so the budget is the floor.
 _SPEED_BUDGET_SECONDS = 5.0
 _SPEED_ROM_BUDGET_SECONDS = 30.0
 _SPEED_EXCEPTION_SLACK = 1.5
@@ -617,6 +618,8 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if _report_speed_breaches(session):
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        if getattr(session.config, "workerinput", None) is not None:
+            session.shouldfail = "a test ran over its rule-S budget"
     _report_skipped_tests(session.config)
     global _SESSION_EXIT_STATUS
     _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
@@ -767,31 +770,75 @@ def _speed_budget(nodeid: str, rom: bool) -> tuple[float, float, str]:
     return budget, max(measured * _SPEED_EXCEPTION_SLACK, budget), ticket
 
 
+def _remeasure_item(session: pytest.Session, nodeid: str) -> float | None:
+    """One in-process re-run of a single node, timed on its call report.
+
+    pytest's own re-run path re-initialises the request and runs setup again; the
+    re-run is not logged, so it reaches no report and only its time is read.
+    """
+    item = next((candidate for candidate in session.items if candidate.nodeid == nodeid), None)
+    if item is None:
+        return None
+    for report in runtestprotocol(item, nextitem=None, log=False):
+        if report.when == "call":
+            return report.duration
+    return None
+
+
+def _breach_report(item, message: str) -> pytest.TestReport:
+    """One failed report for a node over its allowance, so the failure travels."""
+    return pytest.TestReport(
+        nodeid=item.nodeid,
+        location=item.location,
+        keywords={},
+        outcome="failed",
+        longrepr=message,
+        when="call",
+    )
+
+
 def _report_speed_breaches(session: pytest.Session) -> bool:
-    """Name every test over its rule-S allowance, and fail the session when one is."""
-    if getattr(session.config, "workerinput", None):
+    """Name every test over its rule-S allowance, and fail the session when one is.
+
+    An xdist controller owns no items, so a worker reports the nodes it ran and the
+    failed report it emits is what carries the verdict back.
+    """
+    if getattr(session.config, "workerinput", None) is None and session.config.getoption(
+            "numprocesses", None):
         return False
     breaches = []
     for nodeid, seconds in sorted(_TEST_SECONDS.items()):
         # The rom gate is the integration directory (tests/gates.py:54), which is
-        # what the controller can see of a worker's node: the marked items are not
-        # collected here under xdist.
+        # what every report carries; the marked items are not collected on an
+        # xdist controller.
         budget, allowance, ticket = _speed_budget(nodeid, nodeid.startswith("tests/integration/"))
-        if seconds > allowance:
-            breaches.append(
-                f"{nodeid} took {seconds:.2f}s, over its {allowance:.1f}s allowance "
-                f"(budget {budget:.1f}s), owned by {ticket}"
-            )
+        if seconds <= allowance:
+            continue
+        item = next((candidate for candidate in session.items if candidate.nodeid == nodeid),
+                    None)
+        again = _remeasure_item(session, nodeid) if item is not None else None
+        if again is not None and again <= allowance:
+            continue
+        signal = "unmeasured" if again is None else f"{again:.2f}s"
+        breaches.append((
+            item,
+            f"{nodeid} took {seconds:.2f}s, re-run {signal}, over its {allowance:.1f}s "
+            f"allowance (budget {budget:.1f}s), owned by {ticket}",
+        ))
     if not breaches:
         return False
+    messages = [message for _, message in breaches]
     terminal = session.config.pluginmanager.get_plugin("terminalreporter")
     if terminal is None:  # pragma: no cover - only in an embedded/plugin run
-        for line in breaches:
-            print(line)
-        return True
-    terminal.write_sep("=", f"tests over the rule-S budget ({len(breaches)})", red=True)
-    for line in breaches:
-        terminal.write_line(line)
+        for message in messages:
+            print(message)
+    else:
+        terminal.write_sep("=", f"tests over the rule-S budget ({len(breaches)})", red=True)
+        for message in messages:
+            terminal.write_line(message)
+    for item, message in breaches:
+        if item is not None:
+            session.config.hook.pytest_runtest_logreport(report=_breach_report(item, message))
     return True
 
 

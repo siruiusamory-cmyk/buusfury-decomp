@@ -13,22 +13,22 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GRAPHICS_PIECE = "tools/webfoot/graphics.py"
 
 
+def defined_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    return {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+
 def unresolved(locator: str) -> str | None:
-    if "::" in locator:
-        path, _, node = locator.partition("::")
-        target = REPO_ROOT / path
-        if not target.is_file():
-            return f"missing file {path}"
-        if f"def {node}(" not in target.read_text(encoding="utf-8", errors="replace"):
-            return f"missing node {node} in {path}"
-        return None
-    path, _, line = locator.partition(":")
+    path, separator, node = locator.partition("::")
     target = REPO_ROOT / path
     if not target.is_file():
         return f"missing file {path}"
-    lines = len(target.read_text(encoding="utf-8", errors="replace").splitlines())
-    if not line.isdigit() or not 1 <= int(line) <= lines:
-        return f"line {line} is outside {path}"
+    if not separator or node not in defined_names(target):
+        return f"{node or path} is not defined in {path}"
     return None
 
 

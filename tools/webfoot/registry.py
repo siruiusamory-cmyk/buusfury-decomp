@@ -107,7 +107,7 @@ CONVERTERS: tuple[Converter, ...] = (
         decode=rgb_png.decode_truecolour,
         encode=None,
         round_trip=RoundTrip.DECODE_ONLY,
-        evidence="tools/webfoot/formats/rgb_png.py:33",
+        evidence="tools/webfoot/formats/rgb_png.py::decode_truecolour",
     ),
     Converter(
         id="bps-patch",
@@ -170,7 +170,7 @@ CONVERTERS: tuple[Converter, ...] = (
         decode=placement_links.operand_references,
         encode=None,
         round_trip=RoundTrip.DECODE_ONLY,
-        evidence="tools/webfoot/formats/placement_links.py:115",
+        evidence="tools/webfoot/formats/placement_links.py::operand_references",
     ),
     Converter(
         id="script-vm",
@@ -197,7 +197,7 @@ CONVERTERS: tuple[Converter, ...] = (
         decode=bg_tilemap.ScreenEntry.decode,
         encode=bg_tilemap.encode_screen_entry,
         round_trip=RoundTrip.UNPROVEN,
-        evidence="tools/webfoot/formats/bg_tilemap.py:124",
+        evidence="tools/webfoot/formats/bg_tilemap.py::encode_screen_entry",
     ),
 )
 

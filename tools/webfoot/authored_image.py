@@ -334,7 +334,7 @@ def save_authored_image(
     changes: Iterable[ByteChange],
     canonical_sha256: str,
     verify: Callable[[bytes, tuple[ByteChange, ...]], VERIFIED],
-    readback: Callable[[bytes], object] | None = None,
+    decode: Callable[[bytes], object] | None = None,
 ) -> AuthoredImageSave[VERIFIED]:
     """Write a NEW image from `changes` against `base`, then publish it.
 
@@ -462,7 +462,7 @@ def save_authored_image(
         staging_output.unlink(missing_ok=True)
         staging_manifest.unlink(missing_ok=True)
     try:
-        published = _reopen_published(output, manifest, readback)
+        published = _reopen_published(output, manifest, decode)
     except AuthoredImageError as exc:
         raise AuthoredImageError(
             f"the image published to {output} does not re-read as what was written: {exc}"

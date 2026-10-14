@@ -38,7 +38,7 @@ def keep(data: bytes, declared: tuple[write_sdk.ByteChange, ...]) -> None:
     return None
 
 
-def save(tmp_path: Path, *, changes=(), decode=None, destination: str = "out.gba", **overrides):
+def save(tmp_path: Path, *, changes=(), decoder=None, destination: str = "out.gba", **overrides):
     arguments = dict(
         source_path=source(tmp_path),
         output_path=tmp_path / destination,
@@ -46,7 +46,7 @@ def save(tmp_path: Path, *, changes=(), decode=None, destination: str = "out.gba
         changes=changes,
         canonical_sha256=CANONICAL_SHA256,
         verify=keep,
-        readback=decode,
+        decode=decoder,
     )
     arguments.update(overrides)
     return ai.save_authored_image(BASE, **arguments)
@@ -66,7 +66,7 @@ def test_readback_re_parses_the_published_image_and_matches_its_manifest(tmp_pat
     saved = save(
         tmp_path,
         changes=(edit(),),
-        decode=lambda data: data[FIELD : FIELD + FIELD_BYTES],
+        decoder=lambda data: data[FIELD : FIELD + FIELD_BYTES],
     )
     published = tmp_path / "out.gba"
     assert published.is_file()
@@ -77,7 +77,9 @@ def test_readback_re_parses_the_published_image_and_matches_its_manifest(tmp_pat
     assert saved.readback.changed == tuple(range(FIELD, FIELD + FIELD_BYTES))
 
     report = ai.readback(
-        published, manifest=manifest_for(saved), decode=lambda data: data[FIELD : FIELD + FIELD_BYTES]
+        published,
+        manifest=manifest_for(saved),
+        decode=lambda data: data[FIELD : FIELD + FIELD_BYTES],
     )
     assert report.decoded == NEW_FIELD
     assert report.changed == saved.readback.changed
@@ -113,7 +115,7 @@ def test_readback_refuses_a_byte_changed_outside_the_declared_fields(tmp_path):
 
 
 def test_an_empty_plan_reports_a_byte_identical_output_and_publishes_it(tmp_path):
-    saved = save(tmp_path, changes=(), decode=lambda data: len(data))
+    saved = save(tmp_path, changes=(), decoder=lambda data: len(data))
     published = tmp_path / "out.gba"
 
     assert saved.no_op is True

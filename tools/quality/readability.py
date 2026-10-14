@@ -373,12 +373,10 @@ MAGIC_VALUE_MIN_DIGITS = 4
 
 #: C1's bar, adopted by the owner on 2026-10-14: under 10% per file and at or
 #: below 3% as the median across the files, measured on the lines a change adds.
-#: The pre-existing excess inside a file is SLOP-SWEEP-001's census, so a file
-#: that only carries its old comments is reported and never failed.
+#: The excess already inside a file is SLOP-SWEEP-001's census, not this gate's.
 COMMENT_SHARE_MAX_PERCENT = 10.0
 COMMENT_SHARE_MEDIAN_MAX_PERCENT = 3.0
 
-#: Not measured by the bar at all: the package the SDK rewrite replaces.
 COMMENT_SHARE_OUT_OF_SCOPE: tuple[str, ...] = ("tools/dragonbyte",)
 
 #: Emitted in the JSON document so a stored report can be read against the
@@ -574,12 +572,10 @@ def _closing(text: str, token: str, position: int) -> int:
 
 
 def _split_line(text: str, language: Language, state: _LexState) -> tuple[str, str]:
-    """Split one raw line into (code, comment).
+    """Split one raw line into (code, comment); string bodies leave both empty.
 
-    String bodies are dropped from both halves, so a comment marker inside a
-    literal cannot start a comment and a keyword inside a literal cannot look
-    like code. Limits, deliberate: here-strings, long-bracket strings and
-    template literals are treated as ordinary quoted strings.
+    Here-strings, long-bracket strings and template literals count as ordinary
+    quoted strings, so their bodies read as string text and never as code.
     """
     code: list[str] = []
     comment: list[str] = []
@@ -699,7 +695,6 @@ def _line_views(text: str, language: Language) -> tuple[LineView, ...]:
 
 
 def _is_docstring_line(view: LineView) -> bool:
-    """A line whose whole content is a string body: the docstring lines of a file."""
     return not view.code.strip() and not view.comment.strip() and bool(view.raw.strip())
 
 
@@ -1364,8 +1359,6 @@ def _percent(part: int, whole: int) -> float:
 
 @dataclass(frozen=True, slots=True)
 class CommentShare:
-    """One file's comment cost, whole file and on the lines a change adds."""
-
     path: str
     lines: int
     comment_lines: int
@@ -1566,8 +1559,8 @@ def _changed_source_paths(root: Path, revision: str) -> list[str] | None:
 
 _HUNK_START = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
-#: A unified diff is the only source of "which lines are new". Revisions are
-#: named, so comments already in the file cannot be failed by a later change.
+#: The added line numbers come from the diff, so comments already in a file
+#: cannot be failed by a later change to it.
 def _changed_line_numbers(root: Path, revision: str) -> dict[str, frozenset[int]] | None:
     output = _git(
         ["diff", "--unified=0", "--no-color", "--diff-filter=ACMR", "-M", revision],
@@ -1644,9 +1637,7 @@ def scan_paths(
 ) -> ScanResult:
     """Scan an explicit list of repository-relative paths.
 
-    *changed* maps a path to the line numbers a change adds, or to None when the
-    whole file is new. Without it the comment share is reported for every file
-    and failed for none.
+    *changed* maps a path to the added lines, or to None when the file is new.
     """
     table = table if table is not None else ExceptionTable()
     findings: list[Finding] = []

@@ -238,6 +238,71 @@ def verify_emitted_image(
 
 
 @dataclass(frozen=True, slots=True)
+class ReadbackReport:
+    """What re-opening the image that was just published found."""
+
+    path: Path
+    sha256: str
+    size: int
+    decoded: object
+    changed: tuple[int, ...]
+
+
+def _reopen_published(
+    path: Path, manifest: WriteManifest, decode: Callable[[bytes], object] | None
+) -> ReadbackReport:
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise AuthoredImageError(f"the image at {path} could not be re-opened: {exc}") from exc
+    for change in manifest.changes:
+        actual = data[change.offset : change.end]
+        if actual != change.new:
+            for index, (declared, held) in enumerate(zip(change.new, actual)):
+                if declared != held:
+                    raise AuthoredImageError(
+                        f"the image at {path} disagrees with its manifest from offset "
+                        f"0x{change.offset + index:08X}: the manifest declares "
+                        f"0x{declared:02X} and the file holds 0x{held:02X}"
+                    )
+            raise AuthoredImageError(
+                f"the image at {path} is shorter than the field its manifest declares "
+                f"at 0x{change.offset:08X}"
+            )
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != manifest.output_sha256:
+        raise AuthoredImageError(
+            f"the image at {path} hashes to {digest}, not to the "
+            f"{manifest.output_sha256} its manifest declares"
+        )
+    if len(data) != manifest.output_size:
+        raise AuthoredImageError(
+            f"the image at {path} is {len(data)} bytes, not the {manifest.output_size} "
+            "its manifest declares"
+        )
+    decoded = decode(data) if decode is not None else None
+    changed = tuple(
+        change.offset + index
+        for change in manifest.changes
+        for index, (before, after) in enumerate(zip(change.old, change.new))
+        if before != after
+    )
+    return ReadbackReport(
+        path=path, sha256=digest, size=len(data), decoded=decoded, changed=changed
+    )
+
+
+def readback(
+    path: str | Path,
+    *,
+    manifest: WriteManifest,
+    decode: Callable[[bytes], object] | None = None,
+) -> ReadbackReport:
+    """Re-open a published image and prove it still says what its manifest declares."""
+    return _reopen_published(Path(path), manifest, decode)
+
+
+@dataclass(frozen=True, slots=True)
 class AuthoredImageSave(Generic[VERIFIED]):
     """The verified result of writing a new image from a bounded byte-edit plan."""
 
@@ -256,6 +321,8 @@ class AuthoredImageSave(Generic[VERIFIED]):
     changed_offsets: tuple[int, ...]
     #: Whatever the caller's own verification step returned for the emitted bytes.
     verified: VERIFIED
+    #: What re-opening the published image found: digest, size, decoded, changed.
+    readback: ReadbackReport
 
 
 def save_authored_image(
@@ -267,6 +334,7 @@ def save_authored_image(
     changes: Iterable[ByteChange],
     canonical_sha256: str,
     verify: Callable[[bytes, tuple[ByteChange, ...]], VERIFIED],
+    readback: Callable[[bytes], object] | None = None,
 ) -> AuthoredImageSave[VERIFIED]:
     """Write a NEW image from `changes` against `base`, then publish it.
 
@@ -393,6 +461,12 @@ def save_authored_image(
         # The staging paths are cleaned on every outcome, including a failed publish.
         staging_output.unlink(missing_ok=True)
         staging_manifest.unlink(missing_ok=True)
+    try:
+        published = _reopen_published(output, manifest, readback)
+    except AuthoredImageError as exc:
+        raise AuthoredImageError(
+            f"the image published to {output} does not re-read as what was written: {exc}"
+        ) from exc
     return AuthoredImageSave(
         output_path=output,
         manifest_path=manifest_path,
@@ -402,6 +476,7 @@ def save_authored_image(
         changes=normalized,
         changed_offsets=changed_offsets,
         verified=verified,
+        readback=published,
     )
 
 

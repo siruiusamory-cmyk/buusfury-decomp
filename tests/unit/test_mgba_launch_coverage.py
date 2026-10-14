@@ -327,9 +327,10 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
     ("tests/unit/test_local_ci_script.py", "_base_dir", "'git'"):
         "clones the repository into the test's own temporary directory so the gate "
         "has a throwaway checkout to run against; it starts no emulator",
-    ("tests/unit/test_local_ci_script.py", "_invoke", "POWERSHELL"):
+    ("tests/unit/test_local_ci_script.py", "_invoke", "arguments"):
         "runs the gate script itself against that throwaway clone with a stub "
-        "interpreter in place of the package manager and the suite; it starts no emulator",
+        "interpreter in place of the package manager and the suite; it starts no emulator "
+        "(the argv is built by _argv so the shell it resolves can be printed with it)",
     ("tests/unit/test_local_ci_script.py",
      "test_a_cleanup_failure_reaches_the_record",
      "POWERSHELL"):

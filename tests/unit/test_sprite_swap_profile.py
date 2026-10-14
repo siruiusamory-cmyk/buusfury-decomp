@@ -287,12 +287,16 @@ def test_the_planner_spells_none_of_the_three_addresses_it_used_to_carry() -> No
 
     The census row guards the same surface by count; this node states the claim about
     this file, so a reintroduced literal fails here even while the count is right.
+
+    The ADDRESS is what is searched, not the catalogue offset these constants hold: the
+    shipped literal was ``0x086B6BDC``, and searching for the bare offset ``06B6BDC``
+    would match nothing in the file and could never fail.
     """
     source = (ROOT / PLANNER_NAME).read_text(encoding="utf-8")
-    for spelling in (f"{SHIPPED_TABLE:08X}", f"{SHIPPED_TABLE:08x}",
-                     f"{SHIPPED_PALETTE:08X}", f"{SHIPPED_PALETTE:08x}",
-                     f"{SHIPPED_PORTS:08X}", f"{SHIPPED_PORTS:08x}"):
-        assert spelling not in source, spelling
+    addresses = (BASE + SHIPPED_TABLE, BASE + SHIPPED_PALETTE, BASE + SHIPPED_PORTS)
+    for address in addresses:
+        for spelling in (f"{address:08X}", f"{address:08x}"):
+            assert spelling not in source, spelling
 
 
 def test_the_three_names_stay_importable_and_carry_the_profiles_values() -> None:

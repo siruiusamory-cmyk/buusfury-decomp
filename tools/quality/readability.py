@@ -30,6 +30,7 @@ Two further properties are load-bearing:
 from __future__ import annotations
 
 import argparse
+import ast
 import base64
 import fnmatch
 import json
@@ -373,7 +374,7 @@ MAGIC_VALUE_MIN_DIGITS = 4
 
 #: C1's bar, adopted by the owner on 2026-10-14: under 10% per file and at or
 #: below 3% as the median across the files, measured on the lines a change adds.
-#: The excess already inside a file is SLOP-SWEEP-001's census, not this gate's.
+#: The excess already inside a file is the census this gate does not own.
 COMMENT_SHARE_MAX_PERCENT = 10.0
 COMMENT_SHARE_MEDIAN_MAX_PERCENT = 3.0
 
@@ -694,12 +695,28 @@ def _line_views(text: str, language: Language) -> tuple[LineView, ...]:
     return tuple(views)
 
 
-def _is_docstring_line(view: LineView) -> bool:
-    return not view.code.strip() and not view.comment.strip() and bool(view.raw.strip())
-
-
-def _is_comment_or_docstring(view: LineView) -> bool:
-    return bool(view.comment.strip()) or _is_docstring_line(view)
+def _docstring_lines(text: str, language: Language) -> frozenset[int]:
+    """The lines a Python docstring occupies: the first statement of a module, class or function."""
+    if language is not PYTHON:
+        return frozenset()
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return frozenset()
+    spans: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not node.body:
+            continue
+        first = node.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            spans.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return frozenset(spans)
 
 
 def _comment_body(comment: str, language: Language) -> str:
@@ -1315,7 +1332,7 @@ def analyze_file(
     views = _line_views(text, language)
     comment_lines = sum(1 for view in views if view.comment.strip())
     ratio = comment_lines / len(views) if views else 0.0
-    docstring_lines = sum(1 for view in views if _is_docstring_line(view))
+    docstrings = _docstring_lines(text, language)
     if changed_lines is None:
         measured = list(views)
     else:
@@ -1346,9 +1363,11 @@ def analyze_file(
         language=language.name,
         lines=len(views),
         comment_lines=comment_lines,
-        docstring_lines=docstring_lines,
+        docstring_lines=len(docstrings),
         changed_lines=len(measured),
-        changed_comment_lines=sum(1 for view in measured if _is_comment_or_docstring(view)),
+        changed_comment_lines=sum(
+            1 for view in measured if view.comment.strip() or view.number in docstrings
+        ),
         findings=ordered,
     )
 

@@ -85,17 +85,16 @@ def test_counts_comment_docstring_and_span_lines_for_one_file():
         COMMENT,
         "",
         "def solve(value):",
-        '    """Alpha bravo charlie."""',
+        '    """Alpha',
+        "    bravo",
+        '    charlie."""',
         "    total = value",
-        '    """Delta',
-        "    echo",
-        '    foxtrot."""',
         "    return total",
     )
     report = share_for("tools/demo/mod.py", text)
-    assert report.lines == 11
+    assert report.lines == 10
     assert report.comment_lines == 1
-    assert report.docstring_lines == 5
+    assert report.docstring_lines == 4
     share = readability.CommentShare(
         path=report.path,
         lines=report.lines,
@@ -103,7 +102,32 @@ def test_counts_comment_docstring_and_span_lines_for_one_file():
         changed_lines=report.changed_lines,
         changed_comment_lines=report.changed_comment_lines,
     )
-    assert share.percent == pytest.approx(100 * 6 / 11)
+    assert share.percent == pytest.approx(50.0)
+
+
+def test_a_long_user_facing_string_constant_is_not_charged_as_a_docstring(tmp_path):
+    help_text = [f"line {index} of the help text" for index in range(30)]
+    text = source(
+        "HELP_TEXT = (",
+        '    """',
+        *[f"    {line}" for line in help_text],
+        '    """',
+        ")",
+        "",
+        "def solve(value):",
+        "    return value",
+    )
+    tree(tmp_path, {"tools/demo/mod.py": text})
+    report = share_for("tools/demo/mod.py", text)
+    assert report.lines == 37
+    assert report.comment_lines == 0
+    assert report.docstring_lines == 0
+    result = readability.scan_paths(
+        ["tools/demo/mod.py"], root=tmp_path, selector="changed", changed={"tools/demo/mod.py": None}
+    )
+    assert result.hard_findings == ()
+    assert result.comment_share[0].changed_percent == 0.0
+    assert result.comment_share[0].percent == 0.0
 
 
 def test_a_change_that_adds_no_comment_is_measured_on_the_added_lines_only(tmp_path):

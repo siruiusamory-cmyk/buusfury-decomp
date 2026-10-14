@@ -57,3 +57,14 @@ Invoke-CiStep { & $python -m tools.quality.public_surface --all }
 Invoke-CiStep { & $python -m tools.quality.architecture }
 Invoke-CiStep { & $python -m tools.quality.public_release }
 Invoke-CiStep { & $python -m tools.quality.readability --all }
+# The comment bar is measured on the lines a change adds, against the base the
+# pipeline is judged on: the merge request's own diff base when there is one, and
+# the default branch otherwise. The same signal, the same step, no second job.
+Invoke-CiStep {
+    $base = if ($env:CI_MERGE_REQUEST_DIFF_BASE_SHA) { $env:CI_MERGE_REQUEST_DIFF_BASE_SHA } else { 'origin/master' }
+    if (-not (git rev-parse --verify --quiet $base)) {
+        git fetch --quiet --no-tags origin '+refs/heads/master:refs/remotes/origin/master'
+    }
+    Write-Host "readability: comment bar against $base"
+    & $python -m tools.quality.readability --changed $base
+}

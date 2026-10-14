@@ -251,23 +251,63 @@ def run_focused(
     )
 
 
+#: PowerShell 7 renders a thrown message as coloured text and prefixes every
+#: wrapped line with a ``Line |`` gutter, so the gutter's pipe lands INSIDE a phrase
+#: that spans two lines and survives whitespace flattening: ``names no|test file``
+#: against a phrase of ``names no test file``. GitHub run 38504730899 failed four
+#: nodes on exactly that, on a message the gate had produced correctly. The colour
+#: and the gutter are therefore removed before the whitespace.
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+RENDERED_GUTTER = re.compile(r"(?m)^[ \t]*\|[ \t]?")
+
+
+def _rendered(text: str) -> str:
+    """The message with PowerShell's colour and its line gutter removed."""
+    return RENDERED_GUTTER.sub("", ANSI_ESCAPE.sub("", text))
+
+
 def _flat(text: str) -> "_Flattened":
-    """The output with all whitespace removed.
+    """The output with the rendering and all whitespace removed.
 
     PowerShell wraps a long line to the width of its console, and a thrown message
-    can be split across two lines with padding - a digest included. So a phrase is
-    compared with the whitespace gone from BOTH sides, which the ``in`` override
-    below does: ``"a long phrase" in _flat(output)`` compares flat to flat, and
-    every other use of the result still behaves as the string it is.
+    can be split across two lines with padding - a digest included. PowerShell 5.1
+    writes that plainly; PowerShell 7 colours it and gutters every line. So a phrase
+    is compared with the colour, the gutter and the whitespace gone from BOTH sides,
+    which the ``in`` override below does: ``"a long phrase" in _flat(output)``
+    compares flat to flat, and every other use of the result still behaves as the
+    string it is.
     """
-    return _Flattened("".join(text.split()))
+    return _Flattened("".join(_rendered(text).split()))
 
 
 class _Flattened(str):
     """A flat string whose ``in`` flattens the phrase it is asked about."""
 
     def __contains__(self, phrase: object) -> bool:
-        return "".join(str(phrase).split()) in str(self)
+        return "".join(_rendered(str(phrase)).split()) in str(self)
+
+
+def test_the_flattening_removes_the_power_shell_seven_error_rendering():
+    """Run 38504730899: a wrapped, coloured message must still match its phrase.
+
+    The gutter's pipe sat between ``no`` and ``test``, so removing whitespace alone
+    left ``namesno|testfile`` against a phrase of ``names no test file``, and the
+    four focused-run nodes failed on a refusal the gate had produced correctly.
+    """
+    rendered = (
+        "\x1b[31;1mException: \x1b[0mscripts/rom-focused-check.ps1:71\x1b[0m\n"
+        "\x1b[36;1mLine |\x1b[0m\n"
+        '\x1b[36;1m  71 | \x1b[0mthrow "rom-focused-check: $Reason"\n'
+        "\x1b[36;1m     | \x1b[0mrom-focused-check: worktree names no\n"
+        "\x1b[36;1m     | \x1b[0mtest file, so there is nothing to run\n"
+    )
+    flat = _flat(rendered)
+    assert "names no test file" in flat
+    assert "there is nothing to run" in flat
+    assert "\x1b" not in str(flat)
+    # The preamble's own ``71 |`` is not a wrapped phrase and stays legible, so the
+    # normalisation removed the gutter without flattening the message away.
+    assert "Exception: scripts/rom-focused-check.ps1:71" in flat
 
 
 def _canonical_image() -> Path | None:

@@ -82,6 +82,14 @@ $recordDir = Join-Path (Join-Path $RepoPath 'build') (Join-Path 'local-ci' $Sha)
 if (-not $recordDir) {
     Write-Host ("local-ci: FAIL - the record directory could not be computed from RepoPath '" +
         $RepoPath + "' and Sha '" + $Sha + "': the computed record directory reads '" + $recordDir + "'")
+    # Both inputs were valid in the run that hit this, so the values that can explain
+    # it travel with the refusal: a Join-Path that does not resolve, a PowerShell
+    # whose module path cannot autoload it, and the interpreter that spawned this one.
+    Write-Host ("local-ci: FAIL - diagnostics: Join-Path resolves " +
+        ([bool](Get-Command Join-Path -ErrorAction SilentlyContinue)) +
+        "; PSVersion " + $PSVersionTable.PSVersion +
+        "; LOCALAPPDATA '" + $env:LOCALAPPDATA + "'" +
+        "; PSModulePath '" + $env:PSModulePath + "'")
     exit 1
 }
 $runId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 6)

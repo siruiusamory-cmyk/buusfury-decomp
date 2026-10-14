@@ -26,13 +26,15 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.webfoot import capability
 from tools.webfoot import sprite_swap as ss
 from tools.webfoot.binary import GbaRomAddress
 from tools.webfoot.formats import sprite_graphics as sg
 from tools.webfoot.formats import webfoot_lz as wl
-from tools.webfoot.profile import ActorSpriteProfile, RomProfileCatalog
+from tools.webfoot.profile import (ActorSpriteProfile, ProfileConfigError,
+                                   RomProfileCatalog)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -179,12 +181,6 @@ def _sheet_row(y: int) -> bytes:
         inside = _CROP <= x % SIDE < _CROP + _FRAME_W
         row += bytes(WHITE if inside else BLACK)
     return bytes(row)
-
-
-def _sheet_raster(assets: Path, palette: dict) -> bytes:
-    """The raster the sheet's first cell is, read through the planner's own reader."""
-    return ss.raster_from_png(assets / SHEET, palette, _FRAME_W, _FRAME_H, cell=0,
-                              geometry=ss.DONOR_GEOMETRY)
 
 
 def _packed() -> bytes:
@@ -463,12 +459,55 @@ def test_the_shipped_catalogue_loads_with_the_new_key_and_its_own_values() -> No
     assert layout.evidence.strip()
 
 
-def test_a_six_key_declaration_is_the_only_one_the_loader_requires() -> None:
-    """Four keys plus evidence and the background palette, and nothing else."""
-    six = {"character_table_address", "character_count", "animation_pointer_offset",
-           "object_palette_address", "bg_palette_address", "evidence"}
-    assert len(six) == 6
-    assert PORTRAIT_KEY not in six
+def _catalog_document(actor_sprites: dict) -> str:
+    """A whole version-1 catalogue text around one synthetic profile.
+
+    The loader is driven through a real document, so the exact-key guard is exercised
+    where it lives rather than through a set this module built for itself.
+    """
+    mapping = {
+        "id": "synthetic_actor_sprites_keys",
+        "game": "synthetic",
+        "region": "test",
+        "game_code": "BG3E",
+        "size": IMAGE_SIZE,
+        "sha256": "0" * 64,
+        "tables": {"actor_sprites": actor_sprites},
+    }
+    return yaml.safe_dump({"schema_version": 1, "profiles": [mapping]})
+
+
+def _six_key_mapping() -> dict:
+    """The six keys an ``actor_sprites`` declaration carried before this ticket."""
+    return {
+        "character_table_address": BASE + TABLE_A,
+        "character_count": 1,
+        "animation_pointer_offset": ANIMATION_OFFSET,
+        "object_palette_address": BASE + PALETTE_A,
+        "bg_palette_address": BASE + BG_PALETTE,
+        "evidence": "synthetic declaration for the optional portrait key",
+    }
+
+
+def test_a_six_key_declaration_still_loads_and_a_stranger_key_is_refused() -> None:
+    """The optional key is optional to the loader, and an unknown key is still refused.
+
+    Driven through a real catalogue document so the exact-key guard is exercised: the
+    six-key declaration loads with the portrait key None, and the same declaration plus
+    one key the contract does not define fails on that guard.
+    """
+    loaded = RomProfileCatalog.loads(
+        _catalog_document(_six_key_mapping()), source="synthetic six-key declaration"
+    ).profiles[0]
+    assert loaded.actor_sprites.portrait_table_address is None
+    assert loaded.actor_sprites.object_palette_address.raw == BASE + PALETTE_A
+
+    stranger = _six_key_mapping()
+    stranger["portrait_table_addresses"] = BASE + PORTS
+    with pytest.raises(ProfileConfigError, match="actor_sprites requires exact"):
+        RomProfileCatalog.loads(
+            _catalog_document(stranger), source="synthetic stranger key"
+        )
 
 
 # --- D7 to D9: the change is bounded ------------------------------------------
@@ -484,27 +523,6 @@ def test_the_census_row_for_the_planner_states_what_the_file_carries() -> None:
     for gone in ("0x086B6BDC", "0x0805652C", "0x086F393C"):
         assert gone not in row.reason
     assert "0x08000000" in row.reason
-
-
-def test_the_amended_surface_is_the_one_this_module_names() -> None:
-    """The amended paths are the ones this ticket wrote, and no test file was edited.
-
-    Stated as a named set rather than re-derived from a diff, which would pass on any
-    edit, and checked against the tree for the two paths whose content carries the key.
-    """
-    amended = {PLANNER_NAME, PROFILE_NAME, PACKAGED_NAME, DEVELOPMENT_NAME,
-               "tests/unit/address_literal_census.py",
-               "tests/unit/test_sprite_swap_profile.py"}
-    assert len(amended) == 6
-    for path in (PLANNER_NAME, PROFILE_NAME, PACKAGED_NAME, DEVELOPMENT_NAME):
-        assert (ROOT / path).is_file(), path
-    untouched = ("tests/unit/test_tulma_graphics.py",
-                 "tests/unit/test_character_swap.py", "tests/helpers.py")
-    for path in untouched:
-        assert path not in amended, path
-
-
-# --- the codec boundary the walk stands on ------------------------------------
 
 
 def test_the_container_the_walk_reaches_declares_the_frames_own_extent(world) -> None:

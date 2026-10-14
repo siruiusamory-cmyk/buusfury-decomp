@@ -109,15 +109,16 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: line at ``config/roms.yaml:21``, which is outside the ``tools/`` census set.
 #: Measured 2885 -> 2882 lines, 272 -> 272 files.
 #: PINMAP-05 moved 2882 -> 2879; the entry it appended names all nineteen lines.
-CENSUS_HEX5 = (2879, 272)
+#: PINMAP-06 moved 2879 -> 2877; the entry it appended names both lines.
+CENSUS_HEX5 = (2877, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
 #: same four removals and the one added key the ``CENSUS_HEX5`` note lists; the
 #: enforcement set is the whole-tree set minus the four instrument directories, so
 #: the three move together.
-ENFORCEMENT_HEX5 = (655, 70)
-ENFORCEMENT_ROM_HEX = (487, 53)
+ENFORCEMENT_HEX5 = (653, 70)
+ENFORCEMENT_ROM_HEX = (485, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -193,13 +194,17 @@ EXEMPTIONS: tuple[Row, ...] = (
         "table 0x086B82EC. No ticket covers this file yet: recorded debt.",
     ),
     Row(
-        "tools/export/canonical.py", 11, 11, 0,
-        "named export constants and their citations: the bank table 0x08179764, "
-        "the default chunk container 0x08070808, the sprite-definition run "
-        "0x086B6BDC, the party-alias accessor and re-entry words 0x08000158 and "
-        "0x0801713C, the party-alias index table 0x086B82EC and the portrait and "
-        "palette words. PINMAP-06 moves the two shadowed table addresses "
-        "0x086B6BDC and 0x0874D380 into the profile and leaves the rest as rows.",
+        "tools/export/canonical.py", 9, 9, 0,
+        "the literals PINMAP-06 leaves, each named with its role at its line in "
+        "this file after those removals: the bank container table 0x08179764 at "
+        ":150, the absent-layer placeholder container 0x08070808 at :154, the "
+        "engine code sites 0x08000158 and 0x0801713C at :170-171, the party-alias "
+        "index table 0x086B82EC at :172, the portrait pointer array 0x086F393C at "
+        ":232, which PINMAP-04 declared as actor_sprites.portrait_table_address, "
+        "and the terrain-field handler word 0x080088BD cited at :308, :321 and "
+        ":330, which is PINMAP-07's surface. The two this row used to spell, the "
+        "sprite-definition run 0x086B6BDC and the appearance table 0x0874D380, now "
+        "resolve from the profile through the module's existing accessor pattern.",
     ),
     Row(
         "tools/export/render.py", 2, 1, 0,
@@ -693,6 +698,19 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         ":86, :89, :90, :91 and :93-96, which is a net -3. The engine row fell 17 -> 6 "
         "lines and its ROM-space count 5 -> 1; the catalogue row rose 43 -> 51 and its "
         "ROM-space count 37 -> 45 because seven of the new keys are full GBA addresses",
+    ),
+    LedgerEntry(
+        "PINMAP-06", -2, 0,
+        (
+            "tools/export/canonical.py:164",
+            "tools/export/canonical.py:228",
+        ),
+        "two counted lines left the export reader: the sprite-definition run constant "
+        "at :164 and the appearance-table constant at :228, both replaced by a read of "
+        "the profile keys tables.actor_sprites.character_table_address and "
+        "tables.appearances.address, which is a net -2 and no files. The canonical.py "
+        "row fell 11 -> 9 lines and its ROM-space count 11 -> 9, and the enforcement "
+        "pair fell by the same two lines because that file is in the enforcement set",
     ),
 )
 

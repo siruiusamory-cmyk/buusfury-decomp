@@ -135,6 +135,86 @@ _RECORDED_REPORT_OPTION = "xmlpath"
 #: CI=1, and 3 again with ``WEBFOOT_KEEP_INTERPRETER_EXIT=1``.
 _SESSION_EXIT_STATUS = int(pytest.ExitCode.INTERNAL_ERROR)
 
+#: Rule S (ticket SPEED-GATE-001) budgets one test at 5 s, or 30 s with the rom
+#: marker. Each entry is (measured seconds, why it is slow, owning ticket); the numbers
+#: are the merged junit of GitHub run 38600996718 on master f55e32d8, and an entry
+#: allows its own measurement times `_SPEED_EXCEPTION_SLACK`. The rom branch stays flat.
+_SPEED_BUDGET_SECONDS = 5.0
+_SPEED_ROM_BUDGET_SECONDS = 30.0
+_SPEED_EXCEPTION_SLACK = 1.5
+_BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str]] = {
+    "tests/unit/test_public_surface.py::test_the_report_is_deterministic":
+        (36.021, "the scan run twice to prove the report is byte-identical", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_two_runs_write_byte_identical_json":
+        (18.255, "the scan run twice to prove the report is byte-identical", "SPEED-GATE-001"),
+    "tests/unit/test_public_surface.py::test_the_public_surface_is_clean":
+        (16.789, "duplicates the gates job: tools.quality.public_surface --all", "SPEED-GATE-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_no_exemption_names_a_registered_launch_site":
+        (11.423, "the scan of every test module for launch sites", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_the_real_tree_reports_nothing_in_the_shipping_toolkit":
+        (10.264, "duplicates the gates job: tools.quality.readability --all", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_the_json_document_has_a_stable_schema":
+        (9.938, "the scan run once to check the report's JSON schema", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_a_load_bearing_exception_suppresses_exactly_its_own_hits":
+        (9.862, "the scan to check each exception still matches its own hits", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_the_enemy_behaviour_sense_is_covered_by_a_written_exception":
+        (9.858, "analyzes one probe file against a written exception", "SPEED-GATE-001"),
+    "tests/unit/test_text_tool_list.py::test_the_state_chips_narrow_the_list_and_the_clear_action_restores_it":
+        (8.397, "builds and themes a real Qt list view", "SPEED-GATE-001"),
+    "tests/unit/test_graphics_override_sdk.py::test_pack_gba_colour_is_the_exact_inverse_of_the_word_decode":
+        (8.376, "an exhaustive 32768 colour round trip", "SPEED-GATE-001"),
+    "tests/unit/test_text_tool_list.py::test_the_export_window_shows_the_facts_the_digest_and_one_close_action":
+        (7.990, "builds the export dialog and its image", "SPEED-GATE-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_every_registered_site_uses_the_gate_its_proof_names":
+        (7.575, "the scan of every test module for launch sites", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_the_summary_says_advisories_never_change_the_exit_code":
+        (7.126, "the scan to check the summary text a green gate never reads", "SPEED-GATE-001"),
+    "tests/unit/test_readability.py::test_findings_are_ordered_by_path_line_signal":
+        (7.057, "the scan to check findings are ordered by path, line, signal", "SPEED-GATE-001"),
+    "tests/unit/test_write_invariants_property.py::test_writes_that_disagree_about_one_span_fail_closed":
+        (6.471, "a hypothesis search over generated span pairs", "SPEED-GATE-001"),
+    "tests/unit/test_dragonbyte_foundation.py::test_the_real_tree_passes_the_gate_and_the_package_never_imports_the_beta":
+        (6.296, "duplicates the gates job: tools.quality.architecture, plus an AST parse", "SPEED-GATE-001"),
+    "tests/unit/test_architecture.py::test_observations_never_fail_the_run":
+        (6.261, "duplicates the gates job: tools.quality.architecture", "SPEED-GATE-001"),
+    "tests/unit/test_architecture.py::test_the_report_is_deterministic":
+        (6.113, "the scan run twice to prove the report is byte-identical", "SPEED-GATE-001"),
+    "tests/unit/test_project_safety.py::test_built_wheel_uses_packaged_profile_catalog":
+        (6.024, "builds a wheel with pip", "SPEED-GATE-001"),
+    "tests/unit/test_mgba_launch_coverage.py::test_the_current_tree_has_no_unregistered_launch_site":
+        (5.875, "the scan of every test module for launch sites", "SPEED-GATE-001"),
+    "tests/unit/test_text_tool_list.py::test_the_status_cell_paints_no_fill_of_its_own_and_the_divider_runs_its_width":
+        (5.659, "builds and themes a real Qt list view", "SPEED-GATE-001"),
+    "tests/unit/test_text_tool_shell.py::test_smoke_exits_zero":
+        (4.906, "opens and closes the shell window (headroom below the budget)", "SPEED-GATE-001"),
+    "tests/unit/test_ui_graphics_probe.py::test_report_records_the_pre_filter_corpus_hits":
+        (4.596, "runs the graphics probe report over its corpus (headroom below the budget)", "SPEED-GATE-001"),
+    "tests/unit/test_pre_merge_check.py::test_the_primary_a_subdirectory_of_it_and_a_linked_worktree":
+        (4.269, "drives the pre-merge gate over three worktrees (headroom below the budget)", "SPEED-GATE-001"),
+    "tests/unit/test_text_tool_shell.py::test_a_saved_project_edit_survives_editing_and_undoing_in_the_window":
+        (4.212, "drives the shell window through an edit and undo (headroom below the budget)", "SPEED-GATE-001"),
+    "tests/unit/test_logx_synthesis_audit.py::test_the_audit_is_deterministic":
+        (4.180, "runs the synthesis audit twice to compare reports (headroom below the budget)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_later_run_keeps_the_earlier_runs_artifacts_and_names_do_not_collide":
+        (69.550, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_an_early_failure_leaves_no_clone_or_worktree":
+        (54.220, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_red_quality_step_fails_the_record":
+        (40.060, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_the_gate_refuses_when_the_record_directory_cannot_be_computed":
+        (38.680, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_failed_step_keeps_its_captured_output":
+        (40.480, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_green_run_passes_so_the_red_guard_is_not_vacuous":
+        (37.450, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_green_run_passes_when_the_pinned_files_are_present":
+        (36.980, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_local_ci_script.py::test_a_cleanup_failure_reaches_the_record":
+        (36.700, "drives scripts/local-ci.ps1 in a throwaway worktree (local measurement)", "SPEED-GATE-001"),
+    "tests/unit/test_pre_merge_check.py::test_the_focused_run_refuses_a_missing_or_empty_inventory":
+        (5.010, "drives the focused run over two throwaway repositories (3.51s on the runner)", "SPEED-GATE-001"),
+}
+
 
 # --- a mutable ROM fixture that cannot share a file with a protected input -----
 #
@@ -195,6 +275,10 @@ _COLLAPSED_REASONS: dict[str, str] = {}
 #: Populated by :func:`pytest_runtest_logreport` and reported once by
 #: :func:`pytest_sessionfinish`.
 _SKIPPED_TEST_REASONS: dict[str, str] = {}
+
+#: Every test's call-phase wall time in this session, as ``{node id: seconds}``.
+#: On the controller under xdist this holds the whole session.
+_TEST_SECONDS: dict[str, float] = {}
 
 #: pytest's rootdir, captured by :func:`pytest_configure`. Collection reports
 #: identify a file by a node id, which is relative to this root.
@@ -431,6 +515,9 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     it for each report a worker sends, which is what keeps the census complete
     there rather than silently empty.
     """
+    if report.when == "call":
+        _TEST_SECONDS[report.nodeid] = max(_TEST_SECONDS.get(report.nodeid, 0.0),
+                                           report.duration)
     if report.skipped:
         _SKIPPED_TEST_REASONS[report.nodeid] = _skip_reason(report)
 
@@ -459,6 +546,8 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             # the only collected module collapsed); a collapsed shipping surface is
             # a test failure, and the summary below says which one.
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+    if _report_speed_breaches(session):
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
     _report_skipped_tests(session.config)
     global _SESSION_EXIT_STATUS
     _SESSION_EXIT_STATUS = int(session.exitstatus if session.exitstatus is not None
@@ -597,6 +686,42 @@ def _report_skipped_tests(config: pytest.Config) -> None:
     terminal.write_sep("=", f"tests skipped ({len(entries)})")
     for line in lines:
         terminal.write_line(line)
+
+
+def _speed_budget(nodeid: str, rom: bool) -> tuple[float, str]:
+    entry = _BUDGET_EXCEPTIONS.get(nodeid)
+    if entry is not None:
+        measured, _why, ticket = entry
+        return max(measured, _SPEED_BUDGET_SECONDS) * _SPEED_EXCEPTION_SLACK, ticket
+    if rom:
+        return _SPEED_ROM_BUDGET_SECONDS, "SPEED-GATE-001"
+    return _SPEED_BUDGET_SECONDS, "SPEED-GATE-001"
+
+
+def _report_speed_breaches(session: pytest.Session) -> bool:
+    """Name every test over its rule-S budget, and fail the session when one is."""
+    if getattr(session.config, "workerinput", None):
+        return False
+    rom_nodes = {item.nodeid for item in session.items if "rom" in item.keywords}
+    breaches = []
+    for nodeid, seconds in sorted(_TEST_SECONDS.items()):
+        budget, ticket = _speed_budget(nodeid, nodeid in rom_nodes)
+        if seconds > budget:
+            breaches.append(
+                f"{nodeid} took {seconds:.2f}s, over its {budget:.1f}s budget, "
+                f"owned by {ticket}"
+            )
+    if not breaches:
+        return False
+    terminal = session.config.pluginmanager.get_plugin("terminalreporter")
+    if terminal is None:  # pragma: no cover - only in an embedded/plugin run
+        for line in breaches:
+            print(line)
+        return True
+    terminal.write_sep("=", f"tests over the rule-S budget ({len(breaches)})", red=True)
+    for line in breaches:
+        terminal.write_line(line)
+    return True
 
 
 def _required_gui_surface_is_enforced() -> bool:

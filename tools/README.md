@@ -36,6 +36,7 @@ artifact and a committed result that said "BLOCKED before the measurement".
 | Truecolour PNG | colour type 2 or 6, read for captures and authored sheets | `tools/webfoot/formats/rgb_png.py` |
 | RGBA PNG (writer) | colour type 6, deterministic, used by the exporter and by the crops in `tools/research/compare_intent.py` | `tools/export/png.py` |
 | BPS patch | the `BPS1` magic and its variable-width fields | `tools/webfoot/formats/bps.py` |
+| Battery save and savestate | 8,192-byte Buu's Fury EEPROM (slot *k* at `0x10 + k*0x8B0`, 8-byte blocks byte-reversed, checksum at file `slot+0x8AC`); an mGBA savestate is a PNG container carrying a private `gbAs` chunk | `tools/save_catalogue/geometry.py`, `tools/save_catalogue/sniff.py` |
 
 The reader column is checked by `tests/unit/test_tools_readme.py`: every path here must exist, and every
 module in `tools/webfoot/formats/` must be named, so this table cannot rot while the code moves.

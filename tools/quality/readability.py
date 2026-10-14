@@ -35,9 +35,10 @@ import fnmatch
 import json
 import re
 import shutil
+import statistics
 import subprocess
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
@@ -265,6 +266,11 @@ SIGNALS: tuple[Signal, ...] = (
         "A quoted value shaped like a credential.",
     ),
     Signal(
+        "comment_share",
+        HARD,
+        "Comment and docstring lines above the ceiling the conventions set.",
+    ),
+    Signal(
         "oversized_comment_block",
         ADVISORY,
         "One comment run longer than the documented ceiling.",
@@ -365,10 +371,22 @@ MAGIC_VALUE_MIN_COUNT = 10
 #: value worth naming has at least this many digits, or is written in hex.
 MAGIC_VALUE_MIN_DIGITS = 4
 
+#: C1's bar, adopted by the owner on 2026-10-14: under 10% per file and at or
+#: below 3% as the median across the files, measured on the lines a change adds.
+#: The pre-existing excess inside a file is SLOP-SWEEP-001's census, so a file
+#: that only carries its old comments is reported and never failed.
+COMMENT_SHARE_MAX_PERCENT = 10.0
+COMMENT_SHARE_MEDIAN_MAX_PERCENT = 3.0
+
+#: Not measured by the bar at all: the package the SDK rewrite replaces.
+COMMENT_SHARE_OUT_OF_SCOPE: tuple[str, ...] = ("tools/dragonbyte",)
+
 #: Emitted in the JSON document so a stored report can be read against the
 #: thresholds that produced it.
 THRESHOLDS: dict[str, int | float] = {
     "comment_block_max_lines": COMMENT_BLOCK_MAX_LINES,
+    "comment_share_max_percent": COMMENT_SHARE_MAX_PERCENT,
+    "comment_share_median_max_percent": COMMENT_SHARE_MEDIAN_MAX_PERCENT,
     "file_prose_min_lines": FILE_PROSE_MIN_LINES,
     "file_prose_ratio": FILE_PROSE_RATIO,
     "codeflag_min_run": CODEFLAG_MIN_RUN,
@@ -545,15 +563,23 @@ def _scanner(language: Language) -> re.Pattern[str]:
     return re.compile("|".join(re.escape(token) for token in ordered))
 
 
+def _closing(text: str, token: str, position: int) -> int:
+    """The next *token* that is not backslash-escaped, or -1 when there is none."""
+    end = text.find(token, position)
+    while end != -1:
+        if not (len(text[:end]) - len(text[:end].rstrip("\\"))) % 2:
+            return end
+        end = text.find(token, end + 1)
+    return -1
+
+
 def _split_line(text: str, language: Language, state: _LexState) -> tuple[str, str]:
     """Split one raw line into (code, comment).
 
     String bodies are dropped from both halves, so a comment marker inside a
     literal cannot start a comment and a keyword inside a literal cannot look
-    like code. Limits, deliberate: an escaped quote is taken as a terminator,
-    and here-strings, long-bracket strings and template literals are treated as
-    ordinary quoted strings. A line misread this way can only affect signals
-    that already report advisory or comment-shaped text.
+    like code. Limits, deliberate: here-strings, long-bracket strings and
+    template literals are treated as ordinary quoted strings.
     """
     code: list[str] = []
     comment: list[str] = []
@@ -569,7 +595,7 @@ def _split_line(text: str, language: Language, state: _LexState) -> tuple[str, s
         position = end + len(state.block_end)
         state.block_end = None
     if state.string is not None:
-        end = text.find(state.string, position)
+        end = _closing(text, state.string, position)
         if end < 0:
             return "", "".join(comment)
         position = end + len(state.string)
@@ -599,7 +625,7 @@ def _split_line(text: str, language: Language, state: _LexState) -> tuple[str, s
             continue
         # A string delimiter: its body, which may run on to the next line, is
         # never code and never a comment.
-        end = text.find(token, position)
+        end = _closing(text, token, position)
         if end < 0:
             state.string = token
             position = length
@@ -670,6 +696,15 @@ def _line_views(text: str, language: Language) -> tuple[LineView, ...]:
             )
         )
     return tuple(views)
+
+
+def _is_docstring_line(view: LineView) -> bool:
+    """A line whose whole content is a string body: the docstring lines of a file."""
+    return not view.code.strip() and not view.comment.strip() and bool(view.raw.strip())
+
+
+def _is_comment_or_docstring(view: LineView) -> bool:
+    return bool(view.comment.strip()) or _is_docstring_line(view)
 
 
 def _comment_body(comment: str, language: Language) -> str:
@@ -1255,6 +1290,9 @@ class FileReport:
     language: str
     lines: int
     comment_lines: int
+    docstring_lines: int
+    changed_lines: int
+    changed_comment_lines: int
     findings: tuple[Finding, ...]
 
 
@@ -1272,10 +1310,22 @@ def analyze_text(
     return analyze_file(rel_path, text, resolved).findings
 
 
-def analyze_file(rel_path: str, text: str, language: Language) -> FileReport:
+def analyze_file(
+    rel_path: str,
+    text: str,
+    language: Language,
+    *,
+    changed_lines: Collection[int] | None = (),
+) -> FileReport:
     views = _line_views(text, language)
     comment_lines = sum(1 for view in views if view.comment.strip())
     ratio = comment_lines / len(views) if views else 0.0
+    docstring_lines = sum(1 for view in views if _is_docstring_line(view))
+    if changed_lines is None:
+        measured = list(views)
+    else:
+        changed = set(changed_lines)
+        measured = [view for view in views if view.number in changed]
 
     findings: list[Finding] = []
     findings.extend(_detect_narration(rel_path, views))
@@ -1301,8 +1351,45 @@ def analyze_file(rel_path: str, text: str, language: Language) -> FileReport:
         language=language.name,
         lines=len(views),
         comment_lines=comment_lines,
+        docstring_lines=docstring_lines,
+        changed_lines=len(measured),
+        changed_comment_lines=sum(1 for view in measured if _is_comment_or_docstring(view)),
         findings=ordered,
     )
+
+
+def _percent(part: int, whole: int) -> float:
+    return 100.0 * part / whole if whole else 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class CommentShare:
+    """One file's comment cost, whole file and on the lines a change adds."""
+
+    path: str
+    lines: int
+    comment_lines: int
+    changed_lines: int
+    changed_comment_lines: int
+
+    @property
+    def percent(self) -> float:
+        return _percent(self.comment_lines, self.lines)
+
+    @property
+    def changed_percent(self) -> float:
+        return _percent(self.changed_comment_lines, self.changed_lines)
+
+    def as_document(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "lines": self.lines,
+            "comment_and_docstring_lines": self.comment_lines,
+            "percent": round(self.percent, 2),
+            "changed_lines": self.changed_lines,
+            "changed_comment_and_docstring_lines": self.changed_comment_lines,
+            "changed_percent": round(self.changed_percent, 2),
+        }
 
 
 # --- exceptions ------------------------------------------------------------
@@ -1395,6 +1482,19 @@ class ScanResult:
     unused_exceptions: tuple[ExceptionRule, ...]
     unreadable: tuple[str, ...] = ()
     blocked: str | None = None
+    comment_share: tuple[CommentShare, ...] = ()
+
+    @property
+    def comment_share_percent(self) -> float:
+        return _percent(
+            sum(row.comment_lines for row in self.comment_share),
+            sum(row.lines for row in self.comment_share),
+        )
+
+    @property
+    def comment_share_median(self) -> float | None:
+        measured = [row.changed_percent for row in self.comment_share if row.changed_lines]
+        return statistics.median(measured) if measured else None
 
     @property
     def hard_findings(self) -> tuple[Finding, ...]:
@@ -1445,16 +1545,67 @@ def _tracked_source_paths(root: Path) -> list[str] | None:
     return [line.strip() for line in output.splitlines() if line.strip()]
 
 
+def _untracked_paths(root: Path) -> list[str] | None:
+    output = _git(["ls-files", "--others", "--exclude-standard"], root)
+    if output is None:
+        return None
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
 def _changed_source_paths(root: Path, revision: str) -> list[str] | None:
     tracked = _git(["diff", "--name-only", "--diff-filter=ACMR", revision], root)
     if tracked is None:
         return None
-    untracked = _git(["ls-files", "--others", "--exclude-standard"], root)
+    untracked = _untracked_paths(root)
     if untracked is None:
         return None
     paths = [line.strip() for line in tracked.splitlines() if line.strip()]
-    paths += [line.strip() for line in untracked.splitlines() if line.strip()]
+    paths += untracked
     return sorted(set(paths))
+
+
+_HUNK_START = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+#: A unified diff is the only source of "which lines are new". Revisions are
+#: named, so comments already in the file cannot be failed by a later change.
+def _changed_line_numbers(root: Path, revision: str) -> dict[str, frozenset[int]] | None:
+    output = _git(
+        ["diff", "--unified=0", "--no-color", "--diff-filter=ACMR", "-M", revision],
+        root,
+    )
+    if output is None:
+        return None
+    added: dict[str, set[int]] = {}
+    path: str | None = None
+    number = 0
+    in_hunk = False
+    for line in output.splitlines():
+        if line.startswith("diff --git"):
+            in_hunk = False
+            continue
+        if not in_hunk and line.startswith("+++ "):
+            target = line[4:].strip()
+            path = None if target == "/dev/null" else target.removeprefix("b/")
+            continue
+        if line.startswith("@@"):
+            start = _HUNK_START.match(line)
+            in_hunk = start is not None and path is not None
+            if in_hunk:
+                number = int(start.group(1))
+            continue
+        if not in_hunk or path is None:
+            continue
+        if line.startswith("+"):
+            added.setdefault(path, set()).add(number)
+            number += 1
+    return {name: frozenset(numbers) for name, numbers in added.items()}
+
+
+def _comment_share_out_of_scope(rel_path: str) -> bool:
+    return any(
+        rel_path == prefix or rel_path.startswith(prefix + "/")
+        for prefix in COMMENT_SHARE_OUT_OF_SCOPE
+    )
 
 
 def _in_scan_root(rel_path: str) -> bool:
@@ -1489,10 +1640,17 @@ def scan_paths(
     selector: str = "all",
     revision: str | None = None,
     table: ExceptionTable | None = None,
+    changed: Mapping[str, Collection[int] | None] | None = None,
 ) -> ScanResult:
-    """Scan an explicit list of repository-relative paths."""
+    """Scan an explicit list of repository-relative paths.
+
+    *changed* maps a path to the line numbers a change adds, or to None when the
+    whole file is new. Without it the comment share is reported for every file
+    and failed for none.
+    """
     table = table if table is not None else ExceptionTable()
     findings: list[Finding] = []
+    shares: list[CommentShare] = []
     files_scanned = 0
     total_lines = 0
     comment_lines = 0
@@ -1511,11 +1669,36 @@ def scan_paths(
             # avoid, so the count is visible in the report.
             unreadable.append(rel_path)
             continue
-        report = analyze_file(rel_path, text, language)
+        changed_here = changed.get(rel_path, ()) if changed is not None else ()
+        report = analyze_file(rel_path, text, language, changed_lines=changed_here)
         files_scanned += 1
         total_lines += report.lines
         comment_lines += report.comment_lines
         findings.extend(report.findings)
+        if _comment_share_out_of_scope(rel_path):
+            continue
+        share = CommentShare(
+            path=rel_path,
+            lines=report.lines,
+            comment_lines=report.comment_lines + report.docstring_lines,
+            changed_lines=report.changed_lines,
+            changed_comment_lines=report.changed_comment_lines,
+        )
+        shares.append(share)
+        if share.changed_lines and share.changed_percent >= COMMENT_SHARE_MAX_PERCENT:
+            anchor = 1 if changed_here is None else min(changed_here)
+            findings.append(
+                Finding(
+                    path=rel_path,
+                    line=anchor,
+                    signal="comment_share",
+                    severity=HARD,
+                    text=(
+                        f"{share.changed_percent:.1f}% comment and docstring in "
+                        f"{share.changed_comment_lines} of {share.changed_lines} added lines"
+                    ),
+                )
+            )
 
     kept, suppressed, unused = apply_exceptions(findings, table)
     return ScanResult(
@@ -1529,6 +1712,7 @@ def scan_paths(
         exceptions=table,
         unused_exceptions=unused,
         unreadable=tuple(unreadable),
+        comment_share=tuple(shares),
     )
 
 
@@ -1557,10 +1741,22 @@ def scan_repository(
             return _blocked(
                 selector, revision, f"git could not diff against {revision or 'HEAD'}"
             )
+        changed = _changed_line_numbers(root, revision or "HEAD")
+        if changed is None:
+            return _blocked(
+                selector,
+                revision,
+                f"git could not diff added lines against {revision or 'HEAD'}",
+            )
+        untracked = _untracked_paths(root)
+        if untracked is None:
+            return _blocked(selector, revision, "git ls-files --others failed")
+        changed = changed | dict.fromkeys(untracked)
     else:
         paths = _tracked_source_paths(root)
         if paths is None:
             return _blocked(selector, revision, "git ls-files failed")
+        changed = None
 
     config = exceptions_path if exceptions_path is not None else root / DEFAULT_EXCEPTIONS_PATH
     try:
@@ -1568,7 +1764,12 @@ def scan_repository(
     except ValueError as error:
         return _blocked(selector, revision, f"exceptions file unreadable: {error}")
     return scan_paths(
-        paths, root=root, selector=selector, revision=revision, table=table
+        paths,
+        root=root,
+        selector=selector,
+        revision=revision,
+        table=table,
+        changed=changed,
     )
 
 
@@ -1615,6 +1816,12 @@ def to_document(result: ScanResult) -> dict[str, object]:
         },
         "per_signal": result.per_signal(),
         "per_signal_suppressed": result.per_signal_suppressed(),
+        "comment_share": {
+            "aggregate_percent": round(result.comment_share_percent, 2),
+            "median_percent": result.comment_share_median,
+            "out_of_scope": list(COMMENT_SHARE_OUT_OF_SCOPE),
+            "files": [row.as_document() for row in result.comment_share],
+        },
         "findings": [finding.as_document() for finding in result.findings],
         "suppressed": [finding.as_document() for finding in result.suppressed],
         "exceptions": {
@@ -1684,6 +1891,30 @@ def render_summary(result: ScanResult) -> str:
             f"  {signal.id:<28} {signal.severity:<8} {counts[signal.id]:>4}"
             + (f"   suppressed {suppressed[signal.id]}" if suppressed[signal.id] else "")
         )
+    lines.append("")
+
+    lines.append(
+        f"comment share (C1: under {COMMENT_SHARE_MAX_PERCENT:.0f}% of the lines a change "
+        f"adds, median at or below {COMMENT_SHARE_MEDIAN_MAX_PERCENT:.0f}%)"
+    )
+    for row in result.comment_share:
+        detail = f"  {row.path}  {row.comment_lines} of {row.lines} lines ({row.percent:.1f}%)"
+        if row.changed_lines:
+            detail += (
+                f"   added {row.changed_comment_lines} of {row.changed_lines} "
+                f"({row.changed_percent:.1f}%)"
+            )
+        lines.append(detail)
+    lines.append(
+        f"  aggregate ................... {result.comment_share_percent:.1f}% comment and docstring"
+    )
+    median = result.comment_share_median
+    lines.append(
+        "  added-lines median .......... "
+        + ("not measured" if median is None else f"{median:.1f}%")
+    )
+    for prefix in COMMENT_SHARE_OUT_OF_SCOPE:
+        lines.append(f"  out of scope ................ {prefix}, which the SDK rewrite replaces")
     lines.append("")
 
     lines.append("trends (counts only, not a score)")
@@ -1757,7 +1988,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.no_fail:
         return 0
-    return 1 if result.hard_findings else 0
+    if result.hard_findings:
+        return 1
+    median = result.comment_share_median
+    return 1 if median is not None and median > COMMENT_SHARE_MEDIAN_MAX_PERCENT else 0
 
 
 if __name__ == "__main__":  # pragma: no cover - exercised through main()

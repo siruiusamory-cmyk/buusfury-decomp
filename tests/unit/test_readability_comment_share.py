@@ -230,6 +230,33 @@ def test_tools_dragonbyte_is_out_of_scope_and_named(tmp_path):
     assert "out of scope" in summary
 
 
+def test_an_over_bar_added_file_makes_the_gate_exit_non_zero(tmp_path, monkeypatch, capsys):
+    if shutil.which("git") is None:
+        pytest.skip("git is not available on PATH")
+    tree(tmp_path, {"tools/demo/mod.py": source(CODE)})
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "add", "tools/demo/mod.py")
+    git(tmp_path, "commit", "-q", "-m", "baseline")
+    tree(
+        tmp_path,
+        {
+            "tools/demo/new.py": source(
+                "def solve(value):",
+                '    """Alpha bravo charlie delta echo."""',
+                "    return value",
+            )
+        },
+    )
+    real = readability.scan_repository
+    monkeypatch.setattr(
+        readability, "scan_repository", lambda **kwargs: real(root=tmp_path, **kwargs)
+    )
+    assert readability.main(["--changed", "HEAD"]) == 1
+    out = capsys.readouterr().out
+    assert "tools/demo/new.py" in out
+    assert "HARD: comment_share" in out
+
+
 def test_the_document_carries_every_file_share_the_aggregate_and_the_median(tmp_path):
     tree(tmp_path, {"tools/demo/mod.py": source(COMMENT, COMMENT, CODE, CODE)})
     result = readability.scan_paths(

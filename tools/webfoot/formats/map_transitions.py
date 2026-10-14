@@ -43,8 +43,12 @@ BOUND_MINIMUM = 0x0000
 BOUND_MAXIMUM = 0xFFFF
 
 #: Supporting engine evidence: the 566-class method ``0x080075AC`` passes
+#: ``record + 0x14`` itself to the warp routine (``08007600 adds r3,#0x14`` then
 #: ``0800760A bl 0x08008d44``), and the 169-class method ``0x080071F8`` reads
+#: ``+0x14`` and ``+0x16`` with ``ldrsh`` before building its own pair. **The
 #: earlier citation of ``0x0800CEF4`` here was withdrawn** - that routine's
+#: argument is an element of the scene's separate 24-byte array at ``scene+0x28``,
+#: not a transition record, so it is not evidence about this one.
 ARRIVAL_UNSET_MINIMUM = 0xFFF8
 
 
@@ -220,6 +224,8 @@ class TransitionRecord:
                 + " and ".join(f"{value:#010x}" for value in sorted(SUPPORTED_CLASS_RAW))
             )
         # Reading `region` is the region check: `TransitionRegion` refuses an
+        # unordered or degenerate interval in its own constructor, so there is
+        # one statement of that rule rather than two.
         self.region
         return self
 
@@ -306,6 +312,7 @@ class TransitionRecord:
         return self.class_raw == TRANSITION_CLASS_A_RAW
 
     def arrival_relative(self, scene_x: int, scene_y: int) -> "TransitionArrival":
+        """Only valid for the 169 class; a 566-class record is refused rather than given a delta."""
         if self.has_raw_arrival_pair:
             raise MapTransitionValueError(
                 "a 566-class record's pair is already an absolute arrival; "
@@ -436,11 +443,28 @@ FACING_NAMES = {
 }
 
 
+#: Creation does not support the 169 class, and the reason is measured rather than
+#: stylistic: the 169 record's ``+0x14``/``+0x16`` pair is a **scene-relative
+#: delta** - the engine builds ``(scene + delta - region_low)`` before handing the
 #: point over (``0x08007234``..``0x08007258``, see
+#: :meth:`TransitionRecord.arrival_relative`) - so "where the player arrives" is not
+#: a value a project can state for that class without also measuring the scene
+#: origin. The 566 class passes the pair through unchanged, which is what makes an
+#: authored arrival a statement about the record alone.
 CREATED_CLASS_RAW = TRANSITION_CLASS_A_RAW
 
 
+#: * ``byte_0x10_raw`` - the high nibble is the authored arrival-facing override
+#:   (``(direction + 1) << 4``, or ``0`` for "the record states none"), and the low
+#:   nibble - the door gate bits and the two bits nothing was traced reading - is
+#:   the template's, because no measured authoring vocabulary for the gate exists;
+#: * ``class_raw`` and ``constant_raw`` are ``0`` because their meaning is
+#:   UNRESOLVED: the created record carries the template's own class/constructor word
+#:   and the corpus's invariant word rather than a value this project would be
+#:   inventing;
+#: * ``byte_0x13_raw`` is ``0`` for the same reason - an engine-read field
 #:   (``0x08007282``) whose census is ``{0: 561, 1: 174}`` and whose meaning is
+#:   UNRESOLVED.
 CREATED_FIELD_AUTHORED_MASKS: dict[str, int] = {
     "class_raw": 0x00000000,
     "constant_raw": 0x00000000,

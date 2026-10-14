@@ -65,6 +65,7 @@ def encode_number(value: int) -> bytes:
 
 
 def decode_number(data: bytes, offset: int, limit: int) -> tuple[int, int]:
+    """`limit` bounds the readable body, so a malformed field cannot run into the next."""
     value = 0
     shift = 1
     while True:
@@ -149,6 +150,7 @@ def inspect(patch: bytes) -> BpsHeader:
             )
 
     source_crc32, target_crc32, patch_crc32 = struct.unpack_from("<III", data, body_end)
+    # The patch checksum covers the two image checksums as well, so a footer whose
     # values were substituted cannot be made to agree by recomputing only the body.
     computed = crc32(data[:-4])
     if computed != patch_crc32:
@@ -168,7 +170,10 @@ def inspect(patch: bytes) -> BpsHeader:
 
 
 def apply(source: bytes, patch: bytes) -> bytes:
+    """A source read can never exceed the source it names; the bound is checked on both sides."""
+    # The walk is bounded twice: by the size the patch declares, checked before each
     # action writes, and by MAX_IMAGE_SIZE in `inspect`, so a patch cannot make the
+    # applier spend an unbounded amount of memory or time reaching a target it named.
     header = inspect(patch)
     if len(source) != header.source_size:
         raise BpsSourceError(

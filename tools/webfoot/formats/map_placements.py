@@ -166,7 +166,13 @@ def is_placement_record(data, offset: int) -> bool:
         return False
 
 
+#: Sibling object factories that share the engine-owned map object array with the
+#: placement family. TOOLKIT-025 measured the complete `MapEntry+0x04` traversal over
+#: canonical Buu: 1,898 slots resolve to exactly three leading words - 1,559
 #: `0x0800FD55` placements, 191 `0x08017DA3` and 148 `0x080111A9` - with zero UNKNOWN
+#: and zero out-of-image targets. These are recorded so a slot can be CLASSIFIED and
+#: round-tripped, never decoded: nothing here claims any gameplay semantics for them,
+#: and TOOLKIT-025 explicitly does not authorize reverse engineering their payloads.
 SIBLING_FACTORIES = (0x08017DA3, 0x080111A9)
 
 

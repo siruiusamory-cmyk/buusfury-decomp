@@ -135,10 +135,15 @@ ABSENT_LAYER_HANDLER = 0x08007A41
 ABSENT_LAYER_RECORD = 0x080707FC
 
 #: * `0x08007B63` - tail-branch stub `0x08007B62` into constructor `0x08007A60`,
+#:   which decompresses `record + 0x04` (and `record + 0x08`, the same container
+#:   on the canonical record) into the object's own buffers.
 #: * `0x0800897B` - constructor `0x0800897A` builds only a twelve-byte marker
+#:   holding the type word, the slot byte and the record pointer. The plane is
 #:   uploaded later by method 1 of that type's descriptor: `0x080088E6` reads
+#:   `record + 0x1C`, decompresses it into a 0x800-byte buffer and copies it to
 #:   `0x0600E000 + slot * 0x800`. Method 2 (`0x08008924`) then programs
 #:   `BGxHOFS`/`BGxVOFS` at `0x04000010 + 4*slot` from the record's `+0x04`,
+#:   `+0x0C`, `+0x10`, `+0x14`, `+0x18` and a viewport object.
 SCREENBLOCK_HANDLERS: dict[int, int] = {
     0x08007B63: 0x04,
     0x0800897B: 0x1C,
@@ -147,6 +152,17 @@ SCREENBLOCK_HANDLERS: dict[int, int] = {
 #: Entry `0x080088BC` -> constructor `0x080080C0`: enables `REG_IE` bit 1
 #: (`0x04000200 |= 2`, the HBlank interrupt - not `DISPSTAT`, which is
 #: `0x04000004`) and clears `BG2PB`/`BG2PD`, then streams `record + 4` x
+#: `record + 5` containers of `0x400` decoded bytes through a nine-slot resident
+#: cache. ASSET-EXPORT-MAP19-001 recovered what those containers hold: a 32x32
+#: plane of **8-bit tile ordinals** - 32 ordinals per raster row, one byte per
+#: ordinal, 1024 ordinals per container - which the map's own assembled character
+#: block resolves. The ordinal reading is established by the payload's semantics,
+#: not by its shape: each ordinal consistently selects tiles of one kind, so
+#: ordinal 2 selects a tile that is 100 % water, 43 and 119 green land, 137 sand,
+#: 76/73 rock and 19 snow, while the same measurement over a permuted ordinal
+#: assignment destroys the correspondence. `record + 0x04` x `record + 0x05`
+#: containers lay out in raster order, container `y * grid_x + x` covering the
+#: 32x32-tile cell at `(x * 32, y * 32)`.
 TERRAIN_FIELD_LAYER_HANDLER = 0x080088BD
 TERRAIN_FIELD_GRID_X_OFFSET = 0x04
 TERRAIN_FIELD_GRID_Y_OFFSET = 0x05
@@ -517,6 +533,7 @@ class Bank:
 
 
 def read_map_entry_table(reader: MapGraphicsReader) -> MapEntryTableProfile:
+    """Refuses a record shape this codec does not have, so a profile is never read at the wrong stride."""
     table = reader.map_entry_table()
     if table.record_size != _me.MAP_ENTRY_SIZE:
         raise MapGraphicsError(
@@ -733,9 +750,6 @@ def stitch_dominant_entries(
     """Stitch a dominant layer's chunk grid into one logical entry array.
     The accepted loader order, which the engine's own indexing at
     `0x08007C82..0x08007C90` establishes and both surfaces already implement:
-    for every chunk row, for every local row, for every chunk in that row, that
-    local row's 32 entries. A null chunk pointer contributes entry 0, the value
-    the engine's own occupancy test treats as unoccupied.
     """
     side = CHUNK_SIDE_TILES
     if addresses is None:

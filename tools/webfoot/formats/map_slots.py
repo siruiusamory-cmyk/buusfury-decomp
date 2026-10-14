@@ -1,7 +1,6 @@
 """Map-linked 8-byte slot arrays: lossless bytes first, typed decode second.
 
-The confirmed example is MapEntry 39 slot[1] `{0x00020006, 0x080755C0}`, whose source `+0x08` halfwords are `(481, 121, 615, 271)`, the bounds AUTO_RE_STATE records.
-That example is real; the generalisation is not, because its declared count of 11 runs past its four well-formed slots into data of another shape.
+The confirmed example is MapEntry 39 slot[1] `{0x00020006, 0x080755C0}`, whose source `+0x08` halfwords are `(481, 121, 615, 271)`, the bounds AUTO_RE_STATE records; the example is real but the generalisation is not, because its declared count of 11 runs past its four well-formed slots.
 """
 
 from __future__ import annotations
@@ -18,7 +17,8 @@ SLOT_SIZE = 8
 _SLOT_STRUCT = struct.Struct("<II")
 
 
-#: example is `0x0002000X`, and this accepts a wider low range so the classifier
+#: An explicit classifier HEURISTIC: every slot in the confirmed MapEntry 39 example is `0x0002000X`, and the bound is HAND-PICKED, not measured from ROM semantics.
+#: Corpus classification is INVARIANT across the tested range - 35 arrays / 89 slots - so the corpus is a property of the data rather than of this number (test_the_typed_corpus_is_insensitive_to_the_threshold).
 _TYPED_HIGH_HALFWORD_LIMIT = 0x0010
 
 

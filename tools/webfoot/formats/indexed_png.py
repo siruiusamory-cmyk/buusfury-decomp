@@ -33,6 +33,7 @@ def encode(
     *,
     transparent_index: int | None = None,
 ) -> bytes:
+    """`palette_rgb` is written in full and in order, never sorted and never reduced."""
     if width <= 0 or height <= 0:
         raise PngError(f"dimensions must be positive, got {width}x{height}")
     if len(pixels) != width * height:

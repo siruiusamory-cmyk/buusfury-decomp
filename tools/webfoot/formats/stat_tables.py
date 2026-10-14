@@ -6,7 +6,9 @@ from typing import Iterator
 
 from ..binary import GBA_ROM_BASE as _GBA_ROM_BASE
 
-# START/LAST/COUNT that follow are one game's measured extent, kept as the
+# The RECORD SIZE below is format structure the codec enforces.
+# The START/LAST/COUNT that follow are one game's measured extent, kept as the EVIDENCE it was verified against; no production caller uses them.
+# A live read takes address, count and stride from profile.enemy_stats / profile.character_base_stats, which is the authority (CQA-15); relocating a live reader onto these constants would reintroduce the duplicate authority this note exists to prevent.
 
 ENEMY_RECORD_SIZE = 0x1C
 
@@ -36,6 +38,7 @@ BASE_STAT_NAMES = (
 )
 
 #: The convention is BuusFuryToolkit's README ("ROM offset + 0x08000000"); the
+#: value itself is `binary.GBA_ROM_BASE`, the one owner of window semantics.
 GBA_ROM_BASE = _GBA_ROM_BASE
 
 
@@ -142,12 +145,6 @@ def find_enemy_by_hp(data: bytes, hp: int) -> list[EnemyRecord]:
     return [r for r in iter_enemy_records(data) if r.hp == hp]
 
 
-# because getting it wrong is expensive to undo later:
-# 1. IDENTITY IS NOT LOCATION. A record identity must survive the record
-#    This is deliberately implemented as a BACKING SLICE, not as a named
-#    presume otherwise.
-#    `encode_*` does, and refuses to emit a record that cannot fit its
-#    Setter-time validation cannot see cross-field invariants; emit-time
 
 
 ENEMY_DECODED_SPANS = (
@@ -179,6 +176,7 @@ class StatEncodeError(ValueError):
 
 @dataclass(frozen=True)
 class StatIdentity:
+    """A within-profile identity: the same key names a different record in another profile."""
 
     kind: str
     key: int
@@ -194,6 +192,7 @@ class StatIdentity:
 
 
 def enemy_identity(record: EnemyRecord) -> StatIdentity:
+    """A stable key: type ids are unique but only mostly ascending, so never a sort order or an array index."""
     return StatIdentity(kind="enemy", key=record.type_id)
 
 
@@ -204,6 +203,7 @@ def character_identity(index: int, count: int) -> StatIdentity:
 
 
 def character_alias(index: int, count: int) -> str:
+    """A display alias only, never an identity: the names are INFERRED from the roster."""
     if count != len(BASE_STAT_NAMES):
         raise ValueError(
             f"no verified display roster for a profile declaring {count} character "

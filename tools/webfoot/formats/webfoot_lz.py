@@ -157,7 +157,10 @@ def _unpack_stream(
             distance = reader.get(distance_bits) + ((distance_code - 3) << distance_bits)
             previous_distance = distance
             count = _gamma(reader, gamma_ceiling)
+            # The match length is biased by its own distance. This ladder is
+            # verbatim from the verified upstream; the thresholds are not
             # derivable from first principles and must not be "tidied" into a
+            # formula.
             if distance >= 0x10000:
                 count += 3
             elif distance >= 0x37FF:
@@ -193,7 +196,12 @@ def _unpack_stream(
         elif short_distance > 0:
             copy_match(short_distance, 1)
         elif reader.bit():
+            # A run of raw 8-bit literals, ended by a clear bit. It is emitted
             # whole or refused: the run carries its own terminator, so stopping
+            # once the output reached the declared size would discard literals
+            # the stream actually encodes - the same silent clip the match path
+            # no longer performs. EVIDENCE-RISK-DEBT-001 closed both paths; an
+            # independent review found this one still open in the first pass.
             while True:
                 _emit_raw(out, reader.get(8), expected)
                 _emit_raw(out, reader.get(8), expected)
@@ -202,7 +210,13 @@ def _unpack_stream(
         else:
             literal_bits = 7 + reader.bit()
             if literal_bits == 8:
+                # Returning to 8-bit literals clears it, so the base installed by
+                # an earlier 7-bit run does not stay in force - the rule the
                 # retail engine follows, proven byte-exactly against its own
+                # character memory in `docs/research/BUU_MAP_GRAPHICS_DIAG.md`
+                # (MAP-GFX-DIAG-001). Retaining it decodes some atlas tiles with
+                # every palette index shifted by the stale base: correct tile
+                # geometry, wrong colours.
                 literal_base = 0
             else:
                 literal_base = reader.get(8)

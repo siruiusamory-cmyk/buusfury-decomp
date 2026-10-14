@@ -23,9 +23,16 @@ class TextCodecError(ValueError):
     """Raised when bytes are not decodable text, or text is not encodable."""
 
 
+#
+#     0x0008 <operand>   ->  "{08:XX}"    operand as two uppercase hex digits
 #     0x000A             ->  "\n"         a real newline, because it is one
+#
 # A literal "{" in the text is escaped as "{{", so the escape syntax cannot be
+# forged by ROM content. That matters: without it, a string that legitimately
+# contained "{08:02}" would decode to something that re-encodes as a control
+# code, and the round trip would silently corrupt it. The pool contains no "{"
 # today, but the codec must be correct for text a modder authors, not only for
+# text that already exists.
 
 _CONTROL_RE = re.compile(r"\{08:([0-9A-Fa-f]{2})\}")
 
@@ -61,6 +68,7 @@ def decode_string(data: bytes, offset: int) -> tuple[str, int]:
             continue
         character = chr(unit)
         # "{" is the escape introducer, so ROM content carrying one must be
+        # doubled or the round trip would reinterpret it as an escape.
         text.append("{{" if character == "{" else character)
 
 
@@ -100,7 +108,9 @@ def encode_string(text: str) -> bytes:
                 f"embedded NUL at index {position} would terminate the string"
             )
         if codepoint == CONTROL_PREFIX or codepoint == CONTROL_NEWLINE:
+            # Unreachable for 0x0A (handled above); 0x08 as a literal character
             # would re-decode as a control prefix, so it is refused rather than
+            # written out and silently reinterpreted.
             raise TextCodecError(
                 f"control unit {codepoint:#06x} at index {position} cannot be "
                 "written as a literal character"

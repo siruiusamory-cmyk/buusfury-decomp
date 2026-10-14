@@ -270,6 +270,9 @@ def dialog_code_block(image, record, spec):
     raw = image[start:start + end]
     ir = disassemble(raw, (Entry('dialog', 0),), spec)
     # Opaque bytes are tolerated here, unlike in the map-scene corpus, because
+    # a block may branch over a terminate that no path falls through to. Such a
+    # byte is real code the walk already bounded, so exact re-encoding is the
+    # guarantee that matters; a byte that did not re-encode would still fail.
     if assemble(ir) != raw:
         raise ValueError('dialog code block does not round-trip')
     return start, raw, ir

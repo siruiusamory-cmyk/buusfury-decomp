@@ -23,6 +23,9 @@ ATTR1_VERTICAL_FLIP = 0x2000
 
 TILE_SIDE = 8
 
+#: One piece record: ``s8 x``, ``s8 y``, two pixel-extent bytes, a packed OBJ
+#: attribute pair and the graphics-container word. CONFIRMED as a stride across
+#: all 11,005 reachable pieces, and fixed by the engine's own render-loop
 #: arithmetic ``frame + 8 + 12 * index`` (`0x0800F3C0..0x0800F3CA`).
 PIECE_SIZE = 12
 
@@ -33,6 +36,7 @@ FRAME_HEADER_MIN_Y = 0x05
 FRAME_HEADER_WIDTH = 0x06
 FRAME_HEADER_HEIGHT = 0x07
 
+#: Fields inside a piece record, relative to the piece's own start. Every offset
 #: is an engine read site: ``x`` is the ``ldrsb`` at ``0x0800F204``, ``y`` the
 #: ``ldrb`` at ``0x0800F22A``, the extents the ``ldrb`` pair at ``0x0800F206``
 #: and ``0x0800F22E``, the attribute word the ``ldr`` at ``0x0800F1C2`` and
@@ -58,6 +62,7 @@ GRAPHICS_CONTAINER_KIND = 1
 
 @dataclass(frozen=True)
 class Palette:
+    """Entry order is preserved exactly, never sorted and never deduplicated, because an index is the pixel value."""
 
     raw: tuple[int, ...]
 
@@ -430,7 +435,11 @@ def encode_graphic_payload(graphic: Graphic, pixels: bytes, *, kind: int) -> byt
         pixels, graphic.width, graphic.height, colour_256=graphic.colour_256
     )
     payload = webfoot_lz.pack(tiles, kind=kind)
+    # The same production postcondition the dialogue write path applies, and the
     # same one place that owns it: a planned payload must reach the retail
+    # decoder's own escape at its declared length rather than depending on the
+    # bytes that follow it. Refusing here keeps an invalid stream out of the plan
+    # before the allocation question is even asked.
     try:
         webfoot_lz.validate_retail_termination(payload)
     except webfoot_lz.ContainerError as exc:

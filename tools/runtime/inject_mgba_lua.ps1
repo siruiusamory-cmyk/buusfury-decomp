@@ -376,36 +376,58 @@ if ($MarkerPath) {
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $desktop = [System.Windows.Automation.AutomationElement]::RootElement
-$processCondition = New-Object System.Windows.Automation.PropertyCondition(
-    [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
-    $TargetProcessId
-)
-$scriptingCondition = New-Object System.Windows.Automation.AndCondition(
-    $processCondition,
-    (New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty,
-        'Scripting'
-    ))
-)
-$scripting = $desktop.FindFirst(
-    [System.Windows.Automation.TreeScope]::Children,
-    $scriptingCondition
-)
+# The window choice is a pure function of a candidate list so a test can drive it
+# without a GUI; see tools/runtime/mgba_window_choice.ps1.
+. (Join-Path $PSScriptRoot 'mgba_window_choice.ps1')
 
-$mainWindow = $null
-for ($attempt = 0; $attempt -lt 200 -and -not $mainWindow; $attempt++) {
-    Start-Sleep -Milliseconds 100
-    $windows = $desktop.FindAll(
-        [System.Windows.Automation.TreeScope]::Children,
-        $processCondition
+function Get-WindowCandidates {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Windows.Automation.TreeScope]$Scope
     )
-    foreach ($window in $windows) {
-        if ($window.Current.Name -match "Buu's Fury|DBZBUUSFURY") {
-            $mainWindow = $window
-            break
+    $condition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
+        $TargetProcessId
+    )
+    $candidates = @()
+    foreach ($element in $desktop.FindAll($Scope, $condition)) {
+        # The parent handle is what tells a desktop child (0) from a window a host
+        # process has reparented into its own window.
+        $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($element)
+        $parentHandle = 0
+        if ($parent -and $parent.Current.NativeWindowHandle) {
+            $parentHandle = $parent.Current.NativeWindowHandle
+        }
+        $candidates += [pscustomobject]@{
+            Element   = $element
+            ProcessId = $element.Current.ProcessId
+            Parent    = $parentHandle
+            Name      = $element.Current.Name
         }
     }
+    return ,$candidates
 }
+
+function Find-MgbaWindow {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$NamePattern,
+        [int]$Attempts = 1
+    )
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        if ($Attempts -gt 1) { Start-Sleep -Milliseconds 100 }
+        $chosen = Select-MgbaWindow `
+            -Candidates (Get-WindowCandidates -Scope ([System.Windows.Automation.TreeScope]::Children)) `
+            -TargetProcessId $TargetProcessId -NamePattern $NamePattern
+        if ($chosen) { return $chosen.Element }
+    }
+    return $null
+}
+
+# An already-open Scripting window is reused; the name is anchored so the
+# 'Scripting...' menu item is not mistaken for it.
+$scripting = Find-MgbaWindow -NamePattern '^Scripting$'
+$mainWindow = Find-MgbaWindow -NamePattern "Buu's Fury|DBZBUUSFURY" -Attempts 200
 if (-not $mainWindow) {
     throw 'mGBA did not report the loaded Buu''s Fury ROM title'
 }
@@ -449,13 +471,7 @@ if (-not $scripting) {
         [System.Windows.Automation.InvokePattern]::Pattern
     ).Invoke()
 
-    for ($attempt = 0; $attempt -lt 50 -and -not $scripting; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        $scripting = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Children,
-            $scriptingCondition
-        )
-    }
+    $scripting = Find-MgbaWindow -NamePattern '^Scripting$' -Attempts 50
     if (-not $scripting) { throw 'Scripting window did not appear' }
 }
 

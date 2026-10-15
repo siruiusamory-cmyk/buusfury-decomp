@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+import json
+import os
+import shutil
 import socket
+import subprocess
 
 import pytest
 
@@ -1398,3 +1402,85 @@ def test_every_allowlisted_observer_exists_exactly_once():
 
     duplicates = {n for n in names if names.count(n) > 1}
     assert not duplicates, f"allowlisted more than once: {sorted(duplicates)}"
+
+
+def _choose_mgba_window(candidates, pattern, process_id):
+    """Run the injector's window choice over a synthetic candidate list.
+
+    The choice is a pure function of (process id, parent, name) candidates, so
+    both window shapes are decided here without a GUI. It lives in
+    tools/runtime/mgba_window_choice.ps1, which the injector dot-sources, so this
+    exercises the shipped decision and not a copy of it.
+    """
+    powershell = shutil.which("powershell.exe")
+    if powershell is None:
+        pytest.skip("the injector is driven by Windows PowerShell; this host has none")
+    root = Path(__file__).resolve().parents[2]
+    chooser = root / "tools/runtime/mgba_window_choice.ps1"
+    assert chooser.is_file()
+    env = dict(os.environ)
+    env["MGBA_WINDOW_CANDIDATES"] = json.dumps(candidates)
+    env["MGBA_WINDOW_PATTERN"] = pattern
+    env["MGBA_TARGET_PROCESS_ID"] = str(process_id)
+    result = subprocess.run(
+        [
+            powershell, "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass", "-Command",
+            ". '" + str(chooser) + "'; "
+            "$c = ConvertFrom-Json $env:MGBA_WINDOW_CANDIDATES; "
+            "$w = Select-MgbaWindow -Candidates @($c) "
+            "-TargetProcessId ([int]$env:MGBA_TARGET_PROCESS_ID) "
+            "-NamePattern $env:MGBA_WINDOW_PATTERN; if ($w) { $w.Name }",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def test_the_window_choice_finds_a_workbench_hosted_mgba():
+    """The Workbench adopts mGBA with SetParent + WS_CHILD.
+
+    That leaves the emulator window parented inside the Workbench window instead
+    of being a desktop child, so the injector's original top-level search found
+    nothing and refused with "mGBA did not report the loaded Buu's Fury ROM
+    title" while the emulator was running the game. A hosted window is a
+    different shape, not a missing one, and the choice has to reach it by the
+    emulator's own process id.
+    """
+    title = "mGBA - Dragon Ball Z - Buu's Fury (USA) (60 fps) - 0.11"
+    hosted = [
+        {"ProcessId": 21452, "Parent": 0, "Name": "LOG1 Workbench"},
+        {"ProcessId": 43956, "Parent": 21452, "Name": title},
+    ]
+    standalone = [{"ProcessId": 43956, "Parent": 0, "Name": title}]
+
+    # Standalone is unchanged: the desktop child is still the one chosen.
+    assert _choose_mgba_window(standalone, "Buu's Fury|DBZBUUSFURY", 43956) == title
+    # Hosted: no desktop child of this process carries the title at all.
+    assert _choose_mgba_window(hosted, "Buu's Fury|DBZBUUSFURY", 43956) == title
+    # Fail closed, and never by a loose title: another process, another title.
+    assert _choose_mgba_window(hosted, "Buu's Fury|DBZBUUSFURY", 999) == ""
+    assert _choose_mgba_window(
+        [{"ProcessId": 999, "Parent": 0, "Name": "Buu's Fury wiki"}],
+        "Buu's Fury|DBZBUUSFURY",
+        43956,
+    ) == ""
+    # The Scripting window is matched by an anchored name, so the 'Scripting...'
+    # menu item is not a Scripting window.
+    assert _choose_mgba_window(
+        [{"ProcessId": 43956, "Parent": 0, "Name": "Scripting..."}],
+        "^Scripting$",
+        43956,
+    ) == ""
+
+    injector = (Path(__file__).resolve().parents[2] / "tools/runtime/inject_mgba_lua.ps1").read_text(
+        encoding="utf-8"
+    )
+    assert "mgba_window_choice.ps1" in injector
+    assert "Select-MgbaWindow" in injector
+    # The failure that named the bug must still fail closed with the same message.
+    assert "mGBA did not report the loaded Buu''s Fury ROM title" in injector

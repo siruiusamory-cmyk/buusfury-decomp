@@ -163,7 +163,7 @@ def test_lua_ready_marker_is_bounded_and_ignored():
     assert "Start-Process" in injector
     assert "-WindowStyle Hidden" in injector
     assert "Stop-Process -Id $invokeProcess.Id" in injector
-    assert "$windows = $desktop.FindAll" in injector
+    assert "$desktop.FindAll($Scope, $condition)" in injector
     assert "if (-not $scripting)" in injector
 
 

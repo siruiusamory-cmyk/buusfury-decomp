@@ -316,6 +316,19 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\enemypack002_live_slots.lua')
     )
+    # Added by PROBE-RUNTIME-001: the read-only read-map observer. It arms one
+    # read watchpoint per candidate span plus a positive control, a negative
+    # control and one IWRAM pointer, aggregates hits per 4-byte granule with the
+    # first PC seen, runs the ADDENDUM 7 B-list breakpoints with per-site row
+    # caps, keeps three liveness channels (frame heartbeat, script interpreter,
+    # animation selector) and samples the four DMA channels once a frame so the
+    # CPU-watch blind spot is sized rather than assumed. It calls emu:read8/16/32,
+    # emu:readRegister, emu:getGameCode, emu:romSize and the
+    # breakpoint/watchpoint API only: it modifies no emulated memory and drives
+    # no input, and it aborts closed if the watchpoint API is absent.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\probe_runtime001_readmap.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

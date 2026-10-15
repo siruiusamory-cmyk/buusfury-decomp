@@ -22,6 +22,9 @@ ticket's closure report, not in a 5-second unit run.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 from tools.webfoot.atlas_build import ARTIFACTS, EVIDENCE, _objects, _seed_claims
 from tools.webfoot.atlas_producers import seed
 from tools.webfoot.binary import GBA_ROM_BASE as BASE
@@ -125,3 +128,92 @@ def test_the_assembler_never_reads_a_seed_rows_notes_or_evidence() -> None:
         "a seed row's notes reach an atlas object; the atlas output would move with them"
     )
     assert EVIDENCE["seed"].startswith("seed_knowledge.jsonl:"), EVIDENCE["seed"]
+
+
+#: The names `_rows` binds from the packaged profile. A row put back on a literal
+#: leaves this set even when the literal has the same value, which is the point.
+PROFILE_DERIVED_NAMES = (
+    "placement", "text", "text_pointer_size", "map_entries", "map_table_size",
+    "sprites", "sprite_table_size", "base_stats", "base_stats_size",
+    "enemy_stats", "enemy_stats_size", "free_region",
+)
+
+#: Every `add(...)` call in the seed and the profile names its arguments read,
+#: spelled as literals rather than derived from the tree being checked.
+ROWS_READING_THE_PROFILE = {
+    149: ("placement",),
+    157: ("placement",),
+    271: ("text",),
+    282: ("text", "text_pointer_size"),
+    307: ("map_entries", "map_table_size"),
+    439: ("sprite_table_size", "sprites"),
+    479: ("base_stats", "base_stats_size"),
+    498: ("enemy_stats", "enemy_stats_size"),
+    516: ("placement",),
+    532: ("free_region",),
+}
+
+
+def _read_names(node: ast.AST, found: list[str]) -> None:
+    """Collect profile-derived names in an expression, skipping subscripts.
+
+    Subscript is skipped on purpose: the rows iterate local arrays whose element
+    names would otherwise read as profile attributes.
+    """
+    if isinstance(node, ast.Subscript):
+        return
+    if isinstance(node, ast.Name) and node.id in PROFILE_DERIVED_NAMES:
+        found.append(node.id)
+        return
+    for child in ast.iter_child_nodes(node):
+        _read_names(child, found)
+
+
+def _names_read(call: ast.Call) -> list[str]:
+    """The profile-derived names a call's `addr=` / `size=` arguments read."""
+    found: list[str] = []
+    for keyword in call.keywords:
+        if keyword.arg in ("addr", "size"):
+            _read_names(keyword.value, found)
+    return sorted(set(found))
+
+
+def _rows_function() -> ast.FunctionDef:
+    """`_rows` as parsed from the module source, so its line numbers are the file's."""
+    tree = ast.parse(Path(seed.__file__).read_text(encoding="utf-8"))
+    return next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == "_rows")
+
+
+def _profile_calls() -> dict[int, tuple[str, ...]]:
+    return {
+        node.lineno: tuple(_names_read(node))
+        for node in ast.walk(_rows_function())
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "add"
+        and _names_read(node)
+    }
+
+
+def test_only_the_measured_rows_read_the_profile() -> None:
+    """A row put back on a literal leaves this set even when its value is the same."""
+    measured = _profile_calls()
+    assert measured == ROWS_READING_THE_PROFILE, (
+        "the add() rows that read a profile-derived value moved; a row here that "
+        "no longer appears was reverted to a literal, and one that appeared "
+        "without this expectation being updated is a new claim: "
+        f"{sorted(set(measured) ^ set(ROWS_READING_THE_PROFILE))} differ"
+    )
+
+
+def test_every_profile_keyed_row_reads_its_own_declaring_key() -> None:
+    """The `placement_types` row reads `placement`, not the other key at that base."""
+    source = Path(seed.__file__).read_text(encoding="utf-8")
+    placement_row = _profile_calls().get(516)
+    assert placement_row == ("placement",), (
+        f"line 516 reads {placement_row}, so its own declaring key is not the one read"
+    )
+    assert "placement.table_address" in source, (
+        "placement_types.table_address is no longer read anywhere in the seed"
+    )

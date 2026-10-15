@@ -391,11 +391,14 @@ function Get-WindowCandidates {
     )
     $candidates = @()
     foreach ($element in $desktop.FindAll($Scope, $condition)) {
-        # The parent handle is what tells a desktop child (0) from a window a host
-        # process has reparented into its own window.
+        # A desktop child is one whose parent IS the desktop root, and the root
+        # reports a real handle of its own (measured 0x1000C on this machine), so
+        # a zero handle means no handle at all and not top level. The element
+        # comparison is what identifies a top-level window; the handle that is
+        # kept is the host window a reparented window is nested in.
         $parent = [System.Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($element)
         $parentHandle = 0
-        if ($parent -and $parent.Current.NativeWindowHandle) {
+        if ($parent -and -not [System.Windows.Automation.Automation]::Compare($parent, $desktop)) {
             $parentHandle = $parent.Current.NativeWindowHandle
         }
         $candidates += [pscustomobject]@{
@@ -421,6 +424,18 @@ function Find-MgbaWindow {
             -TargetProcessId $TargetProcessId -NamePattern $NamePattern
         if ($chosen) { return $chosen.Element }
     }
+    # The LOG1 Workbench adopts the mGBA window with SetParent + WS_CHILD
+    # (MgbaHost.adopt), which makes the emulator window a child of the Workbench
+    # window instead of a desktop child. The top-level walk above therefore finds
+    # nothing for a hosted mGBA, and this one wider walk of the SAME process id
+    # finds the window wherever the host parented it. The name pattern is
+    # unchanged, so this is still never a search on a loose title: UIA enumerates
+    # in pre-order, so the first nested match is the outermost one, the main
+    # window and not one of its own children.
+    $chosen = Select-MgbaWindow `
+        -Candidates (Get-WindowCandidates -Scope ([System.Windows.Automation.TreeScope]::Descendants)) `
+        -TargetProcessId $TargetProcessId -NamePattern $NamePattern
+    if ($chosen) { return $chosen.Element }
     return $null
 }
 
@@ -454,18 +469,10 @@ if (-not $scripting) {
         [System.Windows.Automation.ExpandCollapsePattern]::Pattern
     ).Expand()
 
-    $scriptCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty,
-        'Scripting...'
-    )
-    $scriptMenu = $null
-    for ($attempt = 0; $attempt -lt 50 -and -not $scriptMenu; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        $scriptMenu = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            $scriptCondition
-        )
-    }
+    # The popup belongs to the mGBA process, so it is matched by that exact
+    # process id and the full name. The search it replaces took any process's
+    # 'Scripting...' item anywhere on the desktop.
+    $scriptMenu = Find-MgbaWindow -NamePattern '^Scripting\.\.\.$' -Attempts 50
     if (-not $scriptMenu) { throw 'Scripting menu item not found' }
     $scriptMenu.GetCurrentPattern(
         [System.Windows.Automation.InvokePattern]::Pattern

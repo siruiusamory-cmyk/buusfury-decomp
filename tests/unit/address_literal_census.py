@@ -112,7 +112,8 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: PINMAP-06 moved 2879 -> 2877; the entry it appended names both lines.
 #: PINMAP-07a moved 2877 -> 2887; the entry it appended names all ten lines.
 #: PINMAP-07b moved 2887 -> 2875; the entry it appended names all twelve lines.
-CENSUS_HEX5 = (2875, 272)
+#: PINMAP-09 moved 2875 -> 2866; the entry it appended names all eleven lines.
+CENSUS_HEX5 = (2866, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
@@ -120,8 +121,8 @@ CENSUS_HEX5 = (2875, 272)
 #: enforcement set is the whole-tree set minus the four instrument directories, so
 #: the three move together. PINMAP-07a then moved the first two, ten lines each.
 #: PINMAP-07b moved them back down by the twelve hex lines it removed.
-ENFORCEMENT_HEX5 = (651, 70)
-ENFORCEMENT_ROM_HEX = (483, 53)
+ENFORCEMENT_HEX5 = (642, 70)
+ENFORCEMENT_ROM_HEX = (474, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
 #: Directories the migration order leaves out of scope deliberately: they hold
@@ -256,12 +257,13 @@ EXEMPTIONS: tuple[Row, ...] = (
         "covers this file yet: recorded debt.",
     ),
     Row(
-        "tools/webfoot/atlas_producers/seed.py", 223, 186, 0,
+        "tools/webfoot/atlas_producers/seed.py", 214, 177, 0,
         "168 distinct ROM words: the seed's function anchors, dispatch tables "
-        "and per-row evidence strings, which restate the profile's own tables. "
-        "PINMAP-09 reads the rows that duplicate a profile key from the profile "
-        "and either resolves or records the one conflict the seed reports at "
-        "seed.py:491-508.",
+        "and per-row evidence strings. PINMAP-09 reads the TEN rows that "
+        "duplicated a profile key from the profile instead of restating it; "
+        "nine counted lines left this file and two arrived in the rewritten "
+        "conflict note and its guard, so the pair is -9 lines and no files. "
+        "The seed's one reported conflict is recorded as one named row.",
     ),
     Row(
         "tools/webfoot/authored_placements.py", 2, 2, 0,
@@ -767,6 +769,35 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "class. Those are pre-move line numbers, because the lines no longer exist: each "
         "word now reads its declared anchor by name. placement_events.py keeps its two "
         "citations and is not in the census set",
+    ),
+    LedgerEntry(
+        "PINMAP-09", -9, 0,
+        (
+            "tools/webfoot/atlas_producers/seed.py:132",
+            "tools/webfoot/atlas_producers/seed.py:140",
+            "tools/webfoot/atlas_producers/seed.py:254",
+            "tools/webfoot/atlas_producers/seed.py:267",
+            "tools/webfoot/atlas_producers/seed.py:293",
+            "tools/webfoot/atlas_producers/seed.py:425",
+            "tools/webfoot/atlas_producers/seed.py:464",
+            "tools/webfoot/atlas_producers/seed.py:483",
+            "tools/webfoot/atlas_producers/seed.py:511",
+            "tools/webfoot/atlas_producers/seed.py:507",
+            "tools/webfoot/atlas_producers/seed.py:533",
+        ),
+        "nine counted lines left tools/webfoot/atlas_producers/seed.py and two arrived, "
+        "so the tree pair is -9 lines and no files. The nine held a value the seed now "
+        "reads from the profile instead: the placement-type constructor and factory raw "
+        "at :132 and :140, the text pool base and its pointer table at :254 and :267, the "
+        "MapEntry table base and the character table base at :293 and :425, the "
+        "base-stat and enemy-stat table bases at :464 and :483, and the free-window file "
+        "offset at :511. The two arrived inside the rewrite that RECORDS the seed's one "
+        "conflict as one named row: the consolidated note states the raw base the two "
+        "declarations share at :507, and the guard that refuses a moved free window "
+        "states the window it requires at :533. Each of the ten rows that restated a "
+        "profile key now reads its own declaring key. Those two are current line "
+        "numbers because those lines exist; the nine are pre-move line numbers, "
+        "because those lines no longer exist",
     ),
 )
 

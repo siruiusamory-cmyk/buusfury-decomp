@@ -147,6 +147,9 @@ profiles:
           which is what gives the Buu branch contract canonical-byte evidence.
           Relocatable is false because no verified free region is declared for
           this profile.
+    appearances_offsets:
+      table_reference_offsets: [0x00025310, 0x000256b8, 0x0002618c, 0x00027474, 0x000279d8]
+      count_offsets: [0x00024f92, 0x00027998, 0x000279cc]
     code_anchors:
       - name: factory_raw
         address: 0x0800fd55

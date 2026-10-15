@@ -513,7 +513,7 @@ def _rows() -> list[dict]:
               "size null. Six selectors (141,142,146,147,148,149) used by 11 placements remain reference-only with "
               "no record extent or enemy claim.")
 
-    add(addr=enemy_stats.address.raw, size=None, kind="record_table",
+    add(addr=placement.table_address.raw, size=None, kind="record_table",
         identity="placement_types.table",
         conf="CONFIRMED",
         source="config/roms.yaml:33",

@@ -259,10 +259,11 @@ EXEMPTIONS: tuple[Row, ...] = (
     Row(
         "tools/webfoot/atlas_producers/seed.py", 214, 177, 0,
         "168 distinct ROM words: the seed's function anchors, dispatch tables "
-        "and per-row evidence strings. PINMAP-09 reads the eleven rows that "
-        "duplicated a profile key from the profile instead of restating it "
-        "(eleven counted lines left, no file arrived) and recorded the one "
-        "conflict the seed reported as one named conflict row.",
+        "and per-row evidence strings. PINMAP-09 reads the TEN rows that "
+        "duplicated a profile key from the profile instead of restating it; "
+        "nine counted lines left this file and two arrived in the rewritten "
+        "conflict note and its guard, so the pair is -9 lines and no files. "
+        "The seed's one reported conflict is recorded as one named row.",
     ),
     Row(
         "tools/webfoot/authored_placements.py", 2, 2, 0,
@@ -793,9 +794,10 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "offset at :511. The two arrived inside the rewrite that RECORDS the seed's one "
         "conflict as one named row: the consolidated note states the raw base the two "
         "declarations share at :507, and the guard that refuses a moved free window "
-        "states the window it requires at :533. Those two are current line numbers "
-        "because those lines exist; the nine are pre-move line numbers, because those "
-        "lines no longer exist",
+        "states the window it requires at :533. Each of the ten rows that restated a "
+        "profile key now reads its own declaring key. Those two are current line "
+        "numbers because those lines exist; the nine are pre-move line numbers, "
+        "because those lines no longer exist",
     ),
 )
 

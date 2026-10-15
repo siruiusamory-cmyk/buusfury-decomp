@@ -263,6 +263,20 @@ def declared(profile):
     return layout
 
 
+def reference_offsets(profile) -> tuple[int, ...]:
+    declared_offsets = getattr(profile, "appearances_offsets", None)
+    if declared_offsets is None:
+        return APPEARANCE_TABLE_REFERENCE_OFFSETS
+    return declared_offsets.table_reference_offsets
+
+
+def count_offsets(profile) -> tuple[int, ...]:
+    declared_offsets = getattr(profile, "appearances_offsets", None)
+    if declared_offsets is None:
+        return APPEARANCE_COUNT_OFFSETS
+    return declared_offsets.count_offsets
+
+
 def table_offset(profile, image_size: int) -> int:
     """The table's file offset, from the profile's own declaration."""
     return declared(profile).address.to_file_offset(image_size)
@@ -310,8 +324,8 @@ def reference_document(profile, image: bytes):
     The words are `CONFIRMED_REFERENCE` because each was measured twice: the
     consuming instruction was decoded and the pool word it loads was read, and
     the value is re-checked against this image here. A word that no longer holds
-    the table address is a refusal rather than a repoint, because the constant is
-    a census result for one image and not a guarantee about another.
+    the table address is a refusal rather than a repoint, because the offset is
+    declared and holds no guarantee about the bytes it names.
 
     The anchor's `relocatable` flag is decided by the shared contract
     (`layout.relocation_eligible`), not asserted: a kind whose inbound surface a
@@ -338,7 +352,7 @@ def reference_document(profile, image: bytes):
         provenance,
     )]
     references = []
-    for source in APPEARANCE_TABLE_REFERENCE_OFFSETS:
+    for source in reference_offsets(profile):
         if image[source:source + 4] != expected:
             raise AppearanceError(
                 f"file 0x{source:06X} is published as a reference to the "

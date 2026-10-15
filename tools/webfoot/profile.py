@@ -35,6 +35,7 @@ _ALLOWED_KEYS = {
     "free_regions",
     "generated_expansion",
     "code_anchors",
+    "appearances_offsets",
 }
 _ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites", "appearances"}
 _ALLOWED_CODE_ANCHOR_KEYS = {"name", "address", "kind", "evidence", "role"}
@@ -225,6 +226,17 @@ class RecordTableProfile:
     @property
     def total_size(self) -> int:
         return self.count * self.record_size
+
+
+@dataclass(frozen=True, slots=True)
+class AppearanceOffsetProfile:
+    """A profile's own file offsets for the sites that cite its appearance table."""
+
+    table_reference_offsets: tuple[int, ...]
+    count_offsets: tuple[int, ...]
+
+
+_ALLOWED_APPEARANCES_OFFSET_KEYS = {"table_reference_offsets", "count_offsets"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -834,6 +846,37 @@ def _optional_code_anchors(value: Any) -> tuple[CodeAnchor, ...]:
     return tuple(anchors)
 
 
+def _optional_appearances_offsets(value: Any) -> AppearanceOffsetProfile | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ProfileConfigError("appearances_offsets must be a mapping")
+    unexpected = set(value) - _ALLOWED_APPEARANCES_OFFSET_KEYS
+    if unexpected:
+        joined = ", ".join(sorted(str(key) for key in unexpected))
+        raise ProfileConfigError(
+            f"appearances_offsets contains unexpected fields: {joined}"
+        )
+
+    families = {}
+    for key in sorted(_ALLOWED_APPEARANCES_OFFSET_KEYS):
+        offsets = value.get(key)
+        if not isinstance(offsets, (list, tuple)) or not offsets:
+            raise ProfileConfigError(
+                f"appearances_offsets {key} must be a non-empty list of file offsets"
+            )
+        if any(type(offset) is not int or offset < 0 for offset in offsets):
+            raise ProfileConfigError(
+                f"appearances_offsets {key} must be non-negative integers"
+            )
+        families[key] = tuple(offsets)
+
+    return AppearanceOffsetProfile(
+        table_reference_offsets=families["table_reference_offsets"],
+        count_offsets=families["count_offsets"],
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RomProfile:
     id: str
@@ -862,6 +905,9 @@ class RomProfile:
     #: project fact rather than a literal in a consuming module, exactly as
     #: `actor_sprites` is for the character registry.
     appearances: RecordTableProfile | None = None
+    #: APPEARANCE-OFFSET-KEYS-001. Absent means the consuming module's own measured
+    #: values, which every profile written before the key existed states.
+    appearances_offsets: AppearanceOffsetProfile | None = None
     generated_expansion: GeneratedExpansionProfile | None = None
     #: PINMAP-03. Named code entry points this profile declares: handler words,
     #: constructors, factories and patch sites. Absent is an empty tuple, so a
@@ -976,6 +1022,9 @@ class RomProfile:
             placement_types=_optional_placement_types(tables_value, size),
             actor_sprites=_optional_actor_sprites(tables_value, size),
             appearances=_optional_record_table(tables_value, "appearances"),
+            appearances_offsets=_optional_appearances_offsets(
+                data.get("appearances_offsets")
+            ),
             free_regions=_free_regions(data.get("free_regions", []), size),
             generated_expansion=_optional_generated_expansion(
                 data.get("generated_expansion"), size

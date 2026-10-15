@@ -113,7 +113,8 @@ CENSUS_INVENTORY_S4 = (2884, 272)
 #: PINMAP-07a moved 2877 -> 2887; the entry it appended names all ten lines.
 #: PINMAP-07b moved 2887 -> 2875; the entry it appended names all twelve lines.
 #: PINMAP-09 moved 2875 -> 2866; the entry it appended names all eleven lines.
-CENSUS_HEX5 = (2866, 272)
+#: APPEARANCE-OFFSET-KEYS-001 moved 2866 -> 2868; its ledger entry names both lines.
+CENSUS_HEX5 = (2868, 272)
 
 #: The enforcement set: conventional hex, ROM-space hex, and the decimal
 #: ROM-range corpus, each as (lines, files). All three moved at PINMAP-04, by the
@@ -121,7 +122,8 @@ CENSUS_HEX5 = (2866, 272)
 #: enforcement set is the whole-tree set minus the four instrument directories, so
 #: the three move together. PINMAP-07a then moved the first two, ten lines each.
 #: PINMAP-07b moved them back down by the twelve hex lines it removed.
-ENFORCEMENT_HEX5 = (642, 70)
+#: APPEARANCE-OFFSET-KEYS-001 added one line to each, on the profile catalogue pair.
+ENFORCEMENT_HEX5 = (644, 70)
 ENFORCEMENT_ROM_HEX = (474, 53)
 ENFORCEMENT_DECIMAL = (404, 1)
 
@@ -292,7 +294,7 @@ EXEMPTIONS: tuple[Row, ...] = (
         "about that shape.",
     ),
     Row(
-        "tools/webfoot/data/roms.yaml", 61, 55, 0,
+        "tools/webfoot/data/roms.yaml", 63, 55, 0,
         "the profile's own declared table addresses: character table, object and "
         "background palettes, the portrait pointer array, factory raw, constructor, "
         "and the per-title rows the shipping tools resolve against, in both hex "
@@ -301,7 +303,10 @@ EXEMPTIONS: tuple[Row, ...] = (
         "rows. PINMAP-05 added eight of them, the optional keys the text-edit row now "
         "reads, seven as full GBA addresses: :86, :89, :90, :91 and :93-96. PINMAP-07a "
         "added the ten declared code anchors at :152-188, which is what moved this row "
-        "51 -> 61 and its ROM-space count 45 -> 55. Recorded debt.",
+        "51 -> 61 and its ROM-space count 45 -> 55. APPEARANCE-OFFSET-KEYS-001 added "
+        "the appearance offset declarations at :151-152, which is what moved this row "
+        "61 -> 63; only :151 counts, because the count offsets at :152 are five-digit "
+        "file offsets rather than ROM addresses. Recorded debt.",
     ),
     Row(
         "tools/webfoot/data/script_effects.py", 3, 3, 0,
@@ -798,6 +803,20 @@ RECONCILIATION_LEDGER: tuple[LedgerEntry, ...] = (
         "profile key now reads its own declaring key. Those two are current line "
         "numbers because those lines exist; the nine are pre-move line numbers, "
         "because those lines no longer exist",
+    ),
+    LedgerEntry(
+        "APPEARANCE-OFFSET-KEYS-001", 2, 0,
+        (
+            "tools/webfoot/data/roms.yaml:151",
+            "tools/webfoot/data/roms.yaml:152",
+        ),
+        "two counted lines arrived in the profile catalogue, which is a net +2 and no "
+        "files: the new optional key family declaring the appearance table's own "
+        "citation offsets at :151-152, which tools/webfoot/appearances.py now reads "
+        "instead of carrying the census result as its only statement. The catalogue row "
+        "rose 61 -> 63 and its ROM-space count stayed 55, because these are five-digit "
+        "file offsets and not ROM addresses. Only data/roms.yaml is in the tree census: "
+        "config/roms.yaml is the byte-identical second copy outside tools/",
     ),
 )
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..binary import GBA_ROM_BASE as BASE
+from ..packaged import packaged_profile
 from ._io import write_jsonl
 
 #: Every address in this seed table is a GBA address. `BASE` is the sanctioned
@@ -25,6 +26,22 @@ from ._io import write_jsonl
 
 def _rows() -> list[dict]:
     rows: list[dict] = []
+
+    # Every profile-declared value below is read from the profile (row 9).
+    profile = packaged_profile()
+    placement = profile.placement_types
+    map_entries = profile.map_entries
+    sprites = profile.actor_sprites
+    text = profile.text_strings
+    base_stats = profile.character_base_stats
+    enemy_stats = profile.enemy_stats
+    assert None not in (placement, map_entries, sprites, text, base_stats,
+                        enemy_stats), "the packaged profile has lost a table"
+    text_pointer_size = text.count * 4
+    sprite_table_size = sprites.character_count * 4
+    map_table_size = map_entries.count * map_entries.record_size
+    base_stats_size = base_stats.total_size
+    enemy_stats_size = enemy_stats.total_size
 
     def add(off=None, addr=None, size=None, kind="other", identity="", conf="UNKNOWN",
             source="", evidence="", notes=""):
@@ -129,7 +146,7 @@ def _rows() -> list[dict]:
         notes="size null: extent not stated. 0x06010000 is VRAM, not a ROM location, and is deliberately not "
               "emitted as a row.")
 
-    add(addr=0x0800F68C, size=None, kind="function",
+    add(addr=placement.constructor_address.raw, size=None, kind="function",
         identity="placement_types.constructor",
         conf="CONFIRMED",
         source="config/roms.yaml:37",
@@ -137,7 +154,7 @@ def _rows() -> list[dict]:
                  "then calls F68C. Declared in the profile as placement_types.constructor_address.",
         notes="size null: extent not stated.")
 
-    add(addr=0x0800FD54, size=None, kind="function",
+    add(addr=placement.factory_raw - 1, size=None, kind="function",
         identity="placement_types.factory_wrapper",
         conf="CONFIRMED",
         source="docs/research/PLACEMENT_TYPES.md:40",
@@ -251,9 +268,7 @@ def _rows() -> list[dict]:
         notes="size null: the profile declares only the address. A 256-entry GBA palette would be 512 bytes but "
               "no source states the extent, so it is not asserted.")
 
-    TEXT_POOL = 0x0805792C
-    TEXT_POOL_SIZE = 82874
-    add(addr=TEXT_POOL, size=TEXT_POOL_SIZE, kind="string_pool",
+    add(addr=text.pool_address.raw, size=text.pool_size, kind="string_pool",
         identity="text_strings.pool",
         conf="CONFIRMED",
         source="config/roms.yaml:58",
@@ -264,8 +279,7 @@ def _rows() -> list[dict]:
         notes="TOOLKIT-037 (docs/research/BUU_DIALOGUE_TEXT_STORES.md:17) censused the CONTENT: menus, items, "
               "equipment, bestiary, quest objectives - NOT spoken NPC dialogue.")
 
-    TEXT_TABLE = 0x0806BCE8
-    add(addr=TEXT_TABLE, size=6136, kind="pointer_table",
+    add(addr=text.pointer_table_address.raw, size=text_pointer_size, kind="pointer_table",
         identity="text_strings.pointer_table",
         conf="CONFIRMED",
         source="config/roms.yaml:56",
@@ -290,7 +304,7 @@ def _rows() -> list[dict]:
               "'exactly where the MapEntry table begins', but the measured end 0x0808E1E0 is 256 bytes below "
               "the declared map_entries base 0x0808E2E0. Those 256 bytes are UNCLAIMED by any source.")
 
-    add(addr=0x0808E2E0, size=452 * 0x38, kind="record_table",
+    add(addr=map_entries.address.raw, size=map_table_size, kind="record_table",
         identity="map_entries",
         conf="CONFIRMED",
         source="config/roms.yaml:44",
@@ -422,7 +436,8 @@ def _rows() -> list[dict]:
               "+0x04, +0x06, +0x08 are proven text indices into 0x0806BCE8.")
 
     # ------------------------------------------------- stats / sprites / types
-    add(addr=0x086B6BDC, size=297 * 4, kind="pointer_table",
+    add(addr=sprites.character_table_address.raw, size=sprite_table_size,
+        kind="pointer_table",
         identity="actor_sprites.character_table",
         conf="CONFIRMED",
         source="config/roms.yaml:16",
@@ -461,7 +476,7 @@ def _rows() -> list[dict]:
         notes="Marked UNOWNED in the doc's headline (line 18): no pointer table or consumer located. Size "
               "derived from the stated inclusive extent as an exclusive end.")
 
-    add(addr=0x086FDA4C, size=9 * 0x12, kind="record_table",
+    add(addr=base_stats.address.raw, size=base_stats_size, kind="record_table",
         identity="character_base_stats",
         conf="CONFIRMED",
         source="config/roms.yaml:52",
@@ -480,36 +495,42 @@ def _rows() -> list[dict]:
         notes="size null: no entry count or extent is stated anywhere. BUU_MAP_SCRIPT_OWNERSHIP.md:233 records "
               "placement type +0x08 reaching this behavior-tree descriptor table rather than the script VM.")
 
-    ENEMY_STATS = 0x08711274
-    add(addr=ENEMY_STATS, size=141 * 0x1C, kind="record_table",
+    add(addr=enemy_stats.address.raw, size=enemy_stats_size, kind="record_table",
         identity="enemy_stats",
         conf="CONFIRMED",
         source="config/roms.yaml:48",
         evidence="Declared in the toolchain profile: enemy_stats address 0x08711274, count 141, record_size "
                  "0x1c. TOOLKIT-009 round-tripped 2,660 bytes across 95 enemy-linked types / 1,284 placements "
                  "(docs/PROJECT_STATE.md:27); GRAPHICS_FORMAT.md:380 probed all 141 records at 0x1C stride.",
-        notes="CONFLICT: placement_types declares the SAME base address 0x08711274 with stride 28 (=0x1C) and "
-              "max_selector 149 (config/roms.yaml:33). The two declarations share a base and a stride but "
-              "disagree on count/extent - 141 records (3,948 bytes) versus a selector bound of 149. "
-              "config/roms.yaml:41 states the max selector is the observed supported bound, NOT a total table "
-              "count, and that targets outside the verified enemy_stats extent have no record codec.")
+        notes="CONFLICT, ONE NAMED ROW. Claim 1, enemy_stats (config/roms.yaml:48): count 141, record_size 0x1C, "
+              "so 141 * 0x1C = 3,948 bytes. Claim 2, placement_types (config/roms.yaml:33, the placement_types.table "
+              "row below): the SAME base address 0x08711274 with stride 28 (=0x1C) and max_selector 149. The two "
+              "share a base and a stride and disagree on count/extent, 141 records versus a selector bound of 149 "
+              "whose 149th target would leave the verified extent. Which reading this pair follows is decided by "
+              "the declaration's own text: config/roms.yaml:41 states the max selector is the observed supported "
+              "bound, NOT a total table count, and that targets outside the verified enemy_stats extent have no "
+              "record codec - so THIS row's count 141 is the extent and the placement_types row is emitted with "
+              "size null. Six selectors (141,142,146,147,148,149) used by 11 placements remain reference-only with "
+              "no record extent or enemy claim.")
 
-    add(addr=ENEMY_STATS, size=None, kind="record_table",
+    add(addr=enemy_stats.address.raw, size=None, kind="record_table",
         identity="placement_types.table",
         conf="CONFIRMED",
         source="config/roms.yaml:33",
         evidence="TOOLKIT-009 PLACEMENT_TYPES.md: canonical FD54 wrapper computes table + 28 * placement[8], "
                  "then calls F68C. table_address 0x08711274, stride 28, max_selector 149. TOOLKIT-009 confirmed "
                  "101 stable shared type selectors selecting 0x08711274 + 28 * selector, CONFIRMED static LEVEL 2.",
-        notes="CONFLICT: enemy_stats (config/roms.yaml:47) declares the same base 0x08711274 with count 141, "
-              "record_size 0x1c - i.e. an explicit 3,948-byte extent - while this entry declares only a selector "
-              "bound of 149 and explicitly refuses to treat it as a table count. size null because the profile "
-              "states max_selector is NOT a total count. Six selectors (141,142,146,147,148,149) used by 11 "
-              "placements remain reference-only with no record extent or enemy claim.")
+        notes="size null because the profile states max_selector is NOT a total count: the same base and stride "
+              "are declared as the 141-record enemy_stats table above, which is where the disagreement between "
+              "the two keys is recorded. This row adds no claim of its own about that disagreement; it records "
+              "the selector view and the six selectors (141,142,146,147,148,149) that stay reference-only.")
 
     # --------------------------------------------------- free region / authored
-    FREE = 0x007EA400
-    add(off=FREE, addr=BASE + FREE, size=256, kind="free_region",
+    free_region = profile.free_regions[0].range
+    assert len(profile.free_regions) == 1, profile.free_regions
+    assert (free_region.start.value, free_region.size) == (0x007EA400, 256), free_region
+    add(off=free_region.start.value, addr=BASE + free_region.start.value,
+        size=free_region.size, kind="free_region",
         identity="free_region.toolkit028",
         conf="CONFIRMED",
         source="config/roms.yaml:133",

@@ -8,9 +8,15 @@
 --   * one read watchpoint per span of the PROBE-RUNTIME-001 candidate list, as a
 --     partition so no two watches overlap (the contract's fourth range is carved
 --     around the positive control, around A5 and around A6);
---   * POSITIVE CONTROL: 0x0870F514..0x08710EF4, the AI behaviour row table,
---     which the static recon proves is read (row = 0x0870F514 + 8*selector at
---     0x0800AAA6). It must fire, or the run is VOID;
+--   * POSITIVE CONTROL: 0x086B82EC..0x086B8400, the 0x18-stride table whose byte 0
+--     the HUD path reads twice a frame through 0x0800E1F8 (`ldrb r0,[r0]`, base
+--     0x086B82EC) and 0x080134CC (`ldrb r2,[r2]`). It is armed in the same run as
+--     every other span, so a 0-hit span is quotable when it fires (P-369). The
+--     contract's original control, the AI behaviour row table PC_airows
+--     0x0870F514..0x08710EF4, is kept and armed but is expected silent in a settled
+--     scene: its dispatcher 0x0800AAA6 runs at an actor construction or an AI row
+--     switch only, measured 0 fires in 18,000 title-screen frames and 0 in 16,200
+--     frames of a loaded settled map (coordinator ruling, 2026-10-15);
 --   * NEGATIVE CONTROL: 16 bytes just above the last requested range, which no
 --     recon span names. A hit there is a finding, not a failed control;
 --   * the B4 IWRAM pointer 0x03001B60..0x03001B64, which has no static reader;
@@ -52,14 +58,13 @@
 --     negative. The summary states which case the run is in.
 --
 -- STATE, OPT-IN
---   PROBE_RUNTIME_STATE_AT (a frame number) with PROBE_RUNTIME_STATE (a savestate
---   path) loads that state inside the run, once, at that frame. Both unset means
---   the run touches no state at all. Loading a state mutates emulated RAM and is
---   the only mutation this observer can make: it is logged to the api file and
---   the summary with its path, its frame and the value loadStateFile returned.
---   It exists because the positive control (the AI row table) is read by the
---   enemy-actor constructor and by AI row switches, which a cold boot parked at
---   the title screen never reaches: measured 0 fires in 18,000 frames.
+--   PROBE_RUNTIME_STATE (a savestate path) TOGETHER WITH PROBE_RUNTIME_STATE_AT (a
+--   frame number) loads that state inside the run, once, at that frame. A path with
+--   no AT frame NEVER loads: it is refused and the refusal is logged, because a
+--   path alone would otherwise load on frame 1. Both unset means the run touches no
+--   state at all. Loading a state mutates emulated RAM and is the only mutation this
+--   observer can make: it is logged to the api file and the summary with its path,
+--   its frame and the value loadStateFile returned.
 --
 -- READ-ONLY PROOF
 --   The only emulator calls are emu:read8/16/32, emu:readRegister,
@@ -85,7 +90,7 @@ local EVENT_CAP = 2000
 local GRANULE_CAP = 65536
 local ARM_BREAKPOINTS = (os.getenv("PROBE_RUNTIME_BREAKPOINTS") or "1") ~= "0"
 local STATE_PATH = (os.getenv("PROBE_RUNTIME_STATE") or ""):gsub("\\", "/")
-local STATE_AT = tonumber(os.getenv("PROBE_RUNTIME_STATE_AT") or "") or 0
+local STATE_AT = tonumber(os.getenv("PROBE_RUNTIME_STATE_AT") or "")
 local state = nil
 
 assert(emu ~= nil, "mGBA did not attach the emulation core")
@@ -192,10 +197,14 @@ local SPANS = {
       why = "contract range 4 head" },
     { id = "A5_desc8", min = 0x086B8028, max = 0x086B8168,
       why = "A5 descriptor8_records closing boundary, 0x6B8028 + 40*8" },
-    { id = "R4b_mid", min = 0x086B8168, max = 0x0870F514,
-      why = "contract range 4, below the positive control" },
+    { id = "R4b_mid", min = 0x086B8168, max = 0x086B82EC,
+      why = "contract range 4 up to the first byte of the positive control" },
+    { id = "PC_party", min = 0x086B82EC, max = 0x086B8400,
+      why = "POSITIVE CONTROL: the 0x18-stride table read 2x a frame by 0x0800E1F8 and 0x080134CC in a loaded scene" },
+    { id = "R4b_mid_tail", min = 0x086B8400, max = 0x0870F514,
+      why = "contract range 4 above the positive control" },
     { id = "PC_airows", min = 0x0870F514, max = 0x08710EF4,
-      why = "POSITIVE CONTROL: the AI behaviour row table, proven read at 0x0800AAA6" },
+      why = "the AI behaviour row table, read at 0x0800AAA6; expected silent in a settled scene" },
     { id = "R4c_mid", min = 0x08710EF4, max = 0x0874CA24,
       why = "contract range 4; contains A7 0x0873198C, 0x08732B20, 0x08733AF7" },
     { id = "A6_74CA24", min = 0x0874CA24, max = 0x0874CBEA,
@@ -321,8 +330,8 @@ for _, span in ipairs(SPANS) do
 end
 api:flush()
 
-if not find_span("PC_airows").armed then
-    abort_closed("the positive control span could not be armed, so no negative could be interpreted")
+if not find_span("PC_party").armed then
+    abort_closed("the in-run positive control PC_party could not be armed, so no zero could be interpreted")
 end
 
 -- ---------------------------------------------------------------------------
@@ -405,6 +414,15 @@ api:flush()
 -- ---------------------------------------------------------------------------
 -- 3b. The opt-in scene setup. See STATE, OPT-IN in the header.
 -- ---------------------------------------------------------------------------
+
+-- A path with no AT frame is refused, not loaded on frame 1. The refusal is logged
+-- here, at load time, so the run says what it declined to do.
+if STATE_PATH ~= "" and STATE_AT == nil then
+    state = { path = STATE_PATH, refused = true, ok = false, frame = nil,
+        result = "PROBE_RUNTIME_STATE_AT is not set" }
+    api:write("STATE REFUSED path=" .. STATE_PATH .. " reason=PROBE_RUNTIME_STATE_AT is not set\n")
+    api:flush()
+end
 
 local function load_state()
     if state ~= nil or STATE_PATH == "" then return end
@@ -513,24 +531,46 @@ local function overall_verdict()
                 .. "not the span silent"
         end
     end
-    local pc = find_span("PC_airows")
+    local pc = find_span("PC_party")
     if control_hits(pc) > 0 then
-        return "INSTRUMENT PROVEN: the positive control fired"
+        return "INSTRUMENT PROVEN: the in-run positive control PC_party (the 0x086B82EC table) has "
+            .. tostring(control_hits(pc)) .. " attributed hits"
     end
     if lv_hits("liveness_script_interpreter") > 0 or lv_hits("liveness_animation_selector") > 0 then
         return "POSITIVE CONTROL SILENT while a liveness channel fired: either the control span was not read in this run, or the armed watchpoint type is not the read type (see the shape probe in the api file)"
     end
-    return "UNPROVEN: the positive control and every liveness channel are silent; a silent watch here proves nothing"
+    return "UNPROVEN: the in-run positive control PC_party and every liveness channel are silent; a silent watch here proves nothing"
 end
+
+local function state_text()
+    if state == nil then return "none (cold boot)" end
+    if state.refused then return "REFUSED " .. state.path .. " (" .. state.result .. ")" end
+    return state.path .. " frame=" .. tostring(state.frame) .. " ok=" .. tostring(state.ok)
+        .. " result=" .. tostring(state.result)
+end
+
+-- READMAP.json is a quoted-string format and its strings come from the run: the
+-- state path and the load result come from the environment and from mGBA, and the
+-- verdict is built at run time. Backslash first, then quote, or the quote pass
+-- would double-escape the backslashes it just added.
+local function json_escape(s)
+    local out = tostring(s):gsub("\\", "\\\\")
+    out = out:gsub('"', '\\"')
+    return out
+end
+
+-- A Windows path cannot carry a quote, so the quote case is exercised here, on
+-- every load: a broken escape fails the injection instead of corrupting the JSON.
+assert(json_escape([[a"b\c]]) == [[a\"b\\c]], "json_escape self-check failed")
+api:write("escape self-check=ok\n")
+api:flush()
 
 local function write_summary()
     local s = open_out("probe-runtime001-summary.txt")
     s:write("PROBE-RUNTIME-001 summary, single run\n")
     s:write("frames=" .. tostring(frames) .. "\n")
     s:write("watchpoint shape=" .. shape.label .. "\n")
-    s:write("state=" .. (state and (state.path .. " frame=" .. tostring(state.frame)
-        .. " ok=" .. tostring(state.ok) .. " result=" .. state.result)
-        or "none (cold boot)") .. "\n")
+    s:write("state=" .. state_text() .. "\n")
     s:write("granules tracked=" .. tostring(granule_count) .. " cap=" .. tostring(GRANULE_CAP) .. "\n")
     s:write("events logged=" .. tostring(event_count) .. " cap=" .. tostring(EVENT_CAP) .. "\n")
     s:write("liveness: interpreter=" .. tostring(lv_hits("liveness_script_interpreter"))
@@ -554,8 +594,9 @@ local function write_summary()
     s:write("VERDICT=" .. overall_verdict() .. "\n")
     s:write("Blind spot: DMA and coprocessor reads of the ROM are invisible to a CPU watch. "
         .. "Every span with 0 hits is NOT READ BY THE CPU, never 'dead'.\n")
-    s:write("Width is not exposed by the watchpoint callback: the width column is NA, and the "
-        .. "address series answers stride.\n")
+    s:write("Width and the access type come from the callback's own fields; NA means the core "
+        .. "reported none for that hit. The address series answers stride, and the PC column is "
+        .. "the pipeline PC, which is the reading instruction plus 4.\n")
     s:close()
 end
 
@@ -565,11 +606,11 @@ local function write_readmap()
     parts[#parts + 1] = "{"
     parts[#parts + 1] = string.format('  "contract": "PROBE-RUNTIME-001", "frames": %d, "shape": "%s",\n', frames, shape.label)
     parts[#parts + 1] = string.format('  "state": {"path": "%s", "frame": %s, "ok": %s, "result": "%s"},\n',
-        state and state.path or "", state and tostring(state.frame) or "null",
-        state and tostring(state.ok) or "null", state and state.result or "")
+        json_escape(state and state.path or ""), state and tostring(state.frame) or "null",
+        state and tostring(state.ok) or "null", json_escape(state and state.result or ""))
     parts[#parts + 1] = string.format('  "liveness": {"script_interpreter": %d, "animation_selector": %d, "heartbeats": %d},\n',
         lv_hits("liveness_script_interpreter"), lv_hits("liveness_animation_selector"), liveness.heartbeat)
-    parts[#parts + 1] = string.format('  "verdict": "%s",\n', overall_verdict())
+    parts[#parts + 1] = string.format('  "verdict": "%s",\n', json_escape(overall_verdict()))
     parts[#parts + 1] = '  "spans": [\n'
     for i, span in ipairs(SPANS) do
         local result
@@ -577,13 +618,13 @@ local function write_readmap()
             result = "READ"
         elseif lv_hits("liveness_script_interpreter") == 0
             and lv_hits("liveness_animation_selector") == 0
-            and control_hits(find_span("PC_airows")) == 0 then
+            and control_hits(find_span("PC_party")) == 0 then
             result = "VOID"
         else
             result = "NOT READ BY THE CPU"
         end
         parts[#parts + 1] = string.format(
-            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "undecodable": %d, "first_pc": %s, "first_frame": %s, "why": "%s"}%s\n',
+            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "undecodable": %d, "first_pc": "%s", "first_frame": %s, "why": "%s"}%s\n',
             span.id, span.min, span.max, result, span.distinct, span.hits, span.overflow,
             span.undecodable,
             span.first_pc and hex32(span.first_pc) or "null",
@@ -592,7 +633,7 @@ local function write_readmap()
     end
     parts[#parts + 1] = '  ],\n'
     parts[#parts + 1] = '  "dma_rom_arms": [' .. string.format("%d, %d, %d, %d", dma[0].rom_arms, dma[1].rom_arms, dma[2].rom_arms, dma[3].rom_arms) .. '],\n'
-    parts[#parts + 1] = string.format('  "note": "A span with 0 hits is NOT READ BY THE CPU. DMA and coprocessor reads are invisible to a CPU watch. Width is not exposed by this API."\n')
+    parts[#parts + 1] = string.format('  "note": "A span with 0 hits is NOT READ BY THE CPU, and it is quotable only while the in-run positive control PC_party has hits (P-369). DMA and coprocessor reads are invisible to a CPU watch. Width and accessType come from the callback fields; NA means the core reported none."\n')
     parts[#parts + 1] = "}"
     f:write(table.concat(parts))
     f:close()
@@ -620,7 +661,7 @@ end
 local frame_cb
 frame_cb = callbacks:add("frame", function()
     frames = frames + 1
-    if STATE_PATH ~= "" and frames >= STATE_AT then load_state() end
+    if STATE_PATH ~= "" and STATE_AT ~= nil and frames >= STATE_AT then load_state() end
     if frames % 300 == 0 then
         liveness.heartbeat = liveness.heartbeat + 1
         local total = 0

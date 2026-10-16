@@ -93,7 +93,8 @@ local STATE_AT = nil
 local STATE_AT_ERROR = nil
 if STATE_AT_RAW ~= nil then
     local parsed = tonumber(STATE_AT_RAW)
-    if parsed == nil or parsed < 1 or parsed ~= math.floor(parsed) then
+    if parsed == nil or parsed ~= parsed or parsed == math.huge
+            or parsed < 1 or parsed ~= math.floor(parsed) then
         STATE_AT_ERROR = "PROBE_RUNTIME_STATE_AT must be an integer >= 1, got " .. STATE_AT_RAW
     else
         STATE_AT = parsed

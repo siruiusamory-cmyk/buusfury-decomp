@@ -34,11 +34,9 @@ OBSERVER = (
 # backslash and carriage return all have to survive the escape.
 LOAD_ERROR = 'load failed\n\tquote " backslash \\ carriage\r'
 
-# The two span ranges the fake fire uses: the in-run positive control, and one
-# ordinary span the fire misses so its callback cannot be attributed.
-CONTROL_MIN = 0x086B82EC
+# The span the fake fire misses: its callback arrives on an address that belongs
+# to no part of it, so the fire cannot be attributed.
 BROKEN_SPAN_ID = "R1_A1_selfnaming"
-BROKEN_SPAN_MIN = 0x08072CD4
 
 DRIVER = r'''
 local OBS = os.getenv("READMAP_B6_OBSERVER")
@@ -117,6 +115,8 @@ SCENARIOS = {
                     "PROBE_RUNTIME_STATE_AT": "-3"},
     "at_text": {"PROBE_RUNTIME_STATE": "C:/b6/at_text.ss1",
                 "PROBE_RUNTIME_STATE_AT": "not a frame"},
+    "at_infinite": {"PROBE_RUNTIME_STATE": "C:/b6/at_infinite.ss1",
+                    "PROBE_RUNTIME_STATE_AT": "1e309"},
     "undecodable": {},
 }
 
@@ -223,9 +223,10 @@ def test_a_load_error_with_control_characters_round_trips(tmp_path):
     ("at_zero", "0"),
     ("at_negative", "-3"),
     ("at_text", "not a frame"),
+    ("at_infinite", "1e309"),
 ])
 def test_an_at_frame_that_is_not_a_whole_frame_number_is_refused(scenario, raw, tmp_path):
-    """A fractional, zero, negative or non-numeric AT frame never loads."""
+    """A fractional, zero, negative, non-numeric or non-finite AT frame never loads."""
     doc = run_driver(scenario, tmp_path)
     api = read_api(tmp_path)
     state = doc["state"]

@@ -25,6 +25,12 @@ FOCUS_AND_INPUT_APIS = (
 )
 
 
+def _focus_and_input_apis(source):
+    """The focus/input API names a script mentions, in any casing."""
+    lowered = source.lower()
+    return [api for api in FOCUS_AND_INPUT_APIS if api.lower() in lowered]
+
+
 def _run_ps(body):
     """Run one snippet with the injector's arm helpers dot-sourced."""
     powershell = shutil.which("powershell.exe")
@@ -160,5 +166,10 @@ def test_no_script_in_the_arm_path_can_steal_focus_or_synthesize_input():
     assert "invoke_mgba_run.ps1" in INJECTOR.read_text(encoding="utf-8")
     for path in (INJECTOR, RUN_HELPER, ARM_HELPERS):
         source = path.read_text(encoding="utf-8")
-        for api in FOCUS_AND_INPUT_APIS:
-            assert api not in source, f"{path.name} contains {api}"
+        found = _focus_and_input_apis(source)
+        assert not found, f"{path.name} contains {found}"
+
+
+def test_the_focus_and_input_scan_catches_a_lowercased_call():
+    """PowerShell command names are case-insensitive, so the scan folds case too."""
+    assert _focus_and_input_apis('$s = "sendkeys 1"') == ["SendKeys"]

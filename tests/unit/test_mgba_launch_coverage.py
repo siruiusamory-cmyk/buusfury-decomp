@@ -437,6 +437,39 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs a nested collect-only pytest over one small module, with and "
         "without the shard variables, to read which nodes that shard collects; "
         "it starts no emulator",
+    # Added by PROBE-INJECT-001. The five call-operator keys below invoke SCRIPT
+    # BLOCKS the caller hands in - the injector passes UI Automation operations
+    # and a Start-Sleep - never an executable, and none of these files names an
+    # mGBA executable or a -MGBPath.
+    ("tools/runtime/mgba_arm.ps1", "&", "$ReExpand"):
+        "invokes the caller's ExpandCollapse script block on the Tools menu; it "
+        "starts no process and no emulator",
+    ("tools/runtime/mgba_arm.ps1", "&", "$FindItem"):
+        "invokes the caller's FindItem script block, which is Find-MgbaWindow over "
+        "the running window's UI Automation tree; it starts no emulator",
+    ("tools/runtime/mgba_arm.ps1", "&", "$Pause"):
+        "invokes the caller's pause script block, whose default body is Start-Sleep "
+        "-Milliseconds 100 (lines 31 and 55); it starts no emulator",
+    ("tools/runtime/mgba_arm.ps1", "&", "$ReadValue)"):
+        "invokes the caller's ValuePattern read-back script block to compare the "
+        "Scripting prompt against the command; it starts no process and no emulator",
+    ("tools/runtime/mgba_arm.ps1", "&", "$SetValue"):
+        "invokes the caller's ValuePattern SetValue script block to re-set the "
+        "Scripting prompt; it starts no process and no emulator",
+    ("tests/unit/test_mgba_capture.py", "_choose_mgba_window", "powershell"):
+        "runs Windows PowerShell to dot-source tools/runtime/mgba_window_choice.ps1 "
+        "and call Select-MgbaWindow over a synthetic candidate list, so the shipped "
+        "window choice is driven with no GUI and no emulator",
+    ("tests/unit/test_probe_inject_arm.py", "_run_ps", "powershell"):
+        "runs Windows PowerShell to dot-source tools/runtime/mgba_arm.ps1 "
+        "(ARM_HELPERS) and drive the two arm helpers with stub script blocks; it "
+        "starts no emulator",
+    ("tests/unit/test_probe_runtime001_readmap.py",
+     "run_driver",
+     "shutil.which(interpreter)"):
+        "runs the Lua interpreter this host provides (lupa, else lua5.4/lua/luajit "
+        "from PATH) on the shipped observer chunk against a FAKE emu core and parses "
+        "what it wrote; it starts no emulator",
 }
 
 

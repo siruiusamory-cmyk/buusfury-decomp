@@ -1,17 +1,8 @@
-"""The injector's two arm steps that survive an operator, driven with fakes.
+"""The injector's two arm steps that a human can disturb, driven with fakes.
 
-tools/runtime/inject_mgba_lua.ps1 must keep arming while the owner clicks or
-types anywhere (P-370: a click closes the Tools popup, so the first attempt died
-with "Scripting menu item not found"). Two steps carry that:
-
-  * the Tools-menu step re-expands Tools and retries, bounded at 10 attempts and
-    never fewer than 5, instead of throwing on the first miss;
-  * the Scripting prompt is read back through ValuePattern and re-set before the
-    Run is invoked, at most 5 times, because the operator can type into it.
-
-Both are pure functions of the caller's own UI Automation access
-(tools/runtime/mgba_arm.ps1, which the injector dot-sources), so this test drives
-the shipped decisions with scriptblocks instead of a copy of them.
+Both live in tools/runtime/mgba_arm.ps1, which the injector dot-sources; the fakes
+stand in for UI Automation. The last test pins the no-focus, no-input contract on
+every script the arm path runs.
 """
 
 import shutil
@@ -22,7 +13,16 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INJECTOR = PROJECT_ROOT / "tools/runtime/inject_mgba_lua.ps1"
+RUN_HELPER = PROJECT_ROOT / "tools/runtime/invoke_mgba_run.ps1"
 ARM_HELPERS = PROJECT_ROOT / "tools/runtime/mgba_arm.ps1"
+
+# Every way a script could take focus or synthesize input instead of driving the
+# UI Automation patterns. A differently named call has to fail this scan too.
+FOCUS_AND_INPUT_APIS = (
+    "SendKeys", "SetForegroundWindow", "SendInput", "BlockInput",
+    "AttachThreadInput", "SetActiveWindow", "SetFocus", "mouse_event",
+    "keybd_event",
+)
 
 
 def _run_ps(body):
@@ -139,9 +139,8 @@ def test_prompt_read_back_refuses_to_run_after_five_re_sets():
     assert "READS=6 SETS=5" in result.stdout, result.stdout
 
 
-def test_injector_arms_through_the_helpers_and_never_needs_focus():
+def test_injector_arms_through_the_helpers():
     injector = INJECTOR.read_text(encoding="utf-8")
-    helpers = ARM_HELPERS.read_text(encoding="utf-8")
 
     assert "mgba_arm.ps1" in injector
     assert "Invoke-MgbaMenuWithRetry" in injector
@@ -155,7 +154,11 @@ def test_injector_arms_through_the_helpers_and_never_needs_focus():
     assert "CloseMainWindow" not in injector
     assert ".Close(" not in injector
 
-    # A4: UI Automation patterns only, in the injector and in its helpers.
-    for forbidden in ("SendKeys", "SetForegroundWindow", "SendInput", "BlockInput"):
-        assert forbidden not in helpers, forbidden
-        assert forbidden not in injector, forbidden
+
+def test_no_script_in_the_arm_path_can_steal_focus_or_synthesize_input():
+    """The arm path runs the injector and the Run helper, so both are scanned."""
+    assert "invoke_mgba_run.ps1" in INJECTOR.read_text(encoding="utf-8")
+    for path in (INJECTOR, RUN_HELPER, ARM_HELPERS):
+        source = path.read_text(encoding="utf-8")
+        for api in FOCUS_AND_INPUT_APIS:
+            assert api not in source, f"{path.name} contains {api}"

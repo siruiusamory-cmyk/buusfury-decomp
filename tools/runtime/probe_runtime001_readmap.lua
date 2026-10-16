@@ -86,7 +86,19 @@ local EVENT_CAP = 2000
 local GRANULE_CAP = 65536
 local ARM_BREAKPOINTS = (os.getenv("PROBE_RUNTIME_BREAKPOINTS") or "1") ~= "0"
 local STATE_PATH = (os.getenv("PROBE_RUNTIME_STATE") or ""):gsub("\\", "/")
-local STATE_AT = tonumber(os.getenv("PROBE_RUNTIME_STATE_AT") or "")
+-- The AT frame must be a WHOLE frame number >= 1. Anything else is refused rather
+-- than coerced: tonumber(1.5) would load one frame late, and 0 or -3 load on frame 1.
+local STATE_AT_RAW = os.getenv("PROBE_RUNTIME_STATE_AT")
+local STATE_AT = nil
+local STATE_AT_ERROR = nil
+if STATE_AT_RAW ~= nil then
+    local parsed = tonumber(STATE_AT_RAW)
+    if parsed == nil or parsed < 1 or parsed ~= math.floor(parsed) then
+        STATE_AT_ERROR = "PROBE_RUNTIME_STATE_AT must be an integer >= 1, got " .. STATE_AT_RAW
+    else
+        STATE_AT = parsed
+    end
+end
 local state = nil
 
 assert(emu ~= nil, "mGBA did not attach the emulation core")
@@ -414,9 +426,10 @@ api:flush()
 -- A path with no AT frame is refused, not loaded on frame 1. The refusal is logged
 -- here, at load time, so the run says what it declined to do.
 if STATE_PATH ~= "" and STATE_AT == nil then
+    local refusal = STATE_AT_ERROR or "PROBE_RUNTIME_STATE_AT is not set"
     state = { path = STATE_PATH, refused = true, ok = false, frame = nil,
-        result = "PROBE_RUNTIME_STATE_AT is not set" }
-    api:write("STATE REFUSED path=" .. STATE_PATH .. " reason=PROBE_RUNTIME_STATE_AT is not set\n")
+        result = refusal }
+    api:write("STATE REFUSED path=" .. STATE_PATH .. " reason=" .. refusal .. "\n")
     api:flush()
 end
 
@@ -622,7 +635,11 @@ local function write_readmap()
     parts[#parts + 1] = '  "spans": [\n'
     for i, span in ipairs(SPANS) do
         local result
-        if span.hits > 0 then
+        if span.undecodable > 0 then
+            -- Fail closed: a fire that could not be attributed means this span's
+            -- channel is broken, so it is never reported as unread.
+            result = "UNDECODABLE"
+        elseif span.hits > 0 then
             result = "READ"
         elseif lv_hits("liveness_script_interpreter") == 0
             and lv_hits("liveness_animation_selector") == 0
@@ -641,7 +658,7 @@ local function write_readmap()
     end
     parts[#parts + 1] = '  ],\n'
     parts[#parts + 1] = '  "dma_rom_arms": [' .. string.format("%d, %d, %d, %d", dma[0].rom_arms, dma[1].rom_arms, dma[2].rom_arms, dma[3].rom_arms) .. '],\n'
-    parts[#parts + 1] = string.format('  "note": "A span with 0 hits is NOT READ BY THE CPU, and it is quotable only while the in-run positive control PC_party has hits (P-369). DMA and coprocessor reads are invisible to a CPU watch. Width and accessType come from the callback fields; NA means the core reported none."\n')
+    parts[#parts + 1] = string.format('  "note": "A span with 0 hits is NOT READ BY THE CPU, and it is quotable only while the in-run positive control PC_party has hits (P-369); a span with any undecodable fire says UNDECODABLE and voids the run. DMA and coprocessor reads are invisible to a CPU watch. Width and accessType come from the callback fields; NA means the core reported none."\n')
     parts[#parts + 1] = "}"
     f:write(table.concat(parts))
     f:close()

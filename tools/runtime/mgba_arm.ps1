@@ -1,19 +1,8 @@
-# The two arm steps of tools/runtime/inject_mgba_lua.ps1 that a human can disturb,
-# as pure functions of the caller's own UI Automation access.
-#
-# They are a separate file so a test can drive the shipped decisions with fakes:
-# tests/unit/test_probe_inject_arm.py passes scriptblocks that stand in for the
-# Tools menu and the Scripting prompt, so the retry and the read-back are
-# exercised as written and never as a copy.
-#
-# Neither function drives UI itself. The caller passes the pattern calls in, and
-# those calls are ExpandCollapsePattern, ValuePattern and InvokePattern only, so
-# the flow never needs focus and no key, foreground or input synthesis is made
-# here or permitted to be added.
-#
-# P-370: an operator click closes the Tools popup mid-search, so the item search
-# is retried with the popup re-opened on every attempt. A plain re-search of a
-# popup that is already gone cannot differ; the re-expand is what changes state.
+# The arm steps of tools/runtime/inject_mgba_lua.ps1 that a human can disturb, as
+# pure functions of the caller's own UI Automation access (ExpandCollapse, Value and
+# Invoke patterns only), so a test drives them without a GUI and no focus is needed.
+# An operator click closes the Tools popup, so every attempt re-expands it: a plain
+# re-search of a popup that is already gone cannot differ (P-370).
 
 function Invoke-MgbaMenuWithRetry {
     param(

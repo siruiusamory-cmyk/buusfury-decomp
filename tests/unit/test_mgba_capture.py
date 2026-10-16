@@ -1404,3 +1404,31 @@ def test_every_allowlisted_observer_exists_exactly_once():
 
     duplicates = {n for n in names if names.count(n) > 1}
     assert not duplicates, f"allowlisted more than once: {sorted(duplicates)}"
+
+
+def test_rt002_execution_coverage_probe_is_read_only_discriminating_and_allowlisted():
+    """RUNTIME-EXEC-001: coverage of the census's `code-without-entry` rows.
+
+    mGBA 0.11 exposes no execute watchpoint - at the build's source commit the
+    type an armed watchpoint takes is an int from `enum mWatchpointType`, whose
+    members are WRITE/READ/RW/CHANGE/WRITE_CHANGE and no execute - so execution
+    is observable only through `setBreakpoint`, one address at a time. The probe
+    therefore records WHICH channel produced each row: without that column an
+    execute hit and a READ hit are indistinguishable, and a hit could not be read
+    as execution at all. It must refuse to run when the execute-breakpoint API is
+    missing rather than log a silence, must stay read-only, and must carry the
+    frame-tick and liveness channels a silent run is judged by.
+    """
+    root = Path(__file__).resolve().parents[2]
+    probe = (root / "tools/runtime/rt002_execcov.lua").read_text(encoding="utf-8")
+    injector = (root / "tools/runtime/inject_mgba_lua.ps1").read_text(encoding="utf-8")
+
+    assert "rt002_execcov.lua" in injector
+    assert "WATCHPOINT_READ = 2" in probe, "the armed type must be quoted from the API"
+    assert "pc,frame,row_start,thumb,channel" in probe
+    assert "row_of(address)" in probe, "a hit must be attributed to a row"
+    assert "refusing to run a channel that cannot see execution" in probe
+    assert "frame-tick.txt" in probe
+    assert "rt002-liveness.txt" in probe and "pc_fallback" in probe
+    for forbidden in ("addKey", "clearKey", "setKeys", "emu:write"):
+        assert forbidden not in probe, f"{forbidden!r} in a read-only observer"

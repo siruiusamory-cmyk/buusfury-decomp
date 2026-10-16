@@ -589,6 +589,20 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_cart_map_probe.lua')
     )
+    # Added by RUNTIME-EXEC-001: the execution-coverage probe for the Buu's Fury
+    # census rows classified `code-without-entry`. It arms one execute breakpoint
+    # per row start and one READ range watchpoint per row over an address list,
+    # plus a READ control range at a code address a previous owner session was
+    # recorded executing, so a row hit can be read as execution only when the
+    # control proves the read channel sees instruction fetch. It writes pc,
+    # frame, row_start, thumb and channel rows to a CSV inside the run directory,
+    # with frame-tick and liveness channels so a silent target can be told from a
+    # dead instrument. READ-ONLY with respect to the emulated machine: it writes
+    # host files inside the run directory only, touches no emulated memory and
+    # presses no key.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rt002_execcov.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

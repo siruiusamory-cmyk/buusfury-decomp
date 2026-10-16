@@ -27,10 +27,21 @@
 --   cannot exhaust memory; past the cap the span's overflow counter grows and
 --   says so in the output. The per-event trace is bounded too.
 --
+-- CALLBACK SHAPE
+--   The callback is invoked with ONE argument, an mSTTable userdata. mGBA
+--   src/core/scripting.c _scriptDebuggerEntered builds that table and
+--   src/script/engines/lua.c wraps an mSCRIPT_TYPE_TABLE value in the "mSTTable"
+--   metatable, whose __index is a string-key lookup. Its fields are address,
+--   width (when the core set one), segment (when >= 0), accessType and, for a
+--   write, oldValue/newValue. `a.address` is therefore the accessed address. The
+--   pre-fix run read the callback as (a, b) numbers, so every fire landed in the
+--   shape_mismatch bucket and no span could be attributed. A fire the decoder
+--   cannot attribute to its own span is counted as `undecodable` and voids the
+--   run: an armed watchpoint is not a working channel (pitfall P-369).
+--
 -- HONEST LIMITS
---   * The access WIDTH is not exposed by the watchpoint callback on this build,
---     so the width column carries NA. The address series answers stride; width
---     stays unmeasured until an instruction-decoding instrument is added.
+--   * width is recorded when the core reports one and stays NA otherwise, and
+--     the access TYPE is recorded per event; the address series answers stride.
 --   * The PC is sampled inside the callback, so it can be the instruction after
 --     the access. The first PC per granule is what is recorded.
 --   * CPU watchpoints do not see DMA or coprocessor reads of the ROM. The DMA
@@ -40,11 +51,22 @@
 --   * A silent watch with every liveness channel silent is UNPROVEN, not a
 --     negative. The summary states which case the run is in.
 --
+-- STATE, OPT-IN
+--   PROBE_RUNTIME_STATE_AT (a frame number) with PROBE_RUNTIME_STATE (a savestate
+--   path) loads that state inside the run, once, at that frame. Both unset means
+--   the run touches no state at all. Loading a state mutates emulated RAM and is
+--   the only mutation this observer can make: it is logged to the api file and
+--   the summary with its path, its frame and the value loadStateFile returned.
+--   It exists because the positive control (the AI row table) is read by the
+--   enemy-actor constructor and by AI row switches, which a cold boot parked at
+--   the title screen never reaches: measured 0 fires in 18,000 frames.
+--
 -- READ-ONLY PROOF
 --   The only emulator calls are emu:read8/16/32, emu:readRegister,
 --   emu:setBreakpoint, emu:setWatchpoint, emu:setRangeWatchpoint,
---   emu:clearBreakpoint, emu:getGameCode, emu:romSize and callbacks:add. No
---   emulated memory is modified and no input is driven.
+--   emu:clearBreakpoint, emu:getGameCode, emu:romSize, callbacks:add and, only
+--   when the two PROBE_RUNTIME_STATE variables are set, emu:loadStateFile. No
+--   input is driven.
 --
 -- OUTPUT, all under PROBE_RUNTIME_DIR (default C:/temp/probe-runtime):
 --   probe-runtime001-api.txt        the API surface, arming results, abort reason
@@ -62,6 +84,9 @@ local FLUSH_EVERY = 1800
 local EVENT_CAP = 2000
 local GRANULE_CAP = 65536
 local ARM_BREAKPOINTS = (os.getenv("PROBE_RUNTIME_BREAKPOINTS") or "1") ~= "0"
+local STATE_PATH = (os.getenv("PROBE_RUNTIME_STATE") or ""):gsub("\\", "/")
+local STATE_AT = tonumber(os.getenv("PROBE_RUNTIME_STATE_AT") or "") or 0
+local state = nil
 
 assert(emu ~= nil, "mGBA did not attach the emulation core")
 local game_code = emu:getGameCode()
@@ -192,7 +217,9 @@ for _, span in ipairs(SPANS) do
     span.hits = 0
     span.distinct = 0
     span.overflow = 0
-    span.shape_mismatch = 0
+    span.undecodable = 0
+    span.first_width = nil
+    span.first_access = nil
     span.shape_samples = 0
     span.events = 0
     span.first_pc = nil
@@ -207,7 +234,7 @@ local function find_span(id)
     return nil
 end
 
-local function record(span, addr, value)
+local function record(span, addr, width, access, value)
     span.hits = span.hits + 1
     local g = math.floor(addr / 4) * 4
     local key = span.id .. ":" .. tostring(g)
@@ -225,6 +252,8 @@ local function record(span, addr, value)
     if span.first_pc == nil then
         span.first_pc = pc
         span.first_frame = frames
+        span.first_width = width
+        span.first_access = access
     end
     if e then
         e.n = e.n + 1
@@ -237,29 +266,47 @@ local function record(span, addr, value)
     end
     if event_count < EVENT_CAP then
         event_count = event_count + 1
-        events[event_count] = string.format("%s,%d,0x%08X,0x%08X,%s,NA",
-            span.id, frames, addr, pc, value and hex32(value) or "")
+        events[event_count] = string.format("%s,%d,0x%08X,0x%08X,%s,%s,%s",
+            span.id, frames, addr, pc, width and tostring(width) or "NA",
+            access and tostring(access) or "NA", value and hex32(value) or "")
     end
 end
 
+-- The callback's single argument is an mSTTable userdata: a string-keyed table
+-- whose fields are address, width, segment, accessType and oldValue/newValue. A
+-- field the core did not set reads back as nil.
+local function hit_fields(a)
+    local ok, addr = pcall(function() return a.address end)
+    if not ok or type(addr) ~= "number" then return nil end
+    local _, width = pcall(function() return a.width end)
+    local _, access = pcall(function() return a.accessType end)
+    local _, value = pcall(function() return a.newValue end)
+    if type(value) ~= "number" then
+        _, value = pcall(function() return a.oldValue end)
+    end
+    return addr, (type(width) == "number") and width or nil,
+        (type(access) == "number") and access or nil,
+        (type(value) == "number") and value or nil
+end
+
 local function make_hit(span)
-    return function(a, b, c)
+    return function(a)
+        local addr, width, access, value = hit_fields(a)
         if span.shape_samples < 3 then
             span.shape_samples = span.shape_samples + 1
-            api:write(string.format("shape %s args=%s,%s,%s\n", span.id,
-                tostring(a), tostring(b), tostring(c)))
+            api:write(string.format(
+                "shape %s argtype=%s raw=%s addr=%s width=%s access=%s\n",
+                span.id, tostring(type(a)), tostring(a), hex32(addr),
+                width and tostring(width) or "NA",
+                access and tostring(access) or "NA"))
             api:flush()
         end
-        local addr, value
-        if type(a) == "number" and a >= span.min and a < span.max then
-            addr, value = a, b
-        elseif type(b) == "number" and b >= span.min and b < span.max then
-            addr, value = b, a
-        else
-            span.shape_mismatch = span.shape_mismatch + 1
+        if addr == nil or addr < span.min or addr >= span.max then
+            -- Not attributable to this span: fail loud, never count a hit.
+            span.undecodable = span.undecodable + 1
             return
         end
-        record(span, addr, value)
+        record(span, addr, width, access, value)
     end
 end
 
@@ -355,6 +402,28 @@ api:write(string.format("ARMED breakpoints=%d/%d spans=%d/%d frames_callback=pen
     armed_count, #sites, armed_spans, #SPANS))
 api:flush()
 
+-- ---------------------------------------------------------------------------
+-- 3b. The opt-in scene setup. See STATE, OPT-IN in the header.
+-- ---------------------------------------------------------------------------
+
+local function load_state()
+    if state ~= nil or STATE_PATH == "" then return end
+    local ok, result = pcall(function() return emu:loadStateFile(STATE_PATH) end)
+    state = { path = STATE_PATH, ok = ok, result = tostring(result), frame = frames }
+    api:write(string.format("STATE frame=%d path=%s ok=%s result=%s\n",
+        frames, STATE_PATH, tostring(ok), tostring(result)))
+    -- Scene identity, so a silent control can be read as "which scene this was"
+    -- instead of as a claim about the instrument: the live map entry and the
+    -- player actor.
+    local globals = { { "live_map_entry", 0x03001980 }, { "player_actor", 0x03001B94 } }
+    for _, g in ipairs(globals) do
+        local okr, v = pcall(function() return emu:read32(g[2]) end)
+        api:write(string.format("scene %s 0x%08X = %s\n", g[1], g[2],
+            (okr and v) and hex32(v) or "NA"))
+    end
+    api:flush()
+end
+
 local function lv_hits(label)
     for _, site in ipairs(sites) do
         if site.label == label then return site.hits end
@@ -420,7 +489,7 @@ end
 
 local function write_events_csv()
     local f = open_out("probe-runtime001-events.csv")
-    f:write("span,frame,address,pc,value,width\n")
+    f:write("span,frame,address,pc,width,accessType,value\n")
     for i = 1, event_count do f:write(events[i] .. "\n") end
     f:close()
 end
@@ -437,6 +506,13 @@ local function control_hits(span)
 end
 
 local function overall_verdict()
+    for _, span in ipairs(SPANS) do
+        if span.undecodable > 0 then
+            return "ABORT: " .. tostring(span.undecodable) .. " fire(s) on " .. span.id
+                .. " carried no address attributable to the span; the channel is broken, "
+                .. "not the span silent"
+        end
+    end
     local pc = find_span("PC_airows")
     if control_hits(pc) > 0 then
         return "INSTRUMENT PROVEN: the positive control fired"
@@ -452,15 +528,21 @@ local function write_summary()
     s:write("PROBE-RUNTIME-001 summary, single run\n")
     s:write("frames=" .. tostring(frames) .. "\n")
     s:write("watchpoint shape=" .. shape.label .. "\n")
+    s:write("state=" .. (state and (state.path .. " frame=" .. tostring(state.frame)
+        .. " ok=" .. tostring(state.ok) .. " result=" .. state.result)
+        or "none (cold boot)") .. "\n")
     s:write("granules tracked=" .. tostring(granule_count) .. " cap=" .. tostring(GRANULE_CAP) .. "\n")
     s:write("events logged=" .. tostring(event_count) .. " cap=" .. tostring(EVENT_CAP) .. "\n")
     s:write("liveness: interpreter=" .. tostring(lv_hits("liveness_script_interpreter"))
         .. " animation=" .. tostring(lv_hits("liveness_animation_selector"))
         .. " heartbeats=" .. tostring(liveness.heartbeat) .. "\n")
     for _, span in ipairs(SPANS) do
-        s:write(string.format("%-18s hits=%-8d distinct=%-6d overflow=%-6d shape_mismatch=%-6d first_pc=%s first_frame=%s armed=%s\n",
-            span.id, span.hits, span.distinct, span.overflow, span.shape_mismatch,
-            hex32(span.first_pc), tostring(span.first_frame), tostring(span.armed)))
+        s:write(string.format("%-18s hits=%-8d distinct=%-6d overflow=%-6d undecodable=%-4d first_pc=%s first_frame=%s first_width=%s first_access=%s armed=%s\n",
+            span.id, span.hits, span.distinct, span.overflow, span.undecodable,
+            hex32(span.first_pc), tostring(span.first_frame),
+            span.first_width and tostring(span.first_width) or "NA",
+            span.first_access and tostring(span.first_access) or "NA",
+            tostring(span.armed)))
     end
     for _, site in ipairs(sites) do
         s:write(string.format("bp %-26s hits=%d armed=%s\n", site.label, site.hits, tostring(site.armed)))
@@ -482,6 +564,9 @@ local function write_readmap()
     local parts = {}
     parts[#parts + 1] = "{"
     parts[#parts + 1] = string.format('  "contract": "PROBE-RUNTIME-001", "frames": %d, "shape": "%s",\n', frames, shape.label)
+    parts[#parts + 1] = string.format('  "state": {"path": "%s", "frame": %s, "ok": %s, "result": "%s"},\n',
+        state and state.path or "", state and tostring(state.frame) or "null",
+        state and tostring(state.ok) or "null", state and state.result or "")
     parts[#parts + 1] = string.format('  "liveness": {"script_interpreter": %d, "animation_selector": %d, "heartbeats": %d},\n',
         lv_hits("liveness_script_interpreter"), lv_hits("liveness_animation_selector"), liveness.heartbeat)
     parts[#parts + 1] = string.format('  "verdict": "%s",\n', overall_verdict())
@@ -498,8 +583,9 @@ local function write_readmap()
             result = "NOT READ BY THE CPU"
         end
         parts[#parts + 1] = string.format(
-            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "first_pc": %s, "first_frame": %s, "why": "%s"}%s\n',
+            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "undecodable": %d, "first_pc": %s, "first_frame": %s, "why": "%s"}%s\n',
             span.id, span.min, span.max, result, span.distinct, span.hits, span.overflow,
+            span.undecodable,
             span.first_pc and hex32(span.first_pc) or "null",
             span.first_frame and tostring(span.first_frame) or "null",
             span.why, i < #SPANS and "," or "")
@@ -534,6 +620,7 @@ end
 local frame_cb
 frame_cb = callbacks:add("frame", function()
     frames = frames + 1
+    if STATE_PATH ~= "" and frames >= STATE_AT then load_state() end
     if frames % 300 == 0 then
         liveness.heartbeat = liveness.heartbeat + 1
         local total = 0

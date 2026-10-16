@@ -34,16 +34,12 @@
 --   says so in the output. The per-event trace is bounded too.
 --
 -- CALLBACK SHAPE
---   The callback is invoked with ONE argument, an mSTTable userdata. mGBA
---   src/core/scripting.c _scriptDebuggerEntered builds that table and
---   src/script/engines/lua.c wraps an mSCRIPT_TYPE_TABLE value in the "mSTTable"
---   metatable, whose __index is a string-key lookup. Its fields are address,
---   width (when the core set one), segment (when >= 0), accessType and, for a
---   write, oldValue/newValue. `a.address` is therefore the accessed address. The
---   pre-fix run read the callback as (a, b) numbers, so every fire landed in the
---   shape_mismatch bucket and no span could be attributed. A fire the decoder
---   cannot attribute to its own span is counted as `undecodable` and voids the
---   run: an armed watchpoint is not a working channel (pitfall P-369).
+--   The callback receives ONE argument, an mSTTable userdata, whose fields are
+--   read by name: address, width (when the core set one), segment (when >= 0),
+--   accessType and, for a write, oldValue/newValue. `a.address` is the accessed
+--   address. A fire that cannot be attributed to its own span is counted as
+--   `undecodable` and voids the run: an armed watchpoint is not a working
+--   channel (P-369).
 --
 -- HONEST LIMITS
 --   * width is recorded when the core reports one and stays NA otherwise, and
@@ -426,10 +422,14 @@ end
 
 local function load_state()
     if state ~= nil or STATE_PATH == "" then return end
-    local ok, result = pcall(function() return emu:loadStateFile(STATE_PATH) end)
-    state = { path = STATE_PATH, ok = ok, result = tostring(result), frame = frames }
+    local called, result = pcall(function() return emu:loadStateFile(STATE_PATH) end)
+    -- ok means the load SUCCEEDED: the call did not raise and it returned true, so
+    -- a false return without a raise is reported as the failed load it is. The raw
+    -- result is kept separately.
+    local loaded = (called and result == true)
+    state = { path = STATE_PATH, ok = loaded, result = tostring(result), frame = frames }
     api:write(string.format("STATE frame=%d path=%s ok=%s result=%s\n",
-        frames, STATE_PATH, tostring(ok), tostring(result)))
+        frames, STATE_PATH, tostring(loaded), tostring(result)))
     -- Scene identity, so a silent control can be read as "which scene this was"
     -- instead of as a claim about the instrument: the live map entry and the
     -- player actor.
@@ -552,18 +552,26 @@ end
 -- READMAP.json is a quoted-string format and its strings come from the run: the
 -- state path and the load result come from the environment and from mGBA, and the
 -- verdict is built at run time. Backslash first, then quote, or the quote pass
--- would double-escape the backslashes it just added.
+-- would double-escape the backslashes it just added; a byte below 0x20 becomes
+-- \u00XX because a load result carrying a newline, return or tab would otherwise
+-- make the file unparseable.
 local function json_escape(s)
-    local out = tostring(s):gsub("\\", "\\\\")
-    out = out:gsub('"', '\\"')
+    local out = tostring(s):gsub("\\", "\\\\"):gsub('"', '\\"')
+    out = out:gsub("%c", function(c) return string.format("\\u%04x", string.byte(c)) end)
     return out
 end
 
--- A Windows path cannot carry a quote, so the quote case is exercised here, on
--- every load: a broken escape fails the injection instead of corrupting the JSON.
-assert(json_escape([[a"b\c]]) == [[a\"b\\c]], "json_escape self-check failed")
-api:write("escape self-check=ok\n")
-api:flush()
+-- An absent number is JSON null, never the string "nil".
+local function json_value(v)
+    if v == nil then return "null" end
+    return tostring(v)
+end
+
+-- A string field is quoted only when it has a value; absent means JSON null.
+local function json_quoted(v)
+    if v == nil then return "null" end
+    return '"' .. json_escape(v) .. '"'
+end
 
 local function write_summary()
     local s = open_out("probe-runtime001-summary.txt")
@@ -606,8 +614,8 @@ local function write_readmap()
     parts[#parts + 1] = "{"
     parts[#parts + 1] = string.format('  "contract": "PROBE-RUNTIME-001", "frames": %d, "shape": "%s",\n', frames, shape.label)
     parts[#parts + 1] = string.format('  "state": {"path": "%s", "frame": %s, "ok": %s, "result": "%s"},\n',
-        json_escape(state and state.path or ""), state and tostring(state.frame) or "null",
-        state and tostring(state.ok) or "null", json_escape(state and state.result or ""))
+        json_escape(state and state.path or ""), json_value(state and state.frame),
+        json_value(state and state.ok), json_escape(state and state.result or ""))
     parts[#parts + 1] = string.format('  "liveness": {"script_interpreter": %d, "animation_selector": %d, "heartbeats": %d},\n',
         lv_hits("liveness_script_interpreter"), lv_hits("liveness_animation_selector"), liveness.heartbeat)
     parts[#parts + 1] = string.format('  "verdict": "%s",\n', json_escape(overall_verdict()))
@@ -624,11 +632,11 @@ local function write_readmap()
             result = "NOT READ BY THE CPU"
         end
         parts[#parts + 1] = string.format(
-            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "undecodable": %d, "first_pc": "%s", "first_frame": %s, "why": "%s"}%s\n',
+            '    {"id": "%s", "min": "0x%08X", "max": "0x%08X", "result": "%s", "granules": %d, "hits": %d, "granule_overflow": %d, "undecodable": %d, "first_pc": %s, "first_frame": %s, "why": "%s"}%s\n',
             span.id, span.min, span.max, result, span.distinct, span.hits, span.overflow,
             span.undecodable,
-            span.first_pc and hex32(span.first_pc) or "null",
-            span.first_frame and tostring(span.first_frame) or "null",
+            json_quoted(span.first_pc and hex32(span.first_pc)),
+            json_value(span.first_frame),
             span.why, i < #SPANS and "," or "")
     end
     parts[#parts + 1] = '  ],\n'

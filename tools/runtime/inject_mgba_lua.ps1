@@ -379,6 +379,9 @@ $desktop = [System.Windows.Automation.AutomationElement]::RootElement
 # The window choice is a pure function of a candidate list so a test can drive it
 # without a GUI; see tools/runtime/mgba_window_choice.ps1.
 . (Join-Path $PSScriptRoot 'mgba_window_choice.ps1')
+# The two arm steps a human can disturb live in their own file, as pure
+# functions of the caller's own UIA access, so a test drives them without a GUI.
+. (Join-Path $PSScriptRoot 'mgba_arm.ps1')
 
 function Get-WindowCandidates {
     param(
@@ -465,15 +468,25 @@ if (-not $scripting) {
         Write-Output ("UIA tree: " + ($allNames -join ' | '))
         throw 'Tools menu not found'
     }
-    $tools.GetCurrentPattern(
-        [System.Windows.Automation.ExpandCollapsePattern]::Pattern
-    ).Expand()
+    # A click anywhere closes the Tools popup (P-370), so every attempt
+    # re-expands Tools and the item is looked for again; only the last
+    # attempt throws, and the attempt that worked is printed.
+    $scriptMenu = Invoke-MgbaMenuWithRetry -ReExpand {
+            $toolsPattern = $tools.GetCurrentPattern(
+                [System.Windows.Automation.ExpandCollapsePattern]::Pattern
+            )
+            if ($toolsPattern.Current.ExpandCollapseState -eq
+                [System.Windows.Automation.ExpandCollapseState]::Expanded) {
+                $toolsPattern.Collapse()
+            }
+            $toolsPattern.Expand()
+        } -FindItem {
+            Find-MgbaWindow -NamePattern '^Scripting\.\.\.$' -Attempts 5
+        }
 
     # The popup belongs to the mGBA process, so it is matched by that exact
     # process id and the full name. The search it replaces took any process's
     # 'Scripting...' item anywhere on the desktop.
-    $scriptMenu = Find-MgbaWindow -NamePattern '^Scripting\.\.\.$' -Attempts 50
-    if (-not $scriptMenu) { throw 'Scripting menu item not found' }
     $scriptMenu.GetCurrentPattern(
         [System.Windows.Automation.InvokePattern]::Pattern
     ).Invoke()
@@ -527,7 +540,10 @@ if ($resolvedReady) {
     $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +
         'f:write([[ready]]); f:close()'
 }
-$prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($command)
+$promptValue = $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+# The operator can type into the prompt while this arms, so the value is read
+# back through ValuePattern and re-set (at most 5 times) before the Run starts.
+Set-MgbaPromptCommand -ReadValue { $promptValue.Current.Value } -SetValue { param($value) $promptValue.SetValue($value) } -Command $command
 
 $invokeScript = Join-Path $PSScriptRoot 'invoke_mgba_run.ps1'
 $invokeArguments = @(

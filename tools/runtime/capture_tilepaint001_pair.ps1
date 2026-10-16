@@ -97,22 +97,14 @@ function Capture-One([string]$romPath, [string]$label, [string]$sha) {
     $ready = Join-Path $runDir 'lua-ready.txt'
     $romHash = Assert-Rom $romPath $sha "$label ROM"
 
-    $process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $romPath + '"') -PassThru
-    Start-Sleep -Seconds $UiSettleSeconds
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-        -TargetProcessId $process.Id -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        throw "$label : Lua injection failed"
-    }
-    & powershell -NoProfile -ExecutionPolicy Bypass `
-        -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-        -TargetProcessId $process.Id -StatePath $workingState
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-        throw "$label : savestate load failed"
-    }
+    # One mechanism for every launcher: mGBA loads the state with -t and runs the
+    # observer with --script, so no Scripting window is opened, nothing takes the
+    # operator window, and the identity gates live with the flag that needs them.
+    . (Join-Path $PSScriptRoot 'mgba_session.ps1')
+    $process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $romPath `
+        -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+        -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $sha `
+        -StatePath $workingState
 
     Start-Sleep -Seconds $AfterLoadSeconds
     & powershell -NoProfile -ExecutionPolicy Bypass `

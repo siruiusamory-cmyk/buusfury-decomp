@@ -180,7 +180,7 @@ The installed emulator was `mGBA 0.10.5 (26b7884bc25a5933960f3cdcd98bac1ae14d42e
 
 Tracked helper source contains no save state or extracted ROM data:
 
-- `tools/runtime/load_mgba_lua.ps1` verifies the trusted ROM before launch, gives each run a fresh task-local save directory, loads Lua through Qt UI Automation, and verifies hash, size, and mtime afterward.
+- `tools/runtime/load_mgba_lua.ps1` verifies the trusted ROM before launch, checks the mGBA build identity from the binary, gives each run a fresh task-local save directory, delegates Lua injection to `tools/runtime/inject_mgba_lua.ps1`, and verifies hash, size, and mtime afterward.
 - `tools/runtime/rom006_bootstrap.lua` resets the core, pulses GBA A on frames `1210..1214`, `1810..1814`, and `2410..2414`, then saves ignored local state `build/rom006/bootstrap.mss` at frame `2420`.
 - `tools/runtime/rom006_bootstrap_map4.lua` adds pulses at `2630..2634` and `2960..2964`, then saves ignored local state `build/rom006/bootstrap-map4.mss` at frame `2970`.
 - `tools/runtime/rom006_gdb_probe.py` gives mGBA a fresh state-adjacent save directory, allowlists only `?`, `qSupported`, `g`, `Z0`, `z0`, `s`, and `c`, rejects GDB memory/register-write packets, and compares observed `r0` against the profile-scoped first-word census.

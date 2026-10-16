@@ -1,0 +1,4 @@
+{
+  "note": "Synthetic Webfoot container fixture, ROM-free: a kind 0 stored container followed by a kind 1 packed container. Recipe and digest pins: tests/integration/test_container_decode_synthetic.py.",
+  "container_hex": "0000000025000000574542464f4f542d53594e5448455449432d53544f5245442d5041594c4f41442d303132330100000042000000b4e8d520953c352aac535b520e528bd3cdd0a494692528d43b80a866ca53a6593ec43299000000c0"
+}

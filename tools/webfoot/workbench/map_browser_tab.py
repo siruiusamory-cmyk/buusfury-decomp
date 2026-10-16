@@ -7,7 +7,7 @@ and lets the user search, zoom, pan and toggle individual graphical layers.
 
 Normal browsing is READ-ONLY. An explicit *Edit Layout* mode adds the first real
 map-editing surface: pick a dominant layer's 256x256 chunk cell, choose another
-chunk that layer already uses, see the result in the map preview immediately (in
+chunk a dominant layer of the same map already uses, see the result in the map preview immediately (in
 memory - never by writing the source ROM), and save the pending edits to a NEW ROM
 copy. Everything the mode can do is decided by the SDK session it drives; this
 widget owns no ROM format, no pointer arithmetic and no write of its own.
@@ -30,7 +30,6 @@ from PySide6.QtGui import (
     QColor,
     QIcon,
     QImage,
-    QKeySequence,
     QPainter,
     QPen,
     QPixmap,
@@ -86,12 +85,14 @@ from tools.webfoot.map_chunk import (
 )
 from tools.webfoot.map_layout_edit import (
     LayoutCell,
+    LayoutEdit,
     LayoutGrid,
     LayoutSlot,
     LayoutTarget,
     MapLayoutEditError,
     MapLayoutEditor,
 )
+from tools.webfoot.map_layout_session import LayoutSession, PendingWork, staged_changes
 from tools.webfoot.map_layout_write import MapLayoutWriteError
 from tools.webfoot.map_paint import (
     MapPaintError,
@@ -116,10 +117,13 @@ from tools.webfoot.map_resize import (
 from tools.webfoot.project import (
     AuthoredChunk,
     AuthoredLayer,
+    AuthoredMap,
+    AuthoredMaps,
     LayerResize,
     MapStructure,
     ProjectError,
 )
+from tools.webfoot import map_authoring as map_new
 from tools.webfoot.write import WriteError
 
 from . import theme
@@ -221,6 +225,22 @@ _EDIT_ERRORS = (
     mv.MapBrowserError,
     WriteError,
 )
+
+#: CQA-26. A cell whose pointer could NOT be read. `0` is a real pointer - it is
+#: the engine's own null chunk, the value a genuinely empty cell holds - so a
+#: failed or not-yet-loaded read must not be spelled with it, or the author is
+#: shown a confident "empty cell" for a cell nothing managed to read. The GBA
+#: address space starts at 0x08000000, so -1 can never be a real pointer.
+_UNREAD_POINTER = -1
+
+#: What every surface says for `_UNREAD_POINTER`, so the unread state reads the
+#: same wherever the author meets it and is never mistaken for data.
+_UNREAD_CELL = "cell could not be read"
+
+#: The remembered read failure a cell action publishes, in the same shape as
+#: `_structure_read_error`: `_update_status` republishes it, so the refresh at the
+#: end of a gesture cannot bury the fact that nothing was staged.
+_UNREAD_CELL_ACTION = "A cell could not be read, so nothing was staged."
 
 #: The families a *project* read can fail with. `ProjectError` is the project
 #: package's own parent (`ProjectLoadError` / `ProjectValidationError`) and
@@ -1237,6 +1257,158 @@ def _checkerboard() -> QBrush:
     return QBrush(pixmap)
 
 
+class NewMapCommand(QUndoCommand):
+    """One undoable new-map gesture: author a map identity, or un-author it.
+
+    MAP-NEW-AUTHORING-001. The document is project-wide rather than per-map -
+    `maps/authored.toml` holds every authored identity in one file - so the
+    command carries the whole document before and after the gesture and rewrites
+    it through the SDK's one writer. ``previous`` and ``applied`` are those two
+    documents, which is what makes undo remove exactly the definition this
+    gesture added and leave every other one alone.
+    """
+
+    def __init__(self, tab, previous: "AuthoredMaps", applied: "AuthoredMaps",
+                 text: str) -> None:
+        super().__init__()
+        self._tab = tab
+        self._previous = previous
+        self._applied = applied
+        self._first_run = True
+        self.setText(text)
+
+    def id(self) -> int:  # noqa: A003 - QUndoCommand's own name
+        return 0x4D41  # "MA", distinct from every other gesture family
+
+    def mergeWith(self, other: QUndoCommand) -> bool:
+        return False
+
+    def redo(self) -> None:
+        if self._first_run:
+            self._first_run = False
+            return
+        self._tab.write_authored_maps_document(self._applied)
+
+    def undo(self) -> None:
+        self._tab.write_authored_maps_document(self._previous)
+
+    @property
+    def previous(self) -> "AuthoredMaps":
+        return self._previous
+
+    @property
+    def applied(self) -> "AuthoredMaps":
+        return self._applied
+
+
+class NewMapDialog(QDialog):
+    """The new-map form: a durable name, a donor, and the engine's two key bytes.
+
+    Only what the author decides is a field. Everything else about the new map is
+    inherited from the donor, which is why the form offers a donor rather than a
+    root, a layer list or a table index: those are the donor's own values, and a
+    form that asked for them would be asking the author to invent engine
+    semantics nothing has resolved.
+
+    Validation is not duplicated here. The tab hands in ``preview``, which runs
+    the SDK's own plan against the open image and raises its own error type, so
+    the refusal a person reads is the one the build would raise.
+    """
+
+    def __init__(self, parent, *, donors, default_name: str, default_donor: int,
+                 default_key, preview, apply_command) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("New map")
+        self.setModal(True)
+        self._preview = preview
+        self._apply = apply_command
+
+        self._name = QLineEdit(default_name)
+        self._name.setAccessibleName("New map name")
+        self._name.setToolTip(
+            "A stable project identity: a lowercase letter followed by a-z, 0-9, "
+            "'_' or '-'."
+        )
+        self._donor = QComboBox()
+        self._donor.setAccessibleName("Donor map")
+        for index, label in donors:
+            self._donor.addItem(f"map:{index:04d} \u00b7 {label}", index)
+        position = self._donor.findData(default_donor)
+        if position >= 0:
+            self._donor.setCurrentIndex(position)
+        self._donor.setToolTip(
+            "The map whose record fields, graphics, layers and chunks the new map "
+            "inherits. The engine's unresolved root fields are copied from it "
+            "rather than invented."
+        )
+        self._key_high = QSpinBox()
+        self._key_high.setRange(0, 0xFF)
+        self._key_high.setValue(default_key[0])
+        self._key_high.setPrefix("0x")
+        self._key_high.setDisplayIntegerBase(16)
+        self._key_high.setAccessibleName("New map key high byte")
+        self._key_low = QSpinBox()
+        self._key_low.setRange(0, 0xFF)
+        self._key_low.setValue(default_key[1])
+        self._key_low.setPrefix("0x")
+        self._key_low.setDisplayIntegerBase(16)
+        self._key_low.setAccessibleName("New map key low byte")
+        self._key_low.setToolTip(
+            "The engine's own map identity: the two bytes the lookup at 0x080089FC "
+            "compares and a transition record carries. They must be a pair no map "
+            "in this image uses."
+        )
+        self._summary = QLabel("")
+        self._summary.setWordWrap(True)
+        self._summary.setProperty("dbzRole", "hint")
+
+        form = QFormLayout(self)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.addRow("Name", self._name)
+        form.addRow("Donor", self._donor)
+        form.addRow("Key high byte", self._key_high)
+        form.addRow("Key low byte", self._key_low)
+        form.addRow("Result", self._summary)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+        self._name.textChanged.connect(lambda *_: self._refresh())
+        self._donor.currentIndexChanged.connect(lambda *_: self._refresh())
+        self._key_high.valueChanged.connect(lambda *_: self._refresh())
+        self._key_low.valueChanged.connect(lambda *_: self._refresh())
+        self._refresh()
+
+    def request(self):
+        """The form's current request, in the order the tab's guard takes it."""
+        return (self._name.text().strip(), int(self._donor.currentData()),
+                self._key_high.value(), self._key_low.value())
+
+    def _refresh(self) -> None:
+        try:
+            summary = self._preview(*self.request())
+        except map_new.MapAuthoringError as exc:
+            self._summary.setText(f"Not supported \u00b7 {exc}")
+            self._summary.setStyleSheet(
+                f"color: {theme.color('danger').name()}; background: transparent;"
+            )
+            return
+        self._summary.setText(summary)
+        self._summary.setStyleSheet(
+            f"color: {theme.color('accent').name()}; background: transparent;"
+        )
+
+    def _accept(self) -> None:
+        """Run the tab's own SDK guard; stay open when it refuses."""
+        if self._apply(*self.request()):
+            self.accept()
+
+
 class ChunkGridOverlay(QGraphicsItem):
     """The editable chunk-cell grid drawn over one dominant layer of the map.
 
@@ -1750,6 +1922,9 @@ class MapBrowserTab(QWidget):
         # -- layout editing state, all in-memory -----------------------------
         self._edit_mode = False
         self._editor: MapLayoutEditor | None = None
+        #: The layout domain's session: what a write has published, and what is
+        #: pending on it (CQA-27). The policy is the SDK's; this tab renders it.
+        self._layout = LayoutSession()
         self._editor_error: str | None = None
         self._target: LayoutTarget | None = None
         self._slot = None
@@ -1800,8 +1975,8 @@ class MapBrowserTab(QWidget):
         # -- MAP-CHUNK-AUTHORING-001 state, all in-memory ---------------------
         #
         # The map paint path is pointer-based - `MapLayoutEditor.set_cell` takes a
-        # 4-byte chunk address and `LayoutSlot.choices` only holds chunks the
-        # layer already uses - so an authored chunk, which has no address until a
+        # 4-byte chunk address and `LayoutSlot.choices` holds every chunk a
+        # dominant layer of this map uses - so an authored chunk, which has no address until a
         # build allocates one, cannot travel through it. It is staged here instead
         # and persisted by its own SDK authority.
         #: Staged authored placements: ``(map, layer, cell) -> chunk identity``.
@@ -1873,6 +2048,10 @@ class MapBrowserTab(QWidget):
         #: background event, so this is the channel that reports it where a user is
         #: looking - the same rule the layout and chunk readers already follow.
         self._structure_read_error: str = ""
+        #: CQA-26: the last cell read that failed, republished by `_update_status`
+        #: so a gesture's own refresh cannot bury it. Cleared by the next read that
+        #: succeeds, which every refresh performs.
+        self._cell_read_error: str = ""
         #: The merged document (committed + staged), rebuilt without any I/O.
         self._staged_document: MapStructure | None = None
         #: Staged resizes and layers: the value, or None meaning "remove the
@@ -2014,19 +2193,23 @@ class MapBrowserTab(QWidget):
 
         # -- undo/redo ---------------------------------------------------------
         #
-        # The stack's own actions, so the keyboard shortcuts (Ctrl+Z / Ctrl+Y or
-        # Ctrl+Shift+Z) come from Qt rather than from a hand-rolled key map, and
-        # the buttons stay enabled in step with the history.
+        # The stack's own actions, so the buttons stay enabled in step with the
+        # history. The keys are NOT set here: CQA-23 leaves Ctrl+Z and Ctrl+Y to
+        # the shell's Edit -> Undo/Redo, which route to the ACTIVE mode's history
+        # (`MapsEditor.undo_stack`). Binding the standard keys here as well made
+        # one key answer to two live actions in this window.
         self._undo_action = self._undo_stack.createUndoAction(self, "Undo paint")
-        self._undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         self._redo_action = self._undo_stack.createRedoAction(self, "Redo paint")
-        self._redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         self._undo_button = QPushButton("Undo")
-        self._undo_button.setToolTip("Undo the last paint gesture (Ctrl+Z)")
+        self._undo_button.setToolTip(
+            "Undo the last paint gesture (also Edit > Undo, Ctrl+Z)"
+        )
         self._undo_button.clicked.connect(self._undo_action.trigger)
         self._undo_button.setEnabled(False)
         self._redo_button = QPushButton("Redo")
-        self._redo_button.setToolTip("Redo the last undone paint gesture (Ctrl+Y)")
+        self._redo_button.setToolTip(
+            "Redo the last undone paint gesture (also Edit > Redo, Ctrl+Y)"
+        )
         self._redo_button.clicked.connect(self._redo_action.trigger)
         self._redo_button.setEnabled(False)
         self._undo_stack.canUndoChanged.connect(self._undo_button.setEnabled)
@@ -2140,9 +2323,10 @@ class MapBrowserTab(QWidget):
         self._chooser.setFlow(QListWidget.Flow.LeftToRight)
         self._chooser.setWrapping(False)
         self._chooser.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._chooser.setAccessibleName("Chunks this layer already uses")
+        self._chooser.setAccessibleName("Chunks a dominant layer of this map uses")
         self._chooser.setToolTip(
-            "Only chunks this layer already uses can replace a cell's chunk."
+            "Only chunks a dominant layer of this map already uses can replace a "
+            "cell's chunk; a borrowed one names the layer it came from."
         )
         self._chooser.currentItemChanged.connect(self._on_chunk_selected)
         self._chooser_header = PanelHeader("Cell chunks", collapsible=True)
@@ -2221,11 +2405,15 @@ class MapBrowserTab(QWidget):
         # the keyboard shortcut, the map buttons and these buttons can never
         # disagree about the history.
         self._chunk_undo_button = QPushButton("Undo")
-        self._chunk_undo_button.setToolTip("Undo the last edit gesture (Ctrl+Z)")
+        self._chunk_undo_button.setToolTip(
+            "Undo the last edit gesture (also Edit > Undo, Ctrl+Z)"
+        )
         self._chunk_undo_button.clicked.connect(self._undo_action.trigger)
         self._chunk_undo_button.setEnabled(False)
         self._chunk_redo_button = QPushButton("Redo")
-        self._chunk_redo_button.setToolTip("Redo the last undone gesture (Ctrl+Y)")
+        self._chunk_redo_button.setToolTip(
+            "Redo the last undone gesture (also Edit > Redo, Ctrl+Y)"
+        )
         self._chunk_redo_button.clicked.connect(self._redo_action.trigger)
         self._chunk_redo_button.setEnabled(False)
         self._undo_stack.canUndoChanged.connect(self._chunk_undo_button.setEnabled)
@@ -2510,6 +2698,16 @@ class MapBrowserTab(QWidget):
             "it already holds (this is itself undoable)"
         )
         self._revert_structure_button.clicked.connect(self.revert_selected_structure)
+        # MAP-NEW-AUTHORING-001. A project-level command rather than a per-layer
+        # one, so it sits on its own row with the other project-wide action rather
+        # than in the row of layer-structure commands, where it read as "a fifth
+        # layer gesture".
+        self._new_map_button = QPushButton("New map\u2026")
+        self._new_map_button.setToolTip(
+            "Author a new map identity: a row the image does not contain, built "
+            "from a donor map's record, root, layers and chunks"
+        )
+        self._new_map_button.clicked.connect(self.open_new_map_dialog)
 
         structure_form = QFormLayout()
         structure_form.setContentsMargins(theme.SPACE_SM, theme.SPACE_XS, theme.SPACE_SM, 0)
@@ -2535,6 +2733,7 @@ class MapBrowserTab(QWidget):
         structure_revert = QHBoxLayout()
         structure_revert.setContentsMargins(theme.SPACE_SM, 0, theme.SPACE_SM, 0)
         structure_revert.addWidget(self._revert_structure_button, 1)
+        structure_revert.addWidget(self._new_map_button, 1)
         structure_body = QWidget()
         structure_body_layout = QVBoxLayout(structure_body)
         structure_body_layout.setContentsMargins(0, 0, 0, 0)
@@ -2646,7 +2845,8 @@ class MapBrowserTab(QWidget):
         empty_layout.addWidget(empty_state)
         self._empty_explanation = QLabel(
             "This map is read-only. Switch Edit Layout on to reassign one "
-            "256\u00d7256 chunk cell to another chunk the same layer already uses."
+            "256\u00d7256 chunk cell to another chunk a dominant layer of the map "
+            "already uses."
         )
         self._empty_explanation.setProperty("dbzRole", "hint")
         self._empty_explanation.setWordWrap(True)
@@ -3250,7 +3450,7 @@ class MapBrowserTab(QWidget):
         self._structure_slot = None
         self._selected_cell = None
         self._draft = None
-        self._saved = {}
+        self._layout = LayoutSession()
         self._thumbnails = {}
         self._brush_ordinal = None
         self._brush_pointer = None
@@ -3361,6 +3561,11 @@ class MapBrowserTab(QWidget):
     def _sync_editor_for_map(self, index: int) -> None:
         """Re-point the edit surface at the newly selected map."""
         self._forget_map_selection()
+        # CQA-26: the read failure belonged to the cell it was measured on, and
+        # this is the other half of the layer-switch reset - the two early
+        # returns below never reach `_select_layer`, and `_refresh_editor_state`
+        # republishes the field ahead of every other fact.
+        self._cell_read_error = ""
         editor = self._editor_session()
         if editor is None:
             self._editor_box.setToolTip(self._editor_error or "")
@@ -3483,6 +3688,10 @@ class MapBrowserTab(QWidget):
         self._brush_ordinal = None
         self._brush_pointer = None
         self._brush_authored = None
+        # CQA-26: the read failure belongs to the cell it was measured on, so a
+        # layer switch drops it rather than republishing it as the new layer's
+        # status; the next read sets it again if the new layer also fails.
+        self._cell_read_error = ""
         if self._target is None or layer_slot is None:
             self._clear_grid_item()
             self._populate_chooser()
@@ -3542,8 +3751,12 @@ class MapBrowserTab(QWidget):
         if authored is not None:
             name = self._authored_name(authored)
         else:
-            chunk = self._slot.ordinal_of(self._working_pointer(self._slot.slot, cell))
-            name = f"Chunk {chunk}" if chunk else "an empty cell"
+            pointer = self._working_pointer(self._slot.slot, cell)
+            name = (
+                _UNREAD_CELL
+                if pointer == _UNREAD_POINTER
+                else self._chunk_name(self._slot.ordinal_of(pointer))
+            )
         self._hover_cell = (
             f"BG{self._slot.slot} cell {cell + 1}/{self._slot.grid.cell_count} · {name}"
         )
@@ -3736,7 +3949,7 @@ class MapBrowserTab(QWidget):
 
         MAP-CHUNK-AUTHORING-001: a cell may hold an authored placement rather than
         a pointer, and picking it must give the authored chunk back - otherwise the
-        eyedropper would report "no chunk this layer uses" over a cell the author
+        eyedropper would report "no chunk this map uses" over a cell the author
         can plainly see holds one.
         """
         if self._slot is None:
@@ -3749,10 +3962,14 @@ class MapBrowserTab(QWidget):
             )
             return
         pointer = self._working_pointer(self._slot.slot, cell)
+        if pointer == _UNREAD_POINTER:
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return
         ordinal = self._slot.ordinal_of(pointer)
         if ordinal is None:
             self._publish_status(
-                "That cell holds no chunk this layer uses, so it is not a brush value."
+                "That cell holds no chunk a dominant layer of this map uses, so it "
+                "is not a brush value."
             )
             return
         self._brush_authored = None
@@ -3797,6 +4014,11 @@ class MapBrowserTab(QWidget):
             self._publish_status("Choose a chunk in the palette first.")
             return False
         before = self._working_pointer(slot.slot, cell)
+        if before == _UNREAD_POINTER:
+            # CQA-26: staging a paint whose "previous" value was never read would
+            # record a fabricated original and hand it back to the SDK on revert.
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return False
         if cell not in self._stroke_previous:
             self._stroke_previous[cell] = before
         # The gesture's span is where the pointer WENT, not only where it changed
@@ -4111,10 +4333,12 @@ class MapBrowserTab(QWidget):
     # -- layout editing: chunk chooser ---------------------------------------
 
     def _populate_chooser(self) -> None:
-        """Fill the chooser with the layer's own chunks and this map's authored ones.
+        """Fill the chooser with this map's dominant-layer chunks and its authored ones.
 
-        MAP-CHUNK-AUTHORING-001. The canonical rows are unchanged: the chunks the
-        layer already uses, in its own 1-based order. The authored rows follow
+        MAP-CHUNK-AUTHORING-001, widened by MAP-PAINT-ANY-CHUNK-001. The canonical
+        rows lead with this layer's own chunks, in their own 1-based order, and the
+        siblings' follow in the same list, each borrowed one labelled with the
+        layer it came from. The authored rows follow
         them, labelled ``Authored: <name>`` so a person can tell a project-authored
         chunk from a retail one at a glance, and drawn from the *resolved* authored
         plane - the arrangement the build would materialize - through the same
@@ -4133,10 +4357,15 @@ class MapBrowserTab(QWidget):
             return
         authored = self.placeable_authored(self._current.index)
         self._chooser_hint.setText(
-            f"Chunks BG{slot.slot} already uses ({len(slot.choices)})"
+            f"Chunks a dominant layer of this map uses ({len(slot.choices)})"
             + (f", plus {len(authored)} authored here. " if authored else ". ")
             + "Pick the one a click should paint; Create Chunk\u2026 starts from the "
             "selected one."
+            if slot.vocabulary_scope != "layer"
+            else f"Chunks this layer uses ({len(slot.choices)})"
+            + (f", plus {len(authored)} authored here. " if authored else ". ")
+            + "A project-authored grid paints with this layer's own chunks, so the "
+            "brush does not borrow from a sibling layer here."
         )
         char_data = (
             self._editor.character_block(self._current.index)
@@ -4154,7 +4383,10 @@ class MapBrowserTab(QWidget):
                 char_data=char_data,
             )
             for ordinal, image in enumerate(images, start=1):
-                item = QListWidgetItem(QIcon(self._thumbnail(image)), f"Chunk {ordinal}")
+                item = QListWidgetItem(
+                    QIcon(self._thumbnail(image)),
+                    f"Chunk {ordinal}{slot.borrowed_note(image.address)}",
+                )
                 item.setData(_CHUNK_ROLE, image.address)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
                 item.setSizeHint(self._chooser_cell)
@@ -4360,15 +4592,27 @@ class MapBrowserTab(QWidget):
         MAP-RESIZE-AND-LAYERS-001: a project-authored grid's cells are resolved
         through the structural staging table first, because the layout session has no
         cell to ask about for a grid the canonical record does not state.
+
+        CQA-26: an unread cell answers `_UNREAD_POINTER`, never the null pointer. A
+        failed read is not data, and every caller has to say so rather than render
+        it as an empty cell.
         """
+        # CQA-26: cleared on EVERY attempt, before either early return, so a failure
+        # recorded for one layer or one image cannot outlive the read that replaces
+        # it. A read that still fails re-sets it on this same call.
+        self._cell_read_error = ""
         if self._structure_slot is not None:
             return self._structural_pointer(self._structure_slot, cell)
         if self._editor is None or self._current is None:
-            return 0
+            return _UNREAD_POINTER
         try:
-            return self._editor.working_pointer(self._current.index, layer_slot, cell)
-        except _EDIT_ERRORS:
-            return 0
+            pointer = self._editor.working_pointer(self._current.index, layer_slot, cell)
+        except _EDIT_ERRORS as exc:
+            # The reader's own reason is the author's; a bare "could not be read" is
+            # not, and every other edit failure in this tab shows `str(exc)`.
+            self._cell_read_error = f"{_UNREAD_CELL_ACTION} ({exc})"
+            return _UNREAD_POINTER
+        return pointer
 
     def _apply_draft(self) -> None:
         """Apply the brush to the selected cell, as one undoable gesture.
@@ -4402,8 +4646,8 @@ class MapBrowserTab(QWidget):
         spelled ``None`` (remove the authored paint) rather than re-written,
         because re-writing it would make an undo that returns a cell to its
         committed value rewrite an identical document. A cell whose value
-        differs is spelled with its ordinal, resolved through the layer's own
-        vocabulary so the persisted form is the one a build resolves.
+        differs is spelled with its ordinal, resolved through the map's accepted
+        set so the persisted form is the one a build resolves.
         """
         if self._editor is None:
             return {}
@@ -4414,7 +4658,7 @@ class MapBrowserTab(QWidget):
             if ordinal is None:
                 raise MapPaintError(
                     f"BG{edit.layer_slot} of map:{edit.map_index:04d} cannot store "
-                    f"{edit.replacement:#010x}: it is not a chunk this layer uses"
+                    f"{edit.replacement:#010x}: it is not a chunk this map uses"
                 )
             committed = self._editor.committed_pointer(
                 edit.map_index, edit.layer_slot, edit.cell
@@ -4432,11 +4676,7 @@ class MapBrowserTab(QWidget):
         staged value the project already holds: re-writing it would make a no-op
         apply rewrite an identical document.
         """
-        return {
-            key: identity
-            for key, identity in self._authored_cells.items()
-            if self._authored_committed.get(key) != identity
-        }
+        return staged_changes(self._authored_cells, self._authored_committed)
 
     def apply_to_project(self) -> bool:
         """Commit every staged paint into the project, then re-read it back.
@@ -4673,6 +4913,9 @@ class MapBrowserTab(QWidget):
             self._publish_status("That cell has no staged paint to revert.")
             return
         before = self._working_pointer(slot, cell)
+        if before == _UNREAD_POINTER:
+            self._publish_status(self._cell_read_error or _UNREAD_CELL_ACTION)
+            return
         base = self._editor.committed_pointer(index, slot, cell)
         self._draft = None
         try:
@@ -4992,25 +5235,35 @@ class MapBrowserTab(QWidget):
                 )
             else:
                 working = self._working_pointer(slot.slot, cell.cell)
-                ordinal = slot.ordinal_of(working)
-                used = len(slot.cells_using(working))
+                # CQA-26: a cell nothing could read is not reported as empty, is
+                # not counted among a chunk's users, and does not ask the session
+                # for a committed pointer it may not be able to answer for.
+                unread = working == _UNREAD_POINTER
+                ordinal = None if unread else slot.ordinal_of(working)
+                used = 0 if unread else len(slot.cells_using(working))
                 self._chunk_label.setText(
-                    f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
+                    f"{_UNREAD_CELL} · BG{slot.slot}"
+                    if unread
+                    else f"{self._chunk_name(ordinal)} · used by {used} cell(s) of BG{slot.slot}"
                 )
                 source = slot.ordinal_of(cell.pointer)
-                painted = (
-                    self._structural_staged_value(self._structure_slot, cell.cell)
-                    is not None
-                    if self._structure_slot is not None
-                    else (
-                        self._editor.committed_pointer(
-                            result.index, slot.slot, cell.cell
+                # The unread guard only has to run first: it is what keeps the
+                # committed-pointer call below out of a read that already failed.
+                painted = False
+                if not unread:
+                    painted = (
+                        self._structural_staged_value(self._structure_slot, cell.cell)
+                        is not None
+                        if self._structure_slot is not None
+                        else (
+                            self._editor.committed_pointer(
+                                result.index, slot.slot, cell.cell
+                            )
+                            != cell.pointer
+                            if (self._editor and result)
+                            else False
                         )
-                        != cell.pointer
-                        if (self._editor and result)
-                        else False
                     )
-                )
                 # A cell that exists only in a project-authored grid has no
                 # four-byte field in the canonical image to rewrite: saying "field
                 # 0x-0000001" would be a lie about how the paint is stored, so the
@@ -5024,7 +5277,7 @@ class MapBrowserTab(QWidget):
                     f"source ROM holds {self._chunk_name(source)}\n"
                     + ("project paints this cell\n" if painted else "")
                     + (f"{self._structural_marker(self._structure_slot)}\n" if self._structure_slot is not None else "")
-                    + f"pointer {working:#010x}\n"
+                    + (f"{_UNREAD_CELL}\n" if unread else f"pointer {working:#010x}\n")
                     + field
                 )
         else:
@@ -5169,8 +5422,10 @@ class MapBrowserTab(QWidget):
     def unsaved_edit_count(self) -> int:
         """Pending layout changes no Save As has written yet.
 
-        Public because the shell shows the same number in the window title and
-        the status bar, and two authorities on "is there unsaved work" would drift.
+        This is the BROWSER's count, which is what its change label and its
+        Discard-pending button are scoped to. The window title and the status bar
+        report `Session.unsaved_edit_count()`, which also counts the Warps surface,
+        so the two legitimately differ by the staged connection edits.
         """
         return self._unsaved_count()
 
@@ -5212,6 +5467,9 @@ class MapBrowserTab(QWidget):
         """
         if self._structure_read_error:
             self._publish_status(self._structure_read_error)
+            return
+        if self._cell_read_error:
+            self._publish_status(self._cell_read_error)
             return
         result = self._current
         if result is None:
@@ -5262,6 +5520,35 @@ class MapBrowserTab(QWidget):
             parts.append(self._hover_cell)
         self._publish_status("  \u00b7  ".join(parts))
 
+    def _edits(self) -> tuple[LayoutEdit, ...]:
+        """The editor's pending paints, or none while no editor can be built."""
+        return self._editor.edits() if self._editor is not None else ()
+
+    def _pending_work(self) -> PendingWork:
+        """What this session staged and no write has published yet (CQA-27).
+
+        The policy is the SDK session's: it holds the written baseline and decides
+        what counts as a change. This tab contributes only the families it alone
+        knows about - a staged chunk document, an authored placement, a staged
+        resize or new layer - and each is named here rather than sent as one
+        number, so a family that stops being staged cannot be counted by accident.
+        """
+        return self._layout.pending(
+            self._edits(),
+            paints=(len(self._staged_structural_cells()),),
+            changes=(
+                len(self._staged_authored_placements()),
+                len(self._pending_chunk_documents()),
+                # MAP-RESIZE-AND-LAYERS-001: a staged resize or a staged new layer
+                # is work the user has done and would lose, exactly as a staged
+                # cell paint is; a paint of a project-authored grid joins the count
+                # for the same reason, and stays a paint where the wording is
+                # decided.
+                len(self._staged_resize_edits()),
+                len(self._staged_layer_edits()),
+            ),
+        )
+
     def _unsaved_count(self) -> int:
         """Pending changes that no Save As or project apply has written yet.
 
@@ -5271,26 +5558,7 @@ class MapBrowserTab(QWidget):
         user has done and would lose, so a shell that showed only painted cells in
         its title would understate the unsaved state.
         """
-        painted = 0
-        if self._editor is not None:
-            painted = sum(
-                1
-                for edit in self._editor.edits()
-                if self._saved.get((edit.map_index, edit.layer_slot, edit.cell))
-                != edit.replacement
-            )
-        return (
-            painted
-            + len(self._staged_authored_placements())
-            + len(self._pending_chunk_documents())
-            # MAP-RESIZE-AND-LAYERS-001: a staged resize, a staged new layer or a
-            # staged removal is work the user has done and would lose, exactly as a
-            # staged cell paint is; a paint of a project-authored grid joins the
-            # count for the same reason.
-            + len(self._staged_resize_edits())
-            + len(self._staged_layer_edits())
-            + len(self._staged_structural_cells())
-        )
+        return self._pending_work().count
 
     def _staged_noun(self) -> str:
         """What to call the staged work: a paint when that is all there is.
@@ -5301,14 +5569,7 @@ class MapBrowserTab(QWidget):
         saying so. A structural change widens it too, for the same reason: a resize
         is not a paint.
         """
-        if (
-            self._staged_authored_placements()
-            or self._pending_chunk_documents()
-            or self._staged_resize_edits()
-            or self._staged_layer_edits()
-        ):
-            return "change"
-        return "paint"
+        return self._pending_work().noun
 
     def _brush_label(self) -> str:
         """The paint value in words: an authored chunk names itself."""
@@ -5422,6 +5683,9 @@ class MapBrowserTab(QWidget):
         self._structure = None
         self._structure_unavailable = ""
         self._structure_read_error = ""
+        # CQA-26: the cell-read failure names THIS image's map table, so it goes
+        # with the image for the same reason the structural one does.
+        self._cell_read_error = ""
         self._staged_document = None
         self._staged_resizes = {}
         self._staged_layers = {}
@@ -5452,11 +5716,13 @@ class MapBrowserTab(QWidget):
         if self._editor is None:
             return False
         try:
-            return self._working_pointer(layer_slot, cell) != self._editor.committed_pointer(
-                map_index, layer_slot, cell
-            )
+            working = self._working_pointer(layer_slot, cell)
+            committed = self._editor.committed_pointer(map_index, layer_slot, cell)
         except _EDIT_ERRORS:
             return False
+        # CQA-26: an unread cell has nothing to revert, and comparing the sentinel
+        # against the committed pointer would otherwise report a staged paint.
+        return working != _UNREAD_POINTER and working != committed
 
     def _reselect_layer(self) -> None:
         """Re-point the editor at the selected slot after the structure changed.
@@ -5624,13 +5890,30 @@ class MapBrowserTab(QWidget):
             )
             for cell in paint.cells
         )
+        choices = tuple(chunk.pointer for chunk in paint.vocabulary)
+        # MAP-PAINT-ANY-CHUNK-001 (F1): a template names the layer that DRAWS the
+        # chunk and the chunk's position in that layer's own window, so a structural
+        # grid has to say which slot numbers its vocabulary. A resize numbers it
+        # through this slot's own canonical window; a project-authored layer numbers
+        # it through the template record `map_resize` resolved when it was created,
+        # which may be another slot of this map. Over an empty source every choice
+        # had no target and `create_chunk` refused a chunk the user had picked.
+        source = paint.slot
+        authored = self.structure_document().layer_at(index, paint.slot)
+        if authored is not None:
+            source = authored.template_slot
         return LayoutSlot(
             slot=paint.slot,
             classification=paint.classification,
             handler=paint.handler,
             grid=grid,
             cells=cells,
-            choices=tuple(chunk.pointer for chunk in paint.vocabulary),
+            choices=choices,
+            sources=(source,) * len(choices),
+            owner_ordinals=tuple(chunk.owner_ordinal for chunk in paint.vocabulary),
+            # A project-authored grid persists and builds against the layer's own
+            # ordinals, so its chooser offers only the layer's chunks and says so.
+            vocabulary_scope="layer",
             read_only_reason=paint.read_only_reason,
         )
 
@@ -5992,6 +6275,166 @@ class MapBrowserTab(QWidget):
         dialog.exec()
         return dialog
 
+    # -- MAP-NEW-AUTHORING-001: a new map identity --------------------------
+
+    def new_map_donors(self):
+        """Every canonical map as a donor, with the browser's own labels."""
+        return [(entry.index, entry.label)
+                for entry in sorted(self._entries.values(),
+                                    key=lambda item: item.index)]
+
+    def used_map_keys(self):
+        """Every engine key this image already uses, plus the project's own."""
+        import struct
+
+        image = self._session.map_image
+        profile = self._session.profile
+        used = set()
+        if image is None or profile is None:
+            return used
+        layout = profile.map_entries
+        if layout is None:
+            return used
+        offset = layout.address.to_file_offset(len(image))
+        for index in range(layout.count):
+            at = offset + index * layout.record_size
+            used.add(struct.unpack_from("<BB", image, at))
+        window = self._session.project_dir
+        if window is not None:
+            try:
+                for item in map_new.authored_maps(window).ordered():
+                    used.add(item.key)
+            except (ProjectError, OSError):
+                pass
+        return used
+
+    def next_map_key(self):
+        """The first unused engine key above the canonical corpus's own range."""
+        used = self.used_map_keys()
+        for high in range(0x17, 0x100):
+            for low in range(1, 0x100):
+                if (high, low) not in used:
+                    return (high, low)
+        return (0x99, 0x01)
+
+    def _draft_new_map(self, name: str, donor: int, key_high: int,
+                       key_low: int) -> "AuthoredMaps":
+        """The document this form's fields would write, or the model's refusal."""
+        previous = map_new.authored_maps(self._session.project_dir)
+        item = AuthoredMap(name=name, donor=donor, key_high=key_high,
+                           key_low=key_low)
+        return AuthoredMaps(maps={**previous.maps, item.name: item})
+
+    def preview_new_map(self, name: str, donor: int, key_high: int,
+                        key_low: int) -> str:
+        """Run the SDK's own plan against the open image and state the verdict."""
+        document = self._draft_new_map(name, donor, key_high, key_low)
+        image = self._session.map_image
+        identification = self._session.identification
+        profile = self._session.profile
+        if image is None or identification is None or profile is None:
+            raise map_new.MapAuthoringError(
+                "opening a ROM is what makes a map authorable")
+        map_new.validate_authored_maps(image, identification, profile, document)
+        item = document.maps[name]
+        position = sorted(document.maps).index(name)
+        index = profile.map_entries.count + position
+        return (f"Creates map:{index:04d} key 0x{key_high:02X}{key_low:02X} from "
+                f"donor map:{donor:04d}: the map table is re-emitted with this row "
+                "appended, and the two engine sites that name the table and its "
+                "bound are repointed.")
+
+    def apply_new_map(self, name: str, donor: int, key_high: int,
+                      key_low: int) -> bool:
+        """Validate, write and stage ONE new map as ONE undoable command."""
+        if self._session.project_dir is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open or extract a project first: a new map identity is stored in "
+                "the project's own maps/authored.toml.")
+            return False
+        try:
+            document = self._draft_new_map(name, donor, key_high, key_low)
+            previous = map_new.authored_maps(self._session.project_dir)
+            self.preview_new_map(name, donor, key_high, key_low)
+        except (map_new.MapAuthoringError, ProjectError, OSError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return False
+        try:
+            map_new.apply_authored_maps(self._session.project_dir, document,
+                                        canonical_rows=self._map_row_count())
+        except (ProjectError, OSError, map_new.MapAuthoringError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return False
+        self._undo_stack.push(NewMapCommand(
+            self, previous, document,
+            f"Create map-new:{name} from map:{donor:04d}"))
+        self._session.project_mutated()
+        self._publish_status(
+            f"Staged map-new:{name} \u00b7 Apply to project is already written; "
+            "Build compiles it into the image.")
+        return True
+
+    def write_authored_maps_document(self, document: "AuthoredMaps") -> None:
+        """The one write path the new-map command uses, for redo and undo."""
+        if self._session.project_dir is None:
+            return
+        try:
+            map_new.apply_authored_maps(self._session.project_dir, document,
+                                        canonical_rows=self._map_row_count())
+        except (ProjectError, OSError, map_new.MapAuthoringError) as exc:
+            QMessageBox.warning(self, "New map", str(exc))
+            return
+        self._session.project_mutated()
+        self._publish_status("New-map document restored.")
+
+    def _map_row_count(self) -> "int | None":
+        """The open image's canonical map row count, or None without an image."""
+        profile = self._session.profile
+        layout = getattr(profile, "map_entries", None) if profile else None
+        return layout.count if layout is not None else None
+
+    def build_new_map_dialog(self) -> "NewMapDialog | None":
+        """The new-map form, built but not shown. None when it cannot be offered."""
+        image = self._session.map_image
+        identification = self._session.identification
+        profile = self._session.profile
+        if image is None or identification is None or profile is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open a supported ROM first: a new map identity is planned against "
+                "the image it will be built from.")
+            return None
+        if self._session.project_dir is None:
+            QMessageBox.warning(
+                self, "New map",
+                "Open or extract a project first: a new map identity is stored in "
+                "the project's own maps/authored.toml.")
+            return None
+        donors = self.new_map_donors()
+        if not donors:
+            QMessageBox.warning(self, "New map", "this image lists no map to copy")
+            return None
+        default_donor = (self._current.index if self._current is not None
+                         else donors[0][0])
+        return NewMapDialog(
+            self,
+            donors=donors,
+            default_name=f"map{profile.map_entries.count:04d}",
+            default_donor=default_donor,
+            default_key=self.next_map_key(),
+            preview=self.preview_new_map,
+            apply_command=self.apply_new_map,
+        )
+
+    def open_new_map_dialog(self) -> "NewMapDialog | None":
+        """The new-map form, shown modally."""
+        dialog = self.build_new_map_dialog()
+        if dialog is None:
+            return None
+        dialog.exec()
+        return dialog
+
     def _reapply_layer(self, command: "NewLayerCommand") -> None:
         self._stage_layer_value(command.identity, command.applied)
         self._rebuild_structure_view()
@@ -6133,28 +6576,19 @@ class MapBrowserTab(QWidget):
     def _staged_resize_edits(self) -> dict[tuple[int, int], "LayerResize | None"]:
         """Staged resizes that would actually change the project."""
         structure = self._structure if self._structure is not None else MapStructure()
-        return {
-            key: edit
-            for key, edit in self._staged_resizes.items()
-            if structure.resize_for(*key) != edit
-        }
+        return staged_changes(
+            self._staged_resizes,
+            {key: structure.resize_for(*key) for key in self._staged_resizes},
+        )
 
     def _staged_layer_edits(self) -> dict[str, "AuthoredLayer | None"]:
         """Staged authored layers that would actually change the project."""
         structure = self._structure if self._structure is not None else MapStructure()
-        return {
-            identity: layer
-            for identity, layer in self._staged_layers.items()
-            if structure.layers.get(identity) != layer
-        }
+        return staged_changes(self._staged_layers, structure.layers)
 
     def _staged_structural_cells(self) -> dict[tuple[int, int, int], int | None]:
         """Staged paints on project-authored grids, as the layout batch spells them."""
-        return {
-            key: value
-            for key, value in self._structural_cells.items()
-            if self._structural_committed.get(key) != value
-        }
+        return staged_changes(self._structural_cells, self._structural_committed)
 
     def _write_staged_structure(self, *, removals: bool) -> bool:
         """Write the staged structural edits through the SDK, in the safe order.
@@ -6878,7 +7312,7 @@ class MapBrowserTab(QWidget):
             return
         if self._brush_authored is not None:
             self._publish_status(
-                "Pick one of this layer's own chunks in the palette first: a new "
+                "Pick one of this map's chunks in the palette first: a new "
                 "chunk is created from an existing one."
             )
             return
@@ -6893,6 +7327,21 @@ class MapBrowserTab(QWidget):
                 "chunk is created from an existing one."
             )
             return
+        # A chunk is authored by naming the LAYER that draws it, so the template needs
+        # that layer and the chunk's position inside that layer's own window. The
+        # brush ordinal counts across the map now that a cell may borrow from a
+        # sibling, so handing it to a template would resolve it against the wrong set
+        # and refuse a legal choice. `template_target` is the translation: it names the
+        # owning layer and that layer's own ordinal.
+        pointer = self._lookup_pointer(ordinal)
+        target = None if pointer is None else self._slot.template_target(pointer)
+        if target is None:
+            self._publish_status(
+                "Pick one of this map's chunks in the palette first: a new chunk is "
+                "created from an existing one."
+            )
+            return
+        template_slot, template_ordinal = target
         author = self.chunk_author()
         if author is None:
             QMessageBox.warning(
@@ -6922,7 +7371,7 @@ class MapBrowserTab(QWidget):
             )
             return
         try:
-            template = ChunkTemplate(self._current.index, self._slot.slot, ordinal)
+            template = ChunkTemplate(self._current.index, template_slot, template_ordinal)
             # The vocabulary is read before the editor opens, so a layer whose
             # permitted entries cannot be read refuses here - with the reason -
             # rather than opening an editor whose palette is empty.
@@ -6932,9 +7381,10 @@ class MapBrowserTab(QWidget):
             QMessageBox.warning(self, "Create chunk", str(exc))
             return
         self.open_chunk_editor(identity, template, plane, plane)
+        borrowed = self._slot.borrowed_note(pointer)
         self._publish_status(
-            f"Created {self._authored_name(identity)} from Chunk {ordinal}. Paint its "
-            "screen entries, then Apply chunk."
+            f"Created {self._authored_name(identity)} from Chunk {ordinal}{borrowed}. "
+            "Paint its screen entries, then Apply chunk."
         )
 
     def open_chunk_editor(
@@ -7846,10 +8296,7 @@ class MapBrowserTab(QWidget):
             QMessageBox.critical(self, "Save As", str(exc))
             self._status.setText(f"Save As failed: {exc}")
             return
-        self._saved = {
-            (edit.map_index, edit.layer_slot, edit.cell): edit.replacement
-            for edit in self._editor.edits()
-        }
+        self._layout = self._layout.note_saved(self._edits())
         self._refresh_editor_state()
         detail = (
             "no layout changes were pending, so the copy is byte-identical to the "
@@ -7858,6 +8305,16 @@ class MapBrowserTab(QWidget):
             else f"{len(saved.changes)} layout change(s), "
             f"{len(saved.changed_offsets)} byte(s) changed"
         )
+        # A ROM copy carries layout edits only. Authored chunks, placements and
+        # project structure are materialized by the build, so the confirmation has
+        # to name what stayed behind; without it, "no layout changes were pending"
+        # reads as "nothing was staged" next to a title that says otherwise.
+        staged_in_project = self._unsaved_count()
+        if staged_in_project:
+            detail += (
+                f"; {staged_in_project} staged change(s) stay in the project, because a "
+                "ROM copy carries layout edits only - Apply or Build writes them"
+            )
         self._status.setText(f"Saved {saved.output_path} · {detail}")
         QMessageBox.information(
             self,

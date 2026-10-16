@@ -151,6 +151,68 @@ class AllocationKind(str, Enum):
     #: the set of CONFIRMED piece references the graphics reference document
     #: carries, and relocation rewrites exactly those.
     GRAPHICS_CONTAINER = "graphics_container"
+    #: SPRITE-NEW-RUNTIME-001. The actor-sprite identity domain: the relocated
+    #: character pointer registry together with the new character structure,
+    #: animation record and frame record that one additional sprite identity is
+    #: made of. They are ONE kind because they are one indivisible authored
+    #: object - a structure with no animation resolves to nothing, and an
+    #: animation with no frame is a null dereference - and because a caller that
+    #: allocated them under separate kinds could place them non-contiguously.
+    #:
+    #: The registry must be re-emitted WHOLE to grow: entry ``i`` is sprite id
+    #: ``i + 10`` and the engine indexes ``registry + 4 * (id - 10)`` with no
+    #: bound check, so a 298th identity means a 298-entry table in fresh space,
+    #: with the two literal-pool words that name the old table repointed.
+    #:
+    #: The extent the canonical image offers is a single 256-byte VERIFIED_FREE
+    #: region and the registry alone is 1,192 bytes, so this kind is
+    #: `EXPANDED_ONLY` for the same reason `LAYER_RECORD` is: no canonical
+    #: placement exists and a canonical-only request would fail closed every
+    #: time.
+    SPRITE_IDENTITY_RECORD = "sprite_identity_record"
+    #: SPRITE-NEW-ATTACHMENT-CORE-001. One new map object record: the actor entity
+    #: appended to a map's engine-counted object array, for the one object family
+    #: that ticket's runtime evidence covers. It is new content with no canonical
+    #: extent to fit, and the array slot that names it is written in the same
+    #: transaction, so it is `EXPANDED_ONLY` by the same argument
+    #: `SPRITE_IDENTITY_RECORD` records.
+    MAP_OBJECT_RECORD = "map_object_record"
+    #: APPEARANCE-AUTHORING-GATE-001. The character appearance-definition table,
+    #: re-emitted WHOLE with the authored records appended. The canonical table
+    #: ends exactly where a literal-named descriptor block begins, so a 233rd
+    #: record has nowhere canonical to go and the whole table moves: entry `i` is
+    #: at `table + 16 * i` and the engine indexes with no bound check, so the
+    #: existing 232 records and the new ones are one indivisible placement.
+    #:
+    #: `EXPANDED_ONLY` for the same reason `SPRITE_IDENTITY_RECORD` is: the
+    #: canonical image declares one 256-byte verified-free region and the table
+    #: alone is 3,712 bytes, so a canonical-only request would fail closed every
+    #: time.
+    APPEARANCE_RECORD_TABLE = "appearance_record_table"
+    #: MAP-NEW-AUTHORING-001. The MapEntry table, re-emitted WHOLE with the
+    #: authored rows appended. The table carries no count word and no terminator:
+    #: the engine's key lookup `0x080089FC` walks `base + 0x38 * i` below a count
+    #: it reads from `0x080125E0`, and the byte after the last canonical record is
+    #: a live tileset container, so a 453rd row has nowhere canonical to go. The
+    #: canonical records are copied verbatim and the one literal-pool word that
+    #: names the table is repointed, so the 452 existing rows move as one
+    #: indivisible placement.
+    #:
+    #: `EXPANDED_ONLY` on the same argument as `APPEARANCE_RECORD_TABLE`: the
+    #: table is 25 KB and the canonical image declares one 256-byte verified-free
+    #: region.
+    MAP_ENTRY_TABLE = "map_entry_table"
+    #: MAP-NEW-AUTHORING-001. One authored map's root: the selector word that
+    #: `MapEntry+0x2C` names, followed by the engine's own load template for the
+    #: map. They are ONE kind because they are one indivisible object - the word is
+    #: four bytes and carries the root's address, and a word without its root is a
+    #: null dereference on the map-load path.
+    #:
+    #: `EXPANDED_ONLY`: no canonical extent can host it (the record is new
+    #: content with no prior home and the one free region is shared), and the
+    #: addressability this capability must prove is the one where a `+0x2C` word
+    #: reaches generated storage.
+    MAP_ROOT_RECORD = "map_root_record"
 
 
 class Addressability(str, Enum):
@@ -260,6 +322,28 @@ DEFAULT_ADDRESSABILITY = {
     AllocationKind.TRANSITION_RECORD: Addressability.EXPANDED_ONLY,
     AllocationKind.TRANSITION_POINTER_ARRAY: Addressability.EXPANDED_ONLY,
     AllocationKind.GRAPHICS_CONTAINER: Addressability.EXPANDED_PERMITTED,
+    AllocationKind.SPRITE_IDENTITY_RECORD: Addressability.EXPANDED_ONLY,
+    #: SPRITE-NEW-ATTACHMENT-CORE-001. A new map object record is placed by
+    #: policy rather than by first fit, on the same argument as the identity
+    #: record above: it is new content whose canonical home does not exist, and
+    #: the one declared canonical free region is a shared resource.
+    AllocationKind.MAP_OBJECT_RECORD: Addressability.EXPANDED_ONLY,
+    #: APPEARANCE-AUTHORING-GATE-001. The appearance table is placed above
+    #: canonical EOF by policy, on the argument its own `AllocationKind` member
+    #: states: no canonical extent can host it and the addressability this
+    #: capability has to prove is exactly the expanded one.
+    AllocationKind.APPEARANCE_RECORD_TABLE: Addressability.EXPANDED_ONLY,
+    #: MAP-NEW-AUTHORING-001. The MapEntry table is placed above canonical EOF by
+    #: policy for the same reason the appearance table is: the byte after its last
+    #: record is a live tileset container, so a 453rd row has nowhere canonical to
+    #: go, and the moved table is 25 KB against a single declared 256-byte
+    #: verified-free region.
+    AllocationKind.MAP_ENTRY_TABLE: Addressability.EXPANDED_ONLY,
+    #: MAP-NEW-AUTHORING-001. The root a new map's `MapEntry+0x2C` names is placed
+    #: above canonical EOF by policy. The field is a full 32-bit word, so the
+    #: encoding claim holds; whether the engine follows it there is the runtime
+    #: proof this capability owns, and this member does not assert it.
+    AllocationKind.MAP_ROOT_RECORD: Addressability.EXPANDED_ONLY,
 }
 
 

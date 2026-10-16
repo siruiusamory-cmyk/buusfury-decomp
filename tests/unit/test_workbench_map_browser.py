@@ -215,6 +215,16 @@ def _edit_slot(
         grid=grid,
         cells=cells,
         choices=choices,
+        # MAP-PAINT-ANY-CHUNK-001. `create_chunk` translates the picked chunk through
+        # `template_target`, so a slot that offers choices must carry both numberings
+        # or the action refuses: over empty tuples every Create Chunk on this fixture
+        # took the "pick a chunk first" branch. This synthetic layer's vocabulary is
+        # its own, in order, with the unheld brush value appended, so the source is
+        # this slot and the ordinals are its own 1-based positions. A real slot's
+        # choices all come from a window, so a value no window holds is this
+        # fixture's fiction and nothing else.
+        sources=(slot,) * len(choices),
+        owner_ordinals=tuple(range(1, len(choices) + 1)),
         read_only_reason=reason,
     )
 
@@ -278,6 +288,9 @@ class _FakeEditor:
         self.reject_revert: Exception | None = None
         #: Same, for the un-stage path (the revert button's own operation).
         self.reject_clear: Exception | None = None
+        #: CQA-26: when set, `working_pointer` raises it. A cell read that fails
+        #: must be shown as unread, never as the real null pointer.
+        self.reject_read: Exception | None = None
 
     # -- reads the tab performs ------------------------------------------
     def target(self, map_index: int) -> LayoutTarget:
@@ -321,6 +334,8 @@ class _FakeEditor:
         }
 
     def working_pointer(self, map_index: int, layer_slot: int, cell: int) -> int:
+        if self.reject_read is not None:
+            raise self.reject_read
         edit = self.edit(map_index, layer_slot, cell)
         if edit is not None:
             return edit.replacement
@@ -591,6 +606,54 @@ def test_a_no_op_paint_creates_no_edit_and_no_history(edit_tab):
     assert edit_tab._undo_stack.count() == 0
     assert not edit_tab._reset_button.isEnabled()
     assert not edit_tab._commit_button.isEnabled()
+
+
+# --- CQA-26: an SDK read failure must never render as a real empty cell ------
+#
+# `_working_pointer` returned 0 on both a failed read and a not-yet-loaded state.
+# 0 is the engine's real null pointer - the value a genuinely empty cell holds -
+# so a cell nothing managed to read was rendered as "an empty cell", and a paint
+# over it recorded 0 as the cell's previous value.
+
+
+def test_a_paint_over_an_unread_cell_stages_nothing(edit_tab, monkeypatch):
+    """A cell whose value could not be read must not become a paint's original."""
+    warnings = []
+    monkeypatch.setattr(
+        mbt.QMessageBox, "warning", staticmethod(lambda *a, **k: warnings.append(a))
+    )
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    edit_tab.editor.reject_read = mbt.MapLayoutWriteError(
+        "the map table could not be read"
+    )
+
+    _paint_cells(edit_tab, 3)
+
+    assert edit_tab.editor.edits_for(MAP) == (), (
+        f"no edit may be staged; staged={edit_tab.editor.edits_for(MAP)!r} "
+        f"warnings={warnings!r}"
+    )
+    assert edit_tab._undo_stack.count() == 0, "no command may be recorded"
+    assert warnings == [], "a read failure is not an SDK error to raise a dialog for"
+    assert "could not be read" in edit_tab._status.text()
+
+
+def test_a_failed_cell_read_is_not_an_empty_cell(edit_tab):
+    """The inspector must say UNREAD, not EMPTY, and must not print a pointer."""
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    _paint_cells(edit_tab, 3)  # select cell 3 through the ordinary gesture
+    assert "Chunk 2" in edit_tab._chunk_label.text()
+
+    edit_tab.editor.reject_read = mbt.MapLayoutWriteError(
+        "the map table could not be read"
+    )
+    edit_tab._refresh_editor_state()
+
+    assert "an empty cell" not in edit_tab._chunk_label.text()
+    assert "could not be read" in edit_tab._chunk_label.text()
+    assert "-0x0000001" not in edit_tab._detail.text(), "no unread pointer may be shown"
 
 
 def test_a_paint_uses_the_whole_layer_vocabulary(edit_tab):
@@ -985,11 +1048,11 @@ def test_a_rejected_replacement_is_a_message_not_a_crash(edit_tab, monkeypatch):
     edit_tab._edit_toggle.setChecked(True)
     _choose(edit_tab, 2)
     edit_tab.editor.reject = MapLayoutEditError(
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     )
     _paint_cells(edit_tab, 0)
     assert errors == [
-        "a replacement chunk must already be used by the same dominant layer"
+        "a replacement chunk must already be used by a dominant layer of the same map"
     ]
     assert edit_tab.editor.edits_for(MAP) == ()
     assert edit_tab._undo_stack.count() == 0
@@ -1325,3 +1388,71 @@ def test_switching_maps_drops_the_selection_and_brush(edit_tab):
     edit_tab._sync_editor_for_map(MAP)
     assert edit_tab._draft is None
     assert edit_tab._selected_cell == 0
+
+
+def test_a_layer_switch_drops_a_stale_cell_read_error(edit_tab):
+    """N-20: a read failure belongs to the cell it was measured on.
+
+    The status line publishes ``_cell_read_error`` ahead of every other fact, so
+    a failure left standing after the layer changed is the only text on screen
+    and it describes a cell the user is no longer looking at.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    _choose(edit_tab, 1)
+    _paint_cells(edit_tab, 3)  # select cell 3 through the ordinary gesture
+    edit_tab.editor.reject_read = mbt.MapLayoutWriteError(
+        "the map table could not be read"
+    )
+    edit_tab._refresh_editor_state()
+    assert "could not be read" in edit_tab._status.text()
+
+    # The read is healthy again and the user moves to another layer: the failure
+    # measured on the old layer must not be republished as the new layer's state.
+    edit_tab.editor.reject_read = None
+    edit_tab._select_layer(1)
+    edit_tab._refresh_editor_state()
+
+    assert edit_tab._cell_read_error == ""
+    assert "could not be read" not in edit_tab._status.text()
+
+
+def test_a_map_switch_drops_a_stale_cell_read_error(edit_tab, monkeypatch):
+    """N-20, the other half: a map switch never reaches `_select_layer`.
+
+    `_sync_editor_for_map` returns early when the target cannot be read, after
+    republishing the status line, so the reset has to be its first act.
+    """
+    edit_tab._edit_toggle.setChecked(True)
+    edit_tab._cell_read_error = "A cell could not be read, so nothing was staged."
+
+    def unreadable(index):
+        raise MapLayoutEditError("the map table could not be read")
+
+    monkeypatch.setattr(edit_tab.editor, "target", unreadable)
+    edit_tab._sync_editor_for_map(MAP)
+
+    assert edit_tab._cell_read_error == ""
+
+
+def test_save_as_says_what_a_rom_copy_cannot_carry(edit_tab, monkeypatch, tmp_path):
+    """N-05: a ROM copy carries layout edits only.
+
+    With only project-side work staged, the confirmation used to read "no layout
+    changes were pending, so the copy is byte-identical" while the window title
+    counted one staged change, which reads as "nothing was staged".
+    """
+    target = tmp_path / "copy.gba"
+    monkeypatch.setattr(
+        mbt.QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(target), ""))
+    )
+    monkeypatch.setattr(mbt.QMessageBox, "information", lambda *args: None)
+    edit_tab._edit_toggle.setChecked(True)
+    # A staged paint on a project-authored grid: real tab state, and work a ROM
+    # copy cannot carry because the build materializes it from the project.
+    edit_tab._structural_cells[(0, 0, 3)] = 7
+
+    edit_tab._on_save_as()
+
+    status = edit_tab._status.text()
+    assert "byte-identical" in status
+    assert "stay in the project" in status

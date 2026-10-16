@@ -15,10 +15,20 @@ path is compared. `is_safe_output_path` is a module-level, Qt-free function so
 that guard is unit-testable without a GUI, and it delegates the comparison
 itself to the SDK's one ownership of path identity
 (`write.paths_are_the_same_file`) rather than deriving a second, weaker one.
+
+That path comparison answers whether the destination IS the source file, not what
+the destination HOLDS, so a clean copy of the canonical ROM under the generated
+name passes it. The WriteError branch - a destination that already exists - is
+therefore resolved in one fixed order: establish the occupied artefact set,
+re-check every member against the source ROM, refuse a destination that is a copy
+of the canonical ROM by content hash, ask the user, unlink, rebuild. Nothing is
+deleted before every refusal has run, and a canonical copy is never offered for
+replacement.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import Signal
@@ -27,6 +37,8 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMessageBox,
                                QWidget)
 
 from .. import build as build_sdk
+from ..authored_image import (AuthoredImageError, refuse_canonical_destination,
+                              staging_path)
 from ..project import ProjectError
 from ..write import WriteError, paths_are_the_same_file
 from . import theme
@@ -59,6 +71,44 @@ def is_safe_output_path(output_path, rom_path) -> bool:
     return not paths_are_the_same_file(output_path, rom_path)
 
 
+def _build_artefacts_for(output_path: Path) -> tuple[Path, ...]:
+    """Every file one build publishes for `output_path`, in publication order.
+
+    A build publishes more than its image: `build_project` defaults to
+    `MANIFEST_BESIDE_OUTPUT`, so the provenance document lands beside the image it
+    describes (CQA-12). The manifest name comes from the SDK's own authority rather
+    than being rebuilt here, so the panel cannot disagree with the build about what
+    a build writes.
+
+    WORKBENCH-OVERWRITE-ATOMICITY-001. Replacing only the image left this companion
+    behind, and `emit_image` refuses a destination that already exists, so the
+    rebuild failed with the user's previous output already deleted.
+    """
+    manifest_path = build_sdk.manifest_path_for_build(
+        build_sdk.MANIFEST_BESIDE_OUTPUT, output_path)
+    if manifest_path is None:  # pragma: no cover - MANIFEST_BESIDE_OUTPUT is set
+        return (Path(output_path),)
+    return (Path(output_path), Path(manifest_path))
+
+
+def _restore_previous(backups) -> tuple[tuple[Path, Path], ...]:
+    """Put the artefacts a failed rebuild moved aside back at their own paths.
+
+    CQA-11: the overwrite branch moves the known-good set aside instead of
+    deleting it, so a failed rebuild leaves its bytes on disk. This is the other
+    half of that trade. The pairs that could not be restored are returned, so the
+    caller can name the files still sitting under a staging name rather than
+    claiming a clean rollback.
+    """
+    stranded = []
+    for path, backup in backups:
+        try:
+            os.replace(backup, path)
+        except OSError:
+            stranded.append((path, backup))
+    return tuple(stranded)
+
+
 class BuildPanelTab(QWidget):
     """Extract / open, validate, and build a project against the open ROM."""
 
@@ -69,6 +119,11 @@ class BuildPanelTab(QWidget):
         super().__init__()
         self._session = session
         self._catalog = catalog
+        #: CQA-27: the shell installs its unsaved-work guard here, so the panel's own
+        #: buttons and the shell's File menu cannot disagree about whether a project
+        #: change may proceed. None means the panel has no shell around it, and the
+        #: step runs unguarded, which is what a bare panel has always done.
+        self.projectChangeGate = None
         self._open_button = QPushButton("Open Project")
         self._open_button.clicked.connect(self._on_open_project)
 
@@ -184,12 +239,25 @@ class BuildPanelTab(QWidget):
         self.open_project_dialog()
 
     def open_project_dialog(self) -> None:
-        """Choose an extracted project directory.
+        """Choose an extracted project directory, behind the unsaved-work guard.
 
         One implementation, shared by the tab's button and the shell toolbar, so
         the global action and the panel cannot disagree about what opening a
-        project does.
+        project does - including whether it may discard staged work. The guard is
+        asked HERE rather than by each caller, which is what left the panel's own
+        button unguarded when only the menu action carried it.
         """
+        self._project_change("Opening another project", self._choose_project)
+
+    def _project_change(self, action: str, run) -> None:
+        """Run a project-setting step behind the shell's guard, when there is one."""
+        gate = self.projectChangeGate
+        if gate is None:
+            run()
+            return
+        gate(action, run)
+
+    def _choose_project(self) -> None:
         chosen = QFileDialog.getExistingDirectory(self, "Open Project")
         if not chosen:
             return
@@ -214,8 +282,15 @@ class BuildPanelTab(QWidget):
         self.extract_project_dialog()
 
     def extract_project_dialog(self) -> None:
-        """Write a project from the open ROM. One implementation, shared by the
-        panel's own button and the shell's File menu."""
+        """Write a project from the open ROM, behind the unsaved-work guard.
+
+        One implementation, shared by the panel's own button and the shell's File
+        menu. The guard is asked here for the same reason `open_project_dialog`
+        asks it: every entry point passes through one gate.
+        """
+        self._project_change("Extracting a project", self._choose_extract_destination)
+
+    def _choose_extract_destination(self) -> None:
         if not self._rom_open():
             QMessageBox.information(self, "Extract", "Open a ROM first.")
             return
@@ -308,40 +383,123 @@ class BuildPanelTab(QWidget):
 
         try:
             self._run_build(output_path)
-        except (build_sdk.BuildError, ProjectError) as exc:
+        except (build_sdk.BuildError, ProjectError, OSError) as exc:
+            # OSError is the writer's own staging failure: a full disk, a read-only
+            # output directory, a file held open elsewhere. It is not a BuildError,
+            # so without this the click produced no dialog at all - the
+            # WORKBENCH-001 dead-click class, and the reason the retry below names
+            # it too.
             QMessageBox.critical(self, "Build", str(exc))
             return
         except WriteError as exc:
             # WriteError is NOT a BuildError/ProjectError subclass, so it would
             # otherwise escape to the terminal (WORKBENCH-001 live defect). The
-            # only pre-existing-file case is the "output already exists" refusal;
-            # gate the overwrite offer on the file ACTUALLY existing, never on
-            # the message text, and NEVER auto-delete on other WriteErrors.
-            if not Path(output_path).exists():
+            # only pre-existing-file case is the writer's refusal to replace an
+            # existing destination; gate the overwrite offer on a file ACTUALLY
+            # existing, never on the message text, and NEVER auto-delete on other
+            # WriteErrors.
+            # WORKBENCH-OVERWRITE-ATOMICITY-001. One build publishes the image AND
+            # its beside-output manifest, and the writer refuses any destination
+            # that already exists. Replacing only the image left the stale manifest
+            # to fail the retry, after the previous output had been deleted, so the
+            # set this build is about to replace is what gets removed - and only
+            # that set.
+            occupied = tuple(
+                path for path in _build_artefacts_for(output_path) if path.exists()
+            )
+            # CQA-11: gate on the ARTEFACT SET, not on the image alone. A stale
+            # manifest with no image is still a destination the writer refuses, and
+            # testing only the image turned that into a refusal with no way forward
+            # inside the GUI.
+            if not occupied:
                 QMessageBox.critical(self, "Build", str(exc))
                 return
-            # SAFETY: re-assert the output is not the source ROM before deleting.
-            # The pre-build guard already proved this, but the delete is the one
-            # irreversible act here, so it re-checks against exactly output_path.
-            if not is_safe_output_path(output_path, self._session.rom_path):
+            # SAFETY: every path is re-checked against the source ROM before the
+            # one irreversible act here. The pre-build guard proved the image; the
+            # manifest is derived from it and is judged by the same policy.
+            # SAFETY: every path this branch will WRITE is re-checked against the
+            # source ROM, and that includes the move-aside destinations the rename
+            # below uses: a file sitting at a staging name would be overwritten by
+            # it, so the staging names are judged by the same policy as the
+            # artefacts. `authored_image.save_authored_image` refuses the same set
+            # for its own staging names.
+            backups = tuple(staging_path(path) for path in occupied)
+            unsafe = [
+                path for path in (*occupied, *backups)
+                if not is_safe_output_path(path, self._session.rom_path)
+            ]
+            if unsafe:
                 QMessageBox.critical(
                     self, "Build refused",
-                    f"Refusing to delete - the output path is the source ROM:\n{output_path}"
+                    "Refusing to delete - these paths are the source ROM:\n"
+                    + "\n".join(str(path) for path in unsafe)
                 )
+                return
+            # SAFETY: a destination that already holds a clean copy of the
+            # canonical ROM is a ROM, not an output. The path-safety check above
+            # compares identities, so a byte-identical copy under the generated
+            # name passes it; this is the content check the SDK's shared
+            # output-safety boundary already applies to an authored-image Save As.
+            # It runs after every path check and before the confirmation and the
+            # first unlink, so a refusal here deletes nothing and, because the
+            # confirmation is no longer offered, never asks the user to approve an
+            # operation that cannot be allowed.
+            try:
+                for candidate in (*occupied, *backups):
+                    refuse_canonical_destination(
+                        candidate, self._session.profile.identity.sha256)
+            except AuthoredImageError as exc:
+                QMessageBox.critical(self, "Build refused", str(exc))
                 return
             answer = QMessageBox.question(
                 self, "Overwrite existing output?",
-                f"Output already exists:\n{output_path}\nOverwrite it and rebuild?",
+                "These files already exist:\n"
+                + "\n".join(str(path) for path in occupied)
+                + "\nOverwrite them and rebuild?",
                 QMessageBox.Yes | QMessageBox.No)
             if answer != QMessageBox.Yes:
                 self._status.setPlainText("Build cancelled - existing output kept.")
                 return
-            Path(output_path).unlink()
+            # CQA-11: the previous set is moved ASIDE, never deleted, until the
+            # replacement has been built. A rebuild that fails - including a bare
+            # OSError from the writer's own staging, which is not a WriteError and
+            # used to escape this handler entirely - restores the previous output
+            # byte-for-byte, so the user is never left with neither artefact.
+            backups: list[tuple[Path, Path]] = []
+            for path in reversed(occupied):
+                backup = staging_path(path)
+                try:
+                    os.replace(path, backup)
+                except OSError as move_error:
+                    stranded = _restore_previous(backups)
+                    detail = (
+                        " These files could not be restored and are kept as: "
+                        + ", ".join(str(backup) for _, backup in stranded)
+                        if stranded else ""
+                    )
+                    QMessageBox.critical(
+                        self, "Build refused",
+                        f"The existing output could not be moved aside: {move_error}.{detail}"
+                    )
+                    return
+                backups.append((path, backup))
             try:
                 self._run_build(output_path)
-            except (build_sdk.BuildError, ProjectError, WriteError) as exc2:
-                QMessageBox.critical(self, "Build", str(exc2))
+            except (build_sdk.BuildError, ProjectError, WriteError, OSError) as exc2:
+                stranded = _restore_previous(backups)
+                detail = (
+                    "\n\nThese files could not be restored and are kept as: "
+                    + ", ".join(str(backup) for _, backup in stranded)
+                    if stranded else
+                    "\n\nThe previous output was restored."
+                )
+                QMessageBox.critical(self, "Build", f"{exc2}{detail}")
                 return
+            for _, backup in backups:
+                try:
+                    backup.unlink(missing_ok=True)
+                except OSError:
+                    pass  # a staging file left behind is untidy, never unsafe
 
     def _run_build(self, output_path) -> None:
         """Build, record the result, and emit buildFinished. Raises on failure."""

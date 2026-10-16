@@ -5,7 +5,11 @@ param(
     [string]$LuaPath,
     [Parameter(Mandatory = $true)]
     [string]$ExpectedState,
-    [string]$MgbaPath = 'C:\Program Files\mGBA\mGBA.exe'
+    [string]$MgbaPath = 'build\tools\mgba-0.10.5\extracted\mGBA-0.10.5-win64\mGBA.exe',
+    [string]$RequiredMGBVersion = '0.10.5',
+    # Exact digest the resolved mGBA executable must have. Overriding it is a
+    # deliberate act and stays an equality test; there is no accept-anything value.
+    [string]$MGBSha256 = '5A3C98C2984DD04BD0D7C9378CDFAE937AE0D73A196C880BB2EECF3B254AF247'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,23 +25,52 @@ if (-not (Test-Path -LiteralPath (Join-Path $workspaceRoot 'tools\runtime') -Pat
 $allowedRuntimeRoot = [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot 'build\rom006'))
 $resolvedLuaPath = [System.IO.Path]::GetFullPath($LuaPath)
 $resolvedExpectedState = [System.IO.Path]::GetFullPath($ExpectedState)
-$allowedPairs = @{
-    ([System.IO.Path]::GetFullPath((Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap.lua'))) =
-        [System.IO.Path]::GetFullPath((Join-Path $allowedRuntimeRoot 'bootstrap.mss'))
-    ([System.IO.Path]::GetFullPath((Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap_map4.lua'))) =
-        [System.IO.Path]::GetFullPath((Join-Path $allowedRuntimeRoot 'bootstrap-map4.mss'))
-}
-if (-not $allowedPairs.ContainsKey($resolvedLuaPath)) {
-    throw 'LuaPath is not a tracked ROM-006 bootstrap script'
-}
-if ($allowedPairs[$resolvedLuaPath] -ne $resolvedExpectedState) {
-    throw 'ExpectedState does not match the selected ROM-006 bootstrap script'
-}
-if ((Split-Path -Parent $resolvedExpectedState) -ne $allowedRuntimeRoot) {
-    throw 'ExpectedState must be directly beneath build\rom006'
+
+# The ROM-006 expected-state contract. Each of the two bootstraps this launcher
+# exists for writes exactly one named state directly beneath build\rom006, and
+# only those two states are accepted. That is also what confines the stale-state
+# removal below to the ignored bootstrap directory. Which Lua paths may run is
+# NOT decided here: inject_mgba_lua.ps1 owns the single allowlist and performs
+# the membership check.
+$allowedStates = @(
+    [System.IO.Path]::GetFullPath((Join-Path $allowedRuntimeRoot 'bootstrap.mss'))
+    [System.IO.Path]::GetFullPath((Join-Path $allowedRuntimeRoot 'bootstrap-map4.mss'))
+)
+if ($resolvedExpectedState -notin $allowedStates) {
+    throw 'ExpectedState must be a ROM-006 bootstrap state directly beneath build\rom006'
 }
 $LuaPath = $resolvedLuaPath
 $ExpectedState = $resolvedExpectedState
+
+# Fail closed on emulator identity. 0.10.5 is the build the two ROM-006
+# bootstraps are written for: each opens with
+# assert(emu:getGameCode() == "AGB-BG3E"), and the 0.11 development build reports
+# the bare "BG3E" instead. The shared C:\Program Files install was measured
+# holding 0.11.0.0. Identity is the executable's bytes: a wrong binary can report
+# any version string, so the version below is the better error message and the
+# digest is the gate.
+$resolvedMgb = if ([System.IO.Path]::IsPathRooted($MgbaPath)) {
+    $MgbaPath
+} else {
+    Join-Path $workspaceRoot $MgbaPath
+}
+if (-not (Test-Path -LiteralPath $resolvedMgb -PathType Leaf)) {
+    throw "mGBA executable is missing: $resolvedMgb"
+}
+$resolvedMgb = (Resolve-Path -LiteralPath $resolvedMgb).Path
+$mgbVersion = (Get-Item -LiteralPath $resolvedMgb).VersionInfo.FileVersion
+if (-not $mgbVersion) {
+    throw "mGBA executable reports no version: $resolvedMgb"
+}
+if (-not $mgbVersion.StartsWith($RequiredMGBVersion)) {
+    throw ("mGBA version mismatch: required $RequiredMGBVersion, found " +
+        "$mgbVersion at $resolvedMgb")
+}
+$mgbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedMgb).Hash
+if ($mgbHash -ne $MGBSha256.Trim().ToUpperInvariant()) {
+    throw ("mGBA identity mismatch: required executable SHA-256 $MGBSha256, " +
+        "found $mgbHash at $resolvedMgb. Pass -MGBSha256 to override deliberately.")
+}
 
 $rom = Get-Item -LiteralPath $RomPath
 $beforeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RomPath).Hash
@@ -45,9 +78,6 @@ $beforeMtime = $rom.LastWriteTimeUtc.Ticks
 if ($rom.Length -ne 8388608 -or $beforeHash -ne $expectedHash) {
     throw 'Verified ROM identity mismatch before mGBA bootstrap'
 }
-
-Add-Type -AssemblyName UIAutomationClient
-Add-Type -AssemblyName UIAutomationTypes
 
 $runtimeRoot = Split-Path -Parent $ExpectedState
 $runRoot = Join-Path $runtimeRoot ('run-' + [Guid]::NewGuid().ToString('N'))
@@ -69,109 +99,21 @@ $arguments = @(
     ('"' + $RomPath + '"')
 )
 
-$process = Start-Process -FilePath $MgbaPath -ArgumentList $arguments -PassThru
+$process = Start-Process -FilePath $resolvedMgb -ArgumentList $arguments -PassThru
 try {
-    $desktop = [System.Windows.Automation.AutomationElement]::RootElement
-    $processCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ProcessIdProperty,
-        $process.Id
-    )
-
-    $mainWindow = $null
-    for ($attempt = 0; $attempt -lt 100 -and -not $mainWindow; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        if ($process.HasExited) {
-            throw "mGBA exited before creating a window (exit code $($process.ExitCode))"
-        }
-        $mainWindow = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Children,
-            $processCondition
-        )
-    }
-    if (-not $mainWindow) { throw 'mGBA main window did not appear' }
-
-    for ($attempt = 0; $attempt -lt 200; $attempt++) {
-        $mainWindow = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Children,
-            $processCondition
-        )
-        if ($mainWindow -and $mainWindow.Current.Name -match "Buu's Fury") { break }
-        Start-Sleep -Milliseconds 100
-    }
-    if (-not $mainWindow -or $mainWindow.Current.Name -notmatch "Buu's Fury") {
-        throw "mGBA did not report loaded ROM; window title: $($mainWindow.Current.Name)"
-    }
-    Start-Sleep -Milliseconds 500
-
-    $tools = $mainWindow.FindFirst(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            'Tools'
-        ))
-    )
-    if (-not $tools) { throw 'Tools menu not found' }
-    $tools.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-
-    $scriptMenu = $null
-    $scriptCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty,
-        'Scripting...'
-    )
-    for ($attempt = 0; $attempt -lt 50 -and -not $scriptMenu; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        $scriptMenu = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            $scriptCondition
-        )
-    }
-    if (-not $scriptMenu) { throw 'Scripting menu item not found' }
-    $scriptMenu.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-
-    $scriptingCondition = New-Object System.Windows.Automation.AndCondition(
-        $processCondition,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            'Scripting'
-        ))
-    )
-    $scripting = $null
-    for ($attempt = 0; $attempt -lt 50 -and -not $scripting; $attempt++) {
-        Start-Sleep -Milliseconds 100
-        $scripting = $desktop.FindFirst(
-            [System.Windows.Automation.TreeScope]::Children,
-            $scriptingCondition
-        )
-    }
-    if (-not $scripting) { throw 'Scripting window did not appear' }
-
-    $edits = $scripting.FindAll(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-            [System.Windows.Automation.ControlType]::Edit
-        ))
-    )
-    $prompt = $null
-    foreach ($edit in $edits) {
-        if (-not $edit.Current.IsReadOnly) {
-            $prompt = $edit
-            break
-        }
-    }
-    if (-not $prompt) { throw 'Scripting prompt not found' }
-    $command = 'dofile([[' + ($LuaPath -replace '\\', '/') + ']])'
-    $prompt.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($command)
-
-    $run = $scripting.FindFirst(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        (New-Object System.Windows.Automation.PropertyCondition(
-            [System.Windows.Automation.AutomationElement]::NameProperty,
-            'Run'
-        ))
-    )
-    if (-not $run) { throw 'Run button not found' }
-    $run.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    # Injection is delegated. inject_mgba_lua.ps1 owns the Scripting-window UI
+    # driver, the allowlist membership check and the bounded Run helper;
+    # this launcher keeps only what is ROM-006-specific: the ROM gate and the
+    # expected-state contract above, plus the wait below for the state the
+    # bootstrap writes. The ready path is written by the injector only after the
+    # bootstrap's dofile returns, so "armed" is an observed fact rather than an
+    # assumption, and a bootstrap that throws on its opening getGameCode assert
+    # reports here instead of as a 120-second wait for a state that could never
+    # appear.
+    & (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
+        -TargetProcessId $process.Id `
+        -LuaPath $LuaPath `
+        -ReadyPath (Join-Path $runRoot 'bootstrap-ready.txt')
 
     for ($attempt = 0; $attempt -lt 1200 -and -not (Test-Path -LiteralPath $ExpectedState); $attempt++) {
         Start-Sleep -Milliseconds 100

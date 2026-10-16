@@ -45,6 +45,8 @@ from tools.webfoot.profile import (
     RomProfileCatalog,
 )
 from tools.webfoot.warp_randomizer import WarpRandomizerError
+from tools.webfoot.randomizer import context as randomizer_context  # noqa: E402
+from tools.webfoot.randomizer.modules import map_warp  # noqa: E402
 from tools.webfoot.warprand import service as warprand
 
 #: The canonical United States image this product supports, stated here - in a
@@ -401,13 +403,13 @@ def test_the_exact_seed_string_reaches_the_core(boundary, monkeypatch):
         seen["image"] = image
         raise WarpRandomizerError("recorder stops the run here")
 
-    # The capability gate looks a profile up in the *packaged* catalog, which a
-    # synthetic profile is deliberately absent from; the boundary's own seam is
-    # the honest place to stand in for it.
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", recorder)
+    # The synthetic profile declares `map_entries`, so it passes the capability
+    # gate the same way a shipping profile does; the seam that has to move is the
+    # planner, which the module now imports under its own name.
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", recorder)
 
     with pytest.raises(warprand.WarpRandomizerAppError):
         service.randomize_warps(source, output, seed)
@@ -426,7 +428,7 @@ def test_an_empty_seed_is_refused_cleanly(boundary):
     with pytest.raises(warprand.SeedRefusedError) as caught:
         service.randomize_warps(source, output, "")
 
-    assert "must not be empty" in str(caught.value)
+    assert "The seed is empty" in str(caught.value)
 
 
 def test_a_seed_is_not_trimmed_or_case_folded(boundary):
@@ -517,10 +519,10 @@ def test_confirmed_overwrite_keeps_the_old_artifacts_until_a_replacement_exists(
     def refusing_planner(image, matched_profile, seed):
         raise WarpRandomizerError("stop at the planner")
 
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", refusing_planner)
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", refusing_planner)
 
     with pytest.raises(warprand.WarpRandomizerAppError):
         service.randomize_warps(source, output, "Goku", overwrite=True)
@@ -581,10 +583,10 @@ def test_a_randomizer_refusal_is_reported_as_a_friendly_message(
     def refusing_planner(image, matched_profile, seed):
         raise WarpRandomizerError("this record needs a field the authority refuses")
 
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", refusing_planner)
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", refusing_planner)
 
     with pytest.raises(warprand.WarpRandomizerAppError) as caught:
         service.randomize_warps(source, output, "Goku")
@@ -602,10 +604,10 @@ def test_a_programmer_error_is_not_swallowed(boundary, monkeypatch):
     def buggy_planner(image, matched_profile, seed):
         raise TypeError("a real bug")
 
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", buggy_planner)
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", buggy_planner)
 
     with pytest.raises(TypeError):
         service.randomize_warps(source, output, "Goku")
@@ -629,10 +631,10 @@ def test_progress_reports_the_real_phases_in_order(boundary, monkeypatch):
     def refusing_planner(image, matched_profile, seed):
         raise WarpRandomizerError("stop at the long phase")
 
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", refusing_planner)
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", refusing_planner)
 
     with pytest.raises(warprand.WarpRandomizerAppError):
         service.randomize_warps(
@@ -653,10 +655,74 @@ def test_a_run_without_a_progress_callback_pays_nothing(boundary, monkeypatch):
     def refusing_planner(image, matched_profile, seed):
         raise WarpRandomizerError("stop at the long phase")
 
-    monkeypatch.setattr(
-        warprand.WarpRandomizerService, "_profile_for", lambda self, ident: profile
-    )
-    monkeypatch.setattr(warprand, "plan_warp_randomization", refusing_planner)
+    # The synthetic profile is absent from the packaged capability contract by
+    # design, so the one gate that resolves against it is stood in for here.
+    monkeypatch.setattr(randomizer_context, "require", lambda *a, **k: None)
+    monkeypatch.setattr(map_warp, "plan_warp_randomization", refusing_planner)
 
     with pytest.raises(warprand.WarpRandomizerAppError):
         service.randomize_warps(source, output, "Goku")
+
+
+# --- the shared window protocol ----------------------------------------------
+
+
+def test_the_window_protocol_reports_in_this_products_own_shape(boundary, monkeypatch):
+    """The window asks the boundary to *randomize a request*, not to randomize warps.
+
+    ENEMY-RANDOMIZER-EXE-001 moved the window onto the shared application
+    foundation, whose protocol is one method taking a request. This product
+    answers it in its own vocabulary - the ``RandomizationOutcome`` the window has
+    displayed since v0.1.0 - by translating the shared result. The distinction is
+    not cosmetic: the released executable crashed on it, because the window reads
+    ``outcome.seed`` and the shared result calls that field ``master_seed``.
+    """
+    from pathlib import Path as _Path
+
+    from tools.webfoot.randomizer.registry import derive_module_seeds
+    from tools.webfoot.randomizer.service import RandomizerResult
+
+    service, source, _profile = boundary
+    output = warprand.default_output_path(source, "Goku")
+
+    shared_result = RandomizerResult(
+        master_seed="Goku",
+        enabled=("map-warp",),
+        module_seeds=derive_module_seeds("Goku"),
+        module_versions={"map-warp": 1},
+        output_path=_Path(output),
+        output_sha256="cd" * 32,
+        output_size=8,
+        manifest_path=warprand.default_service().manifest_path_for(output),
+        spoiler_path=None,
+        changed_byte_count=7,
+        source_sha256="ab" * 32,
+        source_unchanged=True,
+        tool_name=warprand.TOOL_NAME,
+        tool_version=warprand.TOOL_VERSION,
+        document={
+            "modules": {
+                "map-warp": {
+                    "counts": {
+                        "supported": 735,
+                        "randomized": 496,
+                        "destinations_moved": 492,
+                        "skipped": 239,
+                    },
+                    "skipped_reasons": {"a reason": 239},
+                    "class_counts": {"A": 566},
+                    "randomizer": {"records": []},
+                }
+            }
+        },
+    )
+    monkeypatch.setattr(service.shared, "run", lambda request: shared_result)
+
+    outcome = service.randomize(service.build_request(source, output, "Goku"))
+
+    assert isinstance(outcome, warprand.RandomizationOutcome)
+    assert outcome.seed == "Goku"
+    assert outcome.supported == 735
+    assert outcome.destinations_moved == 492
+    assert outcome.output_sha256 == "cd" * 32
+    assert outcome.randomizer_manifest == {"records": []}

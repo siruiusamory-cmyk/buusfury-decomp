@@ -155,24 +155,14 @@ $ready = Join-Path $runDir 'lua-ready.txt'
 # The save directory override is what keeps the source image's own save
 # untouched; the proven capture launcher uses the same switch for the same
 # reason.
-$mgbaArgs = @(
-    ('"' + $resolvedRom + '"'),
-    '-C', ('savegamePath="' + $saveDir + '"')
-)
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
-Start-Sleep -Seconds $UiSettleSeconds
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) {
-    # The script deliberately does not stop the process it started. Killing an
-    # mGBA window is what destroyed a live session twice, and the launcher that
-    # follows refuses to race any running emulator, so the operator closes it and
-    # the next run is told the truth rather than racing a hidden one.
-    throw 'Lua injection failed - close the mGBA window before retrying'
-}
+# One mechanism for every launcher: mGBA loads the state with -t and runs the
+# observer with --script, so no Scripting window is opened, nothing takes the
+# operator window, and the identity gates live with the flag that needs them.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -ArgumentList @('-C', ('savegamePath=' + $saveDir))
 
 Write-Output 'SESSION LIVE - hand the keyboard to the operator now'
 Write-Output "  label    : $Label"

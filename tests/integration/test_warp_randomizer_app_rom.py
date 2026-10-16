@@ -226,24 +226,45 @@ def test_the_manifest_is_created_beside_the_output(service, tmp_path):
     )
     document = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
 
+    # ENEMY-RANDOMIZER-EXE-001 moved this product onto the shared, versioned
+    # randomizer manifest, because a combined run has one output and therefore
+    # needs one document describing it. The warp-specific facts did not leave the
+    # document, only moved under the module that owns them.
+    assert document["format_version"] == warprand.MANIFEST_SCHEMA_VERSION
     assert document["tool"] == {
         "name": "Buu's Fury Warp Randomizer",
         "version": "0.1.0",
     }
-    assert document["policy"] == "reciprocal-door-pairs/3"
-    assert document["seed"] == "Goku"
-    assert document["input"]["size"] == CANONICAL_SIZE
-    assert document["input"]["sha256"] == CANONICAL_SHA256
+    assert document["master_seed"] == "Goku"
+    assert document["module_order"] == ["map-warp", "enemy-placement", "enemy-stat"]
+    assert document["source"]["size"] == CANONICAL_SIZE
+    assert document["source"]["sha256"] == CANONICAL_SHA256
     assert document["output"]["filename"] == output.name
     assert document["output"]["sha256"] == GOKU_GOLDEN_SHA256
-    assert document["counts"] == {
+
+    warp = document["modules"]["map-warp"]
+    assert warp["enabled"] is True
+    assert warp["algorithm"] == "reciprocal-door-pairs/3"
+    # The launch seed is the master seed verbatim for this one module: its seed
+    # semantics predate the shared framework and every warp seed ever produced
+    # depends on them, so the namespace says so out loud.
+    assert warp["seed_namespace"] == "master-legacy"
+    assert warp["derived_seed"] == "Goku"
+    assert warp["module_version"] == 1
+    assert warp["counts"] == {
         "supported": SUPPORTED,
         "randomized": RANDOMIZED,
         "destinations_moved": DESTINATIONS_MOVED,
         "destinations_unchanged": RANDOMIZED - DESTINATIONS_MOVED,
         "skipped": SKIPPED,
     }
-    assert sum(document["skipped_reasons"].values()) == SKIPPED
+    assert sum(warp["skipped_reasons"].values()) == SKIPPED
+    # Every registered module is described, including the ones this product does
+    # not offer, so two manifests are comparable without knowing which product
+    # wrote them - and "off" is distinguishable from "did nothing".
+    assert document["modules"]["enemy-placement"]["enabled"] is False
+    assert document["modules"]["enemy-stat"]["enabled"] is False
+    assert document["spoiler"] is None
     # The limitation travels with the artefact, not only with the window that
     # made it. The reviewer noted this was asserted nowhere.
     assert document["progression"] == warprand.PROGRESSION_DISCLAIMER
@@ -284,6 +305,26 @@ def test_the_manifest_carries_the_per_transition_mapping(service, tmp_path):
     # The two skip families the ticket names, each with its own wording: the
     # 169-class scene-relative arrivals and the records with no clean pair.
     assert sorted(outcome.skipped_reasons.values()) == [70, 169]
+
+
+def test_the_embedded_core_record_states_no_empty_output_digest(service, tmp_path):
+    """A plan has no output yet, so the record it carries must not pretend it does.
+
+    An independent review found the warp module embedding the core's record with
+    ``output_rom.sha256: ""`` and ``counts.output_sha256: ""`` while its own comment
+    claimed the field was absent. An empty digest is an invalid value a reader can
+    mistake for a real one, so the fields are removed and the two facts are stated
+    once, by the application, at the top level of the manifest.
+    """
+    outcome = service.randomize_warps(LOCAL_ROM, tmp_path / "core-record.gba", "Goku")
+    core = outcome.randomizer_manifest
+
+    assert "output_rom" not in core
+    assert "output_sha256" not in core["counts"]
+    # The facts are not lost: they are on the document itself, with real values.
+    document = json.loads(outcome.manifest_path.read_text(encoding="utf-8"))
+    assert document["output"]["sha256"] == GOKU_GOLDEN_SHA256
+    assert document["output"]["size"] == CANONICAL_SIZE
 
 
 def test_the_manifest_is_byte_identical_across_directories(service, tmp_path):

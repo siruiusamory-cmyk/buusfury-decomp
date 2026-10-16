@@ -97,7 +97,7 @@ class ChunkSubstitution:
     MAP-CHUNK-AUTHORING-001. A project-authored chunk has no address in the
     canonical image - a build has not run yet, and choosing the address is the
     build's job - so the ordinary ``chunk_overrides`` form, which names an address
-    the layer already uses, cannot express it. This carries the authored 32x32
+    a dominant layer of the map already uses, cannot express it. This carries the authored 32x32
     plane instead, so a preview draws exactly the entries a build would
     materialize, through the same stitch and the same renderer the retail layout
     uses rather than through a second rendering path.
@@ -300,11 +300,16 @@ def _resolve_chunk_overrides(
     layer slot and then by cell, which the stitch substitutes for a pointer
     lookup. Nothing is written and no ROM byte is touched.
     """
-    from .map_layout_write import MapLayoutWriteError, validate_chunk_replacement
+    from .map_layout_write import (
+        MapLayoutWriteError,
+        legal_chunk_pointers,
+        validate_chunk_replacement,
+    )
 
     if not overrides:
         return {}, {}
     by_slot = {record.slot: record for record in records}
+    legal = legal_chunk_pointers(*(record.chunk_addresses for record in records))
     addresses: dict[int, dict[int, int]] = {}
     planes: dict[int, dict[int, tuple[int, ...]]] = {}
     for key, replacement in overrides.items():
@@ -325,7 +330,7 @@ def _resolve_chunk_overrides(
             addresses.setdefault(slot, {})[cell] = 0
             continue
         try:
-            validate_chunk_replacement(record.chunk_addresses, replacement)
+            validate_chunk_replacement(legal, replacement)
         except MapLayoutWriteError as exc:
             raise MapBrowserError(str(exc)) from exc
         addresses.setdefault(slot, {})[cell] = replacement

@@ -18,6 +18,12 @@ dependencies = [
 dev = [
     "pip==26.2.1",
     "pytest==8.4.2",
+    # The test entry point and the test-sdk CI job run the portable gate on
+    # worker processes at module granularity: the slowest modules are dominated
+    # by per-module decode setup, so processes buy wall clock at an identical
+    # test count.
+    "pytest-xdist==3.8.0",
+    "pytest-timeout==2.4.0",
     "setuptools==84.0.0",
     # Property tests for the pure binary invariants of the write path. Pure
     # Python, no build step, imported only by the modules that use it.
@@ -41,7 +47,13 @@ packaging = [
 
 [project.scripts]
 webfoot = "tools.webfoot.cli:main"
-dragonbyte-z = "tools.webfoot.workbench.__main__:main"
+# The product's own entry point. It pointed at the beta workbench, which is the
+# engineering surface rather than what a user installs; `python -m
+# tools.webfoot.workbench` stays the beta's launch path.
+dragonbyte-z = "tools.dragonbyte.app:main"
+# The text editor's entry point, in the same style: the package's own `main`, which
+# `python -m tools.buufury_text` and the frozen build both reach.
+buufury-text = "tools.buufury_text.app:main"
 
 [tool.setuptools.packages.find]
 include = ["tools*"]
@@ -50,7 +62,7 @@ include = ["tools*"]
 "tools.webfoot.data" = ["roms.yaml"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --timeout=120 --timeout-method=thread"
 testpaths = ["tests"]
 # Focused validation gates, assigned to every test from tests/gates.py and
 # documented in docs/testing.md. `-m fast` is the portable gate; `-m rom` is

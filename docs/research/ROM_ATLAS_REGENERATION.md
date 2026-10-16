@@ -333,3 +333,27 @@ code span but never reached by traversal", which is a claim about code; two zero
 bytes of alignment padding and an unexamined 258-byte hole do not earn it. The
 rows were not restored, because restoring them would have been tuning toward the
 historical hash rather than correcting an error.
+
+## A graphics identity number is a position, and a snapshot can lag it
+
+`graphics_extents.jsonl` labels each payload `graphics.container.NNNN`, and that
+number is the payload's position in ASCENDING FILE OFFSET over everything the walk
+reached (`tools/webfoot/graphics.py`, the `enumerate(sorted(consumers))` loop, whose
+comment states the intent). It is a function of the image, not of the walk: one ROM
+always gives one payload the same identity, whichever character happens to reach it
+first, and that is what makes the number usable as a key at all.
+
+What it is NOT is a versioned name. The atlas is generated output, and its numbers
+can lag the code that produced it: the copy this project carried from the 2026-08
+regeneration gives `graphics.container.1016` for a payload the current walk numbers
+1030, and 1119 against 1133, 2162 against 2176, 3614 against 3628, 4909 against
+4941; only 0584 agrees. A document or a provenance string that carried those numbers
+was describing a snapshot, not the code.
+
+Two consequences, both applied where it mattered. A provenance string for a sprite
+payload names the FILE OFFSET, which cannot drift, and the numbering rule itself is
+pinned by `tests/unit/test_graphic_identity_numbering.py`: the reached offsets must
+be strictly ascending and the identities exactly `0..len-1` in that order. That test
+is the regression guard, because a refactor to walk-order enumeration would renumber
+every identity silently. Refreshing a snapshot is `atlas regenerate` into a new
+directory, never an edit of the old one.

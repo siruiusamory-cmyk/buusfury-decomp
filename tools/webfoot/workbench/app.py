@@ -89,6 +89,11 @@ class MainWindow(QMainWindow):
         # Not destinations: reached from an editor or from a project action.
         self._scene = SceneTab(session)
         self._build = BuildPanelTab(session, catalog)
+        # CQA-27: the shell owns the unsaved-work policy and the panel asks it before
+        # every project change, whichever button or menu action started one. The
+        # panel's own Open Project and Extract buttons used to change the project
+        # with no prompt at all.
+        self._build.projectChangeGate = self._project_change
         self._launcher = LauncherTab(session)
 
         #: Editor name -> host, so the strip and the switcher share one map.
@@ -163,13 +168,22 @@ class MainWindow(QMainWindow):
         self._maps.openSceneRequested.connect(self._open_scene_placement)
         self._maps.buildRunRequested.connect(self._build_and_run)
         self._maps.dirtyChanged.connect(self._refresh_identity)
+        # A pending palette colour is unsaved work too, so the title and status
+        # bar re-state as soon as the count moves (N-04).
+        self._graphics.dirtyChanged.connect(self._refresh_identity)
         # A mode switch changes WHICH surface's history Edit -> Undo reaches, so the
         # two actions are re-enabled from the newly active stack.
         self._maps.modeChanged.connect(lambda _mode: self._refresh_undo_actions())
+        # The Scene editor is offered only in Objects mode, so the same switch moves
+        # the View action rather than leaving it as the last editor change left it.
+        self._maps.modeChanged.connect(lambda _mode: self._sync_scene_action())
         self._graphics.projectChanged.connect(self._on_project_changed)
         self._scene.projectChanged.connect(self._on_project_changed)
         self._build.projectChanged.connect(self._on_project_changed)
         self._build.buildFinished.connect(self._on_build_finished)
+        # Run availability lives with the ROM field that owns it, so a manually
+        # chosen ROM arms Ctrl+R exactly as a build's output does.
+        self._launcher.romChanged.connect(self._refresh_action_state)
 
     def _on_rom_opened(self) -> None:
         """A new image is open: EVERY surface re-reads it, one failure contained.
@@ -799,28 +813,52 @@ class MainWindow(QMainWindow):
             return
         self._atlas.open_rom_dialog()
 
+    def _project_change(self, action: str, run) -> None:
+        """Run a project-setting dialog behind the unsaved-work guard.
+
+        CQA-27. A project switch is destructive to staged layout work for a reason a
+        ROM change does not have: those edits name records in the OUTGOING project,
+        so carrying them across would commit one project's work into another. The
+        guard runs before the directory dialog, so cancelling it changes nothing,
+        and the discard happens only once the project has actually moved - a user
+        who cancels inside the picker keeps every staged edit.
+
+        The Build panel installs this as its `projectChangeGate`, so the panel's own
+        buttons and the File menu both pass through it and neither can bypass the
+        policy.
+        """
+        if not self._confirm_discard_staged_edits(action):
+            return
+        before = self._session.project_dir
+        run()
+        if self._session.project_dir != before:
+            self._maps.discard_staged_work()
+
     def _confirm_discard_staged_edits(self, action: str) -> bool:
         """Ask before an operation that cannot preserve staged layout edits.
 
-        The count is `MapsEditor.unsaved_edit_count()`, the same authority the
-        window title and the status bar already report as unsaved work, so the
-        prompt can never disagree with the number on screen.
+        The count is `Session.unsaved_edit_count()`, the same authority the window
+        title and the status bar already report as unsaved work, so the prompt can
+        never disagree with the number on screen. The Maps editor and the Graphics
+        palette register there, which is what makes a staged Warp transition and a
+        pending palette colour visible to this guard and not only to their own
+        surface.
 
-        Other editors also stage values - unapplied palette colours, unapplied
-        dialogue text - but those describe the *outgoing* image and have no
-        meaning across it, so a session change clears them by design. Only
-        layout edits are authored work that a ROM change would silently destroy,
-        which is why the guard is derived from that one count.
+        Palette colours are staged against one project's override document and
+        have no meaning across a project or image change, so they are discarded
+        there; counting them here is what makes that discard visible instead of
+        silent.
         """
-        pending = self._maps.unsaved_edit_count()
+        pending = self._session.unsaved_edit_count()
         if not pending:
             return True
         answer = QMessageBox.question(
             self,
             action,
-            f"{pending} unsaved layout edit(s) have not been written to a ROM.\n\n"
-            f"{action} discards them; the Map Browser's Save As writes them to a "
-            "new ROM first.\n\nDiscard them and continue?",
+            f"{pending} unsaved edit(s) have not been written to a ROM.\n\n"
+            f"{action} discards them. The Map Browser's Save As writes layout "
+            "edits to a new ROM first, and Graphics Apply writes palette colours "
+            "to the project.\n\nDiscard them and continue?",
             QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -845,12 +883,12 @@ class MainWindow(QMainWindow):
 
         Identity is global, so the title carries it. Godot puts its ``(*)`` marker
         *first* so the OS task bar always shows it; DragonByte Z names the count in
-        words as well, because the pending work here is a pending layout-edit list
+        words as well, because the pending work here is a pending edit list
         rather than an open document.
 
         The status bar's permanent zone carries the three project states that are
         otherwise invisible and that every editor needs: validation, build and
-        unsaved layout edits.
+        unsaved edits.
         """
         rom = self._session.rom_path
         profile = self._session.profile
@@ -862,7 +900,7 @@ class MainWindow(QMainWindow):
             title = f"DragonByte Z \u2014 {rom.name}{suffix}{kind}"
         if project is not None:
             title = f"{title} \u00b7 {project.name}"
-        pending = self._maps.unsaved_edit_count()
+        pending = self._session.unsaved_edit_count()
         if pending:
             title = f"{theme.TITLE_DIRTY} {title} \u2014 {pending} unsaved"
         self.setWindowTitle(title)
@@ -903,7 +941,7 @@ class MainWindow(QMainWindow):
             else:
                 parts.append("not built")
         if pending:
-            parts.append(f"{theme.TITLE_DIRTY} {pending} unsaved layout edit(s)")
+            parts.append(f"{theme.TITLE_DIRTY} {pending} unsaved edit(s)")
         return "   \u2502   ".join(parts)
 
     def _refresh_action_state(self) -> None:
@@ -919,7 +957,7 @@ class MainWindow(QMainWindow):
         self._action_output_dir.setEnabled(True)
         self._action_validate.setEnabled(rom_open and has_project)
         self._action_build.setEnabled(self._session.validation_current)
-        self._action_run.setEnabled(self._session.last_build is not None)
+        self._action_run.setEnabled(self._launcher.rom_is_runnable())
         self._refresh_undo_actions()
 
     def refresh_shell(self) -> None:

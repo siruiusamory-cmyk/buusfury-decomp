@@ -14,6 +14,7 @@ The index for everything under `docs/`. Start with the root
 | [`testing.md`](testing.md) | The focused validation gates, how to run one, and what the full suite costs. |
 | [`line-endings.md`](line-endings.md) | The byte-safe way to edit a tracked file without rewriting its line endings. |
 | [`git-workflow.md`](git-workflow.md) | Pushing a branch, opening a merge request and finalizing after a merge. |
+| [`dev-tools.md`](dev-tools.md) | The developer commands: the one-writer sweep, the citation check, a hash-verified probe worktree, the commit-message writer, the pinned-SHA merge wrapper and the review-queue index. |
 
 ## The product
 
@@ -27,9 +28,12 @@ The index for everything under `docs/`. Start with the root
 | [`workbench.md`](workbench.md) | The Maps editor's Layout mode and reopening a ROM the tool wrote. |
 | [`workbench-architecture.md`](workbench-architecture.md) | The desktop editor's structure and its hard rules. |
 | [`desktop-ui.md`](desktop-ui.md) | How a DragonByte Z editor surface should look, behave and be reviewed. |
-| [`asset-export.md`](asset-export.md) | Exporting game resources out of a project. |
+| [`asset-export.md`](asset-export.md) | Building a resource library from the ROM (a separate tool, not a `webfoot` subcommand). |
 | [`relocation.md`](relocation.md) | Trust boundaries, limitations and APIs of the relocation layer. |
 | [`rom-profiles.md`](rom-profiles.md) | Supported images and how identity is configured. |
+| [`release-artefacts.md`](release-artefacts.md) | What a user receives: the built image, the distributable patch, version and build identity, the packaging foundation, and what must never be distributed. |
+| [`product/DRAGONBYTE_Z_PRODUCT_SPEC.md`](product/DRAGONBYTE_Z_PRODUCT_SPEC.md) | The design of the DragonByte Z desktop application: destinations, navigation, the ROM surface, the edit and undo model, and the support vocabulary. |
+| [`product/DRAGONBYTE_Z_IMPLEMENTATION_ROADMAP.md`](product/DRAGONBYTE_Z_IMPLEMENTATION_ROADMAP.md) | The ordered steps from the current master to V1.0, with the acceptance proof each step owes. |
 
 ## Reverse engineering
 
@@ -39,6 +43,7 @@ The index for everything under `docs/`. Start with the root
 | [`research-conventions.md`](research-conventions.md) | How a research record is written and when a claim is promoted. |
 | [`runtime-capture.md`](runtime-capture.md) | The canonical emulator capture pipeline, its ordering and its tooling rules. |
 | [`ghidra-workflow.md`](ghidra-workflow.md) | The static-analysis workflow and its calibration. |
+| [`save-catalogue.md`](save-catalogue.md) | The battery-save and savestate index: the store, the commands, the proven geometry and what it will not claim. |
 | [`hash-investigation.md`](hash-investigation.md) | What the hashes of the shipped images are, and what they do and do not prove. |
 | [`consumer-analysis.md`](consumer-analysis.md) | The executable consumer analysis behind the map data model. |
 | [`upstream-audit.md`](upstream-audit.md) | What prior work was examined, and what it may and may not be used for. |
@@ -51,6 +56,7 @@ The index for everything under `docs/`. Start with the root
 | [`decisions/`](decisions/) | Accepted architecture decisions, each recording its context and consequences. |
 | [`journeys/`](journeys/) | End-to-end authoring walkthroughs through the tool. |
 | [`warprand/`](warprand/) | The packaged warp randomizer application. |
+| [`enemyrand/`](enemyrand/) | The packaged enemy randomizer application. |
 
 ## Conventions used here
 

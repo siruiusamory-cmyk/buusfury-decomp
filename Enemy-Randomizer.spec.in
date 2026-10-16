@@ -1,0 +1,108 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""ENEMY-RANDOMIZER-EXE-001 - the standalone Windows build of the Enemy Randomizer.
+
+**One file**, matching the Map Warp Randomizer's own release shape: the release is
+a single executable the user double-clicks, and the zip holds nothing else but a
+brief README. That is why there is no ``COLLECT`` below - an onedir build cannot be
+reduced to a lone executable, because the ``.exe`` needs its runtime directory
+beside it.
+
+This file is the sibling of ``Buu-Fury-Warp-Randomizer.spec.in`` and differs from
+it in three lines: the frozen entry script, the executable's name, and the version
+resource that names the product. Everything else - the trimmed Qt payload, the
+single bundled data file, the icon, the rationale for keeping the software OpenGL
+fallback - is the same decision and is documented once, there.
+
+The single data file is the ROM profile catalog. ``tools.webfoot.catalog``
+prefers a checkout's ``config/roms.yaml`` and otherwise falls back to
+``tools.webfoot.data/roms.yaml``, which is the branch a frozen build takes - so
+that file must travel or every ROM selection is refused.
+
+Nothing from the commercial ROM is bundled, and nothing can be: the profile
+catalog is a table of addresses and hashes, not game content. The enemy randomizer
+reads the ROM the user selects, plans semantic changes against it, and writes a
+separate file; it never embeds one.
+
+Trimmed payload
+---------------
+
+PySide6's PyInstaller hook collects the whole Qt SDK, so a QtWidgets-only window
+otherwise ships QtQml, QtQuick, QtPdf, QtVirtualKeyboard and every Qt translation
+- libraries this application never loads. ``opengl32sw.dll`` is deliberately KEPT:
+it is what renders the window on a machine with no usable GL driver.
+"""
+
+#: Python modules nothing here imports.
+_UNUSED_QT_MODULES = [
+    'PySide6.QtQml',
+    'PySide6.QtQuick',
+    'PySide6.QtQuickWidgets',
+    'PySide6.QtPdf',
+    'PySide6.QtPdfWidgets',
+    'PySide6.QtVirtualKeyboard',
+]
+
+#: Native libraries and data belonging to those modules, matched on their
+#: bundle-relative path with forward slashes.
+_UNUSED_QT_PREFIXES = (
+    'PySide6/Qt6Qml',
+    'PySide6/Qt6Quick',
+    'PySide6/Qt6Pdf',
+    'PySide6/Qt6VirtualKeyboard',
+    'PySide6/translations/',
+)
+
+
+def _is_unused_qt(relative: str) -> bool:
+    normalised = relative.replace('\\', '/')
+    return normalised.startswith(_UNUSED_QT_PREFIXES)
+
+
+a = Analysis(
+    ['tools/webfoot/enemyrand/_pyinstaller_entry.py'],
+    pathex=['.'],
+    binaries=[],
+    datas=[('tools/webfoot/data/roms.yaml', 'tools/webfoot/data')],
+    # The profile catalog is reached through a *string*
+    # `importlib.resources.files("tools.webfoot.data")`, which PyInstaller cannot
+    # follow. Naming the package makes its inclusion a declaration rather than a
+    # coincidence.
+    hiddenimports=['tools.webfoot.data'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=_UNUSED_QT_MODULES,
+    noarchive=False,
+    optimize=0,
+)
+
+a.binaries = [item for item in a.binaries if not _is_unused_qt(item[0])]
+a.datas = [item for item in a.datas if not _is_unused_qt(item[0])]
+
+pyz = PYZ(a.pure)
+
+# ONE FILE, matching the sibling product's release shape. There is no COLLECT
+# here because an onedir build cannot be reduced to a lone executable; the cost is
+# stated once, in the sibling template's docstring.
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='Enemy-Randomizer',
+    icon='scripts/randomizer.ico',
+    version='Enemy-Randomizer.version.txt',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)

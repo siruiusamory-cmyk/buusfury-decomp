@@ -68,6 +68,7 @@ from ..formats.map_transitions import (
     MapTransitionError,
     TransitionRegion,
 )
+from .atomic import replace_document
 from .format import ProjectFormatError, dump_toml, load_toml
 
 #: TOOLKIT-007. Authored map field order, mirroring `_ENEMY_FIELD_ORDER`:
@@ -335,6 +336,21 @@ class StatProject:
     transition_creations: "TransitionCreations" = field(
         default_factory=lambda: TransitionCreations()
     )
+    #: SPRITE-NEW-PROJECT-SURFACE-001. New actor-sprite identities this project
+    #: authors, each with the one map actor that draws it. Empty for a project that
+    #: authors none, which stays loadable on the same reasoning as `strings`.
+    sprites: "AuthoredSprites" = field(default_factory=lambda: AuthoredSprites())
+    #: APPEARANCE-AUTHORING-GATE-001. New appearance definitions this project
+    #: authors. Empty for a project that authors none, which stays loadable on the
+    #: same reasoning as `strings`.
+    appearances: "AuthoredAppearances" = field(
+        default_factory=lambda: AuthoredAppearances()
+    )
+    #: MAP-NEW-AUTHORING-001. New map identities this project authors: engine
+    #: rows the canonical image does not contain, each inheriting a donor's record,
+    #: root, layers and chunks. Empty for a project that authors none, which stays
+    #: loadable on the same reasoning as `strings`.
+    authored_maps: "AuthoredMaps" = field(default_factory=lambda: AuthoredMaps())
 
 
 @dataclass(frozen=True, slots=True)
@@ -977,18 +993,20 @@ class LayoutEdits:
     * the map is named by its durable identity (``map:NNNN``, the same key
       ``maps/maps.toml`` uses), and the layer by BG slot, so nothing points at a
       file offset or a raw address;
-    * the replacement is the chunk's **1-based ordinal inside that layer's own
-      existing chunk vocabulary** - the same "Chunk N" a person reads in the map
+    * the replacement is the chunk's **1-based ordinal inside the map's accepted
+      brush vocabulary** - the same "Chunk N" a person reads in the map
       editor - not the pointer address. The ordinal is resolved against the base
       image at build time, and because the vocabulary is the first-appearance
-      order of the layer's own non-null pointers it is a deterministic property
+      order of the map's dominant layers' non-null pointers, with the edited
+      layer's own first, it is a deterministic property
       of that image, so the same project file resolves identically on every
       machine and after any reopen;
     * the cell is a row-major index into the layer's own chunk window, which is
       the index the engine's loader uses.
 
     A pointer address is deliberately NOT storable. The proven replacement rule
-    is "a chunk this same layer already uses", and an ordinal states exactly
+    is "a chunk a dominant layer of the same map already uses", and an ordinal
+    states exactly
     that; a stored address would additionally pin the edit to one image's layout
     of the bank data, and would be unreadable in a project file.
 
@@ -1126,7 +1144,7 @@ class LayoutEdits:
                     if ordinal < 1:
                         raise ProjectValidationError(
                             f"{where}: {cell_label} names chunk {ordinal}; ordinals are "
-                            "1-based, so 0 is not a chunk this layer uses"
+                            "1-based, so 0 is not a chunk this map uses"
                         )
                     by_cell[cell] = ordinal
                 if not by_cell:
@@ -2088,6 +2106,917 @@ class GraphicsOverrides:
         return cls(palette=palette)
 
 
+# --- authored actor sprites --------------------------------------------------
+
+#: SPRITE-NEW-PROJECT-SURFACE-001. Authored new actor-sprite identities: art the
+#: canonical image does not contain, plus the ONE map actor that draws it.
+#:
+#: A document of its own rather than a field of `graphics/graphics.toml`, for the
+#: reason `maps/chunks.toml` is not a field of `maps/layout.toml`: the extracted
+#: graphics manifest is deterministic ROM-derived output that describes what the
+#: image already holds, while this file authors content that has no canonical
+#: bytes at all. A missing file means the project authors no new actor sprite,
+#: matching every other optional subsystem, so a project extracted before this
+#: capability stays loadable.
+#:
+#: The pixels live in PNG files beside it rather than in the table, exactly as the
+#: extracted graphics manifest keeps its payloads as PNGs: pixels are not text, and
+#: one file per sheet is what makes an edit reviewable. What a PNG cannot state -
+#: which cells are frames, which engine id the identity answers to, which palette
+#: entries are free, where the actor stands and what its behaviour entry starts
+#: from - is the table's job.
+SPRITES_FILE = Path("sprites") / "sprites.toml"
+
+SPRITE_TABLE = "sprite"
+
+#: APPEARANCE-AUTHORING-GATE-001. A document of its own for the same reason
+#: `sprites/sprites.toml` is: it authors content the canonical image does not
+#: contain. A missing file means the project authors no new appearance
+#: definition, so a project extracted before this capability stays loadable.
+APPEARANCES_FILE = Path("appearances") / "appearances.toml"
+
+APPEARANCE_TABLE = "appearance"
+
+#: How many records this document may append. The engine states the record count
+#: as a Thumb `cmp rN,#imm8`, whose immediate reaches 255, but the encoding is not
+#: the binding limit: the engine keeps one seen-flag bit per record in a 232-bit
+#: array spanning block+0xC5..block+0xE1, and the block initializer zeroes a WORD
+#: at block+0xE4. Eight appended records all set bits inside block+0xE2, the single
+#: byte immediately after the array; the ninth would write block+0xE3, which has no
+#: established owner. Stated locally like the other hardware numbers in this
+#: package and pinned by test against the SDK's own constant, so the two cannot
+#: drift.
+_MAX_AUTHORED_APPEARANCES = 8
+
+#: MAP-NEW-AUTHORING-001. A document of its own for the same reason
+#: `sprites/sprites.toml` and `appearances/appearances.toml` are: it authors
+#: content the canonical image does not contain. `maps/maps.toml` cannot hold it,
+#: because that document's key IS a canonical table index and every record it
+#: carries must reconstruct canonical bytes. A missing file means the project
+#: authors no new map identity, so an older project stays loadable.
+AUTHORED_MAPS_FILE = Path("maps") / "authored.toml"
+
+AUTHORED_MAP_TABLE = "map"
+
+#: How many rows this document may append. The engine states the map-table bound
+#: as `movs r0,#0xff; adds r0,#imm8` in the helper at 0x080125E0, so the count is
+#: `0xff + imm8` and the encodable ceiling is 510 rows: 58 appended rows. The
+#: helper's immediate is the one instruction the build patches, and a 59th map
+#: would need a second instruction changed, which this capability does not do.
+#: Stated locally like the other hardware numbers in this package and pinned by
+#: test against the SDK's own constant, so the two cannot drift.
+_MAX_AUTHORED_MAPS = 58
+
+#: An authored sprite's name, the same durable shape a chunk and a created
+#: transition take: it becomes part of an identity a manifest carries, so it stays
+#: lowercase, bounded and free of path or separator characters.
+_SPRITE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+
+#: ``map:NNNN/object:IIII`` - one slot of a map's engine-counted object array.
+#: The same durable shape as ``map:NNNN/placement:IIII``; the object array is
+#: this project's own name for the array a MapEntry's ``+0x14`` names.
+_OBJECT_TEMPLATE_KEY = re.compile(r"^map:(\d{4})/object:(\d{4})$")
+
+#: The object palette's extent and its transparent entry. Hardware numbers stated
+#: locally, like `_CHUNK_SIDE`: this package owns the authored surface and must not
+#: reach into a module that opens ROMs. `test_sprite_project` pins them against
+#: `formats.sprite_graphics`, so the two cannot drift.
+_PALETTE_ENTRIES = 256
+_TRANSPARENT_INDEX = 0
+
+#: How many animation slots one identity may carry, and how many frames one of
+#: those slots may hold. The structure's count byte and the project's own reader
+#: bound the first; the second is the same bound stated on the sheet. Same rule as
+#: above: pinned by test rather than imported.
+_MAX_ANIMATION_SLOTS = 23
+_MAX_FRAMES_PER_ANIMATION = 64
+
+#: The four facings every source sheet carries. The GBA's own number for this
+#: family, stated here for the same reason.
+_DIRECTION_COUNT = 4
+
+#: The colour a source sheet uses to mean "this pixel is a hole". The planner's
+#: own default (`sprite_identity.DEFAULT_TRANSPARENT_COLOUR`), restated because
+#: this layer owns the authored text and the default has to be written down
+#: somewhere a reader can see it.
+DEFAULT_SHEET_TRANSPARENT_COLOUR = (255, 0, 255)
+
+
+def _require_sheet_path(value: object, where: object) -> str:
+    """A project-relative, POSIX-spelled path to one sheet PNG.
+
+    The same rule the extracted graphics manifest follows: a path is recorded
+    relative to the project, never absolute, because an absolute path is a fact
+    about one machine and a project that pinned one would stop being portable the
+    moment it was cloned.
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ProjectValidationError(f"{where}: sheet must be a non-empty path string")
+    if "\\" in value:
+        raise ProjectValidationError(
+            f"{where}: sheet {value!r} uses a backslash; a project records paths "
+            "with forward slashes so it reads the same everywhere"
+        )
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    path = PurePosixPath(value)
+    # Both flavours are checked: a project is read on whatever machine a
+    # contributor has, and "C:/elsewhere/sheet.png" is NOT absolute to a POSIX
+    # parser while it IS absolute to the one that would resolve it on Windows.
+    if (path.is_absolute() or PureWindowsPath(value).is_absolute()
+            or ".." in path.parts):
+        raise ProjectValidationError(
+            f"{where}: sheet {value!r} must be a path inside the project, not an "
+            "absolute path or one that climbs out of it"
+        )
+    if path.suffix.lower() != ".png":
+        raise ProjectValidationError(
+            f"{where}: sheet {value!r} is not a .png; a source sheet is an image "
+            "file an editor can open"
+        )
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredSpriteAnimation:
+    """One animation slot of an authored identity, and the sheet that fills it.
+
+    ``frames`` counts the frames of ONE facing. A sheet holds four facings of
+    equal frame counts laid out as one row of cells, so the sheet's own width
+    states the same number; recording it on both lets the loader refuse a sheet
+    whose dimensions and declaration disagree instead of picking one.
+    """
+
+    name: str
+    sheet: str
+    frames: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"animation name {self.name!r} must be lowercase, start with a "
+                "letter, and use only letters, digits, '_' and '-'"
+            )
+        _require_sheet_path(self.sheet, f"animation {self.name}")
+        if not 1 <= self.frames <= _MAX_FRAMES_PER_ANIMATION:
+            raise ProjectValidationError(
+                f"animation {self.name!r} declares {self.frames} frames per facing; "
+                f"this project reads counts from 1 through {_MAX_FRAMES_PER_ANIMATION}"
+            )
+
+    def to_document(self) -> dict[str, Any]:
+        return {"sheet": self.sheet, "frames": self.frames}
+
+    @classmethod
+    def from_document(
+        cls, name: str, document: object, where: object
+    ) -> "AuthoredSpriteAnimation":
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an animation must be a table")
+        unexpected = set(document) - {"sheet", "frames"}
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an animation names a sheet and "
+                "its frames per facing"
+            )
+        for required in ("sheet", "frames"):
+            if required not in document:
+                raise ProjectLoadError(f"{where}: an animation must declare {required}")
+        if not isinstance(document["sheet"], str):
+            raise ProjectLoadError(
+                f"{where}: sheet must be a path string, got {document['sheet']!r}"
+            )
+        if type(document["frames"]) is not int:
+            raise ProjectLoadError(
+                f"{where}: frames must be an integer, got {document['frames']!r}"
+            )
+        return cls(name=name, sheet=document["sheet"], frames=document["frames"])
+
+
+def parse_object_template_identity(value: object, where: object) -> tuple[int, int]:
+    """Split a ``map:NNNN/object:IIII`` identity into its map and slot.
+
+    The mirror of `parse_transition_creation_identity`: the durable form is
+    parsed in one place so a surface that displays a template and the build that
+    resolves it cannot disagree about what it names.
+    """
+    if not isinstance(value, str):
+        raise ProjectValidationError(
+            f"{where}: an object identity must be a string, got {value!r}"
+        )
+    match = _OBJECT_TEMPLATE_KEY.match(value)
+    if match is None:
+        raise ProjectValidationError(
+            f"{where}: {value!r} is not a 'map:NNNN/object:IIII' identity; both "
+            "numbers are four digits"
+        )
+    return int(match.group(1), 10), int(match.group(2), 10)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredSpriteActor:
+    """The one map actor an authored identity is attached to.
+
+    Every field is either authored by this project or carried verbatim from a
+    measured source, and the two are kept apart on purpose:
+
+    * authored - ``map``, ``position`` and ``wander_box``;
+    * carried - ``retained_raw`` and ``data_pointer_raw`` are the new object
+      header's ``+0x04`` and ``+0x0C`` words. Both are measured and neither is
+      interpreted, so they are stored as the raw 32-bit words they are, with a
+      ``_raw`` suffix and no invented meaning; the SDK never dereferences them.
+      They are required rather than defaulted so the project states what it is
+      carrying instead of the build inventing a value.
+    * resolved - ``behaviour_template`` names an EXISTING object array slot of the
+      SAME map, and the build copies that record's inline behaviour entry and then
+      writes the authored wander box into it. A ROM address is never accepted
+      here: the slot's own bytes are what a behaviour entry has to start from, and
+      naming them by their map-and-slot identity is what keeps this document
+      readable against a different image.
+
+    ``family`` names the one measured object-record layout this project writes. It
+    is stated rather than assumed because it is the check that keeps an unmodelled
+    family out, not a preference.
+    """
+
+    map: str
+    family: str
+    position: tuple[int, int]
+    retained_raw: int
+    data_pointer_raw: int
+    behaviour_template: str
+    wander_box: tuple[int, int, int, int]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.map, str) or _MAP_KEY.match(self.map) is None:
+            raise ProjectValidationError(
+                f"an actor's map is {self.map!r}, which is not a 'map:NNNN' identity"
+            )
+        _require_identity(self.behaviour_template, _OBJECT_TEMPLATE_KEY,
+                          "map:NNNN/object:IIII", "template")
+        match = _OBJECT_TEMPLATE_KEY.match(self.behaviour_template)
+        if f"map:{match.group(1)}" != self.map:
+            raise ProjectValidationError(
+                f"an actor for {self.map} names behaviour template "
+                f"{self.behaviour_template}, which belongs to map:{match.group(1)}; a "
+                "template must be a slot of the same map, because the entry the "
+                "actor starts from is one that map's own actors run"
+            )
+        if (
+            not isinstance(self.position, tuple)
+            or len(self.position) != 2
+            or any(type(part) is not int for part in self.position)
+        ):
+            raise ProjectValidationError(
+                f"an actor's position is {self.position!r}, which is not an [x, y] "
+                "pair of map pixels"
+            )
+        if (
+            not isinstance(self.wander_box, tuple)
+            or len(self.wander_box) != 4
+            or any(type(part) is not int for part in self.wander_box)
+        ):
+            raise ProjectValidationError(
+                f"an actor's wander box is {self.wander_box!r}, which is not an "
+                "[x1, y1, x2, y2] rectangle of map pixels"
+            )
+        for name in ("retained_raw", "data_pointer_raw"):
+            value = getattr(self, name)
+            if type(value) is not int or not 0 <= value <= 0xFFFFFFFF:
+                raise ProjectValidationError(
+                    f"an actor's {name} is {value!r}, which is not an unsigned "
+                    "32-bit word"
+                )
+
+    @property
+    def map_index(self) -> int:
+        return int(self.map[4:], 10)
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            "map": self.map,
+            "family": self.family,
+            "position": list(self.position),
+            "retained_raw": self.retained_raw,
+            "data_pointer_raw": self.data_pointer_raw,
+            "behaviour_template": self.behaviour_template,
+            "wander_box": list(self.wander_box),
+        }
+
+    @classmethod
+    def from_document(cls, document: object, where: object) -> "AuthoredSpriteActor":
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an actor must be a table")
+        fields = ("map", "family", "position", "retained_raw", "data_pointer_raw",
+                  "behaviour_template", "wander_box")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an actor names {', '.join(fields)}"
+            )
+        for required in fields:
+            if required not in document:
+                raise ProjectLoadError(f"{where}: an actor must declare {required}")
+        for name in ("map", "family", "behaviour_template"):
+            if not isinstance(document[name], str):
+                raise ProjectLoadError(
+                    f"{where}: {name} must be a string, got {document[name]!r}"
+                )
+        for name in ("retained_raw", "data_pointer_raw"):
+            if type(document[name]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {name} must be an integer, got {document[name]!r}"
+                )
+        return cls(
+            map=document["map"],
+            family=document["family"],
+            position=_pixel_pair(document["position"], where, "position"),
+            retained_raw=document["retained_raw"],
+            data_pointer_raw=document["data_pointer_raw"],
+            behaviour_template=document["behaviour_template"],
+            wander_box=_pixel_quad(document["wander_box"], where, "wander_box"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredSprite:
+    """One new actor-sprite identity, and the actor that draws it."""
+
+    name: str
+    sprite_id: int
+    donor_sprite_id: int
+    free_palette_entries: tuple[int, ...]
+    animations: dict[str, AuthoredSpriteAnimation]
+    actor: AuthoredSpriteActor
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"sprite name {self.name!r} must be lowercase, start with a letter, "
+                "and use only letters, digits, '_' and '-'"
+            )
+        for field_name in ("sprite_id", "donor_sprite_id"):
+            value = getattr(self, field_name)
+            if type(value) is not int or value < 0:
+                raise ProjectValidationError(
+                    f"sprite {self.name!r}: {field_name} must be a non-negative "
+                    f"integer, got {value!r}"
+                )
+        if not isinstance(self.animations, dict) or not self.animations:
+            raise ProjectValidationError(
+                f"sprite {self.name!r} needs at least one animation"
+            )
+        if len(self.animations) > _MAX_ANIMATION_SLOTS:
+            raise ProjectValidationError(
+                f"sprite {self.name!r} declares {len(self.animations)} animation "
+                f"slots; this project reads counts from 1 through "
+                f"{_MAX_ANIMATION_SLOTS}"
+            )
+        for key, animation in self.animations.items():
+            if key != animation.name:
+                raise ProjectValidationError(
+                    f"sprite {self.name!r}: animation table key {key!r} does not "
+                    f"match the animation's own name {animation.name!r}"
+                )
+        if not isinstance(self.free_palette_entries, tuple):
+            raise ProjectValidationError(
+                f"sprite {self.name!r}: free palette entries must be a tuple"
+            )
+        for index in self.free_palette_entries:
+            if (
+                type(index) is not int
+                or not _TRANSPARENT_INDEX < index < _PALETTE_ENTRIES
+            ):
+                raise ProjectValidationError(
+                    f"sprite {self.name!r}: free palette entry {index!r} is outside "
+                    f"{_TRANSPARENT_INDEX + 1}..{_PALETTE_ENTRIES - 1}; entry "
+                    f"{_TRANSPARENT_INDEX} is the transparent entry"
+                )
+        if len(set(self.free_palette_entries)) != len(self.free_palette_entries):
+            raise ProjectValidationError(
+                f"sprite {self.name!r}: free palette entries repeat: "
+                f"{sorted(self.free_palette_entries)}"
+            )
+        if not isinstance(self.actor, AuthoredSpriteActor):
+            raise ProjectValidationError(
+                f"sprite {self.name!r} needs an actor to attach its identity to"
+            )
+
+    @property
+    def identity(self) -> str:
+        return f"sprite:{self.name}"
+
+    def animation_names(self) -> tuple[str, ...]:
+        """This identity's animation slots, in the order a build emits them.
+
+        Sorted by name, which is the only order the project defines: the engine
+        reads an animation slot by its index, and a TOML table has no order to
+        inherit, so the order has to be a stated rule rather than a file accident.
+        The same rule `TransitionCreations.names_for_map` applies.
+        """
+        return tuple(sorted(self.animations))
+
+    def ordered_animations(self) -> tuple[AuthoredSpriteAnimation, ...]:
+        return tuple(self.animations[name] for name in self.animation_names())
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            "sprite_id": self.sprite_id,
+            "donor_sprite_id": self.donor_sprite_id,
+            "free_palette_entries": list(self.free_palette_entries),
+            "animation": {
+                name: self.animations[name].to_document()
+                for name in self.animation_names()
+            },
+            "actor": self.actor.to_document(),
+        }
+
+    @classmethod
+    def from_document(
+        cls, name: str, document: object, where: object
+    ) -> "AuthoredSprite":
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: a sprite must be a table")
+        fields = ("sprite_id", "donor_sprite_id", "free_palette_entries",
+                  "animation", "actor")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; a sprite declares {', '.join(fields)}"
+            )
+        for required in fields:
+            if required not in document:
+                raise ProjectLoadError(f"{where}: a sprite must declare {required}")
+        for field_name in ("sprite_id", "donor_sprite_id"):
+            if type(document[field_name]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {field_name} must be an integer, got "
+                    f"{document[field_name]!r}"
+                )
+        entries = document["free_palette_entries"]
+        if not isinstance(entries, list) or any(type(item) is not int for item in entries):
+            raise ProjectLoadError(
+                f"{where}: free_palette_entries must be a list of integers"
+            )
+        table = document["animation"]
+        if not isinstance(table, Mapping):
+            raise ProjectLoadError(
+                f"{where}: [animation] must be a table of animations"
+            )
+        animations: dict[str, AuthoredSpriteAnimation] = {}
+        for key, value in table.items():
+            label = f"{where}.animation.{key}"
+            if _SPRITE_NAME.match(str(key)) is None:
+                raise ProjectLoadError(
+                    f"{label} is not an animation name; it must be lowercase, start "
+                    "with a letter, and use only letters, digits, '_' and '-'"
+                )
+            animations[str(key)] = AuthoredSpriteAnimation.from_document(
+                str(key), value, label
+            )
+        return cls(
+            name=name,
+            sprite_id=document["sprite_id"],
+            donor_sprite_id=document["donor_sprite_id"],
+            free_palette_entries=tuple(entries),
+            animations=animations,
+            actor=AuthoredSpriteActor.from_document(document["actor"], f"{where}.actor"),
+        )
+
+
+@dataclass(frozen=True)
+class AuthoredSprites:
+    """Every new actor-sprite identity a project authors.
+
+    Exactly one, and that is a property of the image rather than a choice made
+    here. An appended identity grows the canonical character registry and repoints
+    the two literal words that name it; a second identity in the same build would
+    grow the same registry again and repoint the same two words at a different
+    table, so the two plans would write the same canonical bytes. A build can
+    apply one of them, which is what this model accepts and what the planners
+    refuse to describe otherwise.
+    """
+
+    sprites: dict[str, AuthoredSprite] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if len(self.sprites) > 1:
+            raise ProjectValidationError(
+                f"this project declares {len(self.sprites)} new actor-sprite "
+                "identities; an appended identity grows the character registry for "
+                "the whole image and repoints the two words that name it, so exactly "
+                "one can be authored per build"
+            )
+
+    def is_empty(self) -> bool:
+        return not self.sprites
+
+    def only(self) -> AuthoredSprite:
+        """The one authored sprite, refusing a project that names none."""
+        if len(self.sprites) != 1:
+            raise ProjectValidationError(
+                "a build needs exactly one authored actor-sprite identity to place"
+            )
+        return next(iter(self.sprites.values()))
+
+    def actor_maps(self) -> tuple[int, ...]:
+        """The map indices an authored actor is appended to, in name order."""
+        return tuple(sorted(sprite.actor.map_index for sprite in self.sprites.values()))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            SPRITE_TABLE: {
+                name: sprite.to_document()
+                for name, sprite in sorted(self.sprites.items())
+            }
+        }
+
+    @classmethod
+    def from_document(
+        cls, document: Mapping[str, Any], where: object
+    ) -> "AuthoredSprites":
+        table = document.get(SPRITE_TABLE)
+        if table is None:
+            raise ProjectLoadError(f"{where}: missing required [{SPRITE_TABLE}] table")
+        if not isinstance(table, Mapping) or not table:
+            raise ProjectLoadError(
+                f"{where}: [{SPRITE_TABLE}] must be a table declaring one sprite"
+            )
+        sprites: dict[str, AuthoredSprite] = {}
+        for name, entry in table.items():
+            label = f"{SPRITE_TABLE}.{name}"
+            if _SPRITE_NAME.match(str(name)) is None:
+                raise ProjectLoadError(
+                    f"{where}: {label} is not a sprite name; it must be lowercase, "
+                    "start with a letter, and use only letters, digits, '_' and '-'"
+                )
+            sprites[str(name)] = AuthoredSprite.from_document(str(name), entry,
+                                                              f"{where}: {label}")
+        return cls(sprites=sprites)
+
+
+@dataclass(frozen=True, slots=True)
+class AuthoredAppearance:
+    """One new appearance definition a project authors.
+
+    Only what an author decides. The engine record's own identity is its position
+    in the table, which the build assigns, and its `+0x08` and `+0x0C` fields stay
+    at the corpus-legal defaults the SDK states, so neither is a document field.
+
+    ``text_index`` is the record's `+0x00`: an index into the profile's declared
+    text pointer table. The record's `+0x02` is authored as its successor, which
+    holds on 232 of 232 canonical records. Creating a new text-table id is not
+    shipped, so this names an existing string rather than a new one, and the
+    record's own name in this document is what gives the identity a durable
+    handle a person can read.
+    """
+
+    name: str
+    text_index: int
+    sprite_id: int
+    #: Whether this definition deliberately takes over a sprite id whose canonical
+    #: records all have non-negative stat indices. Off by default, and a document
+    #: field rather than something derived from the id. On the engine's
+    #: sprite-only search the first loop returns an appended record (its `+0x0C` is
+    #: negative) before the second loop can return the retail one, so such a binding
+    #: redirects that lookup; on the stat-matched search an appended record is never
+    #: returned at all. An author has to ask for the takeover, and an id a
+    #: negative-stat canonical record selects is refused outright because it can
+    #: never be taken over.
+    override: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.override, bool):
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: override must be true or false, got "
+                f"{self.override!r}"
+            )
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"appearance name {self.name!r} must be lowercase, start with a "
+                "letter, and use only letters, digits, '_' and '-'"
+            )
+        if type(self.text_index) is not int or not 0 <= self.text_index < 2**16:
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: text index must be an unsigned 16-bit "
+                f"integer, got {self.text_index!r}"
+            )
+        if type(self.sprite_id) is not int or not 0 <= self.sprite_id < 2**32:
+            raise ProjectValidationError(
+                f"appearance {self.name!r}: sprite id must be an unsigned 32-bit "
+                f"integer, got {self.sprite_id!r}"
+            )
+
+    @property
+    def identity(self) -> str:
+        return f"appearance:{self.name}"
+
+    def to_document(self) -> dict[str, Any]:
+        return {"text_index": self.text_index, "sprite_id": self.sprite_id,
+                "override": self.override}
+
+    @classmethod
+    def from_document(
+        cls, name: str, document: object, where: object
+    ) -> "AuthoredAppearance":
+        fields = ("text_index", "sprite_id", "override")
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an appearance must be a table")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an appearance declares "
+                f"{', '.join(fields)}"
+            )
+        for required in ("text_index", "sprite_id"):
+            if required not in document:
+                raise ProjectLoadError(f"{where}: an appearance must declare {required}")
+            if type(document[required]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {required} must be an integer, got "
+                    f"{document[required]!r}"
+                )
+        # A document written before the field existed simply has the default, and
+        # an absent key is the documented default rather than an inference.
+        override = document.get("override", False)
+        if not isinstance(override, bool):
+            raise ProjectLoadError(
+                f"{where}: override must be true or false, got {override!r}"
+            )
+        return cls(name=name, text_index=document["text_index"],
+                   sprite_id=document["sprite_id"], override=override)
+
+
+@dataclass(frozen=True)
+class AuthoredAppearances:
+    """Every new appearance definition a project authors.
+
+    A mapping rather than a list because the name is the durable handle a surface
+    and a manifest carry, and a TOML table has no order to inherit. The BUILD
+    order is stated instead: `ordered()` sorts by name, which is the only order
+    this document defines, so two runs of the same document append the same
+    records in the same order.
+    """
+
+    appearances: dict[str, AuthoredAppearance] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        sprite_ids: dict[int, str] = {}
+        for item in self.appearances.values():
+            if item.sprite_id in sprite_ids:
+                raise ProjectValidationError(
+                    f"appearances {sprite_ids[item.sprite_id]!r} and "
+                    f"{item.name!r} both bind sprite id {item.sprite_id}; the "
+                    f"engine's search returns the first matching record, so the "
+                    f"second could never be selected")
+            sprite_ids[item.sprite_id] = item.name
+        if len(self.appearances) > _MAX_AUTHORED_APPEARANCES:
+            raise ProjectValidationError(
+                f"this project declares {len(self.appearances)} new appearance "
+                f"definitions; the engine keeps one seen bit per record in a "
+                f"232-bit array, so at most {_MAX_AUTHORED_APPEARANCES} appended "
+                "records have flag storage, and this project cannot be built"
+            )
+
+    def is_empty(self) -> bool:
+        return not self.appearances
+
+    def ordered(self) -> tuple[AuthoredAppearance, ...]:
+        """The definitions in the one order this document defines."""
+        return tuple(self.appearances[name] for name in sorted(self.appearances))
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self.appearances))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            APPEARANCE_TABLE: {
+                name: appearance.to_document()
+                for name, appearance in sorted(self.appearances.items())
+            }
+        }
+
+    @classmethod
+    def from_document(
+        cls, document: Mapping[str, Any], where: object
+    ) -> "AuthoredAppearances":
+        table = document.get(APPEARANCE_TABLE)
+        if table is None:
+            raise ProjectLoadError(
+                f"{where}: missing required [{APPEARANCE_TABLE}] table"
+            )
+        if not isinstance(table, Mapping) or not table:
+            raise ProjectLoadError(
+                f"{where}: [{APPEARANCE_TABLE}] must be a table declaring at least "
+                "one appearance"
+            )
+        appearances: dict[str, AuthoredAppearance] = {}
+        for name, entry in table.items():
+            label = f"{APPEARANCE_TABLE}.{name}"
+            if _SPRITE_NAME.match(str(name)) is None:
+                raise ProjectLoadError(
+                    f"{where}: {label} is not an appearance name; it must be "
+                    "lowercase, start with a letter, and use only letters, digits, "
+                    "'_' and '-'"
+                )
+            appearances[str(name)] = AuthoredAppearance.from_document(
+                str(name), entry, f"{where}: {label}")
+        return cls(appearances=appearances)
+
+
+@dataclass(frozen=True)
+class AuthoredMap:
+    """One new map identity a project authors.
+
+    Only what an author decides. The engine identity is the two-byte key the
+    lookup at `0x080089FC` compares, and everything else about the new map is
+    inherited from ``donor``: the donor's record fields, its root load template,
+    its layer records and its chunks. ``name`` is this document's durable handle,
+    which a manifest carries and a surface shows; the table index the record takes
+    is assigned by the build and reported in the manifest, never stored here.
+    """
+
+    name: str
+    donor: int
+    key_high: int
+    key_low: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or _SPRITE_NAME.match(self.name) is None:
+            raise ProjectValidationError(
+                f"authored map name {self.name!r} must be lowercase, start with a "
+                "letter, and use only letters, digits, '_' and '-'"
+            )
+        if type(self.donor) is not int or self.donor < 0:
+            raise ProjectValidationError(
+                f"authored map {self.name!r}: donor must be a map table index, got "
+                f"{self.donor!r}"
+            )
+        for field_name, value in (("key_high", self.key_high),
+                                  ("key_low", self.key_low)):
+            if type(value) is not int or not 0 <= value <= 0xFF:
+                raise ProjectValidationError(
+                    f"authored map {self.name!r}: {field_name} must be one byte, got "
+                    f"{value!r}"
+                )
+        if self.key == (0, 0):
+            raise ProjectValidationError(
+                f"authored map {self.name!r}: a zero key is not a map identity; the "
+                "canonical corpus uses 0x0001..0x1601"
+            )
+
+    @property
+    def identity(self) -> str:
+        return f"map-new:{self.name}"
+
+    @property
+    def key(self) -> tuple[int, int]:
+        return (self.key_high, self.key_low)
+
+    def to_document(self) -> dict[str, Any]:
+        return {"donor": self.donor, "key_high": self.key_high,
+                "key_low": self.key_low}
+
+    @classmethod
+    def from_document(cls, name: str, document: object,
+                      where: object) -> "AuthoredMap":
+        fields = ("donor", "key_high", "key_low")
+        if not isinstance(document, Mapping):
+            raise ProjectLoadError(f"{where}: an authored map must be a table")
+        unexpected = set(document) - set(fields)
+        if unexpected:
+            joined = ", ".join(sorted(unexpected))
+            raise ProjectLoadError(
+                f"{where}: unknown key(s) {joined}; an authored map declares "
+                f"{', '.join(fields)}"
+            )
+        for required in fields:
+            if required not in document:
+                raise ProjectLoadError(
+                    f"{where}: an authored map must declare {required}")
+            if type(document[required]) is not int:
+                raise ProjectLoadError(
+                    f"{where}: {required} must be an integer, got "
+                    f"{document[required]!r}"
+                )
+        return cls(name=name, donor=document["donor"],
+                   key_high=document["key_high"], key_low=document["key_low"])
+
+
+@dataclass(frozen=True)
+class AuthoredMaps:
+    """Every new map identity a project authors.
+
+    A mapping rather than a list because the name is the durable handle a surface
+    and a manifest carry, and a TOML table has no order to inherit. The BUILD
+    order is stated instead: `ordered()` sorts by name, so two runs of the same
+    document append the same rows in the same order and land on the same
+    addresses.
+    """
+
+    maps: dict[str, AuthoredMap] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        keys: dict[tuple[int, int], str] = {}
+        for item in self.maps.values():
+            if item.key in keys:
+                raise ProjectValidationError(
+                    f"authored maps {keys[item.key]!r} and {item.name!r} both claim "
+                    f"key 0x{item.key[0]:02X}{item.key[1]:02X}; the engine's lookup "
+                    "returns the first match, so the second could never be loaded"
+                )
+            keys[item.key] = item.name
+        if len(self.maps) > _MAX_AUTHORED_MAPS:
+            raise ProjectValidationError(
+                f"this project declares {len(self.maps)} new maps; the engine's map "
+                f"count helper is `movs r0,#0xff; adds r0,#imm8`, so at most "
+                f"{_MAX_AUTHORED_MAPS} rows can be appended, and this project cannot "
+                "be built"
+            )
+
+    def is_empty(self) -> bool:
+        return not self.maps
+
+    def ordered(self) -> tuple[AuthoredMap, ...]:
+        """The maps in the one order this document defines."""
+        return tuple(self.maps[name] for name in sorted(self.maps))
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            AUTHORED_MAP_TABLE: {
+                name: item.to_document()
+                for name, item in sorted(self.maps.items())
+            }
+        }
+
+    @classmethod
+    def from_document(cls, document: Mapping[str, Any],
+                      where: object) -> "AuthoredMaps":
+        table = document.get(AUTHORED_MAP_TABLE)
+        if table is None:
+            raise ProjectLoadError(
+                f"{where}: missing required [{AUTHORED_MAP_TABLE}] table")
+        if not isinstance(table, Mapping) or not table:
+            raise ProjectLoadError(
+                f"{where}: [{AUTHORED_MAP_TABLE}] must be a table declaring at least "
+                "one map"
+            )
+        maps: dict[str, AuthoredMap] = {}
+        for name, entry in table.items():
+            label = f"{AUTHORED_MAP_TABLE}.{name}"
+            if _SPRITE_NAME.match(str(name)) is None:
+                raise ProjectLoadError(
+                    f"{where}: {label} is not an authored map name; it must be "
+                    "lowercase, start with a letter, and use only letters, digits, "
+                    "'_' and '-'"
+                )
+            maps[str(name)] = AuthoredMap.from_document(
+                str(name), entry, f"{where}: {label}")
+        return cls(maps=maps)
+
+
+def _require_identity(value: object, pattern: "re.Pattern[str]", form: str,
+                      name: str) -> None:
+    """Refuse anything that is not one of this document's durable identity forms."""
+    if not isinstance(value, str):
+        raise ProjectValidationError(
+            f"an actor's {name} must be a {form!r} string, got {value!r}"
+        )
+    if pattern.match(value) is None:
+        raise ProjectValidationError(
+            f"an actor's {name} is {value!r}, which is not a {form!r} identity"
+        )
+
+
+def _pixel_pair(value: object, where: object, name: str) -> tuple[int, int]:
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 2
+        or any(type(part) is not int for part in value)
+    ):
+        raise ProjectLoadError(
+            f"{where}: {name} must be a two-integer [x, y] pair, got {value!r}"
+        )
+    return (value[0], value[1])
+
+
+def _pixel_quad(value: object, where: object, name: str) -> tuple[int, int, int, int]:
+    if (
+        not isinstance(value, (list, tuple))
+        or len(value) != 4
+        or any(type(part) is not int for part in value)
+    ):
+        raise ProjectLoadError(
+            f"{where}: {name} must be a four-integer [x1, y1, x2, y2] rectangle, "
+            f"got {value!r}"
+        )
+    return (value[0], value[1], value[2], value[3])
+
+
 # --- helpers -------------------------------------------------------------
 
 
@@ -2278,6 +3207,7 @@ def write_project(
     structure: "MapStructure | None" = None,
     transitions: "TransitionEdits | None" = None,
     transition_creations: "TransitionCreations | None" = None,
+    authored_maps: "AuthoredMaps | None" = None,
 ) -> list[Path]:
     """Write the whole authored tree. Returns the files written, in order.
 
@@ -2324,15 +3254,11 @@ def write_project(
         documents.append(
             (TRANSITION_CREATION_FILE, transition_creations.to_document())
         )
+    if authored_maps and not authored_maps.is_empty():
+        documents.append((AUTHORED_MAPS_FILE, authored_maps.to_document()))
 
     for relative, document in documents:
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # newline="\n" explicitly: the default on Windows would translate to
-        # CRLF and the "same project extracts to the same bytes" property would
-        # then depend on which machine ran the extraction.
-        path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
-        written.append(path)
+        written.append(replace_document(root / relative, dump_toml(document)))
 
     return written
 
@@ -2350,11 +3276,7 @@ def write_dialogue_replacements(
     if not dialogues:
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        dump_toml(_dialogue_document(dialogues)), encoding="utf-8", newline="\n"
-    )
-    return path
+    return replace_document(path, dump_toml(_dialogue_document(dialogues)))
 
 
 def write_graphics_overrides(
@@ -2371,10 +3293,8 @@ def write_graphics_overrides(
     if not palette:
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
     document = GraphicsOverrides(palette=dict(palette)).to_document()
-    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(document))
 
 
 def _read_document(path: Path) -> dict[str, Any]:
@@ -2728,9 +3648,7 @@ def write_layout_edits(directory: str | Path, layout: "LayoutEdits") -> Path:
     if layout is None or layout.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(layout.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(layout.to_document()))
 
 
 def _read_graphics_overrides(path: Path) -> "GraphicsOverrides":
@@ -2758,9 +3676,7 @@ def write_authored_chunks(directory: str | Path, chunks: "AuthoredChunks") -> Pa
     if chunks is None or chunks.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(chunks.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(chunks.to_document()))
 
 
 def write_map_structure(directory: str | Path, structure: "MapStructure") -> Path:
@@ -2776,9 +3692,7 @@ def write_map_structure(directory: str | Path, structure: "MapStructure") -> Pat
     if structure is None or structure.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(structure.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(structure.to_document()))
 
 
 def _read_structure(path: Path) -> "MapStructure":
@@ -2831,9 +3745,7 @@ def write_transition_edits(directory: str | Path, transitions: "TransitionEdits"
     if transitions is None or transitions.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(transitions.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(transitions.to_document()))
 
 
 def _read_transitions(path: Path) -> "TransitionEdits":
@@ -2863,9 +3775,7 @@ def write_transition_creations(
     if creations is None or creations.is_empty():
         path.unlink(missing_ok=True)
         return path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(dump_toml(creations.to_document()), encoding="utf-8", newline="\n")
-    return path
+    return replace_document(path, dump_toml(creations.to_document()))
 
 
 def _read_transition_creations(path: Path) -> "TransitionCreations":
@@ -2873,6 +3783,81 @@ def _read_transition_creations(path: Path) -> "TransitionCreations":
     if not path.is_file():
         return TransitionCreations()
     return TransitionCreations.from_document(_read_document(path), path)
+
+
+def write_authored_sprites(directory: str | Path, sprites: "AuthoredSprites") -> Path:
+    """Persist only the authored-sprite document for a loaded project.
+
+    SPRITE-NEW-PROJECT-SURFACE-001. The mirror of `write_authored_chunks`: it is
+    the ONE place an authored actor-sprite identity reaches disk, and the sheet
+    PNGs it names are the project's own files rather than anything this writes. An
+    empty document means the project authors no new sprite, so the optional file is
+    removed rather than written as an invalid empty table (which `read_project`
+    would then refuse).
+    """
+    path = Path(directory) / SPRITES_FILE
+    if sprites is None or sprites.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    return replace_document(path, dump_toml(sprites.to_document()))
+
+
+def write_authored_appearances(
+    directory: str | Path, appearances: "AuthoredAppearances"
+) -> Path:
+    """Persist only the authored-appearance document for a loaded project.
+
+    APPEARANCE-AUTHORING-GATE-001. The ONE place an authored appearance definition
+    reaches disk. An empty document means the project authors no new appearance, so
+    the optional file is removed rather than written as an invalid empty table
+    (which `read_project` would then refuse).
+    """
+    path = Path(directory) / APPEARANCES_FILE
+    if appearances is None or appearances.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    return replace_document(path, dump_toml(appearances.to_document()))
+
+
+def write_authored_maps(directory: str | Path, authored_maps: "AuthoredMaps") -> Path:
+    """Persist only the authored-map document for a loaded project.
+
+    MAP-NEW-AUTHORING-001. The ONE place an authored map identity reaches disk.
+    An empty document means the project authors no new map, so the optional file
+    is removed rather than written as an invalid empty table (which `read_project`
+    would then refuse).
+    """
+    path = Path(directory) / AUTHORED_MAPS_FILE
+    if authored_maps is None or authored_maps.is_empty():
+        path.unlink(missing_ok=True)
+        return path
+    return replace_document(path, dump_toml(authored_maps.to_document()))
+
+
+def _read_authored_maps(path: Path) -> "AuthoredMaps":
+    """Load `maps/authored.toml`, or nothing at all if it is absent."""
+    if not path.is_file():
+        return AuthoredMaps()
+    return AuthoredMaps.from_document(_read_document(path), path)
+
+
+def _read_appearances(path: Path) -> "AuthoredAppearances":
+    """Load `appearances/appearances.toml`, or nothing at all if it is absent."""
+    if not path.is_file():
+        return AuthoredAppearances()
+    return AuthoredAppearances.from_document(_read_document(path), path)
+
+
+def _read_sprites(path: Path) -> "AuthoredSprites":
+    """Load `sprites/sprites.toml`, or nothing at all if it is absent.
+
+    Same three-state rule as every other optional subsystem: absent means the
+    project authors no new actor sprite, present-and-valid means it does, and
+    present-and-malformed is an error rather than an empty document.
+    """
+    if not path.is_file():
+        return AuthoredSprites()
+    return AuthoredSprites.from_document(_read_document(path), path)
 
 
 def read_project(directory: str | Path) -> StatProject:
@@ -2934,6 +3919,11 @@ def read_project(directory: str | Path) -> StatProject:
     structure = _read_structure(root / STRUCTURE_FILE)
     transitions = _read_transitions(root / TRANSITION_FILE)
     transition_creations = _read_transition_creations(root / TRANSITION_CREATION_FILE)
+    sprites = _read_sprites(root / SPRITES_FILE)
+    appearances = _read_appearances(root / APPEARANCES_FILE)
+    # A donor index is checked against the image's real count at build time, which
+    # is the only layer that has an image; here the shape alone is checked.
+    authored_maps = _read_authored_maps(root / AUTHORED_MAPS_FILE)
 
     # MAP-CHUNK-AUTHORING-001. A layout cell that names an authored chunk must
     # name one this project declares. Checked here because it is the one place
@@ -2990,6 +3980,9 @@ def read_project(directory: str | Path) -> StatProject:
         structure=structure,
         transitions=transitions,
         transition_creations=transition_creations,
+        sprites=sprites,
+        appearances=appearances,
+        authored_maps=authored_maps,
         placement_events=events,
         placement_types=(_read_document(root / PLACEMENT_TYPES_FILE)
                          if (root / PLACEMENT_TYPES_FILE).exists() else None),

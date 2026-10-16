@@ -1219,8 +1219,13 @@ def test_warpedit001_launcher_verifies_identity_and_owns_no_session_lifetime():
     # The savestate is copied and the copy verified, so the private original is
     # never what the emulator loads.
     assert "Savestate copy hash mismatch" in launcher
-    # The state is loaded after the observer is injected.
-    assert launcher.index("inject_mgba_lua.ps1") < launcher.index("toolkit031_load_state.ps1")
+    # The state is loaded after the observer is armed. Both now live in the shared
+    # session mechanism, so the launcher delegates and the helper keeps the order:
+    # the observer's dofile runs before the savestate is loaded.
+    helper = (root / "tools/runtime/mgba_session.ps1").read_text(encoding="utf-8")
+    assert "Start-MgbaSession" in launcher
+    assert "-StatePath $workingState" in launcher
+    assert helper.index("dofile([[") < helper.index("emu.loadStateFile")
 
     # No ownership of the session.
     assert "Start-Job" not in launcher
@@ -1311,8 +1316,9 @@ def test_gfximport001_launcher_verifies_identity_and_owns_no_session_lifetime():
     # what the emulator writes to.
     assert "Save copy hash mismatch" in launcher
     assert "savegamePath" in launcher
-    # The observer is injected after the window settles.
-    assert launcher.index("Start-Process") < launcher.index("inject_mgba_lua.ps1")
+    # One shared mechanism launches mGBA, shows it without taking the foreground,
+    # runs the observer with --script and only then loads the state.
+    assert "Start-MgbaSession" in launcher
 
     # No ownership of the session, and no racing or replacing prior evidence.
     assert "Start-Job" not in launcher

@@ -1,23 +1,31 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
-import SiteHeader from "../components/SiteHeader.astro";
 import Hero from "../components/Hero.astro";
 import ProgressStrip from "../components/ProgressStrip.astro";
+import LatestWins from "../components/LatestWins.astro";
 import MainBand from "../components/MainBand.astro";
 import RoadmapTo1 from "../components/RoadmapTo1.astro";
 import ProofBand from "../components/ProofBand.astro";
 import SiteFooter from "../components/SiteFooter.astro";
+import DesktopIcons from "../components/DesktopIcons.astro";
+import Gadgets from "../components/Gadgets.astro";
+import Taskbar from "../components/Taskbar.astro";
 ---
 
 <BaseLayout>
   <div id="top"></div>
-  <SiteHeader />
-  <main id="main-content">
-    <Hero />
-    <ProgressStrip />
-    <MainBand />
-    <RoadmapTo1 />
-    <ProofBand />
-  </main>
-  <SiteFooter />
+  <div class="desktop">
+    <DesktopIcons />
+    <main id="main-content" class="windows">
+      <Hero />
+      <ProgressStrip />
+      <LatestWins />
+      <MainBand />
+      <RoadmapTo1 />
+      <ProofBand />
+    </main>
+    <Gadgets />
+    <SiteFooter />
+  </div>
+  <Taskbar />
 </BaseLayout>

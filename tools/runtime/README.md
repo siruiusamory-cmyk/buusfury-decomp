@@ -36,10 +36,10 @@ Every entry is marked with one of two classes:
 | `run_mgba_capture.ps1` | Tracked launcher: identity checks, isolated GDB-halted launch, optional Lua injection, capture invocation, cleanup, post-run ROM verification. |
 | `capture_mgba_event.py` | Bounded, object-attributed breakpoint event loop; owns the GDB connection and writes the evidence files. |
 | `mgba_capture.py` | Read-only GDB/RSP primitives: response framing, chunked reads, write-packet allowlist, versioned dump records. |
+| `mgba_identity.py` | Fail-closed emulator identity for the Python GDB probes: one pinned build label and executable SHA-256, checked before any process is launched. Also carries `LAUNCH_SITES`: the registry of every repository-controlled place an mGBA process can start, each with one frozen classification, the `proof` mechanism that gates it, and a written rationale. |
 | `inject_mgba_lua.ps1` | PID-scoped Lua injection through the mGBA Scripting window, allowlisted per script, via a bounded helper so a Run-button deadlock cannot strand the caller. |
 | `invoke_mgba_run.ps1` | The bounded helper process that clicks Run; separated because mGBA's synchronous handler can block Invoke from returning. |
-| `load_mgba_lua.ps1` | Launch mGBA on the verified ROM, run one allowlisted ROM-006 bootstrap script, and confirm the expected savestate appeared with the ROM unchanged. |
-| `toolkit031_load_state.ps1` | Load one savestate into an already-running, already-instrumented PID (observers must attach before entity construction). |
+| `load_mgba_lua.ps1` | Verify the ROM and the mGBA build identity, launch mGBA, delegate Lua injection to `inject_mgba_lua.ps1`, and confirm the named ROM-006 state appeared with the ROM unchanged. |
 | `start_toolkit031_session.ps1` | Start an instrumented play session and return, leaving mGBA running for the human operator. |
 | `finish_toolkit031_session.ps1` | Companion close-out: verify the ROM was not modified and summarise the session's evidence. |
 | `run_toolkit031_watch.ps1` | Single-process free-running observation run, for the Lua scripted-breakpoint path that a GDB-halted core cannot serve. |
@@ -140,7 +140,8 @@ SDK authored, which is the SDK's central claim.
 
 ### Retired tombstones (do not run, do not delete)
 
-Each is a single `error(...)` line naming why the helper was withdrawn. They
+Each is a single failing statement naming why the helper was withdrawn:
+`error(...)` in a Lua tombstone, `throw` in a PowerShell one. They
 stay tracked so a research document citing the filename still resolves, and so
 nobody reintroduces the same unsafe helper.
 
@@ -151,3 +152,4 @@ nobody reintroduces the same unsafe helper.
 | `p006_load_and_scan.lua` | Direct Lua state loading bypasses provenance and identity checks; use `run_mgba_capture.ps1` with `-StatePath`/`-LuaPath`. |
 | `p006_load_slot1.lua` | Not part of the tracked capture pipeline. |
 | `p006_save_state.lua` | Wrote a state beside the read-only source state. |
+| `toolkit031_load_state.ps1` | A second mGBA Scripting-window driver beside `inject_mgba_lua.ps1`. Load a state through `start_toolkit031_session.ps1`, which asks `Start-MgbaSession -StatePath` for the inject-then-load order. |

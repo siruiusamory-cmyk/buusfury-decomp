@@ -8,7 +8,8 @@ in this file therefore do not test the Workbench - they test the *environment CI
 promises the Workbench*, so that breaking that promise fails a named test
 instead of silently reducing the suite:
 
-- the pip install line must name the ``workbench`` and ``research`` extras;
+- the install the job builds its environment from must name the ``workbench``
+  and ``research`` extras;
 - the job must set a headless Qt platform, because the runner has no display;
 - under CI, PySide6 and capstone must actually be importable here;
 - every module in ``REQUIRED_GUI_MODULES`` must exist, carry the ``workbench``
@@ -16,7 +17,44 @@ instead of silently reducing the suite:
   claim about dependency-guarded GUI modules rather than an arbitrary path list;
 - the list must cover the named editor regressions (the state and error-surface
   regression, the palette editor, undo/redo and palette cost), which is what
-  pins the acceptance criterion durably.
+  pins the acceptance criterion durably;
+- ``deploy-site`` must need ``test-sdk``, because the deploy job's only rule is
+  the default branch while the test job's second rule can exclude it from
+  exactly that pipeline, and a rule-excluded job cannot fail anything. Audit
+  finding CQA-20 records the hole this asserts shut. The same requirement covers
+  every test-stage job the default branch can run, and deliberately not a
+  test-stage job whose rules narrow it off the default branch: that job cannot be
+  in the deploy job's pipeline at all, and a ``needs:`` entry for an excluded job
+  fails pipeline creation instead of gating it.
+- the ``test-integration`` job must run the ROM-gated directory's one ROM-free
+  member by name rather than collecting the directory, because every other file
+  there skips without the canonical image and a job that skipped everything
+  would exit 0 without running anything; and its install must stay ``.[dev]``,
+  because that selection imports no PySide6 and no capstone.
+- the ``adjacency`` job must run the fixed app-wide-Qt-state set in both orders,
+  because ``test-sdk``'s ``--dist loadfile`` means no module ever follows
+  another in one process, and module-to-module Qt state is exactly what that
+  hides.
+- every routed test job must clear the protected deployment credential at the
+  job, because these jobs run install scripts on the owner's own machine and the
+  protected variable is visible on the default branch, which is the pipeline
+  ``deploy-site`` runs in. The job-level ``variables:`` entries are belt and
+  braces only: a PROJECT CI variable outranks them, so the effective control is
+  the process-environment scrub in ``ci\\common.ps1``, proved by inheritance with
+  a dummy value rather than by reading the YAML.
+- the ``adjacency`` job's two orders must both be REACHED, not merely named: the
+  generated PowerShell job script must not exit after the forward order, and a
+  failure in either order must fail the job. That is proved by executing the
+  exact YAML lines with a stubbed command, because a text check passed while the
+  job could never reach the second order.
+
+The job bodies live in ``ci\\*.ps1`` and the YAML names the file, because the
+four test-stage jobs run on a shell executor on Windows, where ``image:`` is
+ignored. Every claim about a job's environment is therefore read from the script
+that builds it - the file the YAML step names, resolved here, so a step pointing
+at a body that does not exist fails instead of being skipped over. The routing
+itself (which jobs run on the self-hosted runner, and that the deploy job does
+not) is asserted too, so it cannot drift silently.
 
 This module imports no PySide6 (and no capstone) at module scope, so it is
 always collected and never skips as a whole: the failure it reports must be
@@ -32,6 +70,9 @@ import importlib.util
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -49,6 +90,29 @@ CI_CONFIG = REPOSITORY_ROOT / ".gitlab-ci.yml"
 #: the shipping GUI dependency set.
 TEST_JOB = "test-sdk"
 
+#: The job that validates the built site. Named alongside the suite in the deploy
+#: job's dependencies, because `needs` bypasses the stage barrier.
+SITE_JOB = "test-site"
+
+#: The job that runs the one ROM-free member of the ROM-gated directory, and the
+#: member itself. The selection must be that file by name: every other file under
+#: ``tests/integration`` skips without the canonical image, so collecting the
+#: directory would produce a job that exits 0 over a wall of skips.
+INTEGRATION_JOB = "test-integration"
+INTEGRATION_MEMBER = "tests/integration/test_container_decode_synthetic.py"
+
+#: The job that runs the app-wide-Qt-state adjacency set in one process per
+#: order. It is the only place the shipping GUI modules follow one another in a
+#: single process, because ``test-sdk`` distributes at module granularity.
+ADJACENCY_JOB = "adjacency"
+
+#: The tag of the self-hosted runner on the owner's PC, and the job that must
+#: NOT carry it. The four test-stage jobs run there; ``deploy-site`` publishes,
+#: reads the protected Cloudflare credential and stays on the shared runners.
+LOCAL_CI_TAG = "local-ci"
+LOCAL_CI_JOBS = (TEST_JOB, INTEGRATION_JOB, ADJACENCY_JOB, SITE_JOB)
+DEPLOY_JOB = "deploy-site"
+
 #: Extras the test job must install for the shipping surface to execute.
 REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
 
@@ -56,7 +120,18 @@ REQUIRED_CI_EXTRAS = ("dev", "workbench", "research")
 #: PySide6 and capstone; the import names are what the guards probe).
 REQUIRED_CI_IMPORTS = ("PySide6", "capstone")
 
-_EDITABLE_EXTRAS = re.compile(r"-e\s+\"?'?\.\[(?P<extras>[^\]]*)\]\"?'?")
+#: The editable install's extras. The routed jobs install through the venv
+#: helper in ``ci\common.ps1``, so the extras are the ``-Extras`` parameter of
+#: ``New-CiVenv``. The claim the assertions below make is unchanged - the project
+#: is installed with these extras - and this is the spelling that reaches disk.
+_EDITABLE_EXTRAS = re.compile(r"-Extras\s+['\"]?\.\[(?P<extras>[^\]]*)\]['\"]?")
+
+#: The PowerShell body a routed job runs, named in the YAML as ``ci\<name>.ps1``.
+#: The job bodies were moved out of ``.gitlab-ci.yml`` so the same script can be
+#: run by hand for a measurement; every environment claim about a routed job is
+#: therefore asserted against the script that builds the environment rather than
+#: against a YAML step that no longer exists.
+_CI_SCRIPT = re.compile(r"ci[\\/](?P<name>[A-Za-z0-9_.-]+\.ps1)")
 
 
 def _ci_config_text() -> str:
@@ -83,17 +158,74 @@ def _cited(needle: str) -> str:
     return f"{location}: {needle}"
 
 
-def _job_step(job: dict, *needles: str) -> str:
-    """The single ``before_script`` step containing every needle."""
-    steps = [str(step) for step in job.get("before_script") or []]
+def _ci_script_path(job_name: str) -> Path:
+    """The ``ci\\<name>.ps1`` body ``job_name``'s ``script`` runs.
+
+    The name is read from the YAML step rather than kept in a second table here,
+    so the file this asserts against is the file the job runs: a step that names
+    a body which does not exist fails instead of asserting about some other file.
+    """
+    steps = [str(step) for step in _ci_config()[job_name].get("script") or []]
     for step in steps:
-        if all(needle in step for needle in needles):
-            return step
+        match = _CI_SCRIPT.search(step)
+        if match:
+            path = REPOSITORY_ROOT / "ci" / match.group("name")
+            assert path.is_file(), (
+                f"{_cited_in(job_name, 'script')}: {job_name} runs "
+                f"ci\\{match.group('name')}, which does not exist at {path}"
+            )
+            return path
     raise AssertionError(
-        f"{CI_CONFIG}: no {TEST_JOB} before_script step contains "
-        + " and ".join(repr(needle) for needle in needles)
-        + f"; steps are {steps!r}"
+        f"{_cited_in(job_name, 'script')}: {job_name} must run its body from "
+        f"ci\\<name>.ps1; its script is {steps!r}"
     )
+
+
+def _ci_script_text(job_name: str) -> str:
+    """The PowerShell body ``job_name`` runs, as text."""
+    return _ci_script_path(job_name).read_text(encoding="utf-8")
+
+
+def _job_line(job_name: str, needle: str) -> int | None:
+    """The 1-based line of ``needle`` inside ``job_name``'s own block.
+
+    A bare ``_line_number`` search can cite another job: every routed job names a
+    ``ci\\*.ps1`` body, so the first such line in the file is ``test-sdk``'s. The
+    block is found by the job's own key and ends at the next top-level key, so a
+    message about one job cites that job.
+    """
+    lines = _ci_config_text().splitlines()
+    start = _line_number(f"{job_name}:")
+    if start is None:
+        return None
+    end = len(lines)
+    for offset in range(start, len(lines)):
+        line = lines[offset]
+        if line and not line[0].isspace() and ":" in line:
+            end = offset
+            break
+    for offset in range(start, end):
+        if needle in lines[offset]:
+            return offset + 1
+    return None
+
+
+def _cited_in(job_name: str, needle: str) -> str:
+    """``.gitlab-ci.yml:<line>`` for ``needle`` inside ``job_name``."""
+    line = _job_line(job_name, needle)
+    location = f"{CI_CONFIG}:{line}" if line else f"{CI_CONFIG} ({job_name})"
+    return f"{location}: {needle}"
+
+
+def _installed_extras(job_name: str) -> set[str]:
+    """The extras of ``job_name``'s one editable install."""
+    script = _ci_script_text(job_name)
+    match = _EDITABLE_EXTRAS.search(script)
+    assert match, (
+        f"{_ci_script_path(job_name)}: {job_name} must install the project with "
+        "extras, as `-Extras '.[dev]'`; the install is what that parameter is for"
+    )
+    return {extra.strip() for extra in match.group("extras").split(",")}
 
 
 def _in_ci() -> bool:
@@ -150,19 +282,20 @@ def test_the_ci_job_installs_the_shipping_gui_and_research_extras():
     The one-line install is asserted as a whole, so an edit that removes
     ``workbench`` fails this test by name instead of quietly restoring the
     failure this file exists to catch: a green job with the Workbench surface
-    never executed.
+    never executed. The install lives in ``ci\\test_sdk.ps1`` after the port to
+    the Windows runner: the same claim, read from the script that makes it.
     """
-    job = _ci_config()[TEST_JOB]
-    install = _job_step(job, "pip install", "-e")
-    match = _EDITABLE_EXTRAS.search(install)
+    script = _ci_script_path(TEST_JOB)
+    match = _EDITABLE_EXTRAS.search(script.read_text(encoding="utf-8"))
     assert match, (
-        "the test job must install the project with extras, as "
-        '`-e ".[dev,workbench,research]"`; found: ' + _cited(install)
+        f"{script}: the test job must install the project with extras, as "
+        "`-Extras '.[dev,workbench,research]'`, because the extras are what turn "
+        "fifteen GUI and capstone modules from whole-file skips into executions"
     )
     installed = {extra.strip() for extra in match.group("extras").split(",")}
     missing = [extra for extra in REQUIRED_CI_EXTRAS if extra not in installed]
     assert not missing, (
-        f"{_cited(install)} is missing the {missing} extra(s); the shipping "
+        f"{script}: the install is missing the {missing} extra(s); the shipping "
         "Workbench modules (tests/gates.py REQUIRED_GUI_MODULES) and the three "
         "capstone modules then collapse to whole-file skips and CI reports green "
         "over a surface it never executed"
@@ -170,11 +303,12 @@ def test_the_ci_job_installs_the_shipping_gui_and_research_extras():
 
 
 def test_the_ci_job_configures_a_headless_qt_platform():
-    """Prevents: a GUI job that fails (or hangs) because the runner has no X.
+    """Prevents: a GUI job that fails (or hangs) because the runner has no display.
 
-    A Linux CI runner has no display, and these modules construct a real
+    A CI runner has no display, and these modules construct a real
     ``QApplication`` and real widgets; without this the Qt platform plugin
-    cannot initialise.
+    cannot initialise. On the Windows runner the setting is also what keeps the
+    job independent of a logged-in desktop session.
     """
     job = _ci_config()[TEST_JOB]
     variables = job.get("variables") or {}
@@ -196,8 +330,9 @@ def test_the_required_gui_surface_is_installed_in_this_environment():
     if not _in_ci():
         pytest.skip(
             "CI environment contract: PySide6 and capstone must be importable "
-            "in the CI test job, which installs .[dev,workbench,research]; "
-            "outside CI this file only checks the contract text"
+            f"in the {TEST_JOB} job, which installs .[dev,workbench,research]; "
+            f"the {INTEGRATION_JOB} job installs .[dev] only. Outside CI this "
+            "file only checks the contract text"
         )
     missing = [
         name for name in REQUIRED_CI_IMPORTS if not _importable(name)
@@ -205,8 +340,8 @@ def test_the_required_gui_surface_is_installed_in_this_environment():
     assert not missing, (
         f"CI installs .[dev,workbench,research] and sets QT_QPA_PLATFORM=offscreen "
         f"so that the shipping GUI surface executes, but {missing} cannot be "
-        f"imported in this environment; {CI_CONFIG} "
-        f"(before_script of {TEST_JOB}) is where that is fixed"
+        f"imported in this environment; {_ci_script_path(TEST_JOB)} is where "
+        "that install is made"
     )
 
 
@@ -259,3 +394,730 @@ def test_the_required_gui_surface_covers_the_named_editor_regressions():
         "CI is required to execute: "
         + ", ".join(f"{name} ({required[name]})" for name in missing)
     )
+
+
+def test_a_pyside6_collapse_outside_the_named_list_still_fails_the_session():
+    """N-12: the named list is the regression set; the guard covers the rest.
+
+    ``REQUIRED_GUI_MODULES`` names the surfaces CI is required to execute, but a
+    Workbench module that carries its own module-level ``pytest.importorskip`` and
+    was never registered collapsed to one SKIPPED line and left the job green. The
+    guard in ``tests/conftest.py`` is therefore keyed on pytest's own collection
+    report: any opened test file whose whole-file skip names PySide6 counts, and a
+    file that collapsed for another reason (a missing ROM, say) does not.
+    """
+    from tests import conftest
+
+    guarded = (
+        REPOSITORY_ROOT
+        / TESTS_DIRECTORY
+        / "unit/test_unregistered_gui_surface_probe.py"
+    )
+    other = REPOSITORY_ROOT / TESTS_DIRECTORY / "unit/test_map_render.py"
+    guarded_key = conftest._path_key(guarded)
+    other_key = conftest._path_key(other)
+    reason = "could not import 'PySide6.QtTest': No module named 'PySide6'"
+    saved = (
+        set(conftest._CANDIDATE_TEST_FILES),
+        set(conftest._ATTEMPTED_TEST_FILES),
+        set(conftest._COLLECTED_TEST_FILES),
+        dict(conftest._COLLAPSED_REASONS),
+    )
+    try:
+        conftest._CANDIDATE_TEST_FILES.update({guarded_key, other_key})
+        conftest._ATTEMPTED_TEST_FILES.update({guarded_key, other_key})
+        conftest._COLLAPSED_REASONS[guarded_key] = reason
+        conftest._COLLAPSED_REASONS[other_key] = (
+            "canonical ROM or map40 VRAM dump not present"
+        )
+
+        collapsed = dict(conftest._collapsed_gui_modules())
+
+        assert collapsed == {
+            "unit/test_unregistered_gui_surface_probe.py": reason
+        }
+    finally:
+        (
+            conftest._CANDIDATE_TEST_FILES,
+            conftest._ATTEMPTED_TEST_FILES,
+            conftest._COLLECTED_TEST_FILES,
+            conftest._COLLAPSED_REASONS,
+        ) = saved
+
+
+def _runs_on_the_default_branch(job: dict) -> bool:
+    """Whether ``job``'s rules can select it in a default-branch pipeline.
+
+    ``deploy-site`` matches only ``$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH``, and
+    it is the only job that can publish. A ``needs:`` entry naming a job that
+    pipeline excludes does not wait for it - it fails pipeline creation - so a
+    test-stage job whose every rule is explicitly narrowed off the default branch
+    cannot be a dependency of the deploy job, and requiring it would break the
+    deploy pipeline rather than gate it. Such a job is also unable to publish
+    anything on its own. The requirement in the test below is therefore over the
+    test-stage jobs the default branch can actually run, and over all of them.
+
+    This is not an opt-out: the only way to leave the set is to give the job
+    rules that genuinely exclude the default branch from every one of its
+    pipelines, which is what removes it from the deploy path in the first place.
+
+    ponytail: the check is textual - a rule whose condition compares
+    ``!= $CI_DEFAULT_BRANCH``. A condition that ORs that comparison with
+    something true on the default branch would be judged excluded while still
+    being able to run there; that is a ceiling, named here rather than left
+    implicit.
+    """
+    rules = [rule for rule in job.get("rules") or [] if isinstance(rule, dict)]
+    if not rules:
+        return True
+    return not all(
+        "!= $CI_DEFAULT_BRANCH" in str(rule.get("if", ""))
+        or str(rule.get("when")) == "never"
+        for rule in rules
+    )
+
+
+def test_the_deploy_job_needs_both_test_jobs():
+    """Prevents: publishing a commit whose portable suite or site check never ran.
+
+    ``deploy-site`` matches only the default branch, while both test jobs' second
+    rule skips them when that branch push has an open merge request. A
+    rule-excluded job cannot fail anything, so without these dependencies the
+    deploy job publishes regardless of whether they ran. The dependencies must be
+    required, not ``optional``: an optional need is silently dropped when the job
+    is absent from the pipeline, which is the exact case being closed. Both jobs
+    are named because ``needs`` bypasses the stage barrier, so naming only the
+    suite would drop the wait on the site job that the barrier used to give.
+    Every test-stage job the default branch can run is required, which is what
+    ``_runs_on_the_default_branch`` decides.
+    """
+    config = _ci_config()
+    deploy = config.get("deploy-site") or {}
+    needs = deploy.get("needs") or []
+    required = {
+        need.get("job") if isinstance(need, dict) else need
+        for need in needs
+        if not (isinstance(need, dict) and need.get("optional"))
+    }
+    # Every job in the test stage, not a fixed pair: a new test job added later
+    # must be waited on too, or `needs` will silently bypass it. GitLab defaults a
+    # job's stage to `test`, so a job with no `stage:` key belongs in this set;
+    # `script`, `trigger` or `extends` is what makes a top-level block a job
+    # rather than a global such as `variables:`. A job the default branch can
+    # never run is not in the set, for the reason `_runs_on_the_default_branch`
+    # gives.
+    test_stage = {
+        name
+        for name, job in config.items()
+        if isinstance(job, dict)
+        and any(key in job for key in ("script", "trigger", "extends"))
+        and job.get("stage", "test") == "test"
+        and _runs_on_the_default_branch(job)
+    }
+    assert test_stage, f"{_cited('stage: test')}: no test-stage job found"
+    assert required == test_stage, (
+        f"{_cited('deploy-site')}: deploy-site must require a non-optional "
+        f"`needs:` entry for every test-stage job {sorted(test_stage)}; its "
+        f"required needs are {sorted(required)}, so a pipeline whose jobs were "
+        f"excluded by their rules can still publish the site without them"
+    )
+
+
+def test_a_collapsed_required_module_fails_the_process_exit_code(tmp_path) -> None:
+    """Under CI a collapsed required GUI module must leave the PROCESS non-zero.
+
+    The guard has always reported the collapse; what was measured is that the exit path
+    carried the status it read before the guard decided, so the process exited 0 over a
+    collapsed shipping surface and the job went green. PySide6 is forced unimportable by
+    shadowing it with a package that raises, which is what a missing Qt does, so the module
+    collapses through its own module-level guard exactly as it does in a bare environment.
+    """
+    shadow = tmp_path / "shadow" / "PySide6"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("raise ImportError('forced by the test')\n")
+    repository = Path(__file__).resolve().parents[2]
+    module = sorted(REQUIRED_GUI_MODULES)[0]
+    environment = dict(os.environ, GITLAB_CI="1", PYTHONPATH=str(shadow.parent))
+    environment.pop("WEBFOOT_KEEP_INTERPRETER_EXIT", None)
+    # A passing file beside the collapse is what makes this the real case: at the moment the
+    # session status is first readable it is 0, because nothing failed, and only the guard
+    # raises it. With the collapse alone the status is already 5, so an exit path that read it
+    # too early would still look correct.
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", f"tests/{module}",
+         "tests/unit/test_public_release.py", "-q", "-p", "no:cacheprovider"],
+        capture_output=True, text=True, cwd=repository, env=environment)
+    assert "COLLAPSED" in run.stdout, run.stdout[-2000:]
+    assert run.returncode != 0, (
+        f"a collapsed required module beside a passing file exited {run.returncode}\n"
+        f"{run.stdout[-2000:]}")
+
+
+def test_the_exit_status_is_read_after_the_guard_decides_it(monkeypatch) -> None:
+    """The status the CI exit path carries must be the one the guard decided.
+
+    This is the defect itself, at the hook, rather than at the process: the guard raises the
+    session to TESTS_FAILED, and a status read before it carries the 0 the passing tests left
+    behind, so `pytest_unconfigure` exits clean over a collapsed shipping surface. The
+    subprocess test above shows the end-to-end exit; this one fails the moment the read moves
+    back above the guard, which is what the control run checks.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules",
+                        lambda: [("unit/test_build_panel_guard.py", "contributed no test")])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_required_gui_surface_is_enforced", lambda: True)
+    monkeypatch.setattr(conftest, "_report_collapsed_modules", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", int(pytest.ExitCode.INTERNAL_ERROR))
+    session = types.SimpleNamespace(exitstatus=0, config=None)
+    conftest.pytest_sessionfinish(session, 0)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.TESTS_FAILED, (
+        "the exit path would carry a status the guard had already overruled")
+    # And the decision reaches the process: the same hook that must not report SUCCESS
+    # over an unfinished session reports exactly the status the guard decided here.
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.TESTS_FAILED)], (
+        f"the exit path carried {captured} instead of the status the guard decided")
+
+
+def test_a_clean_session_exits_zero_through_the_hook(monkeypatch) -> None:
+    """The other direction: a session that finished cleanly must still exit SUCCESS.
+
+    The two seeded and decided assertions above only prove the exit path can be non-zero,
+    which a constant non-zero status would also satisfy while turning every green pipeline
+    red. This runs the real hook over a clean session and requires the zero to reach the
+    process.
+    """
+    import types
+
+    from tests import conftest
+
+    monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
+    monkeypatch.setattr(conftest, "_report_skipped_tests", lambda *a, **k: None)
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", conftest._SESSION_EXIT_STATUS)
+    session = types.SimpleNamespace(exitstatus=pytest.ExitCode.OK, config=None)
+    conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
+    assert conftest._SESSION_EXIT_STATUS == pytest.ExitCode.OK, (
+        f"a clean session left the status at {conftest._SESSION_EXIT_STATUS!r}")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a clean session exited {captured} under CI instead of SUCCESS")
+
+
+def test_the_ci_exit_path_carries_the_runs_status(monkeypatch) -> None:
+    """The exit path carries a status that is not SUCCESS when no session finished.
+
+    The status is a module global that only ``pytest_sessionfinish`` overwrites, and the
+    hook does not run when the session dies before it: a raising ``pytest_sessionstart``,
+    or an earlier ``sessionfinish`` hook doing the same, as an xdist worker that cannot
+    start would. Seeded with ``pytest.ExitCode.OK`` the exit path would then publish a
+    green pipeline over an errored run, which is worse than the crash it hides. The exit
+    is captured rather than taken, so the status handed to the process is read directly.
+    """
+    import types
+
+    from tests import conftest
+
+    assert conftest._SESSION_EXIT_STATUS == int(pytest.ExitCode.INTERNAL_ERROR), (
+        f"the seed is {conftest._SESSION_EXIT_STATUS!r}, so a session that never reached "
+        "pytest_sessionfinish would be reported with that status")
+    monkeypatch.setenv("CI", "1")
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(types.SimpleNamespace())
+    assert captured and captured[0] != pytest.ExitCode.OK, (
+        f"the exit path carried {captured} for a run that never reached sessionfinish")
+
+
+def test_the_record_gates_report_argument_takes_the_clean_exit(monkeypatch) -> None:
+    """A recorded run - the local full-CI gate - must take the clean exit without ``CI``.
+
+    Prevents: the local record gate running the same Qt suite on the interpreter's own exit
+    path. Measured 2026-10-13 in the record for this ticket: its suite step reported exit 0
+    while its captured stderr carried ``Fatal Python error: Aborted``, because
+    ``scripts/local-ci.ps1`` sets no CI variable - it is master's reviewed script - and passes
+    ``--junitxml`` instead. A developer's own run sets neither and keeps the ordinary exit.
+
+    The option name is ``xmlpath`` and not ``junitxml``: ``_pytest/junitxml.py`` registers
+    ``--junitxml`` with ``dest="xmlpath"``. A stub built with ``junitxml`` was the first
+    version of this case and it passed while the real gate never took the exit at all, which
+    is the failure this file's own docstrings keep warning about.
+    """
+    import types
+
+    from tests import conftest
+
+    assert conftest._RECORDED_REPORT_OPTION == "xmlpath", (
+        "the recorded-report option name changed; --junitxml is registered as `xmlpath`")
+
+    monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", pytest.ExitCode.OK)
+    monkeypatch.delenv("WEBFOOT_KEEP_INTERPRETER_EXIT", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("GITLAB_CI", raising=False)
+    captured: list[int] = []
+
+    def capture(code):
+        captured.append(int(code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(conftest.os, "_exit", capture)
+    recorded = types.SimpleNamespace(option=types.SimpleNamespace(xmlpath="report.xml"))
+    with pytest.raises(SystemExit):
+        conftest.pytest_unconfigure(recorded)
+    assert captured == [int(pytest.ExitCode.OK)], (
+        f"a recorded run left through the ordinary exit path ({captured})")
+
+    # The same config without the report argument is a developer's run: no clean exit.
+    captured.clear()
+    conftest.pytest_unconfigure(types.SimpleNamespace(option=types.SimpleNamespace(xmlpath=None)))
+    assert captured == [], (
+        f"a local run without a report argued its way into the exit path ({captured})")
+
+
+def test_the_session_hooks_are_defined_and_have_run() -> None:
+    """A scripted edit consumed an anchor line once and took ``pytest_configure`` with it.
+
+    The insertion replaced an anchor line that carried
+    ``def pytest_configure(config: pytest.Config) -> None:``, so the definition vanished and
+    its body stayed behind as unreachable code inside ``capture_application``. Everything it
+    did - the temp-root redirect, the fault handler and the rootdir capture - silently
+    stopped running while the rest of the suite passed, and the ``tmp_path`` failures that
+    resulted read like the machine rather than this file. Reading the two things the hook is
+    responsible for makes that deletion fail here instead of there.
+    """
+    from tests import conftest
+
+    assert callable(getattr(conftest, "pytest_configure", None)), (
+        "tests/conftest.py does not define pytest_configure at module level, so pytest "
+        "never calls it and its body is dead code: the temp-root redirect, the fault "
+        "handler and the rootdir capture are all lost"
+    )
+    assert conftest._ROOTDIR == Path(__file__).resolve().parents[2], (
+        f"pytest_configure did not run: _ROOTDIR is {conftest._ROOTDIR!r}, and a collection "
+        "report's node id is resolved against it"
+    )
+
+
+def test_the_integration_job_runs_the_rom_free_member_by_name():
+    """Prevents: an integration job that cannot fail because everything skipped.
+
+    Every file under ``tests/integration`` except the one named here carries its
+    own ``roms/...`` guard, so a job whose selection is that directory collects
+    over a thousand members, skips all of them and exits 0: a green pipeline that
+    executed nothing. The named selection is the whole defence, so it is asserted
+    rather than described - against the directory being collected, against the
+    member being renamed away or losing the ``rom`` gate that keeps it in the
+    directory the name points at, and against a rule edit that silently excludes
+    this job from the pipelines its sibling runs in.
+    """
+    config = _ci_config()
+    job = config[INTEGRATION_JOB]
+    tokens = _ci_script_text(INTEGRATION_JOB).split()
+
+    assert job.get("stage") == "test", (INTEGRATION_JOB, job.get("stage"))
+    assert INTEGRATION_MEMBER in tokens, (
+        f"{_ci_script_path(INTEGRATION_JOB)}: {INTEGRATION_JOB} must run "
+        f"{INTEGRATION_MEMBER} by name; it is not among the arguments that "
+        "script passes to pytest"
+    )
+    assert (
+        "tests/integration" not in tokens and "tests/integration/" not in tokens
+    ), (
+        f"{_ci_script_path(INTEGRATION_JOB)}: {INTEGRATION_JOB} must not collect "
+        "the ROM-gated directory; every member of it except the named file skips "
+        "without the canonical image, so the job would exit 0 having run nothing"
+    )
+    assert (REPOSITORY_ROOT / INTEGRATION_MEMBER).is_file(), INTEGRATION_MEMBER
+    assert "rom" in gates_for(INTEGRATION_MEMBER), gates_for(INTEGRATION_MEMBER)
+    assert job.get("rules") == config[TEST_JOB].get("rules"), (
+        f"{_cited('test-integration')}: {INTEGRATION_JOB} must run wherever "
+        f"{TEST_JOB} runs, so the ROM-free member cannot be silently excluded "
+        "from the pipelines the suite gate runs in"
+    )
+
+
+def test_the_integration_job_installs_only_what_its_selection_imports():
+    """Prevents: paying for PySide6 and capstone on every merge request.
+
+    The four members of ``tests/integration/test_container_decode_synthetic.py``
+    import ``hashlib``, ``json``, ``pathlib``, ``__future__`` and
+    ``tools.webfoot.formats``, and that package imports nothing at all. `pytest`
+    is the only non-stdlib need, and it is the ``dev`` extra. The job used to
+    install ``.[dev,workbench,research]`` - a Qt wheel of about 100 MiB plus
+    capstone - for a selection that imports neither.
+
+    ``workbench`` and ``research`` are asserted *absent* rather than merely not
+    required, so re-adding one is a failing named test and not a quiet cost.
+    ``test-sdk`` keeps them: it runs the shipping GUI and needs them.
+    """
+    installed = _installed_extras(INTEGRATION_JOB)
+    for extra in ("workbench", "research"):
+        assert extra not in installed, (
+            f"{_ci_script_path(INTEGRATION_JOB)}: {INTEGRATION_JOB} "
+            f"installs the {extra!r} extra; {INTEGRATION_MEMBER} imports no PySide6 "
+            f"and no capstone, and its install is {sorted(installed)}. Widen the "
+            "test above first if the selection really grew a Qt or capstone member"
+        )
+    assert "dev" in installed, (
+        f"{_ci_script_path(INTEGRATION_JOB)}: {INTEGRATION_JOB} must "
+        "install the 'dev' extra, which carries pytest; the selection needs no "
+        "other test runner"
+    )
+
+
+def test_the_adjacency_job_runs_the_fixed_set_in_both_orders():
+    """Prevents: a job that proves Qt state adjacency without exercising it.
+
+    ``test-sdk`` runs the suite under ``--dist loadfile``, so no module ever
+    follows another in the same process. This job is the one place the shipping
+    GUI modules run back to back in a single process, and both orders are named
+    so that neither direction of module-to-module state can be dropped. The set
+    itself, the one-member ROM exclusion and the fail-on-skip rule live in
+    ``scripts/adjacency_run.py`` and are pinned by
+    ``tests/unit/test_adjacency.py``; this test pins the CI half: the job exists,
+    is a ``stage: test`` job (so ``deploy-site`` must wait for it), runs both
+    orders as separate commands, and runs them in the environment the suite job
+    already built and proved.
+    """
+    config = _ci_config()
+    job = config[ADJACENCY_JOB]
+    script = [str(step) for step in job.get("script") or []]
+
+    assert job.get("stage") == "test", (ADJACENCY_JOB, job.get("stage"))
+    for order in ("forward", "reverse"):
+        matching = [step for step in script if f"-Order {order}" in step]
+        assert matching, (
+            f"{_cited('adjacency')}: {ADJACENCY_JOB} must run "
+            f"`-Order {order}`; its script is {script!r}"
+        )
+    assert "-m scripts.adjacency_run " in _ci_script_text(ADJACENCY_JOB), (
+        f"{_ci_script_path(ADJACENCY_JOB)}: {ADJACENCY_JOB} must run "
+        "scripts/adjacency_run.py, which is the module that holds the set and "
+        "fails on a skip"
+    )
+    # Reach, not presence. GitLab's PowerShell shell runs the whole `script:`
+    # as ONE generated script, so an unconditional `exit` on the forward line
+    # would end the job before the reverse order ran; naming both orders passed
+    # here while the second was unreachable. The forward line must carry its
+    # exit code and the last line must aggregate both.
+    assert "exit $LASTEXITCODE" not in script[0], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must not exit after the forward "
+        f"order, or the generated job script ends before the reverse order runs; "
+        f"its first line is {script[0]!r}"
+    )
+    assert "$forward = $LASTEXITCODE" in script[0], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must carry the forward order's "
+        f"exit code instead of exiting on it; its first line is {script[0]!r}"
+    )
+    assert "$forward -ne 0" in script[-1] and "exit 1" in script[-1], (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB}'s last line must fail the job "
+        f"when either order failed; its last line is {script[-1]!r}"
+    )
+    assert job.get("rules") == config[TEST_JOB].get("rules"), (
+        f"{_cited('adjacency')}: {ADJACENCY_JOB} must run wherever {TEST_JOB} runs, "
+        "so the adjacency orders cannot be silently excluded from the pipelines "
+        "the suite gate runs in"
+    )
+    # The set is the shipping GUI surface, so this job needs the same
+    # `.[dev,workbench,research]` install the suite job makes - but it does not
+    # make a second one: on the Windows runner it opens that job's venv by name,
+    # which is also what `needs: ["test-sdk"]` means here. The claim is therefore
+    # split across two scripts and pinned in both: `test-sdk` builds the venv
+    # named `test-sdk` with the required extras (the test above asserts those),
+    # and this job runs in it. Cutting either half fails here.
+    assert "Use-CiVenv -Name 'test-sdk'" in _ci_script_text(ADJACENCY_JOB), (
+        f"{_ci_script_path(ADJACENCY_JOB)}: {ADJACENCY_JOB} must run in the "
+        f"{TEST_JOB} venv, not build a second environment; the extras the set "
+        "needs are the ones that script installs"
+    )
+    assert "New-CiVenv -Name 'test-sdk'" in _ci_script_text(TEST_JOB), (
+        f"{_ci_script_path(TEST_JOB)}: {TEST_JOB} must build the venv the "
+        f"{ADJACENCY_JOB} job opens by that name"
+    )
+
+
+def test_the_suite_job_clears_a_leftover_site_artifact_before_it_runs():
+    """Prevents: the suite job judging a site build that belongs to another commit.
+
+    The Linux job runs in a fresh container checkout with no `dist/`. The Windows
+    runner is a shell executor whose checkout persists, so `dist/` from an
+    earlier `test-site` job can survive into the next `test-sdk` job. The six
+    artifact-dependent modules then run against an artifact that may belong to
+    another commit instead of skipping, which is measured: with `dist/` present,
+    `test_site_consistency.py`, `test_capability_registry.py` and
+    `test_questline_rail.py` gave 46 passed and 1 skipped, against 6 skips
+    without it. The suite job removes the artifact first, and `test-site` stays
+    the job that builds the site and validates it.
+    """
+    script = _ci_script_text(TEST_JOB)
+    removal = "Remove-Item -LiteralPath (Join-Path $CiProjectRoot 'dist')"
+    assert removal in script, (
+        f"{_ci_script_path(TEST_JOB)}: {TEST_JOB} must remove a leftover `dist/` "
+        "before the suite, or the artifact-dependent modules judge another "
+        "commit's build instead of skipping"
+    )
+    assert script.index(removal) < script.index("-m pytest tests/unit"), (
+        f"{_ci_script_path(TEST_JOB)}: the `dist/` removal must come before the "
+        "pytest step; running it afterwards changes nothing"
+    )
+
+
+def test_every_routed_test_job_declares_an_explicit_timeout():
+    """Prevents: a hung job holding the owner's machine until the project default.
+
+    These jobs run on the owner's PC and a Qt test can hang rather than fail, so
+    each carries its own cap, chosen from a measured wall time. This asserts that
+    a cap is there and that it is a whole number of minutes, which is the form
+    GitLab parses; the numbers themselves belong to the jobs and are recorded in
+    `docs/testing.md`.
+    """
+    config = _ci_config()
+    for name in LOCAL_CI_JOBS:
+        timeout = config[name].get("timeout")
+        assert timeout, (
+            f"{_cited(name)}: {name} must declare an explicit `timeout:`, or a "
+            "hang holds the runner until the project default instead of a "
+            "number someone chose from a measurement"
+        )
+        assert re.fullmatch(r"\d+ minutes?", str(timeout).strip()), (
+            f"{_cited(name)}: {name} declares `timeout: {timeout!r}`, which is "
+            "not a whole number of minutes"
+        )
+
+
+def test_the_test_jobs_run_on_the_self_hosted_runner_and_the_deploy_job_does_not():
+    """Prevents: silent drift of which runner executes what.
+
+    The four test-stage jobs run on the owner's own machine, tagged
+    ``local-ci``, because the shared runners' free monthly quota is spent. They
+    are a shell executor on Windows, so they carry no ``image:`` at all - one
+    there would be ignored rather than honoured, which is worse than absent
+    because it reads like a claim.
+
+    ``deploy-site`` is the opposite: it is the only job that publishes and the
+    only one that reads the protected Cloudflare credential, so it stays on the
+    shared runners with its ``image:``. Routing it to the owner's PC would put
+    the credential on an unprotected runner for no gain, and it is the job that
+    has to keep failing loudly while the quota is spent.
+    """
+    config = _ci_config()
+    for name in LOCAL_CI_JOBS:
+        job = config[name]
+        assert job.get("tags") == [LOCAL_CI_TAG], (
+            f"{_cited(name)}: {name} must run on the self-hosted runner, tagged "
+            f"{LOCAL_CI_TAG!r}; its tags are {job.get('tags')!r}"
+        )
+        assert "image" not in job, (
+            f"{_cited(name)}: {name} runs on a shell executor, which ignores "
+            f"`image:`; its image is {job.get('image')!r} and belongs removed "
+            "rather than left reading like a claim"
+        )
+
+    deploy = config[DEPLOY_JOB]
+    assert LOCAL_CI_TAG not in (deploy.get("tags") or []), (
+        f"{_cited(DEPLOY_JOB)}: {DEPLOY_JOB} must stay on the shared runners; it "
+        "reads the protected deployment credential and is the job that publishes"
+    )
+    assert deploy.get("image") == "node:22", (
+        f"{_cited(DEPLOY_JOB)}: {DEPLOY_JOB} must keep the image it builds the "
+        f"site in; it is {deploy.get('image')!r}"
+    )
+
+
+def test_every_routed_job_clears_the_deployment_credential():
+    """Structural net: the belt-and-braces `variables:` entry, NOT the control.
+
+    A PROJECT CI variable outranks a job `variables:` entry in `.gitlab-ci.yml`
+    (<https://docs.gitlab.com/ci/variables/#cicd-variable-precedence>), so these
+    entries do not clear `CLOUDFLARE_API_TOKEN`. They are kept so the intent is
+    visible at the job, and this test keeps them consistent across the four
+    routed jobs. THE EFFECTIVE CONTROL IS THE PROCESS SCRUB in
+    ``ci\\common.ps1``, proved by
+    ``test_every_routed_entry_point_scrubs_the_credential_before_it_runs_anything``
+    and ordered by
+    ``test_every_routed_entry_point_sources_the_scrub_before_its_first_external_command``.
+    """
+    config = _ci_config()
+    for name in LOCAL_CI_JOBS:
+        cleared = (config[name].get("variables") or {}).get("CLOUDFLARE_API_TOKEN")
+        assert cleared == "", (
+            f"{_cited(name)}: {name} must carry "
+            '`variables: {CLOUDFLARE_API_TOKEN: ""}` as the belt-and-braces '
+            f"entry; it is {cleared!r}. This entry does not clear the variable by "
+            "itself: the process scrub in ci\\common.ps1 does, and this test does "
+            "not prove that"
+        )
+
+
+def test_the_adjacency_orders_are_reached_and_either_failure_fails_the_job(tmp_path):
+    """Behavioral control: the exact YAML lines run, with a stubbed command.
+
+    GitLab's PowerShell shell runs the whole `script:` as ONE generated script,
+    so an unconditional `exit` on the forward line ends the job before the
+    reverse order runs. Text presence cannot see that, which is how the earlier
+    form passed while the second order was unreachable. This defines a stub for
+    the `powershell` command that records the order it was asked for and returns
+    a configured exit code, then executes the two YAML lines verbatim in a child
+    PowerShell: both orders must be reached, and a failure in either must end the
+    job non-zero.
+    """
+    shell = shutil.which("powershell")
+    if not shell:
+        pytest.skip("this control executes the generated PowerShell job script")
+    lines = [str(step) for step in _ci_config()[ADJACENCY_JOB]["script"]]
+    assert len(lines) == 2, (
+        f"{_cited('adjacency')}: this control expects the two order lines; the "
+        f"script is {lines!r}"
+    )
+    for forward_code, reverse_code, expected in ((0, 0, 0), (0, 7, 1), (7, 0, 1)):
+        log = tmp_path / f"orders-{forward_code}-{reverse_code}.log"
+        harness = tmp_path / f"harness-{forward_code}-{reverse_code}.ps1"
+        harness.write_text(
+            "\n".join(
+                [
+                    "function powershell {",
+                    "  $line = ($args -join ' ')",
+                    f"  Add-Content -LiteralPath '{log}' -Value $line",
+                    "  if ($line -match '-Order forward') "
+                    f"{{ $global:LASTEXITCODE = {forward_code} }} "
+                    f"else {{ $global:LASTEXITCODE = {reverse_code} }}",
+                    "}",
+                    *lines,
+                    "exit 0",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        run = subprocess.run(
+            [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+            capture_output=True,
+            text=True,
+        )
+        issued = log.read_text(encoding="utf-8") if log.exists() else ""
+        assert "-Order forward" in issued and "-Order reverse" in issued, (
+            f"{_cited('adjacency')}: the generated job must reach both orders; the "
+            f"stub saw {issued!r} with forward={forward_code} reverse={reverse_code}"
+        )
+        assert run.returncode == expected, (
+            f"{_cited('adjacency')}: with forward={forward_code} and "
+            f"reverse={reverse_code} the job must exit {expected}, got "
+            f"{run.returncode}; stdout={run.stdout!r} stderr={run.stderr!r}"
+        )
+
+
+def test_every_routed_entry_point_scrubs_the_credential_before_it_runs_anything(tmp_path):
+    """Behavioral control: a dummy credential must not reach a child process.
+
+    A PROJECT CI variable outranks a job `variables:` entry, so those entries do
+    not clear `CLOUDFLARE_API_TOKEN`; the control is the process-environment
+    scrub in ``ci\\common.ps1``, which every routed entry point dot-sources
+    before it invokes anything. This sets the literal review-only dummy in a
+    child's environment, sources that file exactly as an entry point does, and
+    asks a grandchild process what it can see. No real credential is read,
+    printed or transmitted: the value is the literal REVIEW_DUMMY_ONLY.
+    """
+    shell = shutil.which("powershell")
+    if not shell:
+        pytest.skip("this control executes the shared PowerShell entry plumbing")
+    common = REPOSITORY_ROOT / "ci" / "common.ps1"
+    harness = tmp_path / "credential-scrub.ps1"
+    harness.write_text(
+        "\n".join(
+            [
+                "$env:CLOUDFLARE_API_TOKEN = 'REVIEW_DUMMY_ONLY'",
+                f". '{common}'",
+                "if ($env:CLOUDFLARE_API_TOKEN) "
+                "{ Write-Output 'PARENT_STILL_SET'; exit 8 }",
+                "$child = (& cmd.exe /c set) -join [Environment]::NewLine",
+                "$line = (($child -split [Environment]::NewLine) | "
+                "Where-Object { $_ -like 'CLOUDFLARE_API_TOKEN=*' }) -join ''",
+                "Write-Output ('child_line:[' + $line + ']')",
+                "if ($child -match 'REVIEW_DUMMY_ONLY') { exit 9 }",
+                "exit 0",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    run = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(harness)],
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, (
+        "the dummy credential survived `ci\\common.ps1`: the scrub did not run "
+        f"before the first child; stdout={run.stdout!r} stderr={run.stderr!r}"
+    )
+    assert "REVIEW_DUMMY_ONLY" not in run.stdout, (
+        "the grandchild process still saw the dummy value in its environment: "
+        f"stdout={run.stdout!r}"
+    )
+    assert "child_line:" in run.stdout, (
+        f"the child probe did not run, so inheritance was not measured: "
+        f"stdout={run.stdout!r} stderr={run.stderr!r}"
+    )
+
+
+def test_every_routed_entry_point_sources_the_scrub_before_its_first_external_command():
+    """Structural net for the scrub's ORDER, with the value proof beside it.
+
+    The scrub lives in ``ci\\common.ps1``, so it is effective in an entry point
+    only if that entry point dot-sources the file before it invokes anything.
+    This pins the order per entry point, so moving the dot-source below a
+    ``New-CiVenv``, ``Use-CiVenv``, ``Invoke-CiStep`` or external command fails
+    here by name.
+    """
+    for name in LOCAL_CI_JOBS:
+        text = _ci_script_text(name)
+        assert "common.ps1" in text, (
+            f"{_ci_script_path(name)}: {name} must dot-source ci\\common.ps1, "
+            "which carries the credential scrub"
+        )
+        sourced = text.index("common.ps1")
+        markers = [
+            text.index(marker)
+            for marker in ("New-CiVenv", "Use-CiVenv", "Invoke-CiStep", "& node", "& npm")
+            if marker in text
+        ]
+        assert markers, (
+            f"{_ci_script_path(name)}: {name} invokes nothing this net knows "
+            "about, so the scrub's order cannot be checked"
+        )
+        assert sourced < min(markers), (
+            f"{_ci_script_path(name)}: {name} must source ci\\common.ps1 before "
+            "it runs its first external command, or that command inherits the "
+            "credential"
+        )

@@ -19,6 +19,7 @@ from tools.mgba_probe.runtime import (
     instrumented_environment,
     verify_instrumented_mgba,
 )
+from tools.runtime.evidence_bundle import write_run_bundle
 from tools.runtime.rom006_gdb_probe import (
     EXPECTED_SHA256,
     EXPECTED_SIZE,
@@ -886,12 +887,14 @@ def run_live_session(
     if run_root.parent != allowed_root or run_root.exists():
         raise ValueError("run root must be one new direct child of build/rom011")
     build_manifest: dict[str, object] | None = None
-    if native_probe:
-        if dev_lua_range:
-            raise ValueError("native probe cannot be combined with development Lua")
-        if manifest_path is None:
-            raise ValueError("native probe requires an instrumented-build manifest")
-        build_manifest = verify_instrumented_mgba(mgba_path, manifest_path)
+    if dev_lua_range:
+        raise ValueError(
+            "development Lua range has no recorded mGBA build identity, so it "
+            "must not launch"
+        )
+    if manifest_path is None:
+        raise ValueError("native probe requires an instrumented-build manifest")
+    build_manifest = verify_instrumented_mgba(mgba_path, manifest_path)
     run_root.mkdir(parents=True)
 
     sources = (rom_path, state_path, save_path)
@@ -1526,7 +1529,7 @@ def run_live_session(
                             "selected_breakpoints": breakpoint_installation,
                         },
                         "gdb_initial_status": initial_status,
-                        "mgba_version": "0.10.5.0",
+                        "mgba_version": build_manifest.get("version_output"),
                         "process_id": process.pid,
                         "phase1_setup": {
                             "route": str(setup_lua),
@@ -1675,6 +1678,28 @@ def run_live_session(
         "source_artifacts": source_artifacts,
     }
     _write_new_json(run_root / "result.json", output)
+    write_run_bundle(
+        run_root,
+        tool="tools.runtime.rom011_live_watch",
+        arguments={
+            "timeout_seconds": timeout_seconds,
+            "manifest_path": str(manifest_path),
+        },
+        rom=rom_path,
+        emulator=mgba_path,
+        instrumented_manifest=manifest_path,
+        observations={
+            "result": output.get("result"),
+            "timeline_events": len(timeline),
+            "armed_targets": len(armed_targets),
+            "state_events": len(state.events),
+        },
+        artifacts={
+            state_copy: "input-savestate",
+            save_copy: "savegame",
+            run_root / "capture-ready.json": "capture-ready",
+        },
+    )
     return output
 
 

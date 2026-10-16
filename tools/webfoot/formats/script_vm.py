@@ -1,4 +1,3 @@
-"""Pure bounded instruction codec and control-flow IR. No ROM or filesystem I/O."""
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
@@ -48,7 +47,7 @@ class OpcodeSet:
 @dataclass(frozen=True)
 class Operand:
     value: int
-    encoding: bytes  # preserves non-minimal representation and negative zero
+    encoding: bytes
 
 
 @dataclass(frozen=True)
@@ -114,7 +113,6 @@ def _operand(data: bytes, pos: int, encoding: str) -> tuple[Operand, int]:
         byte = data[pos]
         pos += 1
         raw = (raw << 7) | (byte & 127)
-        # Overflow and signed-shift ambiguity are outside the supported contract.
         if raw > 0x7fffffff:
             raise ScriptError('varint overflow outside supported signed range')
         if byte < 128:
@@ -154,9 +152,6 @@ def decode_instruction(data: bytes, offset: int, spec: OpcodeSet) -> Instruction
         else:
             raise ScriptError(f'unknown branch base {op.branch_base}')
         displacement = -args[0].value if op.flow == 'count_back' else args[0].value
-        # A negative intermediate is legal here: encode_instruction re-decodes an
-        # instruction in isolation at offset 0, so only disassemble, which knows
-        # the real corpus offsets, can judge whether a target is in range.
         target = base + displacement
     elif op.flow not in ('next', 'stop'):
         raise ScriptError('unknown control-flow contract')
@@ -165,7 +160,6 @@ def decode_instruction(data: bytes, offset: int, spec: OpcodeSet) -> Instruction
 
 
 def _encode_sm7(value: int) -> bytes:
-    """Encode the VM's bounded big-endian signed-magnitude varint."""
     if type(value) is not int or not -(0x3fffffff) <= value <= 0x3fffffff:
         raise ScriptError('signed-magnitude operand outside supported range')
     raw = (abs(value) << 1) | (1 if value < 0 else 0)
@@ -267,20 +261,6 @@ def disassemble(data: bytes, entries: tuple[Entry, ...], spec: OpcodeSet,
 
 
 def assemble_source(source: tuple[str, ...], spec: OpcodeSet) -> bytes:
-    """Encode a straight-line mnemonic sequence, then prove it through `assemble`.
-
-    TOOLKIT-032. This is the smallest thing that turns an authored, semantic
-    instruction list into bytes; it is deliberately NOT a script compiler.
-    TOOLKIT-033 adds the VM's already-proven signed-magnitude encodings because
-    the selected canonical native call uses `push_many`. Branch displacements
-    remain refused: this stays a straight-line assembler, not a compiler.
-
-    Every instruction is validated by the production decoder as it is built, and
-    the finished bytes must disassemble back to a fully-covered IR that
-    `assemble` re-emits identically. So an authored body is bytes the existing
-    codec accepts, or it is an error - there is no third outcome and no second
-    encoding of the same instruction.
-    """
     if not isinstance(source, (tuple, list)) or not source:
         raise ScriptError('an authored script body requires at least one instruction')
     names = {op.name: op for op in spec.instructions}

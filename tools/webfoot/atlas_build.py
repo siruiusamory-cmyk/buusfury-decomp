@@ -26,8 +26,10 @@ from typing import Iterable, Iterator, Sequence
 from .atlas import (Atlas, AtlasObject, AtlasReference, Confidence, CoverageMap,
                     CoverageSpan, Observation, PADDING_CANDIDATE, UNKNOWN,
                     VERIFIED_FREE, strength)
+from .authored_image import AuthoredImageError, refuse_canonical_destination
 from .binary import FileOffset, GBA_ROM_BASE
 from .layout import LayoutError, Provenance, ReferenceEncoding, RomRange
+from .project.atomic import replace_document
 
 
 #: The canonical image the artifacts were measured against. The assembler
@@ -534,10 +536,33 @@ def build_atlas(directory: Path) -> BuildReport:
     return BuildReport(atlas, tuple(conflicts), rows_read)
 
 
+def _refuse_canonical_destination(path: Path) -> None:
+    """Refuse an atlas destination that is a copy of the canonical image.
+
+    The atlas is derived evidence and may replace an ordinary existing file, but
+    the canonical image is the one input every guard here protects, and the
+    ``--atlas`` path is caller-supplied, so it can name it. Identity is the
+    content hash, from the shared owner of that rule, never the file name.
+    """
+    try:
+        refuse_canonical_destination(path, BASE_SHA256)
+    except AuthoredImageError as exc:
+        raise AtlasBuildError(str(exc)) from exc
+
+
 def write_atlas(report: BuildReport, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        handle.writelines(report.atlas.to_jsonl_lines())
+    """Write the atlas, replacing any existing file as a whole or not at all.
+
+    N-13's remaining atomic-write half (audit row 13). The atlas used to be written
+    in place, so an interrupted or failed write could leave a truncated table that
+    the next reader would load as if it were complete. It now goes through the same
+    replacement the project documents use: a sibling temporary file, flushed and
+    synced, then moved over the destination. The two files this writes - the atlas
+    and its conflicts sibling - are each replaced atomically; the pair is not one
+    transaction, which is the same limit the project's multi-document writes record.
+    """
+    _refuse_canonical_destination(path)
+    replace_document(path, "".join(report.atlas.to_jsonl_lines()))
     write_conflicts(report, path.with_name("atlas_conflicts.jsonl"))
 
 
@@ -549,10 +574,10 @@ def write_conflicts(report: BuildReport, path: Path) -> None:
     detail would make "recorded, not silently resolved" untrue, so the pairs
     are written beside the atlas for a later ticket to arbitrate.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        for conflict in sorted(report.conflicts, key=lambda c: (c.start, c.end)):
-            handle.write(json.dumps({
+    _refuse_canonical_destination(path)
+    lines = (
+        json.dumps(
+            {
                 "file_offset": conflict.start,
                 "size": conflict.end - conflict.start,
                 "gba_address": f"0x{GBA_ROM_BASE + conflict.start:08X}",
@@ -561,7 +586,14 @@ def write_conflicts(report: BuildReport, path: Path) -> None:
                 "kept_evidence": conflict.kept_evidence,
                 "dropped": conflict.dropped,
                 "dropped_evidence": conflict.dropped_evidence,
-            }, sort_keys=True, separators=(",", ":")) + "\n")
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+        for conflict in sorted(report.conflicts, key=lambda c: (c.start, c.end))
+    )
+    replace_document(path, "".join(lines))
 
 
 def load_atlas(path: Path) -> Atlas:

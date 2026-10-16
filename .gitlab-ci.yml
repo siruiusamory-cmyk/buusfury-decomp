@@ -7,10 +7,17 @@ stages:
 # ROM-gated integration tests are not collected here at all.
 #
 # This job is the `fast` gate of docs/testing.md (`python -m pytest -m fast`).
-# It is the whole portable suite and finishes in a couple of minutes, so it is
-# deliberately not split into parallel jobs: the fan-out would cost more in
-# runner setup than it saves, and more jobs would make one failing gate harder
-# to read, not easier.
+# It is the whole portable suite, and it runs that suite across pytest-xdist
+# worker processes inside this one job. Parallel *workers* are not parallel
+# *jobs*, which is what the earlier argument here was against: splitting this
+# gate into several jobs would cost more in runner setup than it saves and would
+# split one gate across several logs and several JUnit reports, making a failure
+# harder to read rather than easier. Worker processes inside the job repeat
+# neither the runner setup nor the install, and pytest still emits one merged
+# `report.xml` for the merge request, so the same reasoning now supports the
+# fan-out instead of forbidding it. `--dist loadfile` keeps a module on one
+# worker, because the modules that dominate this suite are dominated by
+# per-module decode setup rather than by the tests themselves.
 #
 # The shipping GUI dependency set is installed in *this* job rather than in a
 # second, PySide6-only job, for the same reason: the portable suite is one job,
@@ -20,16 +27,34 @@ stages:
 # and reports green over a Workbench surface that collapsed to skips, which is
 # what it did before.
 #
+# The job body is `ci\test_sdk.ps1`, because the runner is a shell executor on
+# Windows: `image:` does nothing there, the interpreter is the machine's own
+# Python 3.12, and the venv is built outside every repository
+# (`ci\common.ps1`). The same script can be run by hand for a measurement, which
+# is how the port was timed. `docs/testing.md` owns what runs where and why.
+#
 # The whole unit suite runs unmodified, including the git-backed
-# repository-safety tests, hence the git install below.
+# repository-safety tests, which shell out to the machine's own git.
 test-sdk:
   stage: test
-  image: python:3.12-slim
+  tags: ["local-ci"]
+  # A bounded runtime, so a hung Qt test cannot hold the owner's machine until
+  # the project default. Sized from measurement, not taste: the whole job took
+  # 1040 s end to end at `-n auto` (8 workers) with the ROM-gated acceptance
+  # modules running here, of which pytest alone was 869 s; at `-n 4` the same
+  # suite is 307 s to 368 s by the lead's measurement, plus about 24 s of venv,
+  # 124 s of install and 31 s of quality gates. This cap is over three times the
+  # fast path and still bounds a hang.
+  timeout: 30 minutes
   variables:
-    # Do not inherit the deployment credential into a test job.
+    # Belt and braces only. A project CI variable outranks a job `variables:`
+    # entry, so this does NOT clear the credential; the effective control is the
+    # process scrub in `ci\common.ps1`, which every routed entry point sources
+    # before it runs anything.
     CLOUDFLARE_API_TOKEN: ""
-    # The runner has no display. Twelve of the fifteen PySide6 modules the job
-    # must execute set this themselves; tests/unit/test_build_panel_guard.py,
+    # The runner is a desktop session and the job must not depend on one.
+    # Twelve of the fifteen PySide6 modules the job must execute set this
+    # themselves; tests/unit/test_build_panel_guard.py,
     # tests/unit/test_build_panel_overwrite.py and
     # tests/unit/test_workbench_build_manifest.py do not. The last two build a
     # real QApplication in a module-scoped fixture, so the job-level setting is
@@ -37,75 +62,8 @@ test-sdk:
     # plugin; the first only imports a module that imports PySide6 at module
     # scope, so it needs the dependency but constructs no widget.
     QT_QPA_PLATFORM: "offscreen"
-  before_script:
-    # test_project_safety.py shells out to git to prove no proprietary path is
-    # tracked and that the ignore rules hold. The slim image has no git.
-    #
-    # PySide6 ships Qt's own shared libraries inside the wheel but not the system
-    # sonames Qt links against, so the [workbench] extra imports on this image
-    # only when those runtime libraries are present. THIS LIST IS THE ONE PLACE
-    # TO CORRECT: if a Workbench module fails in CI with "libFoo.so.N: cannot
-    # open shared object file", add the Debian package that provides that soname
-    # here, with the soname in the comment. Each entry below names the DT_NEEDED
-    # soname that requires it:
-    #   libglib2.0-0t64   <- libglib-2.0.so.0   (libQt6Core)
-    #   libgl1            <- libGL.so.1         (libQt6Gui, libQt6OpenGL)
-    #   libegl1           <- libEGL.so.1        (libQt6Gui)
-    #   libx11-6          <- libX11.so.6       (libQt6Gui, and libqoffscreen.so itself)
-    #   libxkbcommon0     <- libxkbcommon.so.0  (libQt6Gui)
-    #   libfontconfig1    <- libfontconfig.so.1 (libQt6Gui; pulls libfreetype6)
-    #   libfreetype6      <- libfreetype.so.6  (libQt6Gui, libqminimal; libfontconfig1 hard-depends it, named here so the soname is explicit)
-    #   libdbus-1-3       <- libdbus-1.so.3     (libQt6DBus/libQt6Core)
-    # Evidence for the list above, so that it is not read as a guess. The three
-    # Linux PySide6 wheels were downloaded and inspected:
-    # `pyside6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`,
-    # `pyside6_essentials-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl` (93 MiB -
-    # this is the one that ships Qt) and
-    # `shiboken6-6.9.3-cp39-abi3-manylinux_2_28_x86_64.whl`. Every entry above
-    # was derived by parsing the ELF `DT_NEEDED` entries of
-    # `PySide6/Qt/lib/libQt6Core.so.6`, `libQt6Gui.so.6`, `libQt6Widgets.so.6`,
-    # `libQt6DBus.so.6`, the platform plugins
-    # `plugins/platforms/libqoffscreen.so` and `libqminimal.so`, and the
-    # `QtCore/QtGui/QtWidgets.abi3.so` extension modules, verified three
-    # independent ways - program headers, section headers, and a raw dynstr
-    # dump - with identical results.
-    # The wheels bundle `libQt6*`, `libicu*`, `libpyside6*` and `libshiboken6*`
-    # only. Everything listed here is a system soname they link against and the
-    # image does not already provide. `libc6`, `libstdc++6`, `libgcc-s1`,
-    # `zlib1g` and `libzstd1` are already in `python:3.12-slim` and are
-    # deliberately not listed.
-    # Notably `libqoffscreen.so` itself links `libX11.so.6`, `libGL.so.1` and
-    # `libxkbcommon.so.0`: the offscreen platform avoids the **xcb plugin** and
-    # its fifteen `libxcb-*` sonames, not libX11 or libxkbcommon.
-    # Fonts, `xkb-data`, `libglvnd0`/`libglx0` and `libexpat1`/`libpng16-16` are
-    # deliberately NOT listed: they arrive as apt hard dependencies.
-    # `libglib2.0-0t64` is the Debian trixie name: `python:3.12-slim` currently
-    # resolves to trixie (verified 2026-09-25 by digest identity with
-    # `3.12-slim-trixie`), where the t64 transition renamed `libglib2.0-0`, and
-    # installing the old name fails the job. The base image tag is deliberately
-    # not pinned to a digest, like `node:22` below: if the tag later moves to a
-    # suite with different package names, the job fails loudly instead of
-    # silently skipping the surface it is here to execute.
-    # `ca-certificates` is not added: the official python slim image already
-    # installs it, and pip verifies HTTPS against its own bundled CA store.
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends
-      git libglib2.0-0t64 libegl1 libgl1 libx11-6 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
-    - python -m pip install --quiet --upgrade pip
-    # `workbench` is the shipping GUI surface and `research` is capstone: without
-    # them fifteen modules under tests/unit skip as a whole.
-    - python -m pip install --quiet -e ".[dev,workbench,research]"
   script:
-    # The JUnit report is what makes a failure legible in the merge request
-    # without downloading the raw job log.
-    - python -m pytest tests/unit -q --junitxml=report.xml
-    # The gates a reviewer is told to run, run here as well. The unit suite does
-    # exercise the public-surface and purity checks through their tests, but the
-    # readability gate is only asserted over the shipping package there, so the
-    # tree-wide form has to be its own step or a hard finding outside
-    # `tools/webfoot/` would pass CI.
-    - python -m tools.quality.public_surface --all
-    - python -m tools.quality.architecture
-    - python -m tools.quality.readability --all
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_sdk.ps1; exit $LASTEXITCODE'
   artifacts:
     when: always
     reports:
@@ -114,6 +72,107 @@ test-sdk:
     # Run on merge requests, and on branch pushes that have no open merge
     # request. The second condition suppresses the duplicate branch pipeline
     # that would otherwise run alongside every merge-request pipeline.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
+
+# The ROM-gated directory has exactly one member that reads no image:
+# `tests/integration/test_container_decode_synthetic.py`. It needs no `roms/`, no
+# emulator and no network, and it never skips, so it is the one integration-shaped
+# member a runner without the canonical image can actually execute.
+#
+# The selection is that file BY NAME, and it must stay that way. Every other file
+# under `tests/integration` carries its own `roms/...` guard, so a job that
+# collected the directory would collect over a thousand members and skip all of
+# them, exit 0, and be a job that cannot fail. `tests/unit/test_ci_gui_surface.py`
+# fails if this selection becomes the directory or if the job stops matching the
+# sibling test job's rules.
+#
+# THE INSTALL IS `.[dev]`, AND THAT IS MEASURED, NOT ASSUMED. The selection's
+# runtime import graph was walked from the test file outward (2026-10-12, this
+# tree): `tests/integration/test_container_decode_synthetic.py` imports
+# `hashlib`, `json`, `pathlib`, `__future__` and `tools.webfoot.formats`, and
+# `tools.webfoot.formats` imports nothing at all - no PySide6, no capstone, no
+# yaml. `pytest` itself is the only non-stdlib need, and it is the `dev` extra.
+# The base install's one dependency is PyYAML, which nothing in the selection
+# reads but which the distribution declares. `workbench` (PySide6) and
+# `research` (capstone) were removed: the job was installing a ~100 MiB Qt wheel
+# plus capstone on every merge request for four tests that import neither.
+# `tests/unit/test_ci_gui_surface.py` pins this install so that widening the
+# selection to a member that does need an extra fails a named test rather than
+# failing the job for a reason nobody sees.
+test-integration:
+  stage: test
+  tags: ["local-ci"]
+  # A bounded runtime, so a hung test cannot hold a runner until the project
+  # default. The file itself takes about a second; the install dominates.
+  timeout: 10 minutes
+  variables:
+    # The effective control is the process scrub in `ci\common.ps1`: a project
+    # variable outranks this entry.
+    CLOUDFLARE_API_TOKEN: ""
+  script:
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_integration.ps1; exit $LASTEXITCODE'
+  rules:
+    # The sibling test job's rules, for the same reason: run on merge requests,
+    # and on branch pushes that have no open merge request, so the branch
+    # pipeline is not duplicated alongside the merge-request one.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
+
+# The app-wide-Qt-state adjacency job. `test-sdk` runs the portable suite with
+# `--dist loadfile`, which gives every module its own worker process: no module
+# ever follows another in the same process, so a module that leaves the
+# process-wide `QApplication` restyled cannot affect the module that runs after
+# it. That interaction is real - the application name set by
+# `tools/webfoot/randomizer/gui.py:1294` through `configure_application`
+# outlives the module that set it, and `apply_app_theme`
+# (`tools/webfoot/workbench/theme.py:430`) writes the application style sheet a
+# later module's widget measurements read - and nothing in this pipeline
+# exercised it.
+#
+# ONE job, ONE pytest process per order, both orders, so the interaction is
+# exercised in both directions. `scripts/adjacency_run.py` holds the set and
+# fails on a skip, a failure, an empty run or a module outside the set: a job
+# satisfied by skips is a lie. It deselects, with the reason recorded in the
+# job log, the one set member that needs the canonical image that `test-sdk`
+# installs no ROM for.
+#
+# `needs: ["test-sdk"]` rather than the implicit stage barrier, because the
+# environment this job needs is the one that job already built: it runs in
+# `test-sdk`'s venv (`ci\adjacency.ps1`) instead of paying a second 700 MB
+# install of the same extras. It does not start until `test-sdk` is green, so the
+# adjacency orders never run alongside the parallel suite.
+#
+# THE SHARING IS SOUND ONLY WHILE ONE RUNNER TAKES THIS PROJECT AT A TIME
+# (`concurrent = 1`) AND BOTH JOBS LAND ON IT. `needs` orders jobs; it does not
+# pin them to a runner or to a build directory. A second `local-ci` runner, or a
+# build directory that moves between the two jobs, makes this job fail with
+# `ci: no venv at ...; run ci\test_sdk.ps1 first` rather than silently testing the
+# wrong environment. The alternative, building a second venv here, costs about
+# 124 s and 700 MB per pipeline for the same extras.
+adjacency:
+  stage: test
+  tags: ["local-ci"]
+  timeout: 20 minutes
+  needs: ["test-sdk"]
+  variables:
+    # The effective control is the process scrub in `ci\common.ps1`: a project
+    # variable outranks this entry.
+    CLOUDFLARE_API_TOKEN: ""
+    QT_QPA_PLATFORM: "offscreen"
+  script:
+    # Each order is one pytest process across the whole set, forward and
+    # reversed, so module-to-module Qt state is exercised in both directions.
+    # The script exits non-zero on a skip, a failure, an error, or a member that
+    # did not run.
+    # Each order must NOT exit unconditionally. GitLab's PowerShell shell runs
+    # the whole `script:` as ONE generated script, so an `exit` after the forward
+    # order terminates the job before the reverse order ever runs. The forward
+    # exit code is carried to the last line instead, so both orders always
+    # execute and either one failing fails the job.
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order forward; $forward = $LASTEXITCODE'
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\adjacency.ps1 -Order reverse; if ($forward -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }'
+  rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 
@@ -127,26 +186,44 @@ test-sdk:
 # assumed to agree. `tools/quality/site_check.py` is the same implementation a
 # developer runs locally, so the two cannot drift apart.
 #
-# python3 is installed because the checker is standard-library Python; no
-# packages are needed, and the site's own dependencies come from `npm ci`.
+# The job body is `ci\test_site.ps1`: it uses the machine's own node (v24.16.0
+# where this project's CI image was node:22 - a difference, not parity) and the
+# machine's `python` for the checker, which is standard-library only.
 test-site:
   stage: test
-  image: node:22
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
-    - npm ci
+  tags: ["local-ci"]
+  # `npm ci` plus the check, the build and the artifact check measured 237 s
+  # end to end on this machine. The cap is five times that, because a cold npm
+  # cache is the slow case, and it still bounds a hung build.
+  timeout: 20 minutes
+  variables:
+    # The effective control is the process scrub in `ci\common.ps1`: this job
+    # runs `npm ci`, whose install scripts execute on the owner's own machine,
+    # and a project variable outranks this entry.
+    CLOUDFLARE_API_TOKEN: ""
   script:
-    # `astro check` type-checks the site source, `astro build` produces the
+    # `npm run check` type-checks the site source, `npm run build` produces the
     # artifact, and the checker validates both the data and the artifact.
-    - npm run check
-    - npm run build
-    - python3 tools/quality/site_check.py
+    - 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\test_site.ps1; exit $LASTEXITCODE'
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS == null'
 
 deploy-site:
   stage: deploy
+  # The one irreversible action in CI waits for every test job. `needs` is
+  # deliberately not `optional:`, so a pipeline whose jobs were excluded by their
+  # rules fails to be created rather than publishing without them. Naming every
+  # test-stage job is what keeps the suite gate, the ROM-free integration member,
+  # the adjacency orders, the site check AND the implicit stage-barrier wait the
+  # deploy job had before this dependency existed, since `needs` bypasses the
+  # barrier. `tests/unit/test_ci_gui_surface.py` fails if any `stage: test` job is
+  # missing from this list.
+  #
+  # This job stays on the shared runners with its `image:`, and it does not run
+  # while the free monthly quota is spent: publishing the site pauses, which is
+  # the accepted cost of moving the test jobs to the self-hosted runner.
+  needs: ["test-sdk", "test-integration", "test-site", "adjacency"]
   image: node:22
   variables:
     SITE_URL: "https://webfoot-sdk.siruiusamory.workers.dev"

@@ -4,18 +4,149 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$LuaPath,
     [string]$ReadyPath,
-    [string]$MarkerPath
+    [string]$MarkerPath,
+    # A Lua statement run immediately AFTER the observer's dofile and before the
+    # ready marker. The mgba-runtime skill's proven ordering is "inject the
+    # observer, then load the savestate": entities are built during a state load,
+    # so a breakpoint armed afterwards never sees construction. This is where the
+    # state load therefore goes. It is a separate parameter rather than a line in
+    # the observer because an observer stays read-only and a state load is not.
+    [string]$PostCommand,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $workspaceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $allowedLua = @(
+    # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
+    # set: the dialogue strip observer. READ-ONLY. It arms five breakpoints - the
+    # glyph composer at 0x0803DE5E, the persistent-cursor store at 0x0800B08E, the
+    # source-consume store at 0x0800B092, the reveal queue store at 0x0800B006 and
+    # the dialogue record copier at 0x0801227A - dumps the 128-entry OAM per
+    # snapshot and byte-diffs the OBJ VRAM window 0x06014360..0x06014EC0. It writes
+    # no emulated memory and presses no keys; it writes host files inside the run
+    # directory only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_strip_probe.lua')
+    )
+    # Added by DIALOGUE-TOKEN-PRODUCTIZATION-001: the token-lookup observer. The
+    # strip probe logs composition and advance but never the SOURCE UNIT handed to
+    # the token lookup, which is the one value that tells whether the line fitter
+    # and the composer agree about a unit. This one arms the lookup, the fitter's
+    # token branch, the shared glyph advance, the cave's expansion loop, the game's
+    # composer and the record copier as liveness, and reads registers only. It
+    # writes no emulated memory, presses no keys and writes host files inside the
+    # run directory only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_token_probe.lua')
+    )
+    # Added by FRIEND-V3-COLD-BOOT-ACCEPTANCE-001: the cold-boot acceptance
+    # observer. Every earlier Kibito comparison loaded a savestate whose EWRAM
+    # held dialogue decoded on an older build, so each compared the image beside
+    # restored RAM. This one is for a launch with no savestate: it logs the
+    # engine's own record copies with a text snippet from each pointer register,
+    # counts the dialogue copier as a liveness channel, and screenshots every
+    # five seconds. It reads registers and memory only, arms one breakpoint,
+    # writes host files inside the run directory, and never touches input.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\friendv3_coldboot_probe.lua')
+    )
+    # Added by FRIEND-V4-BROLY-001 release 4A: the definition-lookup observer. The claim under test is
+    # that an actor placed with sprite id 73 or 98 drives the definition COPY its scripts resolve, and
+    # that the animation slot those scripts ask for is non-null. It arms the animation selector
+    # (0x0800ECDA: the actor's definition, the index, and the slot record it plays), the actor lookup
+    # (0x08011C70: mode 5 is the definition-pointer compare scripts use to find an actor) and the
+    # sprite-id resolver as its liveness channel. READ-ONLY: no emulated memory is written, no input
+    # register is touched, nothing is written outside the run directory, and no state is loaded.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\friendv4a_lookup_probe.lua')
+    )
+    # Added by the dialogue font work: the line-limit probe. READ-ONLY: it arms breakpoints and logs the
+    # limit the engine passes to its own line fitter at 0x0800AF3A. It does not press keys - an earlier
+    # version did, and moved the player around under the operator, which is not a script's job.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_limit_probe.lua')
+    )
+    # Added by the layout-rule work: the INPUT DRIVER that loads the read-only probe above and presses keys
+    # on a bounded schedule. Observers stay read-only, so the driving lives in this separate file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\dialogue_operand_driver.lua')
+    )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the padding-repair render
+    # observer. The trailing-pad repair shortens a record's handle by its pad, so the
+    # engine copies fewer units; static reading says no other record's span changes,
+    # because no byte moves, and only the engine can say whether the shortened record
+    # still DISPLAYS correctly and whether the space units left in the stream are drawn
+    # or collapsed. It logs every copy with its longest space run, counts the dialogue
+    # record copier at 0x0801227A as a liveness channel, and screenshots on a cadence.
+    # It reads registers and memory, arms one breakpoint, writes host files inside the
+    # run directory only, and never touches input or emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\padtrim001_render_watch.lua')
+    )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the emulator API probe. The render
+    # observer's breakpoint arm failed with "Error calling function (invoking failed)"
+    # while the game was visibly rendering dialogue, and its heartbeat logged an
+    # implausible pc, so two explanations remained: the arm signature is wrong, or the
+    # build's function-call bridge is broken. This probe tries each plausible signature in
+    # its own pcall and records the outcome, so the answer is measured. It arms
+    # breakpoints, reads registers, writes one host file in the run directory, and never
+    # touches input or emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mgba_api_probe.lua')
+    )
+    # Added by FRIEND-V3-TEXT-AND-DIALOGUE-PASS-001: the pc and breakpoint-fire probe. The
+    # render observer's channel stayed silent with a live game, and its pc read was a single
+    # constant, so two questions remained: is the pc read unreliable, and do breakpoints fire
+    # at all. This probe arms the dialogue copier plus a dispatch thunk a live game must pass
+    # constantly, samples the pc every frame and counts distinct values. Read-only.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mgba_pc_probe.lua')
+    )
+    # Added by DIALOGUE-RENDER-PATH-001 and published with the dialogue research
+    # set: the dialogue input driver. It is DRIVING CODE in its own file, which is
+    # why it is separate from the observer above. It presses A once every 180
+    # frames for six frames and nothing else - no directional input, no mashing,
+    # because a direction walks the character off the NPC and mashing skips the
+    # per-glyph reveal being measured. It touches no emulated memory and writes no
+    # file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\npc_talk_driver.lua')
+    )
+    # Added by APPEARANCE-AUTHORING-GATE-001: the appearance-table observer. It
+    # writes no emulated memory and arms fifteen sites - the six reader functions'
+    # entry points,
+    # the six literal-pool base-load sites inside them, the search loop's record
+    # read, the roster walk's patched bound and the animation frame advance - and
+    # writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\appearance001_table_watch.lua')
+    )
+    # Added by APPEARANCE-ROSTER-EXPANSION-001: the roster-object observer. It
+    # writes no emulated memory. It samples the context word at 0x03000F90 for the
+    # list object the engine builds from the seen-flag array, reads the seen flag
+    # for the authored index and both display-count offsets, and presses Select
+    # (the game's Scouter button) and Start, bounded by its own schedule.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\roster001_scouter_watch.lua')
+    )
     # Added by MAP-WARP-RUNTIME-EDIT-001: the read-only transition observer. It
     # reads the live map identity each frame plus the target record's destination
     # key through the engine's own MapEntry+0x2C -> root+0x44 route, and writes
     # only host files inside the run directory.
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\warpedit001_transition_watch.lua')
+    )
+    # Added by MAP-NEW-AUTHORING-001: the live map-identity observer. It writes no
+    # emulated memory and presses no keys. It derives the loaded map row from the
+    # engine's own active-MapEntry pointer 0x03001980, the table base from the
+    # literal pool word the engine's key lookup loads at 0x08008A58, and the row
+    # bound from the count helper at 0x080125E0, then reads that row's key bytes,
+    # its +0x2C source word and the root it names - so a map identity the
+    # canonical image does not contain is reported as the row the engine loaded
+    # rather than asserted. It writes only host files inside the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\mapnew001_live_identity.lua')
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\rom007_move_south.lua')
@@ -57,9 +188,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_wander.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_kihit.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p004_watcher.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -99,9 +227,6 @@ $allowedLua = @(
         (Join-Path $workspaceRoot 'tools\runtime\p004_aggro.lua')
     )
     [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p004_actor_enum.lua')
-    )
-    [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_reaction_trace.lua')
     )
     [System.IO.Path]::GetFullPath(
@@ -139,24 +264,6 @@ $allowedLua = @(
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p010_death_timeline.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p011_wolf_speed_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p012_rng_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p013_knockback_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p015_bodyrect_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p016_anchor_probe.lua')
-    )
-    [System.IO.Path]::GetFullPath(
-        (Join-Path $workspaceRoot 'tools\runtime\p006_ewram_hp_scan.lua')
     )
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\p006_hit_bracket_scan.lua')
@@ -329,6 +436,172 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\probe_runtime001_readmap.lua')
     )
+    # Added by SPRITE-NEW-RUNTIME-001: the read-only new-identity observer. It
+    # installs one breakpoint at 0x0800F6B4, the instruction after the registry
+    # accessor returns inside the placement constructor, and records the
+    # placement, the sprite id it asked for, the actor being built and the
+    # character structure the engine resolved, so a hit on the new identity's
+    # address is the engine's own statement that it resolved an identity the
+    # retail image does not contain. It reads memory, screenshots, and taps a
+    # controller key only on a named schedule; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew001_observer.lua')
+    )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the read-only object-run observer. It
+    # records the three ends of the sibling-family dispatch - the map object loop
+    # where the array names a record, the factory where the engine resolves that
+    # record's sprite id, and the behaviour constructor where the pointer the
+    # engine passes does not equal the record the array named - plus a per-word
+    # movement window over every behaviour object it sees. It reads memory and
+    # screenshots, and taps a controller key only on the named `menu` schedule
+    # that loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew002_record_run.lua')
+    )
+    # Added by SPRITE-NEW-RECORD-RUN-001: the two-breakpoint dispatch-table probe.
+    # The main observer above arms six breakpoints and the one on the dispatcher
+    # never reported a hit there in any registration order while the other five
+    # all produced data, so this probe arms that site and one liveness control and
+    # nothing else. "No hit" then means the site was not executed rather than that
+    # the breakpoint could not be installed. It is strictly read-only - it reads
+    # memory and registers and writes host files only, and drives no input at all,
+    # because the run it exists for loads a savestate from the launcher instead.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew003_dispatch_probe.lua')
+    )
+    # Added by SPRITE-NEW-BEHAVIOR-REGISTRATION-001: the read-only registration
+    # observer. It records the block installer 0x0800A93C (which is what writes
+    # the table pointer into actor+0x1B0+0x08), both behaviour-constructor classes
+    # the dispatcher calls (0x0800A7A0 and 0x0800A222), the class-A behaviour
+    # object, the dispatcher's own table-entry site 0x0800A9A4 re-armed as a
+    # contradiction check, the map-102 record factory, and a per-word movement
+    # window over every actor the dispatch reached. It reads memory and registers,
+    # screenshots, and taps a controller key only on the named `menu` schedule that
+    # loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew004_registration.lua')
+    ),
+    # Added by SPRITE-NEW-RUNTIME-PARITY-001: the read-only parity observer.
+    # It records the map object factory's resolution site 0x08017DB0, the walk
+    # action's result and step direction at 0x0800A3B0, and a periodic sample of
+    # every actor that reached the walk action: world position (+0x1A0/+0x1A4)
+    # and the frame record it is drawing (+0x54), which maps to the authored
+    # cell and therefore to the facing. It reads memory and registers,
+    # screenshots, and taps a controller key only on the named `menu` schedule
+    # that loads the saved game; it writes no emulated memory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\spritenew005_parity.lua')
+    ),
+    # Added by RUNTIME-LUA-INJECTOR-CONSOLIDATION-001: the two ROM-006 bootstrap
+    # scripts, moved here from the private allowlist load_mgba_lua.ps1 used to carry
+    # so that membership is decided in exactly one place. Both drive input
+    # (emu:setKeys, emu:addKey, emu:clearKey), write one savestate
+    # (emu:saveStateFile) and take one screenshot, which is what makes the two
+    # ROM-006 samples deterministic. Both reset the core, pulse A on named frames
+    # and self-terminate, they write only beneath build\rom006, and each opens with
+    # assert(emu:getGameCode() == "AGB-BG3E"), so they are only valid on the 0.10.5
+    # build that load_mgba_lua.ps1 pins by VersionInfo.FileVersion. The ROM-006 GDB
+    # sample that consumes the state is tools/runtime/rom006_gdb_probe.py.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rom006_bootstrap_map4.lua')
+    )
+    # Added by FRIEND-V3-TULMA-GRAPHICS-001: the read-only settled-screen observer
+    # for the Tulma session. It samples the object-tile region every frame for a
+    # still signature, and on a settle writes a screenshot plus full VRAM, palette
+    # and OAM dumps into the run directory, so whether the engine drew the authored
+    # tiles is measured against the dumped object-tile bytes rather than judged from
+    # a picture. It presses no key and writes no emulated memory. It accepts only the
+    # image sizes this ticket owns, which it names in its own header; a size outside
+    # that list throws on load and the launcher then reports the misleading "Lua
+    # script did not report ready", so the two are updated together.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\tulma001_tulma_proof.lua')
+    )
+
+    # Added by FRIEND-V3-PLAYTEST-BOOST-001. Three read-only observers and one bounded
+    # input driver for that ticket:
+    #   friendv3_boost001_probe.lua     reads the cartridge header as a liveness channel,
+    #                                   then the 90 base-stat bytes at 0x086FDA4C once.
+    #   boost001_inventory_watch.lua    samples the inventory block so a held or equipped
+    #                                   item's storage is measured, not inferred. It reads the
+    #                                   u32 count at 0x0300114C and the 4-byte item words
+    #                                   that follow it.
+    #   boost001_input_driver.lua       DRIVING CODE in its own file, as the runtime skill
+    #                                   requires: it presses A on a bounded schedule so a
+    #                                   cold boot can reach the new game unattended.
+    # Every observer reads memory and registers only and presses no key; only the driver
+    # presses keys, and it does so between frames 1000 and 1900 and then releases them.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\friendv3_boost001_probe.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\boost001_inventory_watch.lua')
+    )
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\boost001_input_driver.lua')
+    )
+    # Added by FRIEND-V3-PLAYTEST-BOOST-001: the register dump at the Bandana hook,
+    # the add routine's entry and its exit. It exists to test whether the hook's
+    # failure is an argument problem or a return problem. Read-only: registers and
+    # memory only, no key, no write to emulated state.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\boost001_addcall_watch.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: the dialogue container-selector census
+    # and split-route observer. It arms four breakpoints - the two table-load sites at
+    # 0x08012248 and 0x080122CE, the dialogue record copier at 0x0801227A and the
+    # ARM/Thumb dispatch thunk at 0x08046AA4 as the liveness channel - reads the packed
+    # handle the engine is about to resolve, reads the registers the load instruction
+    # itself indexes with (r1 is the table base, r0 is the index), and writes host files
+    # inside the run directory only. It writes no emulated memory and presses no key;
+    # driving code, when a run needs it, is a separate allow-listed file.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_container_route_watch.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3: the boss-fight measurement
+    # observer. Hercule's and Olibu's enemy stat records are to be retuned, and the fields
+    # that decide a fight are the record's maximum hit points and the two bytes its
+    # damage calculator consumes as the attacker's attack term. This observer arms the
+    # damage calculator, the branch selector that chooses between those two bytes, the
+    # computed-damage store and the target's hit-point store, with the dispatch thunk as the
+    # liveness channel. It reads registers and memory and writes host files inside the run
+    # directory only; no emulated write, no key press.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_bossfight_watch.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: the matching INPUT DRIVER, in its own
+    # file because the rule keeps driving code out of the observer. It presses A once per
+    # 120 frames between frames 300 and 1500 and then releases the keys, because the run
+    # with no input measured the dialogue record copier and both table-load sites at zero
+    # hits across 2000 frames: a savestate restores an already-copied dialogue. It writes
+    # no file and touches no emulated memory; it only presses keys.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_input_driver.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001 release 3: the stand-still driver, which dofiles
+    # the boss-fight observer from the path in FV3WT001_OBSERVER and then presses A only long
+    # enough to clear the pre-fight dialogue and start the battle. It exists so an enemy's swing
+    # cadence can be measured on several builds without the owner fighting each one. It presses
+    # keys and writes one marker file inside the run directory; it never touches emulated memory.
+    # The observer it loads stays read-only and unmodified, which is the separation the rule
+    # requires. Bounded: it releases the keys and removes its own callback at frame 1080.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_stand_still.lua')
+    )
+    # Added by FRIEND-V3-WT-SPLIT-CONTAINER-001: a one-shot read-only probe that decides
+    # whether the emulated GBA can address a container APPENDED past the end of the image
+    # file. The split design writes such a pointer into container-table slot 7, and the
+    # image's header declares only 8 MiB of cart ROM while the file is 10,141,220 bytes, so
+    # the reachability of the appended region decides the whole design. It reads the table
+    # slots, the slot-7 pointer, the bytes at that pointer, the first word past the declared
+    # cart size, and one live container as a positive control on the read method. No
+    # breakpoint, no emulated write, no key; two host files in the run directory.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_cart_map_probe.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {
@@ -371,6 +644,15 @@ if ($MarkerPath) {
     if (Test-Path -LiteralPath $resolvedMarker) {
         throw 'MarkerPath already exists'
     }
+}
+
+
+if ($CheckOnly) {
+    # A launcher that hands mGBA --script at startup still needs the allowlist
+    # and the path rules to be the gate, so it asks this script to do every check
+    # and stops here, before any window is touched.
+    Write-Output $resolvedLua
+    exit 0
 }
 
 Add-Type -AssemblyName UIAutomationClient
@@ -535,6 +817,9 @@ if ($resolvedMarker) {
     $command = 'rom011_marker_path = [[' + $luaMarker + ']]; '
 }
 $command += 'dofile([[' + ($resolvedLua -replace '\\', '/') + ']])'
+if ($PostCommand) {
+    $command += '; ' + $PostCommand
+}
 if ($resolvedReady) {
     $luaReady = $resolvedReady -replace '\\', '/'
     $command += '; local f=assert(io.open([[' + $luaReady + ']], [[w]])); ' +

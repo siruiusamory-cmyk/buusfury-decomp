@@ -32,6 +32,58 @@ This repository is an active reverse-engineering laboratory as well as a
 product. Preserve existing conventions and verified regressions; do not
 recreate or reinitialize a subsystem that already works.
 
+## Public executable releases
+
+A released randomizer executable is a first-class public surface, held to the
+same standard as the progress site: it carries the project's own name, version
+metadata and icon, ships only the executable and its README, and names no
+machine, path or private process of its own. Those rules are enforced by
+`python -m tools.quality.public_release`, which reads every release definition
+through one shared product list in `tools/quality/public_release.py`. A new
+randomizer product is added to that list and is then checked by the same rules,
+never by a second copy of them. The guard also fails a definition that stages a
+resource nobody wrote or names an entry script that does not exist, because an
+incomplete definition is a release defect whether or not a build would notice it.
+
+Four further packaging facts are checked where they cannot drift:
+
+- the product version has **one** authority, `tools/webfoot/release_identity.py`,
+  and a test fails if that version string appears a second time in the shipped
+  package;
+- the packaging script's archive version is the product's own version, so a
+  download cannot be named one version and contain another;
+- a packaged build records the commit it was cut from, baked into the package
+  before PyInstaller runs by `scripts/build-*.ps1`;
+- one authority answers "which commit is this", for the manifests, the module
+  plans and the product identity alike.
+
+The staged package itself is censused before it is called a release, by
+`python -m tools.quality.package_content <directory>`, which reports ROMs, saves,
+machine paths and absent resources and prints what it cannot see along with what it
+found. It is a release engineer's step rather than a CI gate, because CI has no
+staged package to point it at; the tests in `tests/unit` cover the census itself.
+
+Building a frozen Windows executable cannot run in the Linux CI job: PyInstaller
+does not cross-compile to win64, and the packaging-time byte probe needs the
+canonical image, which may never live in public CI. The portable checks above are
+what CI proves. The executable itself is an owner-run release gate, run in order,
+with the artifact digests recorded alongside the release:
+
+```powershell
+pwsh scripts/build-<product>.ps1 -Clean      # bakes the build identity, freezes the executable
+pwsh scripts/smoke-<product>-packaged.ps1    # drives the real executable, not a fixture
+pwsh scripts/package-<product>.ps1           # stages, probes and archives
+```
+
+Do not claim byte-identical executable bytes. PyInstaller's archive carries
+per-entry timestamps, the PE carries build metadata, and the toolchain is floored
+rather than pinned, so the container is not reproducible and nothing here claims
+it is. The reproducible claim is about product content: the same verified base
+ROM, the same project and the same toolkit produce a byte-identical image, and the
+same input pair produces a byte-identical patch **from one build of the tool**,
+because an exported patch names the tool build that produced it while a built
+image does not.
+
 ## Repository independence
 
 - This is a standalone repository. Do not add it as a submodule, subtree or
@@ -83,6 +135,31 @@ Rules that keep the labels honest:
 - Executable behavior outranks upstream naming. Runtime behavior outranks
   numeric pattern guessing.
 - Unknown means unknown. A hypothesis is recorded as a hypothesis.
+
+## Runtime evidence
+
+Any claim sourced from an emulator is governed by
+[`docs/skills/mgba-runtime.md`](skills/mgba-runtime.md), and using it is
+**mandatory**, not advisory:
+
+- Read that file before the first mGBA action of a ticket. It is tracked
+  precisely so that it exists in every worktree and can be reviewed; a runtime
+  ticket that never cites it has not been done.
+- Launch through a tracked launcher. A launcher may hand mGBA `--script` only
+  when it keeps both gates that flag would otherwise bypass: every Lua file it
+  passes must be accepted by `inject_mgba_lua.ps1 -CheckOnly`, and the launcher
+  must itself fail closed on the emulator version and an exact ROM digest. A
+  bare `mGBA.exe --script` outside a launcher is still forbidden, because it
+  carries neither.
+- An observer writes no emulated memory. Controller input is allowed but must be
+  deliberate: gated by an environment variable the launcher sets, off by default,
+  and bounded so the run ends by itself. Twenty-six allow-listed observers drive
+  input this way; a new one states its gate rather than assuming it.
+- Every observer carries a liveness channel, and the closure report says which
+  of the three instrument states in section 8 of that file applies. A silent
+  channel with a silent liveness channel is "no evidence", never a negative.
+- `tests/unit/test_mgba_runtime_skill.py` enforces the mechanically checkable
+  part of this. Loosening that test is loosening the policy.
 
 ## Semantic and binary rules
 
@@ -146,7 +223,14 @@ dynamically. The default is a hypothesis, never a `CONFIRMED` claim.
 6. Put measured values into shipped metadata only after adequate evidence.
 7. Add discriminating tests, including a case that would distinguish the
    hypothesis from its plausible alternative.
-8. Keep source comments semantic: say what the code does.
+8. Keep source comments to rule C1: the code explains itself through names and
+   structure. A comment is allowed only as one line stating a non-obvious WHY
+   that the code cannot show, and an evidence comment must cite its evidence id
+   (an address, a measurement, or a ticket or memory id where that id is the
+   evidence). Narration, ticket histories and multi-paragraph docstrings are not
+   evidence, and text the product shows to users is not a comment. The
+   measurable bar is a comment+docstring share under 10 percent per file, with
+   the median at or below 3 percent.
 9. Put the proof in an evidence document, never in production source.
 10. Complete independent review before closure.
 
@@ -318,9 +402,9 @@ request description or release notes.
 Three kinds of file answer three different questions. Keep them separate.
 
 - **Production source answers "what does the SDK do?"** It carries the
-  implementation, concise semantic comments, safety invariants and the
-  explanation of anything architecture-sensitive. It does not carry research
-  narrative.
+  implementation, safety invariants and the explanation of anything
+  architecture-sensitive, under rule C1: comments are one-line WHYs, not
+  narration, and the research narrative belongs in an evidence document.
 - **Tests answer "what proves this behavior?"** They carry discriminating cases,
   failure paths, round-trip checks, mutation and regression cases, and
   deterministic-output assertions.
@@ -329,8 +413,8 @@ Three kinds of file answer three different questions. Keep them separate.
   validation counts and the research narrative.
 
 A future reverse-engineering change must not put its proof transcript into
-production source. Put it in the evidence document and leave a semantic comment
-behind.
+production source. Put it in the evidence document, and leave at most a one-line
+WHY comment citing the evidence id.
 
 Write documentation for a contributor who has none of the research history.
 A reader should be able to understand the project from the repository alone,

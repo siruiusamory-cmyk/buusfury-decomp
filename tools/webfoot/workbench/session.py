@@ -100,6 +100,11 @@ class Session:
     project_revision: int = 0
     validation_revision: int | None = None
     build_revision: int | None = None
+    #: CQA-27: each editor registers a callable returning how many edits it holds
+    #: that no write has taken. ONE authority answers "is there unwritten work",
+    #: so the prompt, the window title and the status bar cannot disagree - which
+    #: is how staged Warp transitions were dropped by a close with no prompt.
+    _staged_work: list = field(default_factory=list)
     # Full identification kept so the actor-sprite corpus can be loaded lazily
     # (it needs the RomIdentification, not just the matched profile).
     identification: RomIdentification | None = None
@@ -168,6 +173,25 @@ class Session:
     @property
     def build_current(self) -> bool:
         return self.build_revision == self.project_revision and self.last_build is not None
+
+    def register_staged_work(self, provider) -> None:
+        """Register one editor's count of edits no write has taken yet.
+
+        Registered once per editor: a second editor built on the same session would
+        otherwise be counted twice, doubling the discard prompt and the title.
+        """
+        if provider not in self._staged_work:
+            self._staged_work.append(provider)
+
+    def unsaved_edit_count(self) -> int:
+        """Every staged edit across this session's editors, from one authority.
+
+        The number the discard prompt, the window title and the status bar all
+        report. Each editor still owns its own staging; this only sums them, so a
+        surface added later is covered by registering rather than by finding every
+        prompt that used to count a widget.
+        """
+        return sum(int(provider()) for provider in self._staged_work)
 
     def set_project(self, path: Path) -> None:
         """Select project source and invalidate results tied to prior source."""
@@ -340,6 +364,9 @@ class Session:
         self.maps = maps
         self.text_strings = text_strings
         self.selected_map = None
+        # The Inspector's record belongs to the image it was resolved against, so a
+        # new image clears it rather than re-reading it against different bytes.
+        self.selected_result = None
         self.rom_path = path
         self.rom_image = rom_image
         # Drop the prior ROM's sprite corpus; the next `sprites` read rebuilds it.

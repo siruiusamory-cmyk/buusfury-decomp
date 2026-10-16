@@ -52,7 +52,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from .rom import RomReadError
 from .layout import Reference, RomRange
@@ -953,6 +953,33 @@ class TransitionCreationProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class SpriteAuthoringProvenance:
+    """One authored actor sprite as the manifest records it.
+
+    SPRITE-NEW-PROJECT-SURFACE-001. An authored identity and its actor are the
+    only structures this build emits that have no canonical bytes at all, so the
+    manifest owes the addresses the planners actually chose: which registry the
+    identity landed in, which structure and frames it answers through, which
+    palette entries it wrote, which object array and record the actor occupies
+    and which existing entry its behaviour started from.
+
+    The two payloads are the planners' own ``to_json()`` documents rather than a
+    restatement of their fields. They already are the published description of a
+    planned identity and a planned actor - the runtime parity record reads the
+    same two documents - and a second description here is exactly how two
+    statements of one layout drift apart.
+    """
+
+    #: ``sprite_identity.AuthoredIdentity.to_json()``.
+    identity: dict
+    #: ``sprite_attachment.AuthoredMapActor.to_json()``.
+    actor: dict
+
+    def to_json(self) -> dict:
+        return {"identity": self.identity, "actor": self.actor}
+
+
+@dataclass(frozen=True, slots=True)
 class WritePlan:
     """A validated set of changes against one identified base image.
 
@@ -981,6 +1008,9 @@ class WritePlan:
     transition_edits: tuple[TransitionEditProvenance, ...] = ()
     #: MAP-WARP-CREATE-PROJECT-001. Empty for a build that created no transition.
     transition_creations: tuple[TransitionCreationProvenance, ...] = ()
+    #: SPRITE-NEW-PROJECT-SURFACE-001. Empty for a build that authored no new
+    #: actor-sprite identity.
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = ()
 
     @property
     def effective_changes(self) -> tuple[ByteChange, ...]:
@@ -1051,6 +1081,9 @@ class WriteManifest:
     #: project-created transition record and the expanded pointer array that
     #: reaches it.
     transition_creations: tuple[TransitionCreationProvenance, ...] = ()
+    #: SPRITE-NEW-PROJECT-SURFACE-001. Present only when a build authored a new
+    #: actor-sprite identity and attached it to a map actor.
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = ()
 
     def to_json(self) -> dict:
         document = {
@@ -1096,6 +1129,10 @@ class WriteManifest:
             document["transition_creations"] = [
                 creation.to_json() for creation in self.transition_creations
             ]
+        if self.sprite_authoring:
+            document["sprite_authoring"] = [
+                sprite.to_json() for sprite in self.sprite_authoring
+            ]
         return document
 
     def dumps(self) -> str:
@@ -1125,6 +1162,7 @@ def plan_changes(
     structure_edits: tuple[StructureEditProvenance, ...] = (),
     transition_edits: tuple[TransitionEditProvenance, ...] = (),
     transition_creations: tuple[TransitionCreationProvenance, ...] = (),
+    sprite_authoring: tuple[SpriteAuthoringProvenance, ...] = (),
 ) -> WritePlan:
     """Validate `changes` against `base` and return an applicable plan.
 
@@ -1209,6 +1247,7 @@ def plan_changes(
         structure_edits=tuple(structure_edits),
         transition_edits=tuple(transition_edits),
         transition_creations=tuple(transition_creations),
+        sprite_authoring=tuple(sprite_authoring),
     )
 
 
@@ -1248,6 +1287,45 @@ def apply_plan(base: bytes, plan: WritePlan) -> bytes:
     return result
 
 
+def publish_new_files(artifacts: Sequence[tuple[Path, bytes]]) -> None:
+    """Publish complete files that must not already exist, or publish none of them.
+
+    The one owner of "put these bytes on disk as new files". Every file is staged
+    beside its destination, flushed and synced, and only then published with an
+    exclusive link, so an existing destination is never replaced and a raced
+    writer loses rather than silently overwriting someone else's artefact. A
+    failure unlinks only the links this call published.
+
+    Files that legitimately replace an existing destination are a different policy
+    and belong to `tools.webfoot.project.atomic.replace_document`, which replaces
+    through `os.replace`; this function deliberately cannot do that.
+    """
+    staged: list[tuple[Path, Path]] = []
+    published: list[tuple[Path, Path]] = []
+    try:
+        for path, data in artifacts:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=".webfoot-", delete=False
+            ) as stream:
+                temporary = Path(stream.name)
+                staged.append((temporary, path))
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+        for temporary, path in staged:
+            os.link(temporary, path)
+            published.append((temporary, path))
+    except BaseException:
+        for temporary, path in reversed(published):
+            if path.exists() and os.path.samefile(temporary, path):
+                path.unlink()
+        raise
+    finally:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+
+
 def emit_image(
     base_path: str | Path,
     output_path: str | Path,
@@ -1272,10 +1350,23 @@ def emit_image(
     # and would name the wrong rule to the caller. Both policies are this
     # module's, shared with every other writer - see `ensure_not_source_alias`.
     ensure_not_source_alias(source, destination)
+    # OWNER R3. Identity, not digest: a hardlink or a junction-reached path to a
+    # protected ROM is refused here even though its name and its content differ
+    # from the source's, and a destination inside a protected input directory is
+    # refused however it got there. Runs before `ensure_new_destination` so a
+    # protected path is reported as protected rather than as occupied.
+    from .destination import refuse_rom_destination
+
+    refuse_rom_destination(source, destination)
     ensure_new_destination(destination)
 
     manifest_destination = Path(manifest_path) if manifest_path is not None else None
     if manifest_destination is not None:
+        # The provenance document is a destination this module writes, so it
+        # answers the same destination policy the image does, for the reason the
+        # policy gives: it is the PATH that is protected, not the bytes. Without
+        # this a manifest was created inside a protected ROM input directory.
+        refuse_rom_destination(source, manifest_destination)
         if paths_are_the_same_file(manifest_destination, source) or (
             paths_are_the_same_file(manifest_destination, destination)
         ):
@@ -1317,6 +1408,7 @@ def emit_image(
         structure_edits=plan.structure_edits,
         transition_edits=plan.transition_edits,
         transition_creations=plan.transition_creations,
+        sprite_authoring=plan.sprite_authoring,
     )
     # Stage complete files first. Publish using exclusive links: never replace
     # a raced destination. Publish image last; roll back our links on failure.
@@ -1324,26 +1416,5 @@ def emit_image(
     if manifest_destination is not None:
         artifacts.append((manifest_destination, manifest.dumps().encode("utf-8")))
     artifacts.append((destination, output))
-    staged = []
-    published = []
-    try:
-        for path, data in artifacts:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".webfoot-", delete=False) as stream:
-                temporary = Path(stream.name)
-                staged.append((temporary, path))
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-        for temporary, path in staged:
-            os.link(temporary, path)
-            published.append((temporary, path))
-    except BaseException:
-        for temporary, path in reversed(published):
-            if path.exists() and os.path.samefile(temporary, path):
-                path.unlink()
-        raise
-    finally:
-        for temporary, _ in staged:
-            temporary.unlink(missing_ok=True)
+    publish_new_files(artifacts)
     return manifest

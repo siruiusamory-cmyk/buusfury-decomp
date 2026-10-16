@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from importlib import resources
 from pathlib import Path
 import sys
 
@@ -38,7 +37,11 @@ from .build import (
 # owns its run path, because it composes several SDK layers and that composition
 # is worth reading on its own rather than inline here.
 from .commands import randomize as randomize_command
-from .profile import ProfileConfigError, RomProfileCatalog, VerificationStatus
+from .catalog import (  # noqa: F401 - re-exported: callers import both from here
+    development_profile_path,
+    load_catalog,
+)
+from .profile import ProfileConfigError, VerificationStatus
 from .layout import LayoutError
 from .project import ProjectError
 from .rom import RomIdentification, RomReadError, identify_rom
@@ -53,7 +56,22 @@ from .maps import (
     PlacementIdentity,
     load_maps,
 )
-from .write import WriteError, emit_image, ensure_not_source_alias
+from .write import (
+    WriteError,
+    emit_image,
+    ensure_new_destination,
+    ensure_not_source_alias,
+)
+# RELEASE-ARTEFACT-001. The patch service is the one authority for the
+# distributable artefact; this command parses arguments and prints the result.
+from .patch import (
+    PatchError,
+    PatchResult,
+    PatchVerification,
+    export_patch,
+    read_patch_metadata,
+    verify_patch,
+)
 # Compatibility exports for the atlas text-search interface. The implementation
 # lives in ``handles`` so dialogue authoring and CLI lookup share one decoder.
 from .handles import (
@@ -64,25 +82,6 @@ from .handles import (
     recover_handle as _recover_handle,
     unpack_handle as _unpack_handle,
 )
-
-
-def development_profile_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "config" / "roms.yaml"
-
-
-def load_catalog(profile_path: Path | None) -> RomProfileCatalog:
-    if profile_path is not None:
-        return RomProfileCatalog.load(profile_path)
-
-    development_path = development_profile_path()
-    if development_path.is_file():
-        return RomProfileCatalog.load(development_path)
-
-    packaged = resources.files("tools.webfoot.data").joinpath("roms.yaml")
-    return RomProfileCatalog.loads(
-        packaged.read_text(encoding="utf-8"),
-        source="packaged tools.webfoot.data/roms.yaml",
-    )
 
 
 def _parse_u32(value: str) -> int:
@@ -586,6 +585,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     randomize_command.add_parser(subparsers)
+
+    # RELEASE-ARTEFACT-001. Two artefacts, two commands, one authority each: the
+    # `build` command produces the playable image, and `patch export` produces the
+    # distributable modification. Export rebuilds through the same `build_project`
+    # the build command calls, so a patch can never describe an image the project
+    # does not currently produce.
+    patch = subparsers.add_parser(
+        "patch",
+        help="export a distributable patch for a project, or verify one",
+    )
+    patch_commands = patch.add_subparsers(dest="patch_command", required=True)
+
+    patch_export = patch_commands.add_parser(
+        "export",
+        help="build the project and export the patch that reproduces the build",
+    )
+    patch_export.add_argument("project", type=Path)
+    patch_export.add_argument(
+        "--rom", type=Path, required=True, help="the verified source ROM"
+    )
+    patch_export.add_argument(
+        "--output", type=Path, required=True, help="patch path (must not exist)"
+    )
+
+    patch_verify = patch_commands.add_parser(
+        "verify",
+        help="apply a patch to a verified source ROM and report what it reproduces",
+    )
+    patch_verify.add_argument("patch", type=Path)
+    patch_verify.add_argument("--rom", type=Path, required=True)
 
     # TILESET-COMPOSITOR-001. A derived-resource view: it reads the ROM, learns
     # tile relationships from how maps actually use the banks, and writes an
@@ -1398,6 +1427,62 @@ def _print_build(result: BuildResult) -> None:
     print("COMPLETE")
 
 
+def _print_patch_export(result: "PatchResult") -> None:
+    print("Webfoot Patch Export")
+    print("--------------------")
+    print()
+    print(f"Project: {result.project_name}")
+    print(f"Patch:   {result.patch_path}")
+    print(f"SHA256:  {result.patch_sha256}")
+    print(f"Size:    {result.patch_size} bytes")
+    print()
+    print(f"Source profile: {result.base_profile_id}")
+    print(f"Source SHA256:  {result.base_sha256} ({result.base_size} bytes)")
+    print(f"Target SHA256:  {result.target_sha256} ({result.target_size} bytes)")
+    print()
+    print(
+        "This patch applies to the verified source ROM and reproduces the built "
+        "image exactly. It is a difference, not a copy: it cannot rebuild the "
+        "image without the source ROM."
+    )
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
+def _print_patch_verification(result: "PatchVerification") -> None:
+    print("Webfoot Patch Verification")
+    print("--------------------------")
+    print()
+    print(f"Patch:  {result.patch_path}")
+    print(f"SHA256: {result.patch_sha256} ({result.patch_size} bytes)")
+    print()
+    print(f"Source SHA256:  {result.source_sha256} ({result.source_size} bytes)")
+    print(f"Rebuilt SHA256: {result.target_sha256} ({result.target_size} bytes)")
+    print()
+    # Provenance is printed when the patch carries it. A patch made elsewhere has
+    # none, and that is not a refusal: verification is about the bytes.
+    try:
+        document = read_patch_metadata(Path(result.patch_path).read_bytes())
+    except ValueError:
+        print("Provenance: this patch carries no readable DragonByte Z record.")
+    else:
+        print("Provenance (as recorded in the patch):")
+        print(json.dumps(document, indent=2, sort_keys=True))
+        print(
+            "Its source and target sha256 fields, where the record carries them, "
+            "were checked against the source and the rebuilt image above."
+        )
+    print()
+    print(
+        "The patch applies to this source and its rebuilt image matches the "
+        "checksum the patch declares."
+    )
+    print()
+    print("RESULT:")
+    print("COMPLETE")
+
+
 def _parse_graphic_identity(value: str):
     """`<profile>/graphic:NNNN` -> a GraphicIdentity, or a clear refusal."""
     from .graphics import GraphicIdentity
@@ -1630,14 +1715,28 @@ def _run_graphics(args) -> int:
             result = sprites.reference_document().to_json()
         elif command == "export":
             # The destination is free-form and this branch is the one writer here
-            # that emits a non-ROM artefact. Ask the write module's shared
-            # source-alias policy BEFORE creating a parent directory or opening
-            # the destination, so `--out` naming the input ROM is refused with the
-            # ROM byte-identical rather than truncated to a PNG. `WriteError` is a
-            # `ValueError`, so the handler below already reports it and exits
-            # non-zero.
+            # that emits a non-ROM artefact. Its destination policy is the one
+            # every other writer asks, in `emit_image`'s own order and before a
+            # parent directory is created or the destination is opened: the write
+            # module's source-alias and new-destination rules and the destination
+            # module's protected-input rule. So `--out` naming the input ROM is
+            # refused with the ROM byte-identical rather than truncated to a PNG,
+            # an existing artefact is not silently replaced, and a path inside
+            # `roms/` or another protected input directory is refused however it
+            # is reached. Both error families are `ValueError`s, so the handler
+            # below already reports the refusal and exits non-zero.
+            #
+            # `authored_image.refuse_canonical_destination` is deliberately not
+            # asked: it inspects an EXISTING destination's bytes, and
+            # `ensure_new_destination` below already refuses any existing
+            # destination, a copy of the canonical image included. Asking it too
+            # would be redundant rather than protective.
+            from .destination import refuse_rom_destination
+
             out = Path(args.out)
             ensure_not_source_alias(args.rom, out)
+            refuse_rom_destination(args.rom, out)
+            ensure_new_destination(out)
             asset = sprites.graphic(_parse_graphic_identity(args.identity))
             blob = indexed_png.encode(
                 asset.pixels,
@@ -1832,7 +1931,9 @@ def _run_tileset(args) -> int:
                     raise ValueError(
                         "--occurrences needs at least one --bank to retain"
                     )
-                written = _write_occurrences(args.occurrences, census, retained)
+                written = _write_occurrences(
+                    args.rom, args.occurrences, census, retained, image
+                )
                 document["occurrences"] = written
             print(json.dumps(document, sort_keys=True, indent=2))
             return 0
@@ -1899,6 +2000,7 @@ def _run_tileset(args) -> int:
         MapGraphicsError,
         ProfileConfigError,
         RomReadError,
+        WriteError,
         OSError,
         ValueError,
     ) as exc:
@@ -1906,8 +2008,25 @@ def _run_tileset(args) -> int:
         return 2
 
 
-def _write_occurrences(path: Path, census, banks) -> dict:
-    """Write the complete per-occurrence record for the retained banks."""
+def _write_occurrences(
+    rom: Path, path: Path, census, banks, image: bytes
+) -> dict:
+    """Write the complete per-occurrence record for the retained banks.
+
+    The destination is answered by the policies every ROM writer already asks, in
+    `emit_image`'s own order and before the parent directory is created or the
+    file is opened: the write module's source-alias and new-destination rules,
+    the destination module's protected-input rule, and the content rule a
+    destination holding a copy of the image is refused by. A refusal leaves no
+    partial file and no new directory behind.
+    """
+    from .destination import refuse_rom_destination
+    from .authored_image import refuse_canonical_destination
+
+    ensure_not_source_alias(rom, path)
+    refuse_rom_destination(rom, path)
+    refuse_canonical_destination(path, hashlib.sha256(image).hexdigest())
+    ensure_new_destination(path)
     lines = []
     for bank in sorted(set(banks)):
         for occurrence in census.occurrences.get(bank, ()):
@@ -2005,7 +2124,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
 
-    if args.command in ("extract", "validate", "build"):
+    if args.command in ("extract", "validate", "build", "patch"):
         try:
             catalog = load_catalog(args.profiles)
             if args.command == "extract":
@@ -2025,6 +2144,16 @@ def main(argv: list[str] | None = None) -> int:
                 report = validate_project(args.project, args.rom, catalog)
                 _print_validate(report)
                 return 0 if report.passed else 2
+            if args.command == "patch":
+                if args.patch_command == "export":
+                    _print_patch_export(
+                        export_patch(args.project, args.rom, args.output, catalog)
+                    )
+                else:
+                    _print_patch_verification(
+                        verify_patch(args.patch, args.rom, catalog)
+                    )
+                return 0
             _print_build(
                 build_project(
                     args.project,
@@ -2045,6 +2174,7 @@ def main(argv: list[str] | None = None) -> int:
             StatTableError,
             StatEncodeError,
             WriteError,
+            PatchError,
             OSError,
         ) as exc:
             print(f"error: {exc}", file=sys.stderr)

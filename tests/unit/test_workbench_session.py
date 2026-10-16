@@ -49,6 +49,8 @@ def test_open_rom_populates_session(catalog: RomProfileCatalog) -> None:
         pytest.skip("assembled atlas.jsonl not present locally")
 
     session = Session()
+    # A record resolved against an earlier image is what this open must clear.
+    session.selected_result = {"_mode": "decoded", "text": "stale"}
     session.open_rom(Path(rom), catalog)
 
     assert session.profile is not None
@@ -57,6 +59,9 @@ def test_open_rom_populates_session(catalog: RomProfileCatalog) -> None:
     assert isinstance(session.decoded_text, list)
     assert session.rom_path == Path(rom)
     assert session.rom_image == open(rom, "rb").read()
+    # The Inspector's selected record belongs to the image it was resolved
+    # against, so opening another image cannot leave the old one addressable.
+    assert session.selected_result is None
 
 
 def test_open_rom_rejects_unrecognized_bytes(

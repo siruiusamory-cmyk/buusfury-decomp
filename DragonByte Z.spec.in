@@ -1,0 +1,123 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""DRAGONBYTE-Z-SHIP-V1-001 - the frozen Windows build of DragonByte Z.
+
+The third product this repository freezes, and the one that is an application
+rather than a randomizer. It reuses the established shape rather than inventing a
+second one: the same reduced Qt payload, the same build-time identity record, the
+same ``datas`` entry that makes the ROM profile catalog travel, and the same
+generated-at-build-time ``.spec`` beside a tracked template.
+
+**Onedir**, not one file. The randomizers are one file because their release is a
+single executable a user double-clicks; an editor that carries a Qt runtime, a
+profile catalog and a project loader is a directory that starts in well under a
+second, and the sibling template already records the measured four-second
+one-file startup cost this avoids. ``EXE(exclude_binaries=True)`` plus ``COLLECT``
+is therefore the shape here, and the release artefact is
+``dist/DragonByte Z/DragonByte Z.exe``.
+
+What travels, and what does not
+-------------------------------
+
+``tools/webfoot/data/roms.yaml`` is the only bundled data file. It is a table of
+addresses and hashes, never game content, and ``tools.webfoot.catalog`` falls
+back to it in a frozen build - so without it every ROM selection is refused.
+
+The assembled atlas is deliberately NOT bundled. It is derived from the user's own
+image and cannot be shipped, and :func:`tools.webfoot.cli._default_atlas_directory`
+is the one authority on where a frozen build looks for it: beside the executable,
+under ``build/atlas``, which is exactly where a generated artefact belongs.
+
+Identity
+--------
+
+``scripts/randomizer.ico`` is reused rather than a second icon minted: it is the
+repository's own mark, rendered from ``public/favicon.svg``, and it is the icon
+both released tools already carry.
+
+The executable carries the product's own identity in two forms: the Windows
+version resource named below, whose fields a stranger reads in the file's
+properties dialog, and the runtime string ``--version`` prints, which comes from
+``tools/webfoot/release_identity.py`` by way of the build-time record this template
+bakes in before PyInstaller runs. ``tests/unit/test_dragonbyte_release.py`` holds
+the two to the same version, so neither can drift into a second identity.
+"""
+
+#: Python modules nothing here imports. PySide6's PyInstaller hook collects the
+#: whole Qt SDK otherwise, and a single-window editor loads none of these.
+_UNUSED_QT_MODULES = [
+    'PySide6.QtQml',
+    'PySide6.QtQuick',
+    'PySide6.QtQuickWidgets',
+    'PySide6.QtPdf',
+    'PySide6.QtPdfWidgets',
+    'PySide6.QtVirtualKeyboard',
+]
+
+#: Native libraries and data belonging to those modules, matched on their
+#: bundle-relative path with forward slashes.
+_UNUSED_QT_PREFIXES = (
+    'PySide6/Qt6Qml',
+    'PySide6/Qt6Quick',
+    'PySide6/Qt6Pdf',
+    'PySide6/Qt6VirtualKeyboard',
+    'PySide6/translations/',
+)
+
+
+def _is_unused_qt(relative: str) -> bool:
+    normalised = relative.replace('\\', '/')
+    return normalised.startswith(_UNUSED_QT_PREFIXES)
+
+
+a = Analysis(
+    ['tools/dragonbyte/_pyinstaller_entry.py'],
+    pathex=['.'],
+    binaries=[],
+    datas=[('tools/webfoot/data/roms.yaml', 'tools/webfoot/data')],
+    # The profile catalog is reached through a *string*
+    # `importlib.resources.files("tools.webfoot.data")`, which PyInstaller cannot
+    # follow. Naming the package makes its inclusion a declaration rather than a
+    # coincidence.
+    hiddenimports=['tools.webfoot.data'],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=_UNUSED_QT_MODULES,
+    noarchive=False,
+    optimize=0,
+)
+
+a.binaries = [item for item in a.binaries if not _is_unused_qt(item[0])]
+a.datas = [item for item in a.datas if not _is_unused_qt(item[0])]
+
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='DragonByte Z',
+    icon='scripts/randomizer.ico',
+    version='DragonByte Z.version.txt',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='DragonByte Z',
+)

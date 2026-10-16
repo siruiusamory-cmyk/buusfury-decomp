@@ -32,11 +32,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 
 from tools.webfoot.workbench import theme  # noqa: E402
+from tools.webfoot.randomizer import gui as shell_gui  # noqa: E402
 from tools.webfoot.warprand import gui  # noqa: E402
 from tools.webfoot.warprand import service as warprand  # noqa: E402
 
-#: The GUI module's own source, for the "no second palette" guard below.
+#: The GUI module's own source, for the "no second palette" guard below. The
+#: window itself lives in ``tools/webfoot/randomizer/gui.py`` since
+#: ENEMY-RANDOMIZER-EXE-001; this file's guard scans both, because a colour
+#: literal in either would fork the product's appearance.
 GUI_SOURCE = Path(gui.__file__)
+SHELL_GUI_SOURCE = Path(shell_gui.__file__)
 
 VALID_ROM = Path("C:/games/Dragon Ball Z - Buu's Fury (U).gba")
 OTHER_ROM = Path("C:/games/Dragon Ball Z - The Legacy of Goku (USA).gba")
@@ -130,6 +135,28 @@ class FakeBoundary:
     def randomize_warps(
         self, source, output, seed, *, overwrite=False, policy=None, on_progress=None
     ):
+        """The product's own entry point. Kept so this file still reads as a warp
+        randomizer test rather than a test of the shared shell."""
+        return self._record(source, output, seed, overwrite=overwrite,
+                            on_progress=on_progress)
+
+    def randomize(self, request):
+        """The shared window protocol: the request the window built.
+
+        ENEMY-RANDOMIZER-EXE-001 moved the window onto the shared application
+        foundation, so the protocol a boundary must satisfy is now this one
+        method. The recorder is unchanged, so every assertion about what the
+        window passed through still holds.
+        """
+        return self._record(
+            request.source_rom,
+            request.output_rom,
+            request.master_seed,
+            overwrite=request.overwrite,
+            on_progress=request.on_progress,
+        )
+
+    def _record(self, source, output, seed, *, overwrite=False, on_progress=None):
         self.randomize_calls.append(
             {
                 "source": str(source),
@@ -227,9 +254,13 @@ def test_the_progression_limit_is_on_screen(window):
     assert window.disclaimer_label.wordWrap()
 
 
-def test_the_window_names_the_tool_and_the_policy(window):
+def test_the_window_names_the_tool_and_what_it_does(window):
     assert gui.WINDOW_TITLE == "Buu's Fury Warp Randomizer v0.1.0"
-    assert window.policy_label.text() == f"Policy: {warprand.POLICY_ID}"
+    # The status bar names the game and the change, not the internal policy id,
+    # which stays in the manifest where it identifies the algorithm.
+    assert "Buu's Fury (US)" in window.policy_label.text()
+    assert "reciprocal pairs" in window.policy_label.text()
+    assert warprand.POLICY_ID not in window.policy_label.text()
 
 
 # --- the ROM -----------------------------------------------------------------
@@ -237,7 +268,7 @@ def test_the_window_names_the_tool_and_the_policy(window):
 
 def test_browsing_for_a_rom_updates_the_path(window, qapp, boundary, monkeypatch):
     monkeypatch.setattr(
-        gui.QFileDialog, "getOpenFileName", lambda *a, **k: (str(VALID_ROM), "")
+        shell_gui.QFileDialog, "getOpenFileName", lambda *a, **k: (str(VALID_ROM), "")
     )
 
     window.browse_for_rom()
@@ -247,7 +278,7 @@ def test_browsing_for_a_rom_updates_the_path(window, qapp, boundary, monkeypatch
 
 
 def test_a_cancelled_browse_changes_nothing(window, monkeypatch):
-    monkeypatch.setattr(gui.QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
+    monkeypatch.setattr(shell_gui.QFileDialog, "getOpenFileName", lambda *a, **k: ("", ""))
 
     assert window.browse_for_rom() is None
     assert window.rom_path() == ""
@@ -407,7 +438,7 @@ def test_copy_seed_puts_the_seed_on_the_clipboard(window):
 
 def test_browsing_for_an_output_updates_the_path(window, monkeypatch):
     monkeypatch.setattr(
-        gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(OUTPUT_ROM), "")
+        shell_gui.QFileDialog, "getSaveFileName", lambda *a, **k: (str(OUTPUT_ROM), "")
     )
 
     window.browse_for_output()
@@ -470,10 +501,11 @@ def test_the_success_state_shows_the_returned_counts_and_hash(window, qapp, boun
     text = window.status_text()
     assert text.splitlines()[0] == "Success"
     assert "Seed: Goku" in text
-    assert "Supported: 735" in text
-    assert "Randomized: 496" in text
+    assert "Door transitions: 735" in text
+    assert "Doors randomized: 496" in text
     assert "Destinations moved: 492" in text
-    assert "Skipped: 239" in text
+    assert "Left unchanged: 239" in text
+    assert warprand.POLICY_ID not in text
     assert f"Output: {OUTPUT_ROM}" in text
     assert f"SHA-256: {OUTPUT_SHA256}" in text
     assert window.outcome is not None
@@ -493,9 +525,9 @@ def test_the_success_state_is_built_from_what_the_boundary_returned(
 
     text = window.status_text()
     assert "Seed: Namek-0001" in text
-    assert "Randomized: 12" in text
-    assert "Skipped: 723" in text
-    assert "Randomized: 496" not in text
+    assert "Doors randomized: 12" in text
+    assert "Left unchanged: 723" in text
+    assert "Doors randomized: 496" not in text
 
 
 def test_a_refused_run_shows_the_error_state(window, qapp, boundary):
@@ -881,19 +913,20 @@ def _executable_source(path: Path) -> str:
 def test_the_app_module_holds_no_colour_of_its_own():
     """No second palette, ever.
 
-    The theme is the single owner of every value; the moment this window spells
-    a hex colour it has forked the product's look, and a later "small tweak"
-    would land in only one of the three surfaces. Roles and ``theme.COLORS``
-    references are the whole vocabulary available here.
+    The theme is the single owner of every value; the moment either the product
+    module or the shared window spells a hex colour it has forked the product's
+    look, and a later "small tweak" would land in only one of the three surfaces.
+    Both files are scanned, because since ENEMY-RANDOMIZER-EXE-001 most of the
+    window's code lives in the shared module.
     """
-    code = _executable_source(GUI_SOURCE)
+    for path in (GUI_SOURCE, SHELL_GUI_SOURCE):
+        code = _executable_source(path)
 
-    literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", code)
+        literals = re.findall(r"#[0-9a-fA-F]{3,8}\b", code)
 
-    assert literals == [], (
-        "tools/webfoot/warprand/gui.py must name theme roles, not colours; "
-        f"found {literals}"
-    )
+        assert literals == [], (
+            f"{path.name} must name theme roles, not colours; found {literals}"
+        )
 
 
 def test_the_window_uses_the_theme_roles_and_not_local_styling(window):

@@ -47,8 +47,8 @@ _MAP_MODES = (
     (
         "layout",
         "Layout",
-        "Reassign one 256x256 chunk cell of a supported map to another chunk the "
-        "same layer already uses, then Save As a new ROM.",
+        "Reassign one 256x256 chunk cell of a supported map to another chunk a "
+        "dominant layer of the same map already uses, then Save As a new ROM.",
     ),
     (
         "objects",
@@ -167,10 +167,12 @@ class EditorHost(QWidget):
         """The active editor's undo stack, or None when it has none.
 
         The shell routes Edit-menu Undo/Redo here rather than inventing a second
-        history. Two editors keep real stacks today (the placement workspace and
-        the palette editor); the rest answer None.
+        history. A plain host delegates to the editor surface it wraps, so a tab
+        that keeps its own stack (the palette editor) is reachable from the menu.
+        A host that composites several editors overrides this to route by mode,
+        and an editor that keeps no stack (Atlas, Inspector) still answers None.
         """
-        return None
+        return getattr(self._content, "_undo_stack", None)
 
 
 class MapsEditor(EditorHost):
@@ -192,8 +194,23 @@ class MapsEditor(EditorHost):
     modeChanged = Signal(str)
 
     def unsaved_edit_count(self) -> int:
-        """Pending layout edits no Save As has written yet, across every mode."""
-        return self.browser.unsaved_edit_count()
+        """Pending layout edits no Save As has written yet, across every mode.
+
+        CQA-27: the Warps surface stages connection edits on the same session, so
+        it counts too. Counting only the browser let a close drop staged Warp work
+        with no prompt while the title called the session clean.
+        """
+        return self.browser.unsaved_edit_count() + self.warps.unsaved_edit_count()
+
+    def discard_staged_work(self) -> None:
+        """Drop every staged layout edit, after the user chose to discard them.
+
+        Both owners drop their own work through their existing operations rather
+        than a third path: the browser's Discard-pending reset, and the Warps
+        surface's session-change clear.
+        """
+        self.browser._reset_edits()
+        self.warps.on_session_changed()
 
     def __init__(self, session, parent: QWidget | None = None) -> None:
         super().__init__("Maps", parent)
@@ -204,6 +221,9 @@ class MapsEditor(EditorHost):
         self.browser.set_modes_owned_by_host(True)
         self.workspace = MapWorkspaceTab(session)
         self.warps = WarpTab(session)
+        # CQA-27: the session owns the one unsaved-work total, so every prompt and
+        # every label reads the same number.
+        session.register_staged_work(self.unsaved_edit_count)
 
         self._buttons: dict[str, QToolButton] = {}
         strip = ToolStrip()

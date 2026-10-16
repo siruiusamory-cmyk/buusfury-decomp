@@ -1,51 +1,52 @@
 ---
 import { project, buildoutDone, buildoutTotal, buildoutPercent } from "../data/project";
+import Window from "./Window.astro";
+import Icon from "./Icon.astro";
+
 const base = import.meta.env.BASE_URL;
 const shot = project.figures[0];
 ---
 
-<section class="hero" id="status" aria-labelledby="hero-title">
-  <div class="shell hero-grid">
-    <div class="hero-copy">
-      <p class="kicker">WEBFOOT SDK <span aria-hidden="true">/</span> PUBLIC STATUS</p>
-      <h1 class="hero-title" id="hero-title">
-        <span class="hero-title-a">DRAGONBYTE Z</span>
-        <span class="hero-title-b">BUILDOUT</span>
-      </h1>
-      <p class="hero-lede">{project.tagline}</p>
-      <p class="hero-desc">{project.description}</p>
-
-      <dl class="hero-meta">
-        <div>
-          <dt>ACTIVE TRACK</dt>
-          <dd>{project.currentPhase} <span aria-hidden="true">·</span> {buildoutDone}/{buildoutTotal} <span aria-hidden="true">·</span> {buildoutPercent}%</dd>
-        </div>
-        {project.stateFacts.map((fact) => (
-          <div>
-            <dt>{fact.label}</dt>
-            <dd>{fact.value}</dd>
-          </div>
-        ))}
-        <div>
-          <dt>ACCEPTANCE TARGET</dt>
-          <dd>{project.acceptanceTarget}</dd>
-        </div>
-      </dl>
+<div class="welcome-group">
+  <Window id="status" title="Welcome Center" icon="logo" labelledby="hero-title" class="welcome">
+    <div class="welcome-head">
+      <Icon name="logo" class="welcome-orb" />
+      <div>
+        <h1 class="hero-title" id="hero-title">DragonByte Z <span>Buildout</span></h1>
+        <p class="hero-lede">{project.tagline}</p>
+      </div>
     </div>
+    <p class="hero-desc">Welcome! This is the public status board for {project.name}. {project.description}</p>
 
-    <figure class="hero-shot">
-      <img
-        src={`${base}${shot.src}`}
-        width={shot.width}
-        height={shot.height}
-        alt={shot.alt}
-        loading="eager"
-        decoding="async"
-      />
-      <figcaption>
-        <b>{shot.title}</b>
-        <span>{shot.caption}</span>
-      </figcaption>
-    </figure>
-  </div>
-</section>
+    <h2 class="welcome-sub">Your project at a glance</h2>
+    <dl class="hero-meta">
+      <div>
+        <dt>Active track</dt>
+        <dd>{project.currentPhase}, {buildoutDone}/{buildoutTotal} ({buildoutPercent}%)</dd>
+      </div>
+      {project.stateFacts.map((fact) => (
+        <div>
+          <dt>{fact.label}</dt>
+          <dd>{fact.value}</dd>
+        </div>
+      ))}
+      <div>
+        <dt>Acceptance target</dt>
+        <dd>{project.acceptanceTarget}</dd>
+      </div>
+    </dl>
+  </Window>
+
+  <Window title={`${shot.title} - DragonByte Z`} icon="folder" class="shot-window" as="figure" label={shot.title}>
+    <img
+      src={`${base}${shot.src}`}
+      width={shot.width}
+      height={shot.height}
+      alt={shot.alt}
+      loading="eager"
+      fetchpriority="high"
+      decoding="async"
+    />
+    <figcaption slot="caption">{shot.caption}</figcaption>
+  </Window>
+</div>

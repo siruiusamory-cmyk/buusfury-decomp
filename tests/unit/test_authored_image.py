@@ -204,6 +204,27 @@ def test_the_source_may_not_be_any_path_the_save_touches(
         assert not destination.exists()
 
 
+def test_an_existing_destination_that_is_the_canonical_image_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A destination that already holds the canonical image is a ROM, not an output.
+
+    The destination is a separate file from the source, so nothing here is an
+    alias refusal: only the canonical-copy guard can refuse this save, and it has
+    to refuse it before the destination is replaced.
+    """
+    destination = tmp_path / "out.gba"
+    destination.write_bytes(BASE)
+    source = tmp_path / "source.gba"
+    with pytest.raises(AuthoredImageError) as excinfo:
+        _save(tmp_path, [_change_at(16, b"\x01\x02\x03\x04")])
+    assert "copy of the canonical ROM" in str(excinfo.value)
+    assert destination.read_bytes() == BASE
+    assert source.read_bytes() == BASE
+    # The refusal is total: no provenance document and no staging artefact.
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out.gba", "source.gba"]
+
+
 def test_a_missing_source_or_an_unknown_profile_is_refused(tmp_path: Path) -> None:
     change = _change_at(16, b"\x01\x02\x03\x04")
     with pytest.raises(AuthoredImageError):
@@ -755,3 +776,79 @@ def test_an_explicit_manifest_path_is_honoured(tmp_path: Path) -> None:
     )
     assert verified.manifest_path == elsewhere
     assert verified.canonical_image == BASE
+
+
+# --- a reason string that changed, and the manifests already on disk ---------
+#
+# MAP-PAINT-ANY-CHUNK-001 widened the layout replacement rule and the map-layout
+# editor's reason string changed with it. `expected_reason` therefore takes a
+# tuple, so a derivative written by the earlier build keeps verifying instead of
+# being refused for naming the older wording. These two tests exist because the
+# map-layout suite derives its manifest from the module's own constant, so it
+# could not have caught the editor and the verifier disagreeing; these pin both
+# spellings explicitly and would fail if either stopped being accepted.
+
+
+def test_a_manifest_written_with_the_older_reason_still_verifies(tmp_path: Path) -> None:
+    data, change = _derivative()
+    image = tmp_path / "derived.gba"
+    image.write_bytes(data)
+    change = {**change, "reason": "existing same-layer chunk replacement"}
+    manifest_path_for(image).write_text(
+        json.dumps(_document([change], output=data)), encoding="utf-8"
+    )
+
+    verified = verify_authored_image(
+        image,
+        canonical_sha256=CANONICAL_SHA256,
+        canonical_size=len(BASE),
+        field_bytes=FIELD_BYTES,
+        expected_reason=("a newer reason", "existing same-layer chunk replacement"),
+        check_changes=_check_fields,
+    )
+
+    assert verified.canonical_image == BASE
+
+
+def test_a_manifest_written_with_the_newer_reason_verifies_too(tmp_path: Path) -> None:
+    data, change = _derivative()
+    image = tmp_path / "derived.gba"
+    image.write_bytes(data)
+    change = {**change, "reason": "a newer reason"}
+    manifest_path_for(image).write_text(
+        json.dumps(_document([change], output=data)), encoding="utf-8"
+    )
+
+    verified = verify_authored_image(
+        image,
+        canonical_sha256=CANONICAL_SHA256,
+        canonical_size=len(BASE),
+        field_bytes=FIELD_BYTES,
+        expected_reason=("a newer reason", "existing same-layer chunk replacement"),
+        check_changes=_check_fields,
+    )
+
+    assert verified.canonical_image == BASE
+
+
+def test_a_reason_outside_the_accepted_set_is_still_refused(tmp_path: Path) -> None:
+    """Widening the set must not stop refusing a reason this tool never writes."""
+    data, change = _derivative()
+    image = tmp_path / "derived.gba"
+    image.write_bytes(data)
+    change = {**change, "reason": "some other tool's reason"}
+    manifest_path_for(image).write_text(
+        json.dumps(_document([change], output=data)), encoding="utf-8"
+    )
+
+    with pytest.raises(AuthoredImageError) as excinfo:
+        verify_authored_image(
+            image,
+            canonical_sha256=CANONICAL_SHA256,
+            canonical_size=len(BASE),
+            field_bytes=FIELD_BYTES,
+            expected_reason=("a newer reason", "existing same-layer chunk replacement"),
+            check_changes=_check_fields,
+        )
+
+    assert "unsupported change reason" in str(excinfo.value)

@@ -1,11 +1,17 @@
 # Workbench architecture
 
-DragonByte Z is the desktop editor shipped from `tools/webfoot/workbench/`. Run
-it with `python -m tools.webfoot.workbench` (`workbench/__main__.py`). It is a
-second client of the Webfoot SDK the CLI uses, not a separate implementation of
-anything the SDK already owns.
+The beta workbench - the desktop editor shipped from `tools/webfoot/workbench/`,
+run with `python -m tools.webfoot.workbench` (`workbench/__main__.py`) - is this
+repository's **engineering surface**. It is where a controller, an extraction, a
+build and a raw byte are driven, and it is not the product a user is handed.
 
-This is the architecture contract for that package: the thin-client boundary,
+DragonByte Z, the product, is the application package `tools/dragonbyte/`, run
+with `python -m tools.dragonbyte` or the `DragonByte Z.cmd` launcher and frozen
+by `DragonByte Z.spec.in`. It is a second client of the Webfoot SDK the CLI
+uses, not a separate implementation of anything the SDK already owns, and it
+imports nothing from `tools/webfoot/workbench/`.
+
+This is the architecture contract for the beta package: the thin-client boundary,
 the shared state model and its signals, the editor composition, the error
 handling rule with the catch lists that implement it, the authoring discipline,
 and how the package is accepted. For the Maps editor's Layout mode and for
@@ -145,8 +151,9 @@ Two safety rules hold across all four:
   It is a module-level, Qt-free function so it is unit-testable, and it
   delegates the comparison to the SDK's own `write.paths_are_the_same_file`
   rather than deriving a second, weaker one. The check runs before
-  `build_project` and again before the one irreversible delete
-  (`build_panel.py:299-307`, `323-331`).
+  `build_project` (`build_panel.py:321`) and again for every artefact in the
+  set a confirmed overwrite replaces (`build_panel.py:350-381`), which is the
+  image plus the provenance manifest the build publishes beside it.
 - **Fail closed.** An authoring target the SDK cannot resolve stays read-only
   with no raw-address or source-text fallback (`inspector.py:314-317`).
 
@@ -220,7 +227,7 @@ comment records the reason; do not generalise it to other slots.
    `except`; do not assume one family covers a sibling.
 4. Do not branch on exception message text. Branch on a checkable condition: the
    overwrite offer is gated on the output file actually existing, never on the
-   message (`build_panel.py:314-322`).
+   message (`build_panel.py:341-352`).
 
 ## Acceptance testing
 

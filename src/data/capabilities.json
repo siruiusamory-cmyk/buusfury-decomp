@@ -158,20 +158,20 @@
       "family": "edit",
       "title": "Map layout editing: chunk-cell replacement",
       "state": "shipped",
-      "detail": "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk that layer already uses. 341 of the 452 maps expose an editable layer; the remaining 111 are read-only, with the reason stated.",
+      "detail": "Reassign one 256x256 chunk cell of a map's dominant layer to another chunk a dominant layer of that same map already uses. 440 of the 452 maps expose an editable layer; the remaining 12 are read-only, with the reason stated.",
       "limits": [
-        "One operation only: reassign an existing same-layer dominant-layer chunk cell. The replacement must be a non-null chunk that the same layer already uses elsewhere.",
+        "One operation only: reassign an existing dominant-layer chunk cell. The replacement must be a non-null chunk some dominant layer of the same map already uses, which may be the edited layer's own or a sibling record's.",
         "Cell replacement stays an in-place edit of a supported dominant layer: it does not relocate a layer's record, and it accepts no arbitrary map format.",
-        "111 of the 452 maps are read-only: dominant grids that use a single chunk, absent dominant layers, and maps outside the proven form state the reason.",
+        "12 of the 452 maps are read-only: maps whose dominant grids between them use a single chunk, and map:0008, which has no dominant layer at all. Each states the reason.",
         "Emulator validation of the layout write itself was not performed; the application round-trip, which reopens its own emitted ROM through the manifest it wrote, was."
       ],
-      "surface": "Maps editor, Layout mode: chunk-cell replacement with a same-layer chunk chooser",
+      "surface": "Maps editor, Layout mode: chunk-cell replacement with a chunk chooser over the map's dominant layers",
       "proof": "application",
       "evidence": "MAP-LAYOUT-WRITE-001; DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/workbench.md",
       "measurements": {
         "mapsViewable": 452,
-        "editableMaps": 341,
-        "readOnlyMaps": 111,
+        "editableMaps": 440,
+        "readOnlyMaps": 12,
         "chunkCellPixels": 256
       }
     },
@@ -180,12 +180,12 @@
       "family": "edit",
       "title": "Tile painting",
       "state": "shipped",
-      "surface": "Maps editor, Layout mode: pick an existing chunk of the layer, then click or drag it onto 256x256 chunk cells",
+      "surface": "Maps editor, Layout mode: pick a chunk a dominant layer of the map already uses, then click or drag it onto 256x256 chunk cells",
       "proof": "runtime",
-      "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
+      "detail": "Paint the visible layout of an existing supported map: choose one of the chunks a dominant layer of that map already uses, then click or drag to place it in a 256x256 chunk cell. Painting runs through the project as semantic cell edits, so a painted map is saved and reopened like any other authored content, and a build merges the edits into the one write plan. Undo, redo and eyedropper are on one history, a stroke is one undoable gesture, and a paint that changes nothing leaves no history. Proven in the retail engine: after walking out of the area and back in, the authored chunk is what Buu's Fury draws.",
       "limits": [
         "The editable unit is the engine's own: one four-byte chunk-cell reference to an existing 256x256 chunk. It is not an individual 8x8 hardware tile, and no surface pretends otherwise.",
-        "A cell may only be given a chunk the same layer already uses at another of its cells, so a layer that uses a single chunk has nothing to paint with and is read-only. Creating a chunk the layer does not already use is the separate Chunk creation capability.",
+        "A cell may be given any chunk a dominant layer of that same map already uses. A layer that uses a single chunk is therefore paintable from a sibling record's chunks, and the brush labels the record a borrowed chunk came from. Creating a chunk no layer of the map uses is the separate Chunk creation capability.",
         "No new-map creation, no graphics import and no collision editing. Resizing remains growth only, so painting cannot reshape a map either.",
         "Screen-entry layers, terrain-field layers (Map 19), absent slots and zero-dimension grids are refused with a stated reason rather than forced into a grid they do not have.",
         "Painting does not allocate or relocate: the replacement is a fixed four-byte in-place write, so a build changes only the painted cells."
@@ -205,8 +205,7 @@
         "A chunk is map-scoped. Its plane holds tile ordinals, which only resolve through the assembled character block of the map it was composed against, so it is composed against one map and placed only in that map's layers, which may be any of them.",
         "The chunk container is emitted in the one kind every canonical chunk uses, so this is not an engine-format experiment, but the format is not re-opened either: a chunk is still a 32x32 plane of 16-bit screen entries and nothing else.",
         "No new-map creation, no graphics import and no collision editing. Chunks stay map-scoped, so a chunk composed against one map is not reusable in another.",
-        "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place.",
-        "A 16 MiB derivative is not reopened by the authoring tool's derivative verifier, which reconstructs and hashes the canonical image from the whole file. That limit is shared with compressed dialogue and predates this capability; the project itself reopens fully."
+        "The authored body must go above the original ROM end: the canonical image's only declared free region is 256 bytes and a chunk container is larger, so this capability depends on generated expansion rather than fitting in place."
       ],
       "evidence": "MAP-CHUNK-AUTHORING-001; docs/research/MAP_CHUNK_AUTHORING.md"
     },
@@ -292,7 +291,7 @@
         "Relocation is gated per table by declared capability and per entry by measured single-reference ownership, so an entry carrying a second reference is refused.",
         "Storage length is no longer the limit, but display width still is: a long line drawn centred in a large font runs past the edges of the screen."
       ],
-      "surface": "Inspector editor: authored text relocated through the normal build",
+      "surface": "Project workflow: author text/strings.toml, validate, build (or the `webfoot text set` one-off image edit)",
       "proof": "runtime",
       "evidence": "TOOLKIT-037; TEXT-HANDLE-001; TEXT-HANDLE-002"
     },
@@ -317,37 +316,62 @@
       "id": "sprite-new",
       "family": "author",
       "title": "New sprite, animation and frame authoring",
-      "state": "missing",
-      "detail": "Not implemented. Needs allocation plus same-count in-place replacement of animation cell pointers and frame piece records.",
+      "state": "shipped",
+      "detail": "A new actor-sprite identity can be created from DragonByte Z: choose the donor whose proven composition shape every frame keeps, name the sheet each animation slot draws from, choose the existing object slot the appended actor starts its behaviour from, and write sprites/sprites.toml. The document validates and builds through the ordinary project route, and it authors the same identity and actor the retail engine was observed resolving and drawing (SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001).",
       "limits": [
-        "Not implemented, and no editor surface authors a new sprite, animation or frame.",
-        "Needs allocation plus same-count in-place replacement of animation cell pointers and frame piece records."
+        "Every authored frame copies the donor's own first frame, so the frame-composition budget is unchanged rather than modelled; a sheet cell that is not exactly the donor's proven rect is refused.",
+        "One identity per image, because an appended identity grows the character registry and repoints the two words that name it.",
+        "No piece or OAM composition, piece count, tile index or frame geometry is authorable, and no frame timing or delay is: the document has no field for any of them.",
+        "The engine's four direction slots are written in sheet order and their screen meaning is unresolved project-wide.",
+        "The surface refuses every field-level problem in the values it authors - donor admissibility, sheet form and cell geometry, template resolution, coordinates and the wander box - and carries the two header words it does not author, whose meaning is unresolved.",
+        "The surface's carried data-pointer word is the chosen template slot's own, and the recorded runtime document used a neighbouring sibling slot's value 16 bytes higher, so the two documents are not byte-identical and the engine observation is evidence for the mechanism rather than for this exact document.",
+        "The rest of the plan - the palette claim checked against the decoded graphics, the allocation and the relocation census - runs at Validate and Build, which report the same refusals with the same text.",
+        "A new actor cannot share a map with other map-level authoring: a map receiving an authored placement expansion and a new actor is refused because both re-emit the map's object array, and a map whose record fields are edited is refused because the actor's own plan emits that record and would drop the field edit. A map already declaring 255 object slots cannot take another actor either, because the slot count is one byte."
       ],
-      "evidence": "LOGX-FRAME-001; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "surface": "Workbench: Graphics tab, Authored sprite - New, Edit and Remove write sprites/sprites.toml",
+      "proof": "application",
+      "evidence": "SPRITE-PROJECT-SURFACE-001; SPRITE-NEW-PROJECT-SURFACE-001; SPRITE-NEW-ATTACHMENT-RUNTIME-PARITY-001; docs/research/SPRITE_AUTHORING_SURFACE.md; docs/research/SPRITE_NEW_ATTACHMENT_RUNTIME_PARITY.md"
     },
     {
-      "id": "appearance",
-      "family": "author",
-      "title": "New appearance definitions",
-      "state": "missing",
-      "detail": "Not implemented. The record count appears as compiled-in bounds in the engine and there is no terminator, so whether the table can be grown at all is still an open question rather than a task.",
-      "limits": [
-        "Not implemented, and whether the appearance table can be grown at all is an open question rather than a scheduled task.",
-        "The record count appears as compiled-in engine bounds and there is no terminator to extend from."
-      ],
-      "evidence": "GRAPHICS-COVERAGE-001; docs/research/GRAPHICS_COVERAGE.md"
+          "id": "appearance",
+          "family": "author",
+          "title": "New appearance definitions",
+          "state": "shipped",
+          "detail": "An author creates a new appearance definition in the Graphics tab, and the build writes it as a record appended above the original end of the image. The engine resolves it: a driven session on the final build watched the retail search return an authored record at a post-canonical index for a retail actor, and the Scouter's own character screen then displayed the authored data for that actor - an object whose retail record reads \"Fighter\" and \"This is a martial artist from the Other World\" showed the authored name \"Goku\" and the authored description instead. Growth is by re-emission: the record count is three compiled loop bounds rather than a stored number, so the build moves the whole table above the image's end and rewrites the five literal words and three count bounds that reach it. The roster structure the engine builds from the seen flags is relocated with it, so all twenty-nine compiled statements of its layout are restated for the supported maximum of 240 records.",
+          "limits": [
+                "Not observed on the final opt-in build: the post-canonical seen-flag write. The message path that returns an appended record appends the resolved index to a list rather than constructing the appearance object, so that flag is written by a later step, and the session that reached the resolver ended before it. The flag write was observed previously for the same post-canonical record shape, on a build whose appended record is byte-identical in everything the engine reads; that stands as supporting evidence and is not claimed as re-observed here.",
+                "Not observed in ordinary play: the roster display-list builder at 0x08024F3C executing. It has one caller, reached indirectly, and no session reached it. Its layout is statically and review-proven for the supported count of 240, and a build that would exceed that count is refused rather than written.",
+                "Taking over a sprite id a canonical record already selects is an explicit, default-off choice per definition, because the engine's search returns an appended record before the retail one and the lookup would be redirected. The surface states the consequence and the build refuses a takeover that was not asked for. Ids a negative-stat record selects can never be taken over and are refused outright.",
+                "The record count is stated by three compiled `cmp rN,#0xE8` loop bounds and there is no terminator, so growth means re-emitting the whole table, not appending in place.",
+                "The engine keeps one seen bit per record in a 232-bit array, and the block's own initializer zeroes a word two bytes after it, so at most 8 records may be added to the 232 the image has.",
+                "An authored definition shares an existing on-screen name, because creating new text-table ids is not shipped for any capability."
+          ],
+          "measurements": {
+        "canonicalRecords": 232,
+        "supportedRecords": 240
+      },
+      "surface": "Workbench: Graphics tab, Authored appearance - New, Edit and Remove write the project's appearance definitions",
+          "proof": "runtime",
+          "evidence": "APPEARANCE-AUTHORING-GATE-001; APPEARANCE-ROSTER-EXPANSION-001; APPEARANCE-BINDING-OVERRIDE-001; docs/research/APPEARANCE_TABLE_GROWTH.md; docs/research/APPEARANCE_AUTHORING_SURFACE.md; docs/research/APPEARANCE_ROSTER_EXPANSION.md; docs/research/APPEARANCE_BINDING_OVERRIDE.md"
     },
     {
       "id": "map-new",
       "family": "author",
       "title": "New map and scene materialisation",
-      "state": "missing",
-      "detail": "Not implemented. The terminal authoring frontier. Warps and connections now ship, so the authored warp it needs is available; what remains are the map-root fields that are still unresolved.",
+      "state": "shipped",
+      "detail": "A project authors a map identity the image does not contain. The Maps editor's New map action records a durable name, a donor map and the engine's own two-byte key; the build re-emits the whole map table above the original end of the image with the authored row appended, repoints the one word the engine's key lookup loads and raises the one compiled row bound, and gives the new row its own selector word, its own root and its own layer record. A retail map's existing door can then be pointed at it, and the retail engine loads the new map: a person-driven session, watched by a read-only observer that records the engine's own state, saw the active-MapEntry row become index 452 with the authored key, twice, and the player walk in and back out.",
       "limits": [
-        "Not implemented: no editor surface materialises a new map or scene.",
-        "The terminal frontier. The authored warp it depends on now ships with warps and connections; the remaining blockers are map-root fields that are still unresolved."
+        "The map table carries no count word and no terminator. The row bound is the two instructions of the engine's own helper at 0x080125E0, so growth is a patch of that immediate plus a repoint of the one literal-pool word the key lookup loads at 0x08008A58, not a data edit. At most 58 rows can be appended before a second instruction would have to change; a project past that is refused rather than written.",
+        "A created transition whose trigger region overlaps a retail record's own region did not fire in an observed run: the engine keeps every record's trigger live and the retail record took the player instead. Point a supported door at the new map, or author a region no retail record covers.",
+        "An authored map inherits its donor's record fields, root, layer records and chunk bodies, so it draws and collides as the donor does. No shipped surface authors a map root's unresolved fields, a new map's on-screen name, or new tiles for it.",
+        "The authored row is reached through the project. A reader that reads the map table from the profile still reads the canonical rows, which are retained verbatim, so a retail row is still answered correctly and a built derivative is not re-extracted.",
+        "An authored row's table index is its position in name order, and a transition stores map:NNNN, so adding, removing or renaming an authored map moves the rows after it. A change that would move an index a transition already names is refused by name rather than silently re-pointing that door; a hand edit of maps/authored.toml is outside that guard.",
+        "Every MapEntry write the build plans stays visible in the moved table, because the map domain runs after every other domain that writes one. An undo or redo of a new-map gesture that the re-index guard refuses leaves the project file correct but the editor's undo history one step out of step, which the surface reports rather than hides.",
+        "A savestate written on the canonical image restores a canonical-era MapEntry pointer, so the first rows of such a capture name a retail row until the engine's next transition."
       ],
-      "evidence": "DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001; docs/research/MAP_LAYOUT_EDITOR_VERIFICATION.md; docs/research/POST_LOGX_IMPLEMENTATION_ROADMAP.md"
+      "surface": "Maps editor: New map authors a new map identity; the Warps editor offers authored maps as transition destinations",
+      "proof": "runtime",
+      "evidence": "MAP-NEW-AUTHORING-001; docs/research/MAP_NEW_AUTHORING.md"
     },
     {
       "id": "validate",
@@ -411,7 +435,7 @@
   "researchOnly": [
     {
       "id": "map-layout-chunk-pointer-structure",
-      "statement": "A dominant layer's layout cell is a four-byte chunk-pointer field in a fixed-size, in-place record, and redirecting it to another same-layer chunk changes exactly two ROM bytes.",
+      "statement": "A dominant layer's layout cell is a four-byte chunk-pointer field in a fixed-size, in-place record, and redirecting it to another chunk a dominant layer of the same map uses changes exactly two ROM bytes.",
       "contributesTo": ["layout"],
       "doesNotConfer": "It does not make tile painting, new chunks, resizing, relocation or arbitrary map formats available; the shipped editor performs exactly one operation."
     },

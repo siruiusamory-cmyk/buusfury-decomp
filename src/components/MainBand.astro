@@ -5,158 +5,129 @@ import {
   buildoutTotal,
   roadmapRows,
   familyTallies,
-  recentBreakthroughs,
-  archivedBreakthroughs,
 } from "../data/project";
-import type { DependencyStep } from "../data/project";
+import type { DependencyStep, FrontierStep } from "../data/project";
 import Questline from "./Questline.astro";
+import Icon from "./Icon.astro";
+import Window from "./Window.astro";
 
 const pad = (n: number) => String(n).padStart(2, "0");
-// The four newest wins lead; everything else stays reachable behind the one
-// disclosure. Recent entries past the fourth are carried into the archive
-// rather than dropped, so adding a win can never silently remove an older one.
-const focus = recentBreakthroughs.slice(0, 4);
-const rest = [...recentBreakthroughs.slice(4), ...archivedBreakthroughs];
 const shot = project.figures[1];
 
-const ladderMark: Record<DependencyStep["state"], string> = {
-  done: "✓",
-  current: "◆",
-  next: "○",
-  target: "★",
+const numbered = roadmapRows.map((row, index) => ({ ...row, n: pad(index + 1) }));
+const families = familyTallies.map((family) => ({
+  ...family,
+  rows: numbered.filter((row) => row.family === family.label),
+}));
+
+const ladderIcon: Record<DependencyStep["state"], "done" | "live" | "next" | "target"> = {
+  done: "done",
+  current: "live",
+  next: "next",
+  target: "target",
+};
+
+const frontierLabel: Record<FrontierStep["kind"], string> = {
+  near: "Next",
+  gated: "Gated",
+  horizon: "Horizon",
 };
 ---
 
-<section class="main-band" id="roadmap" aria-labelledby="roadmap-title">
-  <div class="shell band-grid">
-    <div class="panel roadmap-panel">
-      <div class="panel-head">
-        <h2 id="roadmap-title">DRAGONBYTE Z ROADMAP</h2>
-        <p class="kicker">{buildoutDone} / {buildoutTotal} SHIPPED</p>
-      </div>
-
-      <ul class="tally">
-        {familyTallies.map((family) => (
-          <li class:list={[family.done === family.total ? "is-complete" : "is-partial"]} title={family.title}>
-            <span>{family.label}</span>
-            <b>{family.done}/{family.total}</b>
-          </li>
-        ))}
-      </ul>
-
-      <ol class="rows">
-        {roadmapRows.map((row, index) => (
-          <li class:list={["row", row.state === "shipped" ? "is-done" : "is-todo"]} data-capability={row.key}>
-            <span class="row-n" aria-hidden="true">{pad(index + 1)}</span>
-            <span class="row-name">{row.title}</span>
-            <span class="chip">{row.state === "shipped" ? "DONE" : "PLANNED"}</span>
-          </li>
-        ))}
-      </ol>
-
-      <details>
-        <summary>What each capability means</summary>
-        <div class="disclosure-body">
-          <ol class="defs">
-            {roadmapRows.map((row, index) => (
-              <li class:list={[row.state === "shipped" ? "is-done" : "is-todo"]}>
-                <b>{pad(index + 1)} · {row.title}</b>
-                <small>{row.detail}</small>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </details>
-
-      <details>
-        <summary>The completed programme in full</summary>
-        <div class="disclosure-body">
-          <Questline />
-          <ol class="ladder" aria-label="Authoring dependency ladder">
-            {project.dependencyLadder.map((step) => (
-              <li class:list={[`is-${step.state}`]}>
-                <span class="mark" aria-hidden="true">{ladderMark[step.state]}</span>
-                <span class="label">
-                  {step.label}
-                  {step.marker && <strong class="marker">{step.marker}</strong>}
-                </span>
-                <span class="state">{step.state.toUpperCase()}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </details>
+<div class="board-group">
+  <Window id="focus" title="Announcements - DragonByte Z Forums" icon="announce" labelledby="focus-title" class="forum-window focus-panel">
+    <div class="th">
+      <h2 id="focus-title">Pinned announcement</h2>
+      <span class="chip-live">In progress</span>
     </div>
 
-    <div class="band-main">
-      <div class="panel focus-panel" id="focus">
-        <div class="panel-head">
-          <p class="kicker">CURRENT FOCUS</p>
-          <span class="chip chip-amber">IN PROGRESS</span>
-        </div>
-        <h2>{project.blockerTitle}</h2>
+    <div class="announce row1">
+      <Icon name="announce" class="topic-icon" />
+      <div class="announce-body">
+        <h3><span class="prefix">Sticky:</span> {project.blockerTitle}</h3>
         <p class="focus-copy">{project.blockerShort}</p>
-
-        <ol class="frontier">
-          {project.frontier.map((step) => (
-            <li class:list={[`is-${step.kind}`]}>
-              <span class="frontier-kind">{step.kind === "near" ? "NEXT" : step.kind.toUpperCase()}</span>
-              <span class="frontier-body">
-                <b>{step.title}</b>
-                <small>{step.detail}</small>
-              </span>
-            </li>
-          ))}
-        </ol>
-
-        <figure class="focus-shot">
-          <img
-            src={`${import.meta.env.BASE_URL}${shot.src}`}
-            width={shot.width}
-            height={shot.height}
-            alt={shot.alt}
-            loading="lazy"
-            decoding="async"
-          />
-          <figcaption><b>{shot.title}</b> <span>{shot.facts[0]}</span></figcaption>
-        </figure>
-
-        <details>
-          <summary>More on the current blocker</summary>
-          <div class="disclosure-body">
-            {project.blockerParagraphs.map((paragraph) => <p class="focus-note">{paragraph}</p>)}
-          </div>
-        </details>
       </div>
-
-      <div class="panel wins-panel">
-        <div class="panel-head">
-          <h2>LATEST VERIFIED WINS</h2>
-          <p class="kicker">RUNTIME AND BYTE-LEVEL EVIDENCE</p>
-        </div>
-        <ol class="wins">
-          {focus.map((item) => (
-            <li>
-              <b>{item.title}</b>
-              <small>{item.summary}</small>
-            </li>
-          ))}
-        </ol>
-
-        <details>
-          <summary>{rest.length} earlier logged results</summary>
-          <div class="disclosure-body">
-            <ol class="wins wins-archive">
-              {rest.map((item) => (
-                <li>
-                  <b>{item.title}</b>
-                  <small>{item.summary}</small>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </details>
-      </div>
+      <figure class="focus-shot">
+        <img
+          src={`${import.meta.env.BASE_URL}${shot.src}`}
+          width={shot.width}
+          height={shot.height}
+          alt={shot.alt}
+          loading="lazy"
+          decoding="async"
+        />
+        <figcaption><b>{shot.title}</b> {shot.facts[0]}</figcaption>
+      </figure>
     </div>
-  </div>
-</section>
+
+    <ol class="frontier">
+      {project.frontier.map((step) => (
+        <li class:list={["topic", `is-${step.kind}`]}>
+          <Icon name={step.kind === "horizon" ? "target" : "folder-new"} class="topic-icon" />
+          <span class="topic-body">
+            <b><span class="prefix">{frontierLabel[step.kind]}:</span> {step.title}</b>
+            <small>{step.detail}</small>
+          </span>
+        </li>
+      ))}
+    </ol>
+
+    <details class="more">
+      <summary>More on the current blocker</summary>
+      <div class="disclosure-body">
+        {project.blockerParagraphs.map((paragraph) => <p class="focus-note">{paragraph}</p>)}
+      </div>
+    </details>
+  </Window>
+
+  <Window id="roadmap" title="Capability index - DragonByte Z Forums" icon="folder" labelledby="roadmap-title" class="forum-window roadmap-panel">
+    <div class="th">
+      <h2 id="roadmap-title">Capability index</h2>
+      <span class="th-aside">{buildoutDone} / {buildoutTotal} SHIPPED</span>
+    </div>
+    <div class="cols cols-cap" aria-hidden="true">
+      <span></span><span>Capability</span><span>Status</span>
+    </div>
+
+    <ul class="families">
+      {families.map((family) => (
+        <li class:list={[family.done === family.total ? "is-complete" : "is-partial"]} title={family.title}>
+          <span>{family.label}</span>
+          <b>{family.done}/{family.total}</b>
+          <span class="cat-title">{family.title}</span>
+          <ol class="rows">
+            {family.rows.map((row) => (
+              <li class:list={["row", row.state === "shipped" ? "is-done" : "is-todo"]} data-capability={row.key}>
+                <Icon name={row.state === "shipped" ? "done" : "todo"} class="row-icon" />
+                <details class="row-name toggle">
+                  <summary><b>{row.n}. {row.title}</b></summary>
+                  <small>{row.detail}</small>
+                </details>
+                <span class="chip">{row.state === "shipped" ? "DONE" : "PLANNED"}</span>
+              </li>
+            ))}
+          </ol>
+        </li>
+      ))}
+    </ul>
+
+    <details class="more">
+      <summary>The completed programme in full</summary>
+      <div class="disclosure-body">
+        <Questline />
+        <ol class="ladder" aria-label="Authoring dependency ladder">
+          {project.dependencyLadder.map((step) => (
+            <li class:list={[`is-${step.state}`]}>
+              <Icon name={ladderIcon[step.state]} class="ladder-icon" />
+              <span class="label">
+                {step.label}
+                {step.marker && <strong class="marker">{step.marker}</strong>}
+              </span>
+              <span class="state">{step.state}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </details>
+  </Window>
+</div>

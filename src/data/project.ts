@@ -2,12 +2,6 @@ import capabilityRegistry from "./capabilities.json";
 
 export type MilestoneStatus = "complete" | "current" | "next" | "target";
 
-/**
- * State of one DragonByte Z buildout capability. Deliberately binary: a
- * capability is either shipped and reachable from the desktop application, or
- * it is not. "The binary structure is known" is not a state this track can
- * express, because a reverse-engineering result is not a product capability.
- */
 export type CapabilityState = "shipped" | "missing";
 
 export interface Milestone {
@@ -16,16 +10,6 @@ export interface Milestone {
   plainEnglish: string;
   technical?: string;
   status: MilestoneStatus;
-  /**
-   * Work this milestone deliberately leaves open, named as such.
-   *
-   * A milestone is completed when the work it records is done. Where its own
-   * description has to say that something remains unmeasured or unsupported, the
-   * remaining item is declared here, so a reader sees a stated limit rather than
-   * unfinished work presented as finished. The consistency tests require the
-   * declaration whenever a completed milestone's text still reads as open, and
-   * forbid it anywhere else.
-   */
   openItems?: string[];
 }
 
@@ -37,7 +21,6 @@ export interface Breakthrough {
   date?: string;
   badge?: string;
   commit?: string;
-  /** Part of the current frontier period, shown in the recent log. */
   recent?: boolean;
 }
 
@@ -45,10 +28,7 @@ export interface ProjectMetric {
   label: string;
   value: string;
   explanation?: string;
-  /** Which proof group the metric belongs to. */
   group: string;
-  /** Headline figures shown in the compact proof strip; the rest sit in the
-      full-ledger disclosure, so no figure is duplicated on the page. */
   strip?: boolean;
 }
 
@@ -63,7 +43,6 @@ export interface DependencyStep {
   marker?: string;
 }
 
-/** One capability in the active DragonByte Z buildout track. */
 export interface BuildoutItem {
   key: string;
   title: string;
@@ -78,7 +57,6 @@ export interface BuildoutFamily {
   items: BuildoutItem[];
 }
 
-/** The active product-development track. */
 export interface Buildout {
   label: string;
   title: string;
@@ -92,13 +70,11 @@ export interface FrontierStep {
   detail: string;
 }
 
-/** A single measured figure shown in the masthead readout. */
 export interface StateFact {
   label: string;
   value: string;
 }
 
-/** A real product capture, shipped unaltered except for cropping. */
 export interface Figure {
   src: string;
   width: number;
@@ -124,7 +100,6 @@ export interface ProjectStatus {
   dependencyLadder: DependencyStep[];
   buildout: Buildout;
   frontier: FrontierStep[];
-  /** Measured product figures for the masthead readout. */
   stateFacts: StateFact[];
   breakthroughs: Breakthrough[];
   metrics: ProjectMetric[];
@@ -134,26 +109,9 @@ export interface ProjectStatus {
   footerTagline: string;
   developmentStatus: string;
   disclaimer: string;
-  /** Waiver of the proprietary-artifact rule for real product captures. */
   assetPolicy: string;
 }
 
-/* ---------------------------------------------------------------------------
- * The capability registry
- *
- * `capabilities.json` is the one current list of DragonByte Z product
- * capabilities. The buildout list below, its per-family tallies and the
- * percentage on the site are all derived from it, so there is no second place
- * to record a capability's state.
- *
- * The registry keeps product capability and research knowledge apart on
- * purpose. Knowing a binary structure is not a shipped capability, so a
- * capability that is counted as shipped must name the editor surface a user
- * reaches it through, how its result was proven, and the evidence behind it;
- * everything else lives in `researchOnly`, which is never counted.
- * ------------------------------------------------------------------------- */
-
-/** How a shipped capability's result was proven. */
 export type CapabilityProof = "runtime" | "application";
 
 const PROOF_LEVELS: readonly CapabilityProof[] = ["runtime", "application"];
@@ -170,18 +128,13 @@ interface RegistryCapability {
   title: string;
   state: CapabilityState;
   detail: string;
-  /** Bounded scope: what the capability does NOT do, or why it is missing. */
   limits: string[];
-  /** Where in DragonByte Z it is reachable. Shipped capabilities only. */
   surface?: string;
-  /** How its result was proven. Shipped capabilities only. */
   proof?: CapabilityProof;
   evidence: string;
-  /** Counts this capability owns, so a quoted figure has exactly one owner. */
   measurements?: Record<string, number>;
 }
 
-/** A proven fact about the binary that is deliberately not a product capability. */
 interface RegistryResearchNote {
   id: string;
   statement: string;
@@ -204,15 +157,6 @@ interface CapabilityRegistry {
 
 const registry = capabilityRegistry as unknown as CapabilityRegistry;
 
-/**
- * The structural half of the registry contract, enforced when the site builds.
- *
- * It is deliberately a SUBSET of what `tests/unit/test_capability_registry.py`
- * checks: it exists so a malformed registry fails `npm run check` and
- * `npm run build` instead of publishing a wrong page, while CI - which runs the
- * suite without Node - enforces the whole contract, including the fields a page
- * never reads (limitations, evidence and research separation).
- */
 function validateCapabilityRegistry(value: CapabilityRegistry): void {
   if (value.schemaVersion !== 1) {
     throw new Error(`Unsupported capability registry schema version: ${value.schemaVersion}.`);
@@ -232,8 +176,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
     throw new Error(`Capability ids must be unique; "${duplicateCapability}" appears twice.`);
   }
 
-  // The declared denominator is deliberately redundant with the list: changing
-  // the total is a product decision, not a side effect of editing one record.
   if (value.capabilities.length !== value.track.capabilityTotal) {
     throw new Error(
       `The registry declares ${value.track.capabilityTotal} capabilities but lists ` +
@@ -260,9 +202,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
       throw new Error(`${where} has state "${capability.state}", not "shipped" or "missing".`);
     }
 
-    // A research result is not a product capability: a counted capability names
-    // the editor surface a user reaches it through and how its result was
-    // proven, and one that is not shipped claims neither.
     if (capability.state === "shipped") {
       if (!capability.surface?.trim() || !capability.proof || !PROOF_LEVELS.includes(capability.proof)) {
         throw new Error(
@@ -294,14 +233,6 @@ function validateCapabilityRegistry(value: CapabilityRegistry): void {
 
 validateCapabilityRegistry(registry);
 
-/**
- * A count one capability owns, read from the registry.
- *
- * The page states a few of these figures outside the roadmap - in the measured
- * strip and in the product-capture captions - so they are read here instead of
- * being written twice. A missing or misspelled measurement throws rather than
- * publishing a blank or stale number.
- */
 function capabilityCount(capabilityId: string, name: string): number {
   const declared = registry.capabilities
     .find((capability) => capability.id === capabilityId)?.measurements?.[name];
@@ -347,16 +278,15 @@ export const project: ProjectStatus = {
     "The percentage above is counted from the capability list below, so it moves when a" +
     " capability does. It is a count of editor capabilities, not an estimate.",
   currentPhase: "DRAGONBYTE Z BUILDOUT",
-  blockerTitle: "Create graphics the game does not contain",
+  blockerTitle: "Reach a v1.0 release candidate",
   blockerShort:
-    "The resource pipeline is complete and curated, and map editing is finished:" +
-    " DragonByte Z renders all 452 maps from ROM, paints tiles, creates chunks, grows" +
-    " a map, adds a layer, and lists, retargets and creates the transitions between" +
-    " areas - including on the map itself, where every supported transition is drawn" +
-    " as the region that triggers it. Graphics import has now shipped as well: an" +
-    " extracted sprite PNG can be edited in the project, rebuilt, and seen in the" +
-    " retail engine. What remains is creating graphics the game does not contain -" +
-    " new frames and animation slots rather than replacement art for existing ones.",
+    "Map authoring has shipped and the capability list is complete. Every capability" +
+    " in the fixed registry is now reachable from DragonByte Z: the terminal one" +
+    " composes the map table, a map root, its layers, chunks and connections into a" +
+    " new playable area, and a driven session watched the retail engine transition" +
+    " into it and back out. Nothing is missing any more. The remaining work is the" +
+    " release-candidate phase - creator experience, recovery, packaging and the" +
+    " end-to-end dogfood gate - and it has not started.",
   blockerParagraphs: [
     "Map editing is complete, and the capability list says so. Phase 2 covered the four" +
     " map capabilities in order: tile painting, chunk creation, map resizing with layer" +
@@ -375,13 +305,38 @@ export const project: ProjectStatus = {
     " every confirmed reference to it rewritten in the same transaction. A" +
     " human-operated run proved both halves, including that the engine follows a" +
     " rewritten reference into expanded storage.",
-    "The next capability, and the current blocker, is creating graphics the game does" +
-    " not contain: new sprites, animation slots and frames rather than replacement art." +
-    " It needs allocation plus same-count replacement of animation cell pointers and" +
-    " frame piece records, and it is the step that turns an edited asset into a new" +
-    " actor. Authoring entirely new content remains the project's final acceptance" +
-    " target, and the remaining steps are new sprites and animations, appearances, and" +
-    " finally new maps.",
+    "New sprite, animation and frame authoring has shipped as well. The Graphics tab's" +
+    " Authored sprite surface creates the project's one new actor-sprite identity: the" +
+    " donor whose proven composition shape every frame keeps, the sheet each animation" +
+    " slot draws from, and the existing object slot the appended actor starts its" +
+    " behaviour from. It refuses any field the build would refuse and writes" +
+    " sprites/sprites.toml, the same document the ordinary build consumes, and a" +
+    " ROM-gated build of the surface's own document authors the identity and actor the" +
+    " runtime record resolved. The engine observation itself covers the mechanism: the" +
+    " recorded runtime document carries a neighbouring sibling slot's data-pointer word" +
+    " and the surface carries the chosen slot's own, in a field whose meaning is" +
+    " unresolved, so the two images are not byte-identical and the capability is" +
+    " registered at application proof. Piece and OAM composition, frame geometry and" +
+    " frame timing are outside the modelled contract, and the surface states that where" +
+    " it is offered rather than pretending otherwise.",
+    "Appearance authoring has shipped as well, and it was the capability research had to" +
+    " settle first. The table's record count is three compiled loop bounds with no" +
+    " terminator, so growth is by re-emission: the build moves the whole table above the" +
+    " image's end and rewrites the five literal words and three count bounds that reach" +
+    " it. The roster structure the engine builds from the seen flags is relocated with" +
+    " it, all twenty-nine compiled statements of its layout restated for the supported" +
+    " maximum of 240 records against the 232 the image has. A driven session then watched the retail search return an authored record" +
+    " at a post-canonical index for a retail actor, and the Scouter's own character" +
+    " screen displayed the authored data for that actor - an object whose retail record" +
+    " reads \"Fighter\" and \"This is a martial artist from the Other World\" showed the" +
+    " authored name \"Goku\" and the authored description instead. Taking over a sprite" +
+    " identity the retail table already uses is an explicit, default-off choice per" +
+    " definition, because that redirection is real and the build refuses a takeover" +
+    " nobody asked for.",
+    "The capability list is complete: all 24 capabilities in the fixed registry are" +
+    " shipped and reachable from DragonByte Z. The remaining work is the" +
+    " release-candidate phase - creator experience, recovery, packaging and the" +
+    " end-to-end dogfood gate - and it has not started.",
   ],
   acceptanceTarget:
     "Author playable Legacy of Goku content inside the real LOGII/Buu engine.",
@@ -747,9 +702,6 @@ export const project: ProjectStatus = {
     { label: "ADVANCED AUTHORING / AUTHOR_NEW", state: "target" },
     { label: "PLAYABLE LOG1 CONTENT", state: "target" },
   ],
-  // The active track, derived from the capability registry above: the capability
-  // list, the per-family tallies and the percentage all come from that one
-  // source, so a capability cannot be shipped in one place and planned in another.
   buildout,
   stateFacts: [
     { label: "TARGET HARDWARE", value: "GBA · 240 × 160" },
@@ -758,30 +710,22 @@ export const project: ProjectStatus = {
   frontier: [
     {
       kind: "near",
-      title: "Author new sprites and animation frames",
-      detail:
-        "Graphics import shipped: an extracted sprite PNG can be edited and built," +
-        " and the retail engine renders the authored pixels - in place when the" +
-        " re-encoded payload still fits, or from storage above the original end of" +
-        " the image when it does not. The next capability is creating graphics the" +
-        " game does not contain: new frames and animation slots rather than" +
-        " replacement art.",
-    },
-    {
-      kind: "near",
       title: "Compose a frame's pieces into one displayed image",
       detail:
         "The accepted frame layout is an 8-byte header with 12-byte pieces, and the" +
         " reader and codec now read exactly that, so multipart frames are decoded and" +
         " exported. Compositing one frame's pieces into a single displayed image, and" +
-        " replacing them, is the step that remains.",
+        " replacing them, is the step that remains, together with authoring a frame's" +
+        " own piece composition, geometry and timing.",
     },
     {
       kind: "horizon",
-      title: "Authored maps and new content",
+      title: "Creator experience and release",
       detail:
-        "The terminal frontier. It needs a verified allocator for every new structure," +
-        " authored map roots, and several map-root fields that are unresolved today.",
+        "No capability is missing any more. What is left is the release-candidate"
+        + " phase: engine limits shown before a build fails, recovery from" +
+        " interrupted work, navigation between related resources, Run From Here," +
+        " project migration, packaging and the end-to-end dogfood gate.",
     },
   ],
   breakthroughs: [
@@ -793,8 +737,9 @@ export const project: ProjectStatus = {
         " completeness, what each one adds, and the separate release gate that" +
         " follows it.",
       technical:
-        "The tracked roadmap orders the eight remaining authoring capabilities and" +
-        " states its dependencies, its addressability strategy and its acceptance" +
+        "The tracked roadmap ordered the eight authoring capabilities that were" +
+        " still missing when it was published, and states its dependencies, its" +
+        " addressability strategy and its acceptance" +
         " project. The site derives every phase count from the same capability" +
         " registry the capability list uses, so the published plan cannot drift" +
         " from what the product can actually do.",
@@ -850,7 +795,8 @@ export const project: ProjectStatus = {
         + " authored body is emitted in that same kind rather than in the encoder's own."
         + " The authoring vocabulary is exactly the screen entries the template's own"
         + " layer already displays, so a new chunk rearranges the game's graphics and"
-        + " adds none; the template is named by the layer's own 1-based chunk ordinal and"
+        + " adds none; the template names the layer that draws the chunk it starts"
+        + " from, by that layer's own 1-based chunk ordinal, and is"
         + " resolved against the canonical image only, so painting a cell can never"
         + " re-point a template. Project state is address-free: maps/chunks.toml holds"
         + " each chunk as an identity plus a sparse delta with the entry it replaced, and"
@@ -902,7 +848,7 @@ export const project: ProjectStatus = {
       title: "Paint a map's layout and see it in the real game",
       summary:
         "You can now repaint the visible layout of an existing map in DragonByte Z -"
-        + " choose a chunk the layer already uses, then click or drag it onto the map."
+        + " choose a chunk from the same map, then click or drag it onto the map."
         + " The change is stored in the project, survives closing and reopening, builds"
         + " into a new game file, and shows up in the actual game.",
       technical:
@@ -931,16 +877,19 @@ export const project: ProjectStatus = {
       title: "Map layout editing is a usable feature",
       summary:
         "A retail map's layout can now be edited from DragonByte Z: swap one chunk cell" +
-        " for another chunk the same layer already uses, preview it, and save a new" +
+        " for another chunk the same map already uses, preview it, and save a new" +
         " game file that re-renders with the change.",
       technical:
         "On Buu's Fury map:0040, dominant layer 1 cell 0 was redirected to another" +
-        " chunk already used by that layer. Exactly two ROM bytes changed within its" +
+        " chunk already used by a dominant layer of that map. Exactly two ROM bytes changed within its" +
         " four-byte pointer; the changed 256-by-256-pixel region re-rendered through" +
         " the accepted map pipeline with 29,208 changed pixels, all inside that cell," +
         " while the layer's other three regions stayed pixel-identical. No-op and" +
         " inverse builds matched all 8,388,608 canonical bytes. The source ROM was not" +
-        " modified. The Map Browser drives this over 341 of the 452 maps. Emulator" +
+        " modified. The Map Browser drives this over 440 of the 452 maps now that a" +
+        " dominant layer may borrow a chunk from another dominant layer of the same" +
+        " map, which leaves the twelve whose grids hold a single chunk between them" +
+        " and the one with no dominant layer. Emulator" +
         " validation of the layout write itself was not performed; the application" +
         " round-trip was, by reopening its own emitted ROM through the provenance" +
         " manifest it wrote beside it.",
@@ -1286,17 +1235,20 @@ export const project: ProjectStatus = {
         " which layers may be changed and which stay read-only.",
       facts: [
         `${layoutEditableMaps} of ${mapsViewable} maps expose an editable layer`,
-        "Brush drawn from the layer's own chunks",
+        "Brush drawn from the map's dominant-layer chunks",
         "Saved as a new ROM, with provenance",
       ],
     },
   ],
   nav: [
-    { label: "STATUS", href: "status" },
-    { label: "PROGRESS", href: "progress" },
-    { label: "ROADMAP", href: "roadmap-to-1-0" },
-    { label: "CAPABILITIES", href: "roadmap" },
-    { label: "PROOF", href: "proof" },
+    { label: "Welcome", href: "status" },
+    { label: "Progress", href: "progress" },
+    { label: "Latest posts", href: "wins" },
+    { label: "Announcements", href: "focus" },
+    { label: "Capabilities", href: "roadmap" },
+    { label: "Roadmap to 1.0", href: "roadmap-to-1-0" },
+    { label: "Proof", href: "proof" },
+    { label: "readme.txt", href: "readme" },
   ],
   links: [
     { label: "GitLab", url: "https://gitlab.com/siruiusamory/log1-remake/" },
@@ -1313,26 +1265,12 @@ export const project: ProjectStatus = {
     " and this site ships no generated imagery of any kind.",
 };
 
-/* ---------------------------------------------------------------------------
- * Derived progress
- *
- * The DragonByte Z percentage is computed from the buildout capability list, so
- * it cannot drift from the milestones it claims to summarise. Reclassify one
- * capability and the number moves; there is no second place to edit.
- * ------------------------------------------------------------------------- */
-
 const buildoutItems = project.buildout.families.flatMap((family) => family.items);
 
 export const buildoutDone = buildoutItems.filter((item) => item.state === "shipped").length;
 export const buildoutTotal = buildoutItems.length;
 export const buildoutPercent = Math.round((buildoutDone / buildoutTotal) * 100);
 
-/**
- * The completed authoring programme. It is presented as history at 100%, and it
- * is measured from the milestones the rail already renders rather than from a
- * separate hand-written number. The acceptance-target milestone is the horizon
- * beyond this track, not a part of it, so it is excluded from the count.
- */
 const programmeMilestones = project.milestones.filter((m) => m.status !== "target");
 export const programmeTotal = programmeMilestones.length;
 export const programmeDone = programmeMilestones.filter((m) => m.status === "complete").length;
@@ -1341,12 +1279,9 @@ export const programmePercent = Math.round((programmeDone / programmeTotal) * 10
 export const recentBreakthroughs = project.breakthroughs.filter((b) => b.recent);
 export const archivedBreakthroughs = project.breakthroughs.filter((b) => !b.recent);
 
-/** Headline measured facts for the compact proof strip. */
 export const proofStrip = project.metrics.filter((metric) => metric.strip);
-/** Everything else, behind one disclosure so no figure is duplicated. */
 export const ledgerMetrics = project.metrics.filter((metric) => !metric.strip);
 
-/** Shipped/total per buildout family, for the roadmap header and group labels. */
 export const familyTallies = project.buildout.families.map((family) => ({
   key: family.key,
   label: family.label,
@@ -1355,35 +1290,13 @@ export const familyTallies = project.buildout.families.map((family) => ({
   total: family.items.length,
 }));
 
-/** Flat, numbered roadmap rows in family order. */
 export const roadmapRows = project.buildout.families.flatMap((family) =>
   family.items.map((item) => ({ ...item, family: family.label })),
 );
 
-/* ---------------------------------------------------------------------------
- * The roadmap to 1.0
- *
- * This is the public build ORDER, not a second capability registry. The order
- * and the visitor-facing wording live here; every COUNT is accumulated from the
- * registry, and `validateRoadmapTo1` below refuses to build if the capabilities
- * this roadmap promises to ship are not exactly the ones the registry still
- * reports as missing. Adding a capability to this list without changing the
- * registry fails `npm run check` and `npm run build` rather than publishing a
- * roadmap that disagrees with the product.
- *
- * Nothing here is a new capability claim: the roadmap is a plan, so a phase that
- * has not shipped says so on the page.
- * ------------------------------------------------------------------------- */
-
-/**
- * Public position of a phase. `next` is deliberately distinct from `current`:
- * the next phase has been chosen but NOT started, and the page must not imply
- * otherwise.
- */
 export type RoadmapPhaseState = "complete" | "in-progress" | "next" | "planned";
 
 export interface RoadmapOutcome {
-  /** The registry capability this step ships. Never a new capability. */
   capabilityId: string;
   title: string;
   detail: string;
@@ -1394,9 +1307,7 @@ export interface RoadmapPhase {
   ordinal: string;
   title: string;
   summary: string;
-  /** Capabilities this phase ships, in build order. May be empty. */
   outcomes: RoadmapOutcome[];
-  /** Work in the phase that ships no capability. May be empty. */
   work: string[];
   state: RoadmapPhaseState;
 }
@@ -1406,7 +1317,6 @@ export interface RoadmapTo1 {
   lede: string;
   position: string;
   phases: RoadmapPhase[];
-  /** Why 24/24 is not the same milestone as v1.0. */
   featureCompleteTitle: string;
   featureComplete: string;
   releaseTitle: string;
@@ -1475,7 +1385,8 @@ const roadmapTo1: RoadmapTo1 = {
         + " history, allocator and safety rules as the last.",
       outcomes: [],
       work: [
-        "Tile painting - SHIPPED: pick a chunk a layer already uses and paint"
+        "Tile painting - SHIPPED: pick a chunk the layer already uses, or one"
+        + " from another dominant layer of the same map, and paint"
         + " 256x256 map cells with it, saved through the project and proven on screen"
         + " in the retail engine",
         "Chunk creation - SHIPPED: duplicate a chunk a layer already draws, rearrange"
@@ -1503,19 +1414,7 @@ const roadmapTo1: RoadmapTo1 = {
       summary:
         "Let an author bring their own art in and build new actors around it,"
         + " with the tool absorbing the format and engine constraints.",
-      outcomes: [
-        {
-          capabilityId: "sprite-new",
-          title: "Sprites and animation",
-          detail:
-            "Create new animated game graphics rather than only modifying existing ones.",
-        },
-        {
-          capabilityId: "appearance",
-          title: "Appearances",
-          detail: "Bind newly authored graphics into game-visible actors.",
-        },
-      ],
+      outcomes: [],
       work: [
         "Graphics import - SHIPPED: edit an extracted sprite asset's PNG in the project," +
         " validate, and build. A re-encoded payload that still fits the slot the original" +
@@ -1525,27 +1424,54 @@ const roadmapTo1: RoadmapTo1 = {
         " including that the retail engine follows a rewritten reference into expanded" +
         " storage and renders the authored pixels. Same dimensions only - no resizing, no" +
         " new frames - and a confirmed-reference limit that is stated rather than assumed",
+        "New sprite, animation and frame authoring - SHIPPED: the Graphics tab's authored" +
+        " sprite surface creates the project's one new actor-sprite identity. Choose the" +
+        " donor whose proven composition shape every frame keeps, name the sheet each" +
+        " animation slot draws from, and choose the existing object slot the appended actor" +
+        " starts its behaviour from; the surface refuses a field the build would refuse and" +
+        " writes sprites/sprites.toml. A ROM-gated build of that document authors the" +
+        " identity and actor the runtime record resolved, and the engine observation covers" +
+        " the mechanism: the recorded document carried a neighbouring sibling slot's" +
+        " data-pointer word while the surface carries the chosen slot's own, so the" +
+        " capability is registered at application proof. Piece and OAM composition, frame" +
+        " geometry and frame timing stay outside the modelled contract and the surface says" +
+        " so where it is offered",
+        "Appearances - SHIPPED: the Graphics tab creates a new appearance definition and" +
+        " the build appends it above the image's end, rewriting the five literal words and" +
+        " three count bounds that reach the table, with the roster structure built from" +
+        " the seen flags relocated alongside it. A driven session watched the retail" +
+        " search return an authored record at a post-canonical index, and the Scouter's" +
+        " character screen displayed the authored name and description for an actor whose" +
+        " retail record reads \"Fighter\". Taking over a retail sprite binding is an" +
+        " explicit, default-off choice per definition and the build refuses it otherwise",
       ],
-      state: "next",
+      state: "complete",
     },
     {
       id: "new-map",
       ordinal: "4",
       title: "New map authoring",
       summary:
-        "The final missing capability, and deliberately last: it is the point"
-        + " where every system above is composed into one new playable area.",
-      outcomes: [
-        {
-          capabilityId: "map-new",
-          title: "New map and scene authoring",
-          detail:
-            "Create a genuinely new playable area — its layout, graphics,"
-            + " actors, events, dialogue and transitions — and run it in the game.",
-        },
+        "The terminal capability, and deliberately last: it is the point where"
+        + " every system above is composed into one new playable area.",
+      //: No outcome is promised here any more: an outcome names a capability the
+      //: registry still reports missing, and with the denominator complete there
+      //: is none. The delivered work is stated in `work` instead.
+      outcomes: [],
+      work: [
+        "New maps - SHIPPED: the Maps editor's New map action records a durable name," +
+        " a donor map and the engine's own two-byte key. The build re-emits the whole" +
+        " map table above the original end of the image with the authored row appended," +
+        " repoints the one literal-pool word the engine's key lookup loads, raises the" +
+        " one compiled row bound, and gives the new row its own selector word, its own" +
+        " root and its own layer record. A retail map's existing door can then be" +
+        " pointed at it. A person-driven session, watched by a read-only observer" +
+        " that records the engine's own state, saw the active-MapEntry row become" +
+        " index 452 with the authored key, twice, and the player walk in and back" +
+        " out. The observer records memory rather than images, so the walking is" +
+        " human observation corroborated by the frame-stamped row log",
       ],
-      work: [],
-      state: "planned",
+      state: "complete",
     },
     {
       id: "creator-experience",
@@ -1610,21 +1536,11 @@ const roadmapTo1: RoadmapTo1 = {
     + " manually entered ROM offset.",
 };
 
-/** A phase with its counts already accumulated from the registry. */
 export interface RoadmapPhaseView extends RoadmapPhase {
-  /** Capabilities shipped once this phase is done. */
   done: number;
-  /** Shipped-per-step running total, aligned with `outcomes`. */
   outcomeTotals: number[];
 }
 
-/**
- * The phases with running totals accumulated, never written down.
- *
- * Totals start from the shipped count the registry reports and increase by one
- * per promised capability, so the visible progression (17, 18, ... 24) is a
- * consequence of the registry's state rather than a number anyone types.
- */
 function accumulateRoadmap(base: number): RoadmapPhaseView[] {
   let running = base;
   return roadmapTo1.phases.map((phase) => {
@@ -1637,8 +1553,9 @@ export const roadmapBase = buildoutDone;
 export const roadmapPhases = accumulateRoadmap(roadmapBase);
 export const roadmap = { ...roadmapTo1, phases: roadmapPhases };
 
-/** The single phase the project is currently pointed at, if any. */
 export const roadmapNextPhase = roadmapPhases.find((phase) => phase.state === "next");
+
+export const roadmapActivePhase = roadmapPhases.find((phase) => phase.state === "in-progress");
 
 export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
   complete: "COMPLETE",
@@ -1647,12 +1564,12 @@ export const roadmapStateLabel: Record<RoadmapPhaseState, string> = {
   planned: "PLANNED",
 };
 
-export const roadmapStateGlyph: Record<RoadmapPhaseState, string> = {
-  complete: "✓",
-  "in-progress": "▶",
-  next: "◆",
-  planned: "○",
-};
+const SHIPPED_MARKER = " - SHIPPED: ";
+
+export function roadmapWorkItem(text: string): { name: string; detail?: string; shipped: boolean } {
+  const [name, detail] = text.split(SHIPPED_MARKER);
+  return { name, detail, shipped: detail !== undefined };
+}
 
 function validateRoadmapTo1(): void {
   const promised = roadmapTo1.phases.flatMap((phase) =>
@@ -1664,8 +1581,6 @@ function validateRoadmapTo1(): void {
     throw new Error(`The roadmap to 1.0 ships capability "${duplicate}" more than once.`);
   }
 
-  // The roadmap may only promise capabilities the registry says are missing, and
-  // it must promise every one of them - otherwise it is a competing registry.
   const outstanding = registry.capabilities
     .filter((capability) => capability.state !== "shipped")
     .map((capability) => capability.id);
@@ -1682,7 +1597,6 @@ function validateRoadmapTo1(): void {
     );
   }
 
-  // The phases are read top to bottom, so the states must be in order.
   const order: RoadmapPhaseState[] = roadmapTo1.phases.map((phase) => phase.state);
   const rank: Record<RoadmapPhaseState, number> = {
     complete: 0,
@@ -1708,9 +1622,15 @@ function validateRoadmapTo1(): void {
     if (!phase.outcomes.length && !phase.work.length) {
       throw new Error(`Roadmap phase "${phase.id}" describes no work at all.`);
     }
+    for (const item of phase.work) {
+      if (/\bshipped\s*:/i.test(item) && !roadmapWorkItem(item).shipped) {
+        throw new Error(
+          `Roadmap phase "${phase.id}" marks work as shipped without the "${SHIPPED_MARKER.trim()}" separator: "${item.slice(0, 40)}".`,
+        );
+      }
+    }
   }
 
-  // The publishable progression must reach the full denominator exactly.
   const finalDone = roadmapPhases[roadmapPhases.length - 1].done;
   if (finalDone !== buildoutTotal) {
     throw new Error(
@@ -1744,8 +1664,6 @@ function validateProjectStatus(value: ProjectStatus): void {
     throw new Error("Project status must include an acceptance target and a target milestone.");
   }
 
-  // The buildout is the active track, so this is where "exactly one frontier"
-  // is now enforced. The historical programme has no current milestone.
   const currentMilestones = value.milestones.filter(({ status }) => status === "current");
   if (currentMilestones.length !== 0) {
     throw new Error(
@@ -1759,8 +1677,11 @@ function validateProjectStatus(value: ProjectStatus): void {
     throw new Error(`Buildout capability keys must be unique; "${duplicate}" appears twice.`);
   }
 
-  if (!buildoutTotal || !buildoutDone || buildoutDone === buildoutTotal) {
-    throw new Error("The buildout must report at least one shipped and one missing capability.");
+  //: A complete buildout is a legitimate state - `docs/ROADMAP_TO_1_0.md` calls
+  //: 24/24 feature complete - so this guard refuses an EMPTY buildout rather than
+  //: requiring a missing capability. The percent bound below still holds at 100.
+  if (!buildoutTotal || !buildoutDone) {
+    throw new Error("The buildout must report at least one shipped capability.");
   }
 
   if (buildoutPercent < 0 || buildoutPercent > 100) {
@@ -1778,9 +1699,9 @@ function validateProjectStatus(value: ProjectStatus): void {
 
 validateProjectStatus(project);
 
-export const statusMeta: Record<MilestoneStatus, { icon: string; label: string }> = {
-  complete: { icon: "✓", label: "COMPLETE" },
-  current: { icon: "◆", label: "CURRENT" },
-  next: { icon: "○", label: "NEXT" },
-  target: { icon: "★", label: "TARGET" },
+export const statusMeta: Record<MilestoneStatus, { label: string }> = {
+  complete: { label: "COMPLETE" },
+  current: { label: "CURRENT" },
+  next: { label: "NEXT" },
+  target: { label: "TARGET" },
 };

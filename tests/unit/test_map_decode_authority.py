@@ -500,13 +500,15 @@ def test_the_replacement_policy_has_one_implementation():
     from tools.export import map_browser as mb
     from tools.webfoot.map_layout_write import (
         MapLayoutWriteError,
+        legal_chunk_pointers,
         validate_chunk_replacement,
     )
 
-    layer = (0x082928DC, 0x08292A54)
+    # The caller supplies the map's legal set; the predicate itself is one rule.
+    layer = legal_chunk_pointers((0x082928DC, 0x08292A54))
     assert validate_chunk_replacement(layer, 0x08292A54) == 0x08292A54
     assert mb.validate_cell_replacement(layer, 0x08292A54) == 0x08292A54
-    for bad in (0, 0x08292884, True, None, "x"):
+    for bad in (0, 0x08299999, True, None, "x"):
         with pytest.raises(MapLayoutWriteError):
             validate_chunk_replacement(layer, bad)
         with pytest.raises(mb.MapBrowserError):

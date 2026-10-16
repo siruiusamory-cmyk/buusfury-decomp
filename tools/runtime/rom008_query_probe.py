@@ -19,6 +19,12 @@ import time
 from typing import Callable, Sequence
 import uuid
 
+from tools.runtime.evidence_bundle import write_run_bundle
+from tools.runtime.mgba_identity import (
+    DEFAULT_PACKAGED_MGBA,
+    PACKAGED_0_10_5,
+    require_mgba_build,
+)
 from tools.runtime.rom006_gdb_probe import (
     EXPECTED_SHA256,
     EXPECTED_SIZE,
@@ -196,6 +202,7 @@ def run_probe(
     | None = None,
     point_context_pointer_address: int | None = None,
 ) -> dict[str, object]:
+    mgba_path = require_mgba_build(mgba_path, PACKAGED_0_10_5)
     sources = (rom_path, state_path, save_path)
     before = {path: (path.stat(), sha256(path)) for path in sources}
     if before[rom_path][0].st_size != EXPECTED_SIZE or before[rom_path][1] != EXPECTED_SHA256:
@@ -730,6 +737,26 @@ def run_probe(
         raise RuntimeError("ROM or source save artifact changed during runtime probe") from probe_error
     if probe_error is not None:
         raise probe_error
+    write_run_bundle(
+        run_root,
+        tool="tools.runtime.rom008_query_probe",
+        arguments={
+            "run_label": run_label,
+            "timeout_seconds": timeout_seconds,
+            "dynamic_load": dynamic_load,
+        },
+        rom=rom_path,
+        emulator=mgba_path,
+        observations={
+            "timeline_events": len(timeline),
+            "query_entries": len(query_entries),
+            "callsites": len(callsites),
+            "callbacks": len(callbacks),
+            "exact_query": exact_query is not None,
+            "rejecting_guard": rejecting_guard is not None,
+        },
+        artifacts={state_copy: "input-savestate", save_copy: "savegame"},
+    )
     return {
         "probe_configuration": {
             "run_label": run_label,
@@ -764,7 +791,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-sha256", required=True)
     parser.add_argument("--lua", type=Path, required=True)
     parser.add_argument("--injector", type=Path, required=True)
-    parser.add_argument("--mgba", type=Path, default=Path(r"C:\Program Files\mGBA\mGBA.exe"))
+    parser.add_argument("--mgba", type=Path, default=DEFAULT_PACKAGED_MGBA)
     parser.add_argument(
         "--profiles",
         type=Path,

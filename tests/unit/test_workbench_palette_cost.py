@@ -506,6 +506,39 @@ def test_apply_still_emits_project_changed_once_and_bumps_the_revision_once(
     assert tab._session.project_revision == r0 + 3
 
 
+def test_applying_the_pending_palette_clears_the_session_unsaved_count(
+    qapp, project, monkeypatch
+):
+    """N-04: the staged count follows the pending set, in and out."""
+    _auto_yes(monkeypatch)
+    tab = _tab(project)
+    tab._palette_pending[40] = (10, 20, 30)
+    tab._refresh_pending_ui()
+    assert tab._session.unsaved_edit_count() == 1
+
+    tab._on_apply()
+
+    assert tab._palette_pending == {}
+    assert tab._session.unsaved_edit_count() == 0
+
+
+def test_a_project_switch_repaints_the_discarded_colour_out(
+    qapp, project, tmp_path
+):
+    """N-04: a dropped pending colour must not stay painted on the grid."""
+    tab = _tab(project)
+    canonical = tuple(tab._session.sprites.palette.rgb[40])
+    tab._palette_pending[40] = (10, 20, 30)
+    tab._populate_palette()
+    assert _swatch_rgb(tab._swatches[40]) == (10, 20, 30)
+
+    other = _fresh_project(tmp_path, "palette-cost-other")
+    tab._retire_history_on_project_change(other)
+
+    assert tab._palette_pending == {}
+    assert _swatch_rgb(tab._swatches[40]) == canonical
+
+
 # --- 7. the two remaining per-UI-element project reads -----------------------
 
 

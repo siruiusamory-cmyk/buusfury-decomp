@@ -17,6 +17,9 @@ same five steps:
   them (:func:`staging_path`);
 * refusal of a save whose source is any path it would write or delete - the
   requested output, the derived manifest, and both staging names;
+* refusal of a destination that already holds the canonical image: a second
+  clean copy of the ROM is not an output, so an overwrite policy that permits
+  replacing an ordinary existing file never applies to it;
 * edit-plan normalization: duplicate physical writes collapse, conflicting
   writes to one field fail closed before anything is emitted, and the applied
   order is deterministic. The bounded-write and overlap checks are *not*
@@ -103,6 +106,41 @@ def staging_path(destination: str | Path) -> Path:
     """
     destination = Path(destination)
     return destination.with_name(f".{destination.name}{STAGING_SUFFIX}")
+
+
+def refuse_canonical_destination(
+    destination: str | Path, canonical_sha256: str
+) -> None:
+    """Refuse a save whose destination already *is* the canonical image.
+
+    A save may replace an ordinary existing output, but a second clean copy of
+    the canonical ROM is not an output at all: replacing it destroys a ROM, the
+    one file every guard in this project exists to protect. The rule is the
+    randomizer's own destination policy, applied at the shared output-safety
+    boundary so every authored-image domain inherits it.
+
+    Identity is the content hash against the caller's canonical digest - never a
+    file name or a size - so a copy under any name is caught and a file that
+    merely resembles one is not. Only a destination that is already a regular
+    file is examined: a path that does not exist is left to Save As, and a
+    directory or other non-file is left to fail at publication, where the
+    overwrite would have failed anyway.
+    """
+    path = Path(destination)
+    if not path.is_file():
+        return
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise AuthoredImageError(
+            f"the destination {path} could not be read, so its identity could not "
+            f"be verified before replacing it: {exc}"
+        ) from exc
+    if digest == canonical_sha256:
+        raise AuthoredImageError(
+            f"refusing to save: the destination {path} is a copy of the canonical "
+            "ROM, so it is not replaced; choose another name"
+        )
 
 
 def refuse_source_alias(source: str | Path, candidates: Iterable[tuple[str, Path]]) -> None:
@@ -237,6 +275,12 @@ def save_authored_image(
     byte-identical to the source, because every emitted byte comes from the
     verified base.
 
+    An existing output is replaced, but only when it is not itself a copy of the
+    canonical image: a destination that hashes to `canonical_sha256` is refused
+    before anything is removed or emitted, because a save that overwrote a second
+    clean ROM would destroy exactly the file this module protects. Ordinary
+    existing destinations and destinations that do not exist yet are unaffected.
+
     `base` must be the canonical image named by `canonical_sha256`; both it and the
     file at `source_path` are re-proved by that hash before anything is written, so
     a plan computed against some other image cannot be emitted here.
@@ -293,6 +337,18 @@ def save_authored_image(
         raise AuthoredImageError(
             "the base image is not the canonical image this editor builds from"
         )
+    # A destination that already holds the canonical image is a ROM, not an
+    # output, and replacing one is the loss this whole module exists to prevent.
+    # Checked here, before the first destructive step below, so a refusal leaves
+    # the destination, its provenance path and both staging siblings untouched.
+    #
+    # OWNER R3 adds the identity half the digest rule cannot reach: the
+    # destination may be a hardlink or a junction-reached path to a protected
+    # ROM, which has the protected file's identity and not its bytes.
+    from .destination import refuse_rom_destination
+
+    refuse_rom_destination(source, output)
+    refuse_canonical_destination(output, canonical_sha256)
     normalized = normalize_changes(changes)
     try:
         plan = write_sdk.plan_changes(
@@ -466,13 +522,20 @@ def _field(value: object, name: str, offset: int, field_bytes: int) -> bytes:
 
 
 def _declared_changes(
-    document: dict, field_bytes: int, expected_reason: str
+    document: dict, field_bytes: int, expected_reason: str | tuple[str, ...]
 ) -> tuple[DeclaredChange, ...]:
     """Parse and structurally check the manifest's change list.
 
     Purely structural: an owner string is carried through opaque, because what it
     names is the domain's question, not this module's.
+
+    ``expected_reason`` may name several acceptable strings. A caller widens its
+    accepted set when a reason string changes, so a manifest already written to
+    disk keeps verifying instead of being refused for naming the older wording.
     """
+    accepted = (
+        (expected_reason,) if isinstance(expected_reason, str) else tuple(expected_reason)
+    )
     changes = document.get("changes")
     if not isinstance(changes, list) or not changes:
         raise AuthoredImageError("the manifest declares no changes")
@@ -487,7 +550,7 @@ def _declared_changes(
         owner = change.get("owner")
         if not isinstance(owner, str) or not owner:
             raise AuthoredImageError("malformed provenance manifest: a change names no owner")
-        if change.get("reason") != expected_reason:
+        if change.get("reason") not in accepted:
             raise AuthoredImageError(
                 f"the manifest declares an unsupported change reason: {change.get('reason')!r}"
             )
@@ -607,7 +670,7 @@ def verify_authored_image(
     canonical_sha256: str,
     canonical_size: int,
     field_bytes: int,
-    expected_reason: str,
+    expected_reason: str | tuple[str, ...],
     check_changes: Callable[
         [tuple[DeclaredChange, ...], bytes, bytes], tuple[TARGET, ...]
     ],

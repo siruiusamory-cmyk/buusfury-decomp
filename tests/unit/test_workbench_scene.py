@@ -310,3 +310,65 @@ def test_apply_os_write_error_surfaces_without_mutating_session(
     assert warnings == ["disk unavailable"]
     assert emitted == []
     assert session.project_revision == before
+
+
+# --- a project switch isolates the unapplied Add NPC form (N-09) --------------
+
+
+def _second_project(root, types):
+    maps = types.maps
+    meta = ProjectMeta(1, maps.profile.id, maps.profile.game, maps.profile.sha256,
+                       len(maps.base_bytes), "scene-tab-test-b")
+    write_project(root, meta, enemies=[], characters=[],
+                  maps=build._map_documents(maps))
+    return root
+
+
+def _fill_form(tab) -> None:
+    _select_source(tab, "map:0000/placement:0000")
+    tab._name.setText("wolf")
+    tab._pos_low.setValue(123)
+    tab._pos_high.setValue(456)
+
+
+def test_a_project_switch_clears_the_unapplied_add_npc_form(
+    tab, session, tmp_path, types
+):
+    _fill_form(tab)
+    other = _second_project(tmp_path / "b", types)
+
+    session.set_project(other)
+    tab.on_project_mutated()
+
+    assert tab._name.text() == ""
+    assert (tab._pos_low.value(), tab._pos_high.value()) == (0, 0)
+
+
+def test_an_unrelated_project_mutation_keeps_the_unapplied_form(tab, session):
+    """The CQA-05 guarantee: a drag or a dialogue Apply is not a project switch."""
+    _fill_form(tab)
+
+    session.scene_mutated()
+    tab.on_project_mutated()
+
+    assert tab._name.text() == "wolf"
+    assert (tab._pos_low.value(), tab._pos_high.value()) == (123, 456)
+
+
+def test_a_switched_project_cannot_receive_the_outgoing_form(
+    tab, session, tmp_path, types, monkeypatch
+):
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.scene_tab.QMessageBox.critical",
+        lambda *a, **k: warnings.append(a[-1]),
+    )
+    _fill_form(tab)
+    other = _second_project(tmp_path / "b", types)
+
+    session.set_project(other)
+    tab.on_project_mutated()
+    tab._on_apply()
+
+    assert read_project(other).maps[0].get("authored_placements", ()) == ()
+    assert warnings, "the empty name is rejected, not silently written"

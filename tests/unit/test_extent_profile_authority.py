@@ -54,6 +54,11 @@ SYNTHETIC_POOL_SIZE = 64
 #: the fixture's palette proves the address came from the profile.
 SYNTHETIC_OBJECT_PALETTE = 0x08430000
 SYNTHETIC_BG_PALETTE = 0x08440000
+#: The sprite-definition run and the appearance table, likewise not Buu's.
+SYNTHETIC_SPRITE_RUN = 0x08450000
+SYNTHETIC_SPRITE_DEFINITION = 0x08451000
+SYNTHETIC_APPEARANCE_TABLE = 0x08460000
+SYNTHETIC_APPEARANCE_SPRITE = 0x1234
 
 
 def _synthetic_bytes() -> bytes:
@@ -85,6 +90,15 @@ def _synthetic_bytes() -> bytes:
     put(SYNTHETIC_OBJECT_PALETTE, object_palette)
     # Background palette: 256 RGB888 triples, a distinguishable ramp.
     put(SYNTHETIC_BG_PALETTE, bytes(b for index in range(256) for b in (index, 0, 255 - index)))
+    # Sprite-definition run: every pointer resolves to one empty definition.
+    put(
+        SYNTHETIC_SPRITE_RUN,
+        SYNTHETIC_SPRITE_DEFINITION.to_bytes(4, "little") * canon.SPRITE_DEFINITION_COUNT,
+    )
+    put(
+        SYNTHETIC_APPEARANCE_TABLE + canon.APPEARANCE_SPRITE_OFFSET,
+        SYNTHETIC_APPEARANCE_SPRITE.to_bytes(4, "little"),
+    )
     return bytes(image)
 
 
@@ -113,8 +127,14 @@ def _synthetic_profile(buu: RomProfile, *, text_count: int = SYNTHETIC_TEXT_COUN
         ),
         actor_sprites=replace(
             sprites,
+            character_table_address=GbaRomAddress(SYNTHETIC_SPRITE_RUN),
             object_palette_address=GbaRomAddress(SYNTHETIC_OBJECT_PALETTE),
             bg_palette_address=GbaRomAddress(SYNTHETIC_BG_PALETTE),
+        ),
+        appearances=RecordTableProfile(
+            address=GbaRomAddress(SYNTHETIC_APPEARANCE_TABLE),
+            count=canon.APPEARANCE_COUNT,
+            record_size=canon.APPEARANCE_STRIDE,
         ),
     )
 
@@ -425,6 +445,62 @@ def test_the_map_renderer_refuses_a_profile_with_no_palette(image, buu):
     without = replace(buu, id="no_palette_profile", actor_sprites=None)
     with pytest.raises(mr.MapRenderError, match="declares no actor_sprites palette"):
         mr.decode_bg_palette(image, profile=without)
+
+
+def test_the_sprite_definition_run_address_is_the_profiles(buu, image):
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.sprite_definition_run_address() == SYNTHETIC_SPRITE_RUN
+    assert (
+        rom.sprite_definition_run_address()
+        != buu.actor_sprites.character_table_address.raw
+    )
+
+    definitions = canon.read_sprite_definitions(rom)
+    assert len(definitions) == canon.SPRITE_DEFINITION_COUNT
+    assert {definition.address for definition in definitions} == {
+        SYNTHETIC_SPRITE_DEFINITION
+    }
+    assert [definition.sprite_id for definition in definitions] == [
+        canon.SPRITE_ID_FLOOR + index for index in range(canon.SPRITE_DEFINITION_COUNT)
+    ]
+
+    with pytest.raises(canon.CanonicalError):
+        canon.read_sprite_definitions(canon.Rom(image))
+
+
+def test_the_appearance_table_address_is_the_profiles(buu, image):
+    synthetic = _synthetic_profile(buu)
+    rom = canon.Rom(image, profile=synthetic)
+    assert rom.appearance_table_address() == SYNTHETIC_APPEARANCE_TABLE
+    assert rom.appearance_table_address() != buu.appearances.address.raw
+
+    records = canon.read_appearances(rom)
+    assert len(records) == canon.APPEARANCE_COUNT
+    assert records[0].address == SYNTHETIC_APPEARANCE_TABLE
+    assert records[-1].address == (
+        SYNTHETIC_APPEARANCE_TABLE
+        + (canon.APPEARANCE_COUNT - 1) * canon.APPEARANCE_STRIDE
+    )
+    assert records[0].sprite_id == SYNTHETIC_APPEARANCE_SPRITE
+    canonical_address_holds = canon.Rom(image).u32(
+        buu.appearances.address.raw + canon.APPEARANCE_SPRITE_OFFSET
+    )
+    assert canonical_address_holds != SYNTHETIC_APPEARANCE_SPRITE
+
+
+def test_the_appearance_reader_refuses_a_profile_with_no_appearances(buu, image):
+    without = replace(buu, id="no_appearances_profile", appearances=None)
+    with pytest.raises(canon.CanonicalError, match="declares no appearances.address"):
+        canon.read_appearances(canon.Rom(image, profile=without))
+
+
+def test_the_sprite_reader_refuses_a_profile_with_no_actor_sprites(buu, image):
+    without = replace(buu, id="no_actor_sprites_profile", actor_sprites=None)
+    with pytest.raises(
+        canon.CanonicalError, match="declares no actor_sprites.character_table_address"
+    ):
+        canon.read_sprite_definitions(canon.Rom(image, profile=without))
 
 
 def test_the_map_layout_writer_gate_is_the_profile_identity():

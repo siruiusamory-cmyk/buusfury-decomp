@@ -1,25 +1,22 @@
 ---
 import { project } from "../data/project";
+import Window from "./Window.astro";
+
 const links = project.links.filter((link) => link.url);
 ---
 
-<footer class="footer">
-  <div class="shell footer-grid">
-    <div>
-      <p class="footer-brand"><span class="brand-mark" aria-hidden="true">WF</span> {project.name}</p>
-      <p class="footer-tagline">{project.footerTagline}</p>
-    </div>
-    <div>
-      <p class="topbar-status"><span class="dot" aria-hidden="true"></span>{project.developmentStatus}</p>
-      {links.length > 0 && (
-        <nav aria-label="Project links">
-          <ul>{links.map((link) => <li><a href={link.url} rel="noopener">{link.label}</a></li>)}</ul>
-        </nav>
-      )}
-    </div>
-  </div>
-  <div class="shell footer-fine">
+<Window id="readme" title="readme.txt - Notepad" icon="folder" as="footer" label="About this site" class="notepad">
+  <div class="notepad-menu" aria-hidden="true"><span>File</span><span>Edit</span><span>Format</span><span>View</span><span>Help</span></div>
+  <div class="notepad-page">
+    <p><b>{project.name}</b></p>
+    <p>{project.footerTagline}</p>
+    <p>Status: {project.developmentStatus}</p>
+    {links.length > 0 && (
+      <ul class="notepad-links">
+        {links.map((link) => <li><a href={link.url} rel="noopener">{link.label}</a></li>)}
+      </ul>
+    )}
     <p>{project.disclaimer}</p>
     <p>{project.assetPolicy}</p>
   </div>
-</footer>
+</Window>

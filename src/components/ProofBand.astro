@@ -1,51 +1,53 @@
 ---
 import { project, proofStrip, ledgerGroups, ledgerMetrics } from "../data/project";
+import Window from "./Window.astro";
+import Icon from "./Icon.astro";
 ---
 
-<section class="proof" id="proof" aria-labelledby="proof-title">
-  <div class="shell">
-    <div class="panel proof-panel">
-      <div class="panel-head">
-        <h2 id="proof-title">PROOF, NOT PROMISES</h2>
-        <p class="kicker">MEASURED AGAINST CANONICAL BUU'S FURY USA REV0</p>
-      </div>
-
-      <ul class="proof-strip">
-        {proofStrip.map((metric) => (
-          <li>
-            <span class="proof-label">{metric.label}</span>
-            <b class="proof-value">{metric.value}</b>
-          </li>
-        ))}
-      </ul>
-
-      <div class="dod">
-        <p class="kicker">DEFINITION OF DONE</p>
-        <p class="dod-target">{project.acceptanceTarget}</p>
-        {project.definitionOfDone.map((paragraph) => <p class="dod-note">{paragraph}</p>)}
-      </div>
-
-      <details>
-        <summary>All {ledgerMetrics.length + proofStrip.length} measured figures</summary>
-        <div class="disclosure-body ledger">
-          {ledgerGroups.map((group) => (
-            <div class="ledger-group">
-              <h3>{group.group}</h3>
-              <dl>
-                {group.metrics.map((metric) => (
-                  <div class="ledger-row">
-                    <dt>{metric.label}</dt>
-                    <dd>
-                      {metric.value}
-                      {metric.explanation && <span class="ledger-note">{metric.explanation}</span>}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ))}
-        </div>
-      </details>
+<Window id="proof" title="System Properties" icon="target" labelledby="proof-title" class="sysprops">
+  <div class="sysprops-head">
+    <Icon name="logo" class="sysprops-orb" />
+    <div>
+      <h2 id="proof-title">Proof, not promises</h2>
+      <p class="sysprops-sub">Every figure below was measured against canonical Buu's Fury USA rev0.</p>
     </div>
   </div>
-</section>
+
+  <h3 class="group-label">Rating</h3>
+  <ul class="proof-strip">
+    {proofStrip.map((metric) => (
+      <li>
+        <span class="proof-label">{metric.label}</span>
+        <b class="proof-value">{metric.value}</b>
+      </li>
+    ))}
+  </ul>
+
+  <h3 class="group-label">Definition of done</h3>
+  <div class="dod">
+    <p class="dod-target">{project.acceptanceTarget}</p>
+    {project.definitionOfDone.map((paragraph) => <p class="dod-note">{paragraph}</p>)}
+  </div>
+
+  <details class="more">
+    <summary>All {ledgerMetrics.length + proofStrip.length} measured figures</summary>
+    <div class="disclosure-body ledger">
+      {ledgerGroups.map((group) => (
+        <div class="ledger-group">
+          <h3>{group.group}</h3>
+          <dl>
+            {group.metrics.map((metric) => (
+              <div class="ledger-row">
+                <dt>{metric.label}</dt>
+                <dd>
+                  {metric.value}
+                  {metric.explanation && <span class="ledger-note">{metric.explanation}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
+    </div>
+  </details>
+</Window>

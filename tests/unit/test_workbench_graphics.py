@@ -551,6 +551,118 @@ def test_effective_rgb_reflects_committed_override_after_apply(qapp, project, mo
     assert t._effective_rgb(t._session.sprites)[40] == (10, 20, 30)
 
 
+def _fail_palette_read(monkeypatch):
+    """Make the committed override read raise, as a malformed project does."""
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.graphics_sdk.get_palette_overrides",
+        lambda *a, **k: (_ for _ in ()).throw(
+            graphics_sdk.GraphicsError("graphics/graphics.toml could not be read")
+        ),
+    )
+
+
+def test_a_failed_palette_read_is_reported_not_rendered_as_canonical(
+    qapp, project, monkeypatch
+):
+    """N-22: a read failure must not look like a project that authored nothing."""
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    _fail_palette_read(monkeypatch)
+
+    t._effective_rgb(t._session.sprites)
+    t._update_status()
+
+    assert t._palette_read_error, "the failure must be recorded, not swallowed"
+    assert "could not be read" in t._status.text()
+
+
+def test_export_refuses_while_the_palette_read_failed(qapp, project, monkeypatch, tmp_path):
+    """The exported PNG would carry canonical colours the project does not hold."""
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    _fail_palette_read(monkeypatch)
+    t._effective_rgb(t._session.sprites)
+
+    out = tmp_path / "graphic_0000.png"
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(out), ""),
+    )
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: shown.append(a[-1]),
+    )
+
+    t._on_export()
+
+    assert not out.exists()
+    assert shown and "could not be read" in shown[0]
+
+
+def test_apply_refuses_while_the_palette_read_failed(qapp, project, monkeypatch):
+    """Applying could overwrite committed colours chosen against canonical ones."""
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    _fail_palette_read(monkeypatch)
+    t._effective_rgb(t._session.sprites)
+    t._palette_pending[40] = (1, 2, 3)
+
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: shown.append(a[-1]),
+    )
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.question",
+        lambda *a, **k: pytest.fail("a failed read must not reach the confirm step"),
+    )
+
+    t._on_apply()
+
+    assert t._palette_pending == {40: (1, 2, 3)}, "nothing may be written"
+    assert shown and "could not be read" in shown[0]
+
+
+def test_export_reads_the_palette_at_export_time(qapp, project, monkeypatch, tmp_path):
+    """A project that breaks between the repaint and the export must refuse.
+
+    Checking a flag left by an earlier repaint would let this export write
+    canonical colours into the PNG as if the project held them.
+    """
+    session = _session_with_sprites(project)
+    t = GraphicsTab(session)
+    t.on_session_changed()
+    t._grid.setCurrentRow(0)
+    # A successful read leaves no standing failure...
+    t._effective_rgb(t._session.sprites)
+    assert t._palette_read_error == ""
+    # ...and the project breaks before the export.
+    _fail_palette_read(monkeypatch)
+
+    out = tmp_path / "graphic_0000.png"
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(out), ""),
+    )
+    shown: list[str] = []
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QMessageBox.critical",
+        lambda *a, **k: shown.append(a[-1]),
+    )
+
+    t._on_export()
+
+    assert not out.exists()
+    assert shown and "could not be read" in shown[0]
+
+
 def test_apply_clears_pixmap_cache_so_thumbnails_repaint(qapp, project, monkeypatch):
     _auto_yes(monkeypatch)
     session = _session_with_sprites(project)
@@ -695,6 +807,28 @@ def test_export_slot_writes_a_real_png(tab, tmp_path, monkeypatch):
     assert out.exists()
     blob = out.read_bytes()
     assert blob.startswith(_PNG_MAGIC) and len(blob) > len(_PNG_MAGIC)
+
+
+def test_export_suggests_the_name_the_build_reads(tab, monkeypatch):
+    """N-25: the suggestion must be the path the build looks for.
+
+    The build reads ``graphics/assets/graphic_NNNN.png``; the dialog used to
+    suggest ``sprite_<index>.png``, which nothing reads, so an author could save,
+    validate and build and be told nothing had changed.
+    """
+    tab._grid.setCurrentRow(0)
+    seen: list[str] = []
+
+    def dialog(_parent, _title, suggested, _filter):
+        seen.append(suggested)
+        return ("", "")
+
+    monkeypatch.setattr(
+        "tools.webfoot.workbench.graphics_tab.QFileDialog.getSaveFileName", dialog
+    )
+    tab._on_export()
+
+    assert seen == [f"graphic_{tab._selected.index:04d}.png"]
 
 
 def test_export_slot_cancel_writes_nothing(tab, tmp_path, monkeypatch):

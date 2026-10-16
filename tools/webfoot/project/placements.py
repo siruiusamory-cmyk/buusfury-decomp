@@ -24,6 +24,7 @@ from enum import Enum
 from pathlib import Path
 import re
 
+from .atomic import replace_document
 from .format import dump_toml
 
 
@@ -209,7 +210,7 @@ def clone_placement(project_dir, *, map_index, source, name, position_low, posit
     authored = doc["map"][key].setdefault("authored_placements", {})
     authored[clone.identity] = clone.to_document()
     doc["map"][key]["authored_placements"] = dict(sorted(authored.items()))
-    path.write_text(dump_toml(doc), encoding="utf-8", newline="\n")
+    replace_document(path, dump_toml(doc))
     return clone
 
 
@@ -257,7 +258,7 @@ def remove_authored_placement(project_dir, identity):
         doc["map"][key]["authored_placements"] = dict(sorted(authored.items()))
     else:
         del doc["map"][key]["authored_placements"]
-    path.write_text(dump_toml(doc), encoding="utf-8", newline="\n")
+    replace_document(path, dump_toml(doc))
     return True
 
 
@@ -356,5 +357,5 @@ def set_project_placement_position(
         placements[placement_key]["position_low"] = position_low
         placements[placement_key]["position_high"] = position_high
 
-    path.write_text(dump_toml(document), encoding="utf-8", newline="\n")
+    replace_document(path, dump_toml(document))
     return True

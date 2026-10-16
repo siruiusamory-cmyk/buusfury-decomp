@@ -78,7 +78,14 @@ if ($expected -notmatch '^[0-9A-F]{64}$') {
 }
 $romInfo = Get-Item -LiteralPath $resolvedRom
 $romHashBefore = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedRom).Hash
-if ($romInfo.Length -ne $ExpectedRomSize -or $romHashBefore -ne $expected) {
+if ($romInfo.Length -ne $ExpectedRomSize) {
+    # The size stays an EQUALITY test, exactly like the digest: a caller names the size it
+    # expects and a mismatch is refused. It is a parameter because a legitimate derivative
+    # can grow, and pinning the retail-and-boost length here would refuse every grown
+    # image rather than the wrong one. There is still no wildcard and no skip.
+    throw "ROM size mismatch; run refused. Expected $ExpectedRomSize byte(s), found $($romInfo.Length)"
+}
+if ($romHashBefore -ne $expected) {
     throw "ROM identity mismatch; run refused. Expected $expected, found $romHashBefore"
 }
 
@@ -107,28 +114,16 @@ $csv = Join-Path $runDir 'toolkit031-execution.csv'
 # CHILD process that inherits it, so set it before launching mGBA.
 $env:TOOLKIT031_OUT = $csv
 
-$process = Start-Process -FilePath $resolvedMGB -ArgumentList @('"' + $resolvedRom + '"') -PassThru
-Start-Sleep -Seconds 8
-
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'inject_mgba_lua.ps1') `
-    -TargetProcessId $process.Id -LuaPath $resolvedLua `
-    -ReadyPath $ready -MarkerPath $marker
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Lua injection failed'
-}
-
-# Load the state only AFTER the observer is armed, so the breakpoint is already
-# installed when the map's entities are constructed. Construction is one of the
-# trigger classes under test and must not be missed.
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'toolkit031_load_state.ps1') `
-    -TargetProcessId $process.Id -StatePath $workingState
-if ($LASTEXITCODE -ne 0) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    throw 'Savestate load failed'
-}
+# One mechanism for every launcher: the shared helper composes a bootstrap that
+# runs the observer's dofile and THEN loads the savestate, so the observer is
+# armed before the load constructs anything. No Scripting window is opened and
+# nothing takes the operator window. See tools/runtime/mgba_session.ps1:114-154.
+. (Join-Path $PSScriptRoot 'mgba_session.ps1')
+$process = Start-MgbaSession -MGBPath $resolvedMGB -RomPath $resolvedRom `
+    -LuaPath $resolvedLua -ReadyPath $ready -MarkerPath $marker -RunDir $runDir `
+    -RequiredMGBVersion $RequiredMGBVersion -ExpectedRomSha256 $expected `
+    -StatePath $workingState
+Set-Content -LiteralPath (Join-Path $runDir 'state-loaded.txt') -Value 'observer dofile then emu:loadStateFile (bootstrap)' -Encoding ascii
 
 $identity = [ordered]@{
     label        = $Label
@@ -146,6 +141,10 @@ $identity = [ordered]@{
 }
 $identity | ConvertTo-Json -Depth 4 |
     Set-Content -LiteralPath (Join-Path $runDir 'inputs.json') -Encoding utf8
+
+# One call, after the identity block: the save catalogue records the tool, its label and the
+# ROM, save and state hashes this run just staged. It cannot fail the launch.
+Register-SaveCatalogueRun -RunDir $runDir -Tool 'start_toolkit031_session' -Label $Label
 
 Write-Output "SESSION LIVE"
 Write-Output "  mGBA pid : $($process.Id)"

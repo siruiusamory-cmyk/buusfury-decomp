@@ -22,8 +22,10 @@ Every pattern here is named against the real reference recorded in
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRect, Qt, Signal
+from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -409,6 +411,116 @@ def section(title: str, body: QWidget) -> tuple[PanelHeader, QWidget]:
     column.addWidget(header)
     column.addWidget(body)
     return header, holder
+
+
+class CheckBox(QCheckBox):
+    """A check box whose indicator is drawn here, from the theme's own palette.
+
+    The platform indicator is a font glyph whose size a style sheet does not
+    control. With the label's background left transparent - which it must be, so
+    the label does not paint a slab over the panel - an unchecked box drew no box
+    at all. Measured in the shipped window, 227 of the 256 pixels inside the
+    indicator rectangle were the surface colour, leaving a bare tick beside the
+    label: it read as a bullet in a list, not as something to click.
+
+    Every state is therefore painted here from theme roles, so the control cannot
+    drift from the palette and its contrast is a measurable number rather than a
+    platform default.
+    """
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        # The indicator is drawn, not laid out by the style, so the row has to
+        # reserve its height itself.
+        self.setMinimumHeight(
+            max(theme.CHECK_INDICATOR + 4, self.fontMetrics().height())
+        )
+
+    def sizeHint(self):  # noqa: N802 - Qt's spelling
+        hint = super().sizeHint()
+        height = max(hint.height(), self.minimumHeight())
+        if height != hint.height():
+            hint.setHeight(height)
+        return hint
+
+    def indicator_rect(self):
+        """Where the box is drawn, so a test can measure it."""
+        return QRect(
+            0,
+            max(0, (self.height() - theme.CHECK_INDICATOR) // 2),
+            theme.CHECK_INDICATOR,
+            min(theme.CHECK_INDICATOR, self.height()),
+        )
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt's spelling
+        painter = QPainter(self)
+        # Anti-aliasing is on for the tick, which is a curve. The box itself is NOT
+        # anti-aliased: a 1px rounded stroke at 15% of a pixel's coverage measures
+        # as a 1.98:1 edge against the panel, which is under the 3:1 a control
+        # boundary needs. Filling the boundary as a shape instead makes the edge the
+        # stroke colour exactly, so its contrast is the palette's own number.
+        box = self.indicator_rect()
+
+        if not self.isEnabled():
+            fill, border = theme.color("surface"), theme.color("border")
+        elif self.isChecked():
+            fill, border = theme.color("accent"), theme.color("accent_pressed")
+            if self.underMouse():
+                fill = theme.color("accent_hover")
+        elif self.underMouse():
+            fill, border = theme.color("surface_raised"), theme.color("accent")
+        else:
+            # An unchecked box is defined by its boundary alone, so the boundary
+            # has to clear the 3:1 non-text contrast floor on its own. The theme's
+            # `border_strong` is a 2.05:1 hairline against this fill - it is a
+            # separator, not a control edge - so the control edge is
+            # `text_muted` at 5.24:1, the palette's own tertiary neutral.
+            fill, border = theme.color("surface_raised"), theme.color("text_muted")
+
+        radius = theme.RADIUS_BUTTON
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(border)
+        painter.drawRoundedRect(box, radius, radius)
+        painter.setBrush(fill)
+        painter.drawRoundedRect(box.adjusted(1, 1, -1, -1), radius - 1, radius - 1)
+
+        if self.isChecked():
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            mark_colour = (
+                theme.COLORS.accent_ink
+                if self.isEnabled()
+                else theme.COLORS.text_disabled
+            )
+            mark = theme.check_mark_pixmap(mark_colour, theme.CHECK_INDICATOR)
+            # The mark is drawn inside the border, so the ring stays visible.
+            painter.drawPixmap(box.adjusted(1, 1, -1, -1), mark)
+
+        text_left = box.right() + 1 + theme.SPACE_SM + 1
+        text_area = self.rect().adjusted(text_left, 0, 0, 0)
+        painter.setPen(
+            theme.color("text_primary")
+            if self.isEnabled()
+            else theme.color("text_disabled")
+        )
+        painter.drawText(
+            text_area,
+            int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            self.text(),
+        )
+
+        if self.hasFocus():
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(QPen(theme.color("focus"), 1))
+            painter.drawRoundedRect(
+                box.adjusted(-2, -2, 1, 1),
+                theme.RADIUS_BUTTON + 1,
+                theme.RADIUS_BUTTON + 1,
+            )
+        painter.end()
+
+        if self.hasFocus():
+            event.accept()
 
 
 class ScrollPane(QScrollArea):

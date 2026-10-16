@@ -1,0 +1,148 @@
+# FRIEND-V3-WT-SPLIT-CONTAINER-001, release 2: the World Tournament text release
+
+This is the integration record for the cumulative mainline release that lands all fifteen
+owner World Tournament rows on the split-container route. Route evidence is
+`FRIEND_V3_WT_SPLIT_CONTAINER.md` (bytes) and `FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`
+(emulator).
+
+## What ships
+
+| field | value |
+| --- | --- |
+| file | `v3-wt-split-a.gba` |
+| bytes | 10,143,256 |
+| SHA-256 | `0b5ac8f470277f3c674710e07ce9d744433acd6a331736a628e00d6f72a6ef22` |
+| base | `v3-mainline-text-dialogue-pass.gba`, sha256 `d2a25f9a56c9980e27ad4a6f4c23d653e87d15b71b908ee27bced48b88885543`, 10,141,220 bytes |
+| base's lineage | the pre-BOOST foundation `a4c12a95…`; the BOOST image `acd98c2a…` is **not** an ancestor |
+| builder | `tools/research/build_friend_v3_world_tournament_split.py` |
+| verifier | `tools/research/verify_friend_v3_world_tournament_split.py` |
+| reproducer | `tools/research/verify_friend_v3_boost_absence.py` for the BOOST check |
+
+The artifact lives under the ignored `build/` tree and is not in git.
+
+## The edit, exactly
+
+Three changes, and nothing else:
+
+1. **One appended container.** File offset `0x9ABE24` (runtime `0x089ABE24`), 4-byte aligned,
+   header `kind=0` and `declared_size=2028`, then 2,028 bytes of UTF-16LE: the fifteen rows'
+   texts laid out back to back. Each row's offset in that payload is its new decoded start.
+2. **One table slot.** File `0x9A9D04` (selector 7, inside the table's own 64-slot block, past
+   the seven live pointers, in copied retail data this image never reads):
+   `0x03004A68` -> `0x089ABE24`.
+3. **Fifteen handle words**, one per row, each at that record's single handle site, each
+   rewritten from `DialogueHandle(3, old_start, old_length)` to
+   `DialogueHandle(7, new_start, new_length)`.
+
+No container byte of the original image moves, and no game code changes.
+
+## The eighteen World Tournament rows
+
+Fifteen rows are placed, three are untouched by owner decision. This table is all eighteen so
+the no-change rows are visible rather than implied.
+
+| # | Speaker | Record | Units before | Units now | Route |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Uub | `3:7406:136` | 68 | 86 | moved |
+| 2 | Videl | `3:7542:42` | 21 | 34 | moved |
+| 3 | Uub | `3:7584:80` | 40 | 36 | moved |
+| 4 | Videl | `3:7664:60` | 30 | 44 | moved |
+| 5 | Uub | `3:7724:72` | 36 | 31 | moved |
+| 6 | Videl | `3:7796:204` | 102 | 51 | moved |
+| 7 | Idasa | `3:8000:214` | 107 | 67 | moved |
+| 8 | Uub | `3:8214:118` | 59 | 31 | moved |
+| 9 | Idasa | `3:8332:218` | 109 | 74 | moved |
+| 10 | Announcer | `3:8550:414` | 207 | 207 | unchanged |
+| 11 | Gameplay instructions | `3:8964:148` | 74 | 74 | unchanged |
+| 12 | Idasa | `3:9112:62` | 31 | 36 | moved |
+| 13 | Uub | `3:9174:114` | 57 | 37 | moved |
+| 14 | Idasa's mother | `3:9288:282` | 141 | 120 | moved |
+| 15 | Tulma | `3:9570:92` | 46 | 46 | unchanged |
+| 16 | Tulma | `3:9662:116` | 58 | 57 | moved |
+| 17 | Idasa's mother | `3:9778:114` | 57 | 52 | moved |
+| 18 | Announcer | `3:9892:486` | 243 | 258 | moved, passage replaced |
+
+Twelve rows carry the owner's wording, three are unchanged, and row 18 has one passage
+replaced while the rest of the announcement, its control units included, is preserved:
+
+```
+old:  Championship between eight-year-old Uub    and seven-year-old Videl!
+new:  Championship between adopted siblings, ten-year-old Uub and sixteen-year-old Videl!
+```
+
+Every row keeps the control unit its record carried (fifteen of the eighteen begin `#`, the
+others begin `!` or nothing). The `#` is why this ticket's overflow numbers differ by one unit
+from the previous ticket's on rows 1, 2, 4 and 13: the approved wording is applied after the
+record's own prefix, not in place of it.
+
+**Why every row moved rather than only the five that grow.** All eighteen rows sit inside a
+3,872-byte covering record (`3:6232:3872`, span 6232..10104 of container 3). Writing a shorter
+text in place would leave bytes the covering record reads holding something else, which is the
+defect the previous ticket measured on `1:38856:252`. The covering record does not move and its
+bytes are untouched; only the eighteen handle words that the scene actually reads are
+repointed, and the covering record still reads exactly what it read before.
+
+## Verified
+
+| check | result |
+| --- | --- |
+| every placed row resolves through the table the literal names, indexed by its handle's selector, and reads the owner's wording back exactly, with the expected text recomputed from the row table rather than read out of the manifest | PASS, 15 of 15 |
+| the three unchanged rows are byte-identical to the base | PASS |
+| the seven live slots are byte-identical to the base | PASS |
+| the other 63 slot words are byte-identical to the base, and with the table basis unchanged that means every other container keeps its home | PASS |
+| bytes differing from the base outside the declared sites, computed independently of the project's verifier and grouped into runs | 0 stray, 17 runs, 62 bytes, all declared |
+| output byte count matches the manifest | PASS |
+| reproduced twice | byte-identical, both `0b5ac8f4…` |
+| BOOST absence: the 25 bytes the BOOST builder declares all hold the foundation's byte | PASS, 25 of 25, and the BOOST image differs at all 25 (the check is not vacuous) |
+| the row table's own integrity: every one of the eighteen wordings, the three no-change rows, row 18's presence and its passage | `tests/unit/test_friend_v3_world_tournament_rows.py`, PASS |
+| every one of the fifteen handles occurs in the base image exactly as many times as the inventory reports sites, so no second carrier keeps an old handle | PASS, 15 of 15 |
+| the covering record `3:6232:3872` has one handle site at file `0x2FE434`, it carries a valid record word, and it is not repointed | PASS |
+
+## Runtime check
+
+Cold boot on this candidate with the battery save (`v3.sav`, the map-134 route save), no
+savestate, driven by hand through the junior division scene. Fourteen of the fifteen rows were
+resolved by the engine out of the appended container with their approved wording, and
+Idasa's mother's line was photographed on screen; the operator confirmed the scene played.
+Row 18 is static-verified only and is not claimed as seen. The full evidence, the exact
+addresses and the one correction it forced are in
+`FRIEND_V3_WT_SPLIT_CONTAINER_RUNTIME.md`.
+
+The same run proved the table has **two** runtime consumers, not one: `0x080122CE` fires eight
+times in a run containing a level-up. Both read the same literal, so the single table word this
+release writes is seen by both.
+
+## Save compatibility
+
+Battery saves are compatible: no stage touches the save layout, the game code or the base-stat
+table. A savestate written on the base image is not interchangeable with one written on this
+release, for the same reason it was not between earlier stages: a state whose EWRAM holds
+already-decoded text will show the text it copied. Start from a battery save, or from a state
+made on this image.
+
+## What this release deliberately does not contain
+
+- Interior padding removal, `Great Soyman`, and the punctuated `Kakarot` -> `Bandit` set: that
+  is release 3, on the same route.
+- The 133 padded records that can be repaired in place: also release 3.
+- Any change to a record the owner marked NO CHANGE, or to a record outside the eighteen.
+- **The covering record `3:6232:3872` is left live with its old text and its old handle.** This
+  is an open item, not a closed one. The record's own bytes are untouched, which is exactly why
+  the fifteen rows can move without disturbing it, and it still reads the retail championship
+  passage. Evidence for the mechanism: the fifteen rows resolve on selector 7 and are read by
+  the scene. Inference, not evidence: that nothing reads the covering record directly. It has
+  one handle site, at file `0x2FE434`, carrying a valid record word; that site is not repointed
+  and no observation in this release's run shows the record being read. If a scene does read it,
+  the old passage can still appear there. Recorded for release 3 to settle.
+- **Nine record-shaped words elsewhere in the image carry selector 7** and now resolve to the
+  appended container instead of the IWRAM word the slot used to hold. None of them sits inside
+  a dialogue payload, and none was resolved in the measured scene; their spans were never
+  checked against a 2,028-byte container, so a scene that read one would read container bytes
+  as text. Accepted and stated, not proven safe.
+
+## Continuity implications for owner review
+
+The approved rows call Uub Videl's brother and the announcer calls them adopted siblings, while
+the biographies this release inherits describe Uub as the son of Tien and Tulma. The owner
+decided both wordings deliberately. No biography or parentage text is rewritten here; the
+inconsistency is recorded so it is a decision, not a discovery.

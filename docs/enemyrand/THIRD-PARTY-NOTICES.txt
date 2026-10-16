@@ -1,0 +1,90 @@
+THIRD-PARTY COMPONENTS IN THIS APPLICATION
+==========================================
+
+Enemy Randomizer v0.1.0
+
+NOTE ON WHERE THIS FILE LIVES: it is kept in the project repository as the record
+of what the application is built from. It is **not** shipped inside the release
+archive, which at the owner's direction contains only the executable and a brief
+README. That means a person who downloads the release does not receive this notice
+- see "Known gap" at the end.
+
+This application is built with, and redistributes, software written by other
+people. The list below names the components present in the application and the
+licence each is distributed under. The application's own code is MPL-2.0; see
+LICENSE.
+
+This file is a notice, not a licence text. Its component list is identical to the
+Map Warp Randomizer's, because both executables are the same runtime, the same Qt
+build and the same writer over one Python application.
+
+COMPONENTS BUNDLED IN THIS APPLICATION
+--------------------------------------
+
+Python 3.12 (python312.dll, python3.dll, the standard-library extension modules)
+    Licence: Python Software Foundation License Version 2
+    https://docs.python.org/3/license.html
+
+Qt 6 (the Qt6*.dll libraries and the platform, image-format, icon-engine, style
+and TLS plugins PyInstaller bundles into the executable)
+    Licence: GNU Lesser General Public License v3
+    https://www.gnu.org/licenses/lgpl-3.0.html
+    Qt is used unmodified and is dynamically linked. It is not part of this
+    application's own source, and it may be replaced by the user.
+
+PySide6 and shiboken6 (PySide6/*.pyd, pyside6.abi3.dll, shiboken6/)
+    Licence: GNU Lesser General Public License v3
+    https://www.qt.io/licensing/
+
+PyYAML (the bundled `yaml` package and _yaml extension)
+    Licence: MIT
+    https://github.com/yaml/pyyaml/blob/main/LICENSE
+
+Mesa / llvmpipe (opengl32sw.dll)
+    Licence: MIT
+    https://docs.mesa3d.org/license.html
+
+OpenSSL (libcrypto-3.dll)
+    Licence: Apache License 2.0
+    https://www.openssl.org/source/license.html
+
+zlib, bzip2 and liblzma (compiled into the Python extension modules)
+    Licences: zlib licence; bzip2 BSD-style licence; liblzma public domain
+    https://www.zlib.net/zlib_license.html
+    https://sourceware.org/bzip2/
+    https://tukaani.org/xz/
+
+libjpeg-turbo, libtiff and libwebp (the qjpeg, qtiff and qwebp image plugins)
+    Licences: IJG / BSD-style; libtiff BSD-style; BSD-style
+    https://libjpeg-turbo.org/
+    https://libtiff.gitlab.io/libtiff/
+    https://developers.google.com/speed/webp/
+
+Microsoft Visual C++ runtime (VCRUNTIME140.dll, MSVCP140.dll, ucrtbase.dll,
+api-ms-win-*.dll)
+    Licence: Microsoft Software Licence Terms, redistributable as part of an
+    application built with the Microsoft toolchain.
+
+NO GAME CONTENT
+---------------
+
+Nothing from the commercial ROM is bundled, and nothing can be: the only data
+file in the build is the ROM profile catalog, a table of addresses and hashes. The
+randomizer reads the ROM the user selects and writes a separate randomized file.
+
+KNOWN GAP - AN UNRESOLVED OWNER DECISION, INHERITED
+---------------------------------------------------
+
+Full licence TEXTS for the LGPL-licensed components (Qt, PySide6, shiboken6) are
+NOT bundled, and since the release archive contains only the executable and a
+README, not even this notice reaches the person who downloads it. Redistributing
+an LGPL library is normally expected to carry a copy of the LGPL text and a written
+offer of the corresponding source, and nothing here substitutes for either.
+
+This gap is not new to this product. The Map Warp Randomizer's release has the
+same gap and records it in `docs/warprand/THIRD-PARTY-NOTICES.txt`; this file
+inherits it deliberately rather than diverging from a sibling tool for no reason,
+and to change it is one decision covering both. The application is currently a
+private, unlisted build. If it is to be distributed publicly, either add the
+notice and the Qt/PySide6 licence texts back into the two package scripts' staged
+files, or link Qt statically and comply with the LGPL that way.

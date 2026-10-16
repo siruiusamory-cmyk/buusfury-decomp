@@ -177,6 +177,77 @@ and on `master` it additionally runs `deploy-site`, which deploys the public
 site. Merging therefore publishes; treat a merge to `master` as a deploy even
 when the change looks internal.
 
+Since 2026-10-12 the four test-stage jobs (`test-sdk`, `test-integration`,
+`adjacency`, `test-site`) are configured to run on a self-hosted runner on the
+owner's PC, tagged `local-ci`, rather than on the shared GitLab runners, whose
+free monthly quota is spent. `deploy-site` did not move: it is the only job that
+publishes and the only one that reads the protected Cloudflare credential, so it
+stays on the shared runners with its `image: node:22`. **Unproven, not measured:**
+no pipeline has been created since the routing landed, because GitLab refuses
+pipeline creation while the namespace is over quota, so no routed job has run
+from this configuration. The first proof is the first pipeline after the quota
+resets. Until then a merge to the default branch neither runs the test gate nor
+publishes. `docs/testing.md` ("Where each job runs, and why") owns the routing,
+the runner's own limits, the credential scrub and the measured costs.
+
+### Is the reviewed candidate still valid against live master?
+
+A merge-request pipeline runs on the branch's own commit. It does not run on
+master as master is at the moment the merge lands, and master moved while these
+branches were open: measured 2026-10-12 from this session's own three merges.
+
+| MR | recorded `diff_refs.base_sha` | master tip at merge | commits master gained between fork and merge | paths both sides changed |
+|---|---|---|---|---|
+| 230 | `1016ab49` | `c3fc145c` | 10 | 1 |
+| 234 | `f097898b` | `f097898b` | 0 | 0 |
+| 235 | `a8a2da5d` | `a8a2da5d` | 0 | 0 |
+
+So 1 of 3 merges had drifted at merge time, and on that one the two sides did
+change the same path: from fork `1016ab49`, both master and MR 230 changed
+`docs/research/PROJECT_STATE_AUDIT_RECONCILIATION.md`. That merge composed
+cleanly (`git merge-tree` reproduces its recorded tree `e3466f9a`) and its
+post-merge master pipeline (`2938640540`) was green.
+
+The gate below therefore stops 1 of 1 drifted merges on the measured sample, and
+that one was a documentation path with no textual conflict. What it trades is a
+rebase onto live master plus a re-run of the focused tests - minutes - for the
+class of interaction no pipeline checks before the merge: two lanes editing one
+file with no textual conflict, so the composition is never tested on either
+side. That shape is the MAP-PAINT-class regression. The trade is kept on the
+review of RETRO-CI-002-20261012-112919: read an exit 1 as an instruction to
+rebase rather than as a block.
+
+```powershell
+# in a ticket worktree, never in the primary checkout
+.\scripts\pre-merge-check.ps1 -Ref <branch or SHA>
+```
+
+It fetches the target, prints the predicted merged tree
+(`git merge-tree --write-tree <target> <candidate>`, verified to reproduce the
+tree GitLab recorded for all three merges above), and exits 1 when the target
+changed a path the candidate changed, or when the merge conflicts. It pushes and
+merges nothing, and it refuses the primary checkout structurally rather than by
+name: the primary is the checkout that answers `.git` for its own
+`git rev-parse --git-dir`, and a bare `.` is refused too. A path with no `.git`
+at its root - a subdirectory of the primary included - is refused before that
+compare, by the test at the root, and its message names the checkout root git
+reports for it. A linked worktree of the primary is allowed; every ticket
+worktree is one. It does write, and the wording matters: `git fetch`
+creates remote-tracking refs, and `merge-tree --write-tree` writes tree and blob
+objects into the shared `.git` - in a linked worktree, into the primary's
+`--git-common-dir`. No branch, index, working tree or remote is touched.
+`-ReportOnly` reports without failing; `-ExpectMergedTree <sha>` additionally
+fails when the predicted merged tree is not that digest, and no such digest is
+recorded anywhere today, so nothing checks the printed tree by default.
+
+The gate is not a re-test. A full re-test costs about 26 minutes (measured on
+the shared two-core runner before the test jobs moved to the owner's PC; the
+cost on that machine is unmeasured), which is more than this risk has ever cost
+in the measured sample, so it
+is not run on every merge. An exit 1 asks for a rebase onto live master and a
+re-run of the change's own focused tests; it does not ask for a full suite, and
+the post-merge `master` pipeline remains the full-suite gate.
+
 Merge with a merge commit so recorded commit SHAs stay reachable, and do not
 squash a branch whose individual commits are cited as evidence:
 

@@ -30,12 +30,16 @@ always selectable and show their own empty state until a ROM is loaded.
 ## Maps editor: Layout mode
 
 `DRAGONBYTE-Z-MAP-LAYOUT-EDITOR-001`. The Maps editor's **Browse** mode is
-read-only; switching to **Layout** mode enables editing. That mode edits exactly
-one thing, through
-`tools/webfoot/map_layout_edit.py` and the proven writer in
+read-only; switching to **Layout** mode enables editing. Four shipped operations
+live there, over `tools/webfoot/map_layout_edit.py` and the proven writer in
 `tools/webfoot/map_layout_write.py`: one 256x256 chunk cell of a map's dominant
-layer may be reassigned to another chunk **that same layer already uses**. The
-grid overlay marks each chunk cell, the chooser offers that layer's own existing
+layer may be reassigned to another chunk **a dominant layer of the same map
+already uses**; any of the map's dominant layers' chunks can be painted onto those
+chunk cells; a chunk the
+layer did not have can be created and its 32x32 plane painted; and the structure
+section can grow a supported layer's chunk grid or activate an unused layer slot.
+The
+grid overlay marks each chunk cell, the chooser offers the map's dominant-layer
 chunks as thumbnails, and a pick previews immediately in memory - no ROM file is
 opened to preview. Apply commits a pick, Revert cell restores one cell to the
 chunk the source ROM holds, and Reset pending edits drops the session's changes.
@@ -63,7 +67,8 @@ derivative is accepted when - and only when - the manifest names the supported
 canonical image and a configured profile, the file's own SHA-256 matches the
 manifest's declared output, every declared change is a four-byte field of a
 *dominant* chunk window identified by its own `map:NNNN layer S cell C` owner, the
-replacement is a non-null chunk that layer already uses at another of its cells,
+replacement is a non-null chunk a dominant layer of that map uses at another of
+its cells,
 and restoring the declared old values reproduces the canonical image exactly by
 SHA-256. That last check bounds an accepted derivative to the canonical image plus
 exactly its declared fields, and it needs no copy of the canonical file.

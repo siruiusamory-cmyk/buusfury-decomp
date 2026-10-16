@@ -34,7 +34,10 @@ existing chunks can be painted onto 256x256 chunk cells with undo, redo and an
 eyedropper; a chunk the layer did not have can be created and painted with, and
 its 32x32 plane rearranged from graphics that layer already draws. Every one of
 those edits is saved and reopened like any other authored content, and the retail
-engine has drawn the authored result after the area is rebuilt.
+engine has drawn the authored result after the area is rebuilt. A map the image
+does not contain can be authored too: the build re-emits the whole map table above
+the original end of the image with the authored row appended, and a driven session
+watched the retail engine load that row and the player walk in and back out.
 
 **Change map structure.**
 A supported layer's chunk grid can be grown - top-left anchored, so existing cells
@@ -66,6 +69,20 @@ A line longer than the one it replaces is placed in verified writable space and
 the owning table entry is repointed, so the engine resolves and renders the whole
 authored message. Creating entirely new text-table ids is not claimed.
 
+**Author graphics, sprites and appearances.**
+An extracted sprite asset's PNG can be edited in the project and rebuilt, and the
+retail engine renders the authored pixels. A new actor-sprite identity can be
+created from a donor - naming the sheet each animation slot draws from and the
+existing object slot the appended actor starts from - and a new appearance
+definition is written above the original end of the image and resolved by the
+engine, which displayed authored name and description text for a retail actor in
+its own character screen. Shared object palette entries are recoloured through
+the same project and build path. Every bound is stated in the registry: a
+graphics replacement keeps its dimensions, an authored frame copies the donor's
+own shape with no piece, OAM, geometry or timing authoring, one sprite identity
+per image, and the appearance table is re-emitted above the original end of the
+image.
+
 **Build deterministically, safely and reproducibly.**
 `extract` -> `validate` -> `build`: a project validates before it builds, repeated
 builds are byte-identical, and a build writes a new image while refusing to write
@@ -84,18 +101,25 @@ in a configured emulator.
 
 ## Current status
 
-**20 / 24 capabilities (83%).** That is the exact count reported by the
+**24 / 24 capabilities (100%).** That is the exact count reported by the
 repository's capability registry,
 [`src/data/capabilities.json`](src/data/capabilities.json), which is the single
-authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 3 / 7,
-DELIVER 4 / 4.
+authority for what is shipped: READ 5 / 5, EDIT 8 / 8, AUTHOR 7 / 7,
+DELIVER 4 / 4. The fixed capability denominator is complete; that is feature
+completeness, not a v1.0 release.
 
 **Phase 2 - complete map editing - is complete.** Tile painting, chunk creation,
 map resizing and layer authoring, and warp and connection editing have all
-shipped, the last of them runtime-proven in the retail engine. The **next major
-capability is graphics import**, the first step of Phase 3, which is chosen and
-not started. The full route to 1.0 is in the
-[roadmap](docs/ROADMAP_TO_1_0.md).
+shipped, the last of them runtime-proven in the retail engine. Phase 3, graphics
+and actor authoring, shipped **graphics import**, **new sprite, animation and
+frame authoring** and **appearance authoring**. Phase 4, the terminal capability,
+shipped **new map authoring**: the Maps editor authors a map identity the image
+does not contain, the build re-emits the map table above the original end of the
+image with the authored row appended, and a driven session watched the retail
+engine transition into it and back out. Every capability in the fixed
+denominator is shipped. The full route to 1.0 is in the
+[roadmap](docs/ROADMAP_TO_1_0.md); feature complete is not the same as released,
+and the release-candidate phase has not started.
 
 ## What makes this different
 
@@ -139,7 +163,10 @@ beside it.*
 
 The public progress site is
 <https://webfoot-sdk.siruiusamory.workers.dev/> - a shorter, always-current view
-of the same capability list.
+of the same capability list, presented as a Frutiger Aero desktop: each part of
+the status (progress, announcements, the capability index, the roadmap to 1.0
+and the measured proof) opens in its own window, with a taskbar to move between
+them.
 
 ## Getting started
 
@@ -163,16 +190,35 @@ webfoot identify ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 webfoot extract  ".\roms\Dragon Ball Z - Buu's Fury (U).gba" ".\work\my-mod" --no-graphics
 webfoot validate ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba"
 webfoot build    ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --output ".\build\my-mod.gba"
+webfoot patch export ".\work\my-mod" --rom ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --output ".\build\my-mod.bps"
 ```
 
-The desktop editor needs the PySide6 extra
-(`uv pip install -e ".[workbench]"`) and starts from `DragonByte Z.cmd` or with
-`python -m tools.webfoot.workbench`.
+The built image is the playable local result; the `.bps` patch is the distributable
+modification, and it is the one you share. [Release artefacts](docs/release-artefacts.md)
+states what a user receives, what must never be distributed, and how version and
+build identity work.
+
+The desktop editor needs the PySide6 extra, which `scripts\setup.ps1` installs by
+default alongside the test tooling, and starts from `DragonByte Z.cmd` or with
+`python -m tools.webfoot.workbench`. Before it can open any ROM it also needs the
+assembled atlas at `build\atlas\atlas.jsonl`, and it refuses every ROM without it.
+Produce one from a local ROM:
+
+```powershell
+webfoot atlas regenerate ".\roms\Dragon Ball Z - Buu's Fury (U).gba" --out .\build\atlas
+```
 
 Read next: [project format](docs/project-format.md),
 [Workbench](docs/workbench.md), [architecture](docs/architecture.md) and
-[verified project state](docs/PROJECT_STATE.md). The portable suite runs with
-`.\scripts\test.ps1`.
+[verified project state](docs/PROJECT_STATE.md). `.\scripts\test.ps1` runs the
+portable `fast` gate in parallel by default, across four pytest-xdist worker
+processes, and passes any extra arguments through to pytest after that
+selection, so `.\scripts\test.ps1 tests\unit\test_write_invariants_property.py`
+narrows the same run. `.\scripts\test.ps1 -n 0` runs the same gate serially in
+one process. With pytest's verbose output a failure names the worker that hit it,
+as in `[gw2] FAILED tests\unit\test_thing.py::test_case`, and
+`.\scripts\test.ps1 -n 0 tests\unit\test_thing.py::test_case` re-runs that one
+serially. [docs/testing.md](docs/testing.md) has the detail.
 
 ## Contributing and documentation
 
@@ -226,12 +272,13 @@ scripts/             setup, test and packaging entry points
 
 ## Project status / experimental warning
 
-The project is active and not yet 1.0. Supported operations are deliberately
-narrower than the goal: some planned capabilities are unfinished or missing,
-several editor surfaces are read-only for forms that have not been measured, and
-unverified inputs fail closed. Treat built images and project documents as
-experimental, keep your own backups, and expect the project file format to change
-before 1.0.
+The project is active and not yet 1.0. Every capability in the fixed registry is
+shipped, so the feature list is complete, but supported operations are still
+deliberately narrower than the goal: an authored map or appearance inherits the
+donor's unresolved engine fields rather than inventing them, several editor
+surfaces are read-only for forms that have not been measured, and unverified
+inputs fail closed. Treat built images and project documents as experimental,
+keep your own backups, and expect the project file format to change before 1.0.
 
 ## License
 

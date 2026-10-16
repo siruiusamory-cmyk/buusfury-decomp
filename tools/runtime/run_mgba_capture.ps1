@@ -9,7 +9,9 @@ breakpoint and issue the first continue. Generated output stays under build/.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
+    # Optional since RE Lab N1: a boot-time scene has no savestate to start from, and
+    # a launcher that refuses to run without one makes that whole class unreachable.
+    # Everything that reads the state below is guarded by its presence.
     [string]$StatePath,
     [UInt32]$Breakpoint = 0,
     [string[]]$AdditionalBreakpoint = @(),
@@ -19,6 +21,9 @@ param(
     [string]$GeneratedRomSha256,
     [string]$MGBPath = 'build\tools\mgba-0.10.5\extracted\mGBA-0.10.5-win64\mGBA.exe',
     [string]$RequiredMGBVersion = '0.10.5',
+    # Exact digest the resolved mGBA executable must have. Overriding it is a
+    # deliberate act and stays an equality test; there is no accept-anything value.
+    [string]$MGBSha256 = '5A3C98C2984DD04BD0D7C9378CDFAE937AE0D73A196C880BB2EECF3B254AF247',
     [string]$LuaPath,
     [switch]$LuaStartup,
     [int]$DumpRegister = 1,
@@ -46,15 +51,28 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+# The tree the caller is standing in. A probe named relative to it must resolve
+# there, not in the launcher's own tree: RE Lab lost two runs to a probe that was
+# allowlisted in one worktree while the launcher read the allowlist of another, and
+# the log stayed empty with nothing saying why (N1, measured).
+$invokingRoot = (Get-Location).Path
 $buildRoot = Join-Path $root 'build\runtime-captures'
 $expectedRomSize = 8388608
 $expectedRomSha256 = '940AD5F01DB4465B8877DFE739510CBF34F4EA3D390F3DF13519808BC36F059E'
 
-function Resolve-RequiredFile([string]$Path, [string]$Label) {
-    $candidate = if ([System.IO.Path]::IsPathRooted($Path)) {
-        $Path
+function Resolve-RequiredFile([string]$Path, [string]$Label, [string[]]$SearchRoots = @()) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        $candidate = $Path
     } else {
-        Join-Path $root $Path
+        $roots = @($SearchRoots) + @($root)
+        $candidate = $null
+        foreach ($search in $roots) {
+            # An empty entry would make this the launcher's tree, which is the trap.
+            if (-not $search) { continue }
+            $probe = Join-Path $search $Path
+            if (Test-Path -LiteralPath $probe -PathType Leaf) { $candidate = $probe; break }
+        }
+        if (-not $candidate) { $candidate = Join-Path $root $Path }
     }
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
         throw "$Label is missing: $candidate"
@@ -74,13 +92,15 @@ function Test-GdbPortInUse {
 }
 
 $resolvedRom = Resolve-RequiredFile $RomPath 'ROM'
-$resolvedState = Resolve-RequiredFile $StatePath 'savestate'
+$resolvedState = if ($StatePath) { Resolve-RequiredFile $StatePath 'savestate' } else { $null }
 $resolvedMGB = Resolve-RequiredFile $MGBPath 'mGBA executable'
 
 # Fail closed on emulator identity. The stable 0.10.5 install at
 # C:\Program Files\mGBA was once overwritten in place by a 0.11 development
 # build, so every capture silently ran an emulator the research tickets do not
-# accept. Version is therefore verified, not assumed from the path.
+# accept. Identity is the executable's bytes: a wrong binary can report any
+# version string, so the version is kept only as the better error message and
+# the digest below is the gate.
 if ($RequiredMGBVersion) {
     $mgbVersion = (Get-Item -LiteralPath $resolvedMGB).VersionInfo.FileVersion
     if (-not $mgbVersion) {
@@ -92,8 +112,13 @@ if ($RequiredMGBVersion) {
             'deliberately.')
     }
 }
+$mgbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedMGB).Hash
+if ($mgbHash -ne $MGBSha256.Trim().ToUpperInvariant()) {
+    throw ("mGBA identity mismatch: required executable SHA-256 $MGBSha256, " +
+        "found $mgbHash at $resolvedMGB. Pass -MGBSha256 to override deliberately.")
+}
 
-$resolvedLua = if ($LuaPath) { Resolve-RequiredFile $LuaPath 'Lua script' } else { $null }
+$resolvedLua = if ($LuaPath) { Resolve-RequiredFile $LuaPath 'Lua script' @($invokingRoot) } else { $null }
 if ($LuaStartup -and -not $resolvedLua) { throw 'LuaStartup requires LuaPath' }
 $python = Resolve-RequiredFile (Join-Path $root '.venv\Scripts\python.exe') 'project Python'
 if ($StackLength % 4 -ne 0) { throw 'StackLength must be a 4-byte multiple' }
@@ -151,20 +176,88 @@ if ($GeneratedRomSha256) {
 } elseif ($romInfo.Length -ne $expectedRomSize -or $romHashBefore -ne $expectedRomSha256) {
     throw 'Canonical ROM identity mismatch; capture refused before launch'
 }
-$stateInfo = Get-Item -LiteralPath $resolvedState
-$stateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
+$stateInfo = if ($resolvedState) { Get-Item -LiteralPath $resolvedState } else { $null }
+$stateHash = if ($resolvedState) { (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash } else { $null }
+
+# The owner's dashboard input bridge, outside this repository and named only by an environment variable,
+# so no machine path is tracked here. OWNER AUTHORISATION (2026-10-11): every run that can load it does,
+# and records its path and SHA-256 in this run's inputs, which is what makes the exception in
+# docs/skills/mgba-runtime.md section 6 reviewable. A build without --script - the default here, since
+# this launcher is digest-pinned to 0.10.5 - SKIPS it with a printed note instead of refusing the launch.
+# A variable set to "" does NOT survive to the child on Windows PowerShell 5.1, so the switch that turns
+# the bridge off is a real sentinel: the literal value `none`, or LOG1_MGBA_NO_EXTRA_SCRIPT=1.
+$extraScript = $env:LOG1_MGBA_EXTRA_SCRIPT
+$extraScriptDisabled = ($env:LOG1_MGBA_NO_EXTRA_SCRIPT -eq '1') -or ($extraScript -ieq 'none')
+if ($extraScriptDisabled) {
+    $extraScript = $null
+}
+elseif ($null -eq $extraScript) {
+    $extraScript = [Environment]::GetEnvironmentVariable('LOG1_MGBA_EXTRA_SCRIPT', 'User')
+    if (-not $extraScript) { $extraScript = $null }
+}
+$extraScriptPath = $null
+$extraScriptSha = $null
+$extraScriptLoaded = $false
+$extraScriptNote = if ($extraScriptDisabled) {
+    'disabled by request: LOG1_MGBA_NO_EXTRA_SCRIPT=1 or the value none'
+} else {
+    'LOG1_MGBA_EXTRA_SCRIPT is not set for this run'
+}
+if ($extraScript -and -not (Test-Path -LiteralPath $extraScript)) {
+    $extraScriptNote = "LOG1_MGBA_EXTRA_SCRIPT names a file that does not exist: $extraScript"
+    Write-Output "extra script SKIPPED: $extraScriptNote"
+}
+elseif ($extraScript) {
+    $extraHelpText = if ($LuaStartup) { '--script' } else { (& $resolvedMGB --help 2>&1 | Out-String) }
+    if ($extraHelpText -notmatch '--script') {
+        $extraScriptNote = 'this mGBA build has no --script flag, so the bridge was not loaded'
+        Write-Output "extra script SKIPPED: $extraScriptNote"
+    }
+    else {
+        $extraScriptPath = (Resolve-Path -LiteralPath $extraScript).Path
+        $extraScriptSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $extraScriptPath).Hash
+        $extraScriptLoaded = $true
+        $extraScriptNote = 'loaded as a second --script; it presses only keys the dashboard holds'
+        Write-Output "extra script: $extraScriptPath"
+        Write-Output "  sha256    : $extraScriptSha"
+    }
+}
+
 $identity = [ordered]@{
     rom_path = $resolvedRom
     rom_size = $romInfo.Length
     rom_sha256 = $romHashBefore
     rom_mode = $romMode
     state_path = $resolvedState
-    state_size = $stateInfo.Length
+    state_size = if ($stateInfo) { $stateInfo.Length } else { $null }
     state_sha256 = $stateHash
     breakpoint = ('0x{0:X8}' -f $Breakpoint)
     additional_breakpoints = @($parsedAdditionalBreakpoints | ForEach-Object { '0x{0:X8}' -f $_ })
     lua_path = $resolvedLua
     lua_mode = if ($LuaStartup) { 'startup' } elseif ($resolvedLua) { 'ui-injection' } else { $null }
+    extra_script_path = $extraScriptPath
+    extra_script_sha256 = $extraScriptSha
+    extra_script_loaded = $extraScriptLoaded
+    extra_script_note = $extraScriptNote
+}
+
+# Every resolved path, in one block, before anything is launched: an empty log is
+# then never ambiguous about WHICH tree the probe and the allowlist came from, which
+# is how a run whose probe was allowlisted in another worktree read as silence.
+Write-Output 'resolved inputs:'
+Write-Output "  invoking worktree  : $invokingRoot"
+Write-Output "  launcher worktree  : $root"
+Write-Output "  rom                : $resolvedRom ($romMode)"
+Write-Output "  mGBA               : $resolvedMGB"
+Write-Output "  python             : $python"
+if ($resolvedState) {
+    Write-Output "  savestate          : $resolvedState"
+} else {
+    Write-Output '  savestate          : (none: launching without a state load)'
+}
+if ($resolvedLua) {
+    Write-Output "  lua observer       : $resolvedLua"
+    Write-Output "  allowlist read from: $root (tools\runtime)"
 }
 
 if ($DryRun) {
@@ -174,6 +267,14 @@ if ($DryRun) {
 if (Test-GdbPortInUse) {
     throw 'TCP port 2345 is already in use; refusing to interfere with another GDB owner'
 }
+# RE Lab M4: a leftover mGBA gives no clear error, the run simply produces nothing.
+# The same check start_toolkit031_session.ps1 already makes, said before any launch.
+$running = @(Get-Process -Name 'mGBA' -ErrorAction SilentlyContinue)
+if ($running.Count -gt 0) {
+    throw ("An mGBA process is already running (pid {0}); refusing to race it. " +
+        'Stop it first, or use the toolkit031 session scripts if that window is yours.' -f
+        ($running.Id -join ', '))
+}
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $runId = "$stamp-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
@@ -182,13 +283,21 @@ $saveDir = Join-Path $runDir 'save'
 $captureDir = Join-Path $runDir 'capture'
 $stopFile = Join-Path $runDir 'STOP-NOW.txt'
 New-Item -ItemType Directory -Path $saveDir -Force | Out-Null
-$workingState = Join-Path $runDir ('working-state' + $stateInfo.Extension)
-Copy-Item -LiteralPath $resolvedState -Destination $workingState
-if ((Get-FileHash -Algorithm SHA256 -LiteralPath $workingState).Hash -ne $stateHash) {
-    throw 'Working savestate copy identity mismatch'
+# The state copy and its verification are skipped, not faked, when no state was
+# named: there is nothing to copy, and the identity records that there was none.
+# It stays here, before the mGBA process check and before Start-Process, because
+# the launcher's own guard test pins that order.
+$workingState = $null
+if ($resolvedState) {
+    $workingState = Join-Path $runDir ('working-state' + $stateInfo.Extension)
+    Copy-Item -LiteralPath $resolvedState -Destination $workingState
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $workingState).Hash -ne $stateHash) {
+        throw 'Working savestate copy identity mismatch'
+    }
+    $identity['working_state_path'] = $workingState
 }
+
 $identity['run_id'] = $runId
-$identity['working_state_path'] = $workingState
 $identity | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDir 'inputs.json')
 
 $process = $null
@@ -220,13 +329,22 @@ try {
             ('local f=assert(io.open([[' + $readyPathForScript + ']], [[w]])); f:write([[ready]]); f:close()')
         Set-Content -LiteralPath $startupLua -Value $bootstrap -Encoding ascii
     }
-    $mgbaArgs = @(
-        '--gdb',
-        '--savestate', ('"' + $workingState + '"'),
+    # The savestate argument is present exactly when a state was named; the literal
+    # is written the way the launcher's own guard test pins it.
+    $mgbaArgs = @('--gdb')
+    if ($resolvedState) {
+        $mgbaArgs += @('--savestate', ('"' + $workingState + '"'))
+    } else {
+        Write-Output 'launching without a savestate: no -StatePath was given'
+    }
+    $mgbaArgs += @(
         '-C', ('savegamePath="' + $saveDir + '"'),
         '-C', 'mute=0'
     )
     if ($startupLua) { $mgbaArgs += @('--script', ('"' + $startupLua + '"')) }
+    # The bridge resolved above, recorded in this run's inputs, and appended only when this build has the
+    # flag. Skipped runs say so on the console and in extra_script_note.
+    if ($extraScriptLoaded) { $mgbaArgs += @('--script', ('"' + $extraScriptPath + '"')) }
     $mgbaArgs += ('"' + $resolvedRom + '"')
     $process = Start-Process -FilePath $resolvedMGB -ArgumentList $mgbaArgs -PassThru
 
@@ -335,8 +453,8 @@ try {
     if ($romHashAfter -ne $romHashBefore) {
         throw 'Original ROM identity changed during capture'
     }
-    $stateHashAfter = (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash
-    if ($stateHashAfter -ne $stateHash) {
+    $stateHashAfter = if ($resolvedState) { (Get-FileHash -Algorithm SHA256 -LiteralPath $resolvedState).Hash } else { $null }
+    if ($resolvedState -and $stateHashAfter -ne $stateHash) {
         throw 'Original savestate identity changed during capture'
     }
 }

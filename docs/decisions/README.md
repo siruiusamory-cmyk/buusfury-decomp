@@ -38,3 +38,5 @@ document it belongs to and link it from the ADR's evidence.
 | [0004](0004-proof-levels.md) | Structural, renderer, runtime and product proof are four different claims and are never collapsed into "proven". |
 | [0005](0005-naming-precedence.md) | A display name comes from a fixed precedence of sources; it is never inferred from appearance, and canonical ids stay technical metadata. |
 | [0006](0006-public-product-screenshots.md) | Human-approved real screenshots of DragonByte Z may be published; that is not permission to publish commercial asset content. |
+| [0007](0007-one-rom-destination-guard.md) | Destination-write protection is one guard; the second module verifies the storage migration and guards no write path. |
+| [0008](0008-interrupted-work-resumes-from-a-committed-checkpoint.md) | Interrupted work resumes from a committed green tree and the written task record, never from conversation; a resumption re-measures what it inherits before it continues. |

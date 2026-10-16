@@ -152,7 +152,7 @@ def staged_state(browser: mbt.MapBrowserTab) -> tuple:
         browser.unsaved_edit_count(),
         browser._selected_cell,
         browser._draft,
-        tuple(browser._saved),
+        tuple(browser._layout.written),
         browser._brush_ordinal,
         tuple((edit.map_index, edit.layer_slot, edit.cell) for edit in browser._editor.edits())
         if browser._editor is not None
@@ -398,7 +398,7 @@ def test_opening_another_image_asks_before_discarding_staged_edits(
 
     shell.window._open_rom()
 
-    assert asked and "unsaved layout edit" in asked[0]
+    assert asked and "unsaved edit" in asked[0]
     assert opened == [], "cancelling the prompt does not open anything"
     assert browser.unsaved_edit_count() == 1
     assert browser._edit_mode

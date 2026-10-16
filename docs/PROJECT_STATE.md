@@ -1124,9 +1124,9 @@ production map-ID branches and match the retained VRAM oracle exactly after the
 proven circular transform and pinned runtime-state normalization.
 
 Map viewability and editability on canonical Buu's Fury USA rev0: **452 maps
-viewable, 341 editable, 111 read-only** (110 dominant grids that use a single
-chunk and so have nothing to substitute; 1 map, `map:0008`, with no dominant
-layer); 1,516 dominant slots of which 1,093 offer at least two chunks; 4,274
+viewable, 440 editable, 12 read-only** (11 dominant grids whose four layers hold
+a single chunk between them and so have nothing to substitute; 1 map, `map:0008`,
+with no dominant layer); 1,516 dominant slots of which 1,093 offer at least two chunks; 4,274
 dominant cells of which 156 are null. A semantic Maps workspace spans all 452
 known maps as 3 Editable, 265 Partial and 184 Read-only, composes retail and
 project-authored placements, exposes known placement to entity to behavior/script
@@ -1135,7 +1135,8 @@ project-level Revert. Builds use the normal `validate_project` / `build_project`
 path with shared build-scoped reservations and one merged plan.
 
 The Map Browser's Layout mode reassigns one 256x256 chunk cell of a compatible
-map's dominant layer to another existing non-null chunk from the same layer,
+map's dominant layer to another existing non-null chunk a dominant layer of the
+same map uses,
 previews the swap in memory, and saves pending edits to a new ROM. The Grand Kai
 proof case (`map:0040` BG1 cell 0, `0x082928DC` to `0x08292A54` at file
 `0x00292CA0`) changes exactly two bytes and re-renders with **29,208** changed
@@ -1147,7 +1148,8 @@ image, and the Atlas open accepts a modified image only when that provenance
 proves it is the canonical image plus declared, policy-legal layout edits
 (canonical base SHA-256 and the profile of that image, a matching emitted digest
 and byte count, four-byte dominant-layer fields named by their own
-`map:NNNN layer S cell C` owner whose replacement the layer already uses
+`map:NNNN layer S cell C` owner whose replacement a dominant layer of that map
+uses
 elsewhere, and a reconstruction of the declared old values that hashes back to the
 canonical image). Arbitrary modified images, provenance mismatches and manifests
 claiming unsupported edits are refused with the reason stated; the canonical image
@@ -1182,15 +1184,16 @@ growth emitting one record, one root-slot write and one reservation. Special
 handlers, the terrain-field form, unused slots and zero-dimension records are
 refused, and a shared root is refused.
 
-Tile painting ships: in the Map Browser's Layout mode, pick a chunk the current
-dominant layer already uses and click or drag it onto a 256x256 chunk cell.
+Tile painting ships: in the Map Browser's Layout mode, pick a chunk a dominant
+layer of the map already uses and click or drag it onto a 256x256 chunk cell.
 Single-cell paint, drag paint, eyedropper, undo, redo, no-op handling, Apply and
 Revert, save and reopen, and build are all delivered on one undo history where a
 stroke is one gesture. The editable unit is one four-byte chunk-cell reference
 (`record + 0x18`) to an existing 256x256 chunk, a 32x32 plane of 16-bit screen
 entries; it is not an individual 8x8 hardware tile, and no surface pretends
-otherwise. A cell may only receive a chunk the same layer already uses at another
-of its cells, so a single-chunk layer is read-only. The replacement is a fixed
+otherwise. A cell may only receive a chunk that already occurs in a dominant
+layer of the same map, so a layer whose grid
+holds a single chunk is paintable from its siblings'. The replacement is a fixed
 four-byte in-place write, so a build changes only the painted cells, measured at
 exactly two bytes over the whole 8 MiB image; no allocation or relocation is
 required for it. The retail engine displays the authored cell, proven by a matched
@@ -1758,10 +1761,13 @@ expanded write**, and a larger file authorizes nothing on its own.
   and chunk windows. The claim is scoped to the map/layer reference domains
   actually demonstrated.
 
-**Debt retained:** a 16 MiB derivative is not reopened by the shared derivative
-verifier, which reconstructs and hashes the canonical image from the whole file.
-This is pre-existing and shared with compressed dialogue since ROM-EXPAND-001;
-project reopen passes.
+**Debt closed:** a 16 MiB derivative was not reopened by the shared derivative
+verifier, which reconstructed and hashed the canonical image from the whole file;
+this was pre-existing and shared with compressed dialogue since ROM-EXPAND-001.
+`DERIVATIVE-16M-REOPEN-001` fixed it: the verifier now checks only the canonical
+span stated by the profile identity, so a valid expanded derivative reopens.
+`tests/unit/test_authored_image.py:500` and
+`tests/unit/test_map_layout_provenance.py:172` assert it.
 
 **The runtime rebuild rule.** A savestate restores emulated RAM and VRAM,
 including the already-assembled background, so the engine never re-reads the map
@@ -2155,14 +2161,24 @@ terrain-field window, so the editor refuses it by name.
 
 ## Capability registry
 
-DragonByte Z reads **20 / 24 (83%)**: READ 5/5, EDIT 8/8, AUTHOR 3/7, DELIVER 4/4.
-The four unshipped capabilities are graphics import, new sprites, appearance
-authoring and new maps. Phase 2 (map editing) is complete: tile painting, chunk
-creation, map resizing with layer authoring and warp/connection editing all ship.
-The next capability is graphics import, and the roadmap phase state is `next`,
-deliberately distinct from `in-progress`, so the page says the next phase is chosen
-and not started. The exact per-capability limits and proof levels live in
-[`capability-registry.md`](capability-registry.md).
+DragonByte Z reads **24 / 24 (100%)**: READ 5/5, EDIT 8/8, AUTHOR 7/7, DELIVER 4/4.
+No capability in the fixed denominator is missing. Phase 2 (map editing) is
+complete: tile painting, chunk creation, map resizing with layer authoring and
+warp/connection editing all ship. Phase 3 shipped graphics import on 2026-10-03,
+new sprite, animation and frame authoring on 2026-10-07, and appearance authoring
+after it. Phase 4, the terminal capability, shipped new map authoring: a project
+authors a map identity the image does not contain, the build re-emits the whole
+map table above the original end of the image with the authored row appended,
+repoints the one literal-pool word the engine's key lookup loads and raises the
+one compiled row bound, and a driven session watched the retail engine load the
+authored row and the player walk in and back out. The exact per-capability limits
+and proof levels live
+in [`capability-registry.md`](capability-registry.md). The 2026-10-07
+reconciliation of this paragraph against the registry is recorded in
+[`research/PROJECT_STATE_AUDIT_RECONCILIATION.md`](research/PROJECT_STATE_AUDIT_RECONCILIATION.md);
+its section A scoreboard reads 21 / 24 for the baseline it measured, which is that
+record's history rather than the current count. The current debt position is in
+[`research/RC_DEBT_LEDGER.md`](research/RC_DEBT_LEDGER.md).
 
 ## Research posture
 
@@ -2191,17 +2207,19 @@ solved.
    `packed_end` by 4 bytes on 2,728 containers; the behaviour is documented, not
    changed.
 4. The pre-existing `declared_size == 0` acceptance remains.
-5. A 16 MiB derivative is not reopened by the shared derivative verifier, which
-   reconstructs and hashes the canonical image from the whole file. This is
-   pre-existing, shared with compressed dialogue since ROM-EXPAND-001; project
-   reopen passes.
-6. The live screenblock is not the chunk plane verbatim, so the engine's
+5. The live screenblock is not the chunk plane verbatim, so the engine's
    map-upload transformation (ROM to charblock/screenblock) remains unknown.
-7. The atlas seed overlay work is open, and the production allocator does not use
+6. The atlas seed overlay work is open, and the production allocator does not use
    the atlas seed as its free-space authority.
-8. `tools/webfoot/atlas_producers/scan.py::_compression_rows` is a stride-4
+7. `tools/webfoot/atlas_producers/scan.py::_compression_rows` is a stride-4
    heuristic sweep whose own docstring calls its output noise (24,285 hits /
    68.7 MiB); it is outside the SDK's canonical path.
+
+The former defect 5, that a 16 MiB derivative was not reopened by the shared
+derivative verifier, is **fixed**: `DERIVATIVE-16M-REOPEN-001` made the verifier
+check only the canonical span stated by the profile identity, so a valid
+expanded derivative reopens. `tests/unit/test_authored_image.py:500` and
+`tests/unit/test_map_layout_provenance.py:172` assert it.
 
 ## Open questions
 

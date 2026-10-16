@@ -147,6 +147,12 @@ function Start-MgbaSession {
 
     if (Test-Path -LiteralPath $ReadyPath) { Remove-Item -LiteralPath $ReadyPath -Force }
     if (Test-Path -LiteralPath $MarkerPath) { Remove-Item -LiteralPath $MarkerPath -Force }
+    # A reused run directory must not report the previous run's load result, so both records go
+    # with the ready and marker files.
+    foreach ($staleRecord in 'state-load.txt', 'state-load-failure.txt') {
+        $stalePath = Join-Path $RunDir $staleRecord
+        if (Test-Path -LiteralPath $stalePath) { Remove-Item -LiteralPath $stalePath -Force }
+    }
 
     # The savestate is loaded by the bootstrap, NOT by mGBA's `-t`. Measured: with
     # `-t` the state is already in memory when `--script` runs, so an observer
@@ -170,7 +176,16 @@ function Start-MgbaSession {
             )
             & powershell @extraCheckArgs | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'PostCommand dofile target is not allowlisted' }
-        } elseif ($PostCommand -notmatch '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+        } elseif ($PostCommand -match '^emu:loadStateFile\(\[\[(?<state>[^\]]+)\]\]\)$') {
+            # This shape IS a state request, so it takes the same capture, record and abort as
+            # -StatePath instead of being composed raw. Two state requests are a configuration
+            # error, not a preference: the run would load twice and record one result.
+            if ($StatePath) {
+                throw 'a savestate was requested twice: -StatePath and a state-load PostCommand'
+            }
+            $StatePath = [System.IO.Path]::GetFullPath($Matches['state'])
+            $PostCommand = $null
+        } else {
             throw ('PostCommand must be one of exactly two shapes: ' +
                    'dofile([[<allowlisted lua>]]) or emu:loadStateFile([[<path>]])')
         }
@@ -181,8 +196,19 @@ function Start-MgbaSession {
     )
     if ($PostCommand) { $bootstrapLines += $PostCommand }
     if ($StatePath) {
-        $bootstrapLines += ('assert(pcall(emu.loadStateFile, emu, [[{0}]]), [[savestate load failed]])' -f `
-            ([System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'))
+        # A failed load RETURNS false; it does not throw. `pcall` therefore only saw a throw, so the
+        # old assert let an ordinary failure pass silently and the run continued with no state at
+        # all. Both results are captured, the pair is recorded in the run directory, and a load that
+        # is not true raises here, before the ready marker is written.
+        $stateLuaPath = [System.IO.Path]::GetFullPath($StatePath) -replace '\\', '/'
+        $stateLoadRecord = (Join-Path $RunDir 'state-load.txt') -replace '\\', '/'
+        $bootstrapLines += @(
+            ('local state_ok, state_err = emu.loadStateFile(emu, [[{0}]])' -f $stateLuaPath),
+            ('local state_log = assert(io.open([[{0}]], [[w]]))' -f $stateLoadRecord),
+            ('state_log:write([[ok ]], state_ok and [[true]] or [[false]], "\n", [[err ]], tostring(state_err), "\n", [[path ]], [[{0}]], "\n")' -f $stateLuaPath),
+            'state_log:close()',
+            'if not state_ok then error([[savestate load failed: ]] .. tostring(state_err), 0) end'
+        )
     }
     $bootstrapLines += @(
         # Mark the moment the state is in memory, so an observer's silence can be attributed to the scene
@@ -275,7 +301,17 @@ function Start-MgbaSession {
         $previousForeground = [DbzSessionWindow]::GetForegroundWindow()
     }
 
-    $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
+    # An observer cannot hash a file, so the image's identity reaches the child in the
+    # environment. It is the same digest the gate above has just proved the ROM against.
+    $env:LOG1_MGBA_ROM_SHA256 = $expectedHash
+
+    try {
+        $process = Start-Process -FilePath $MGBPath -ArgumentList $argumentText -PassThru
+    } finally {
+        # The export is process-wide: the child has its copy, so a value left here would be read
+        # by any later mGBA start from this shell, including one that never passed the gate.
+        Remove-Item -LiteralPath Env:\LOG1_MGBA_ROM_SHA256 -ErrorAction SilentlyContinue
+    }
 
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
@@ -299,6 +335,15 @@ function Start-MgbaSession {
     }
     if (-not (Test-Path -LiteralPath $ReadyPath)) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        # A state was asked for and the marker never appeared: the bootstrap recorded the load's own
+        # result before it aborted, so the operator gets that reason instead of the generic timeout,
+        # and the run directory keeps it beside the identity files.
+        $stateLoadRecord = Join-Path $RunDir 'state-load.txt'
+        if ($StatePath -and (Test-Path -LiteralPath $stateLoadRecord)) {
+            $reason = (Get-Content -LiteralPath $stateLoadRecord -Raw).Trim()
+            Set-Content -LiteralPath (Join-Path $RunDir 'state-load-failure.txt') -Value $reason -Encoding ascii
+            throw "savestate load failed: $reason"
+        }
         throw 'Lua script did not report ready'
     }
     return $process

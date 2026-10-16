@@ -30,7 +30,12 @@ dev = [
     "hypothesis==6.143.0",
 ]
 workbench = [
-    "PySide6",
+    # Pinned to the last release measured to run the whole portable suite: with
+    # 6.12.0 the `test-sdk` job dies in a native abort (measured 8 of 8 xdist runs
+    # of the two text-tool modules, `Fatal Python error: Aborted`, no Python
+    # frame; 6.11.2 and 6.9.3 are 0 of 8 on the same command). Unpinned, every
+    # pipeline installs whatever released last.
+    "PySide6==6.11.2",
 ]
 research = [
     # The Thumb decoder the disassembly helpers and the UI/HUD graphics probe

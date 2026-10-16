@@ -44,6 +44,21 @@ function Get-CiVenvDirectory {
     return (Join-Path $base "venv-$Name")
 }
 
+#: A directory removal that tolerates a transient Windows handle. Three attempts,
+#: because the measured failure is a file another process still holds open.
+function Remove-CiVenvDirectory {
+    param([Parameter(Mandatory)][string]$Path)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds 2
+        }
+    }
+}
+
 #: Build this job's venv FRESH, then install the project into it.
 #:
 #: Fresh every run, and not `--system-site-packages`: the job is a gate on the
@@ -60,7 +75,20 @@ function New-CiVenv {
         [Parameter(Mandatory)][string]$Extras
     )
     $venv = Get-CiVenvDirectory -Name $Name
-    if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
+    if (Test-Path -LiteralPath $venv) {
+        try {
+            Remove-CiVenvDirectory -Path $venv
+        } catch {
+            # Measured on master: a later job's cleanup can hit a handle a previous
+            # run still holds (Remove-Item refused on capstone.dll under
+            # venv-test-sdk), and failing the job there blocks the whole pipeline
+            # before a single test runs. A fresh path costs one 700 MB install and
+            # keeps the job independent of the previous run's handles; the
+            # lingering directory is removed by a later fresh run.
+            $venv = "$venv-$PID"
+            Write-Host "ci: $Name venv is locked; building a fresh one at $venv"
+        }
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $venv) | Out-Null
     Write-Host "ci: building $venv"
     # `| Out-Host` rather than a bare call: a function returns everything it
@@ -91,6 +119,17 @@ function Use-CiVenv {
     param([Parameter(Mandatory)][string]$Name)
     $venv = Get-CiVenvDirectory -Name $Name
     $python = Join-Path $venv 'Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        # `New-CiVenv` moves to a fresh path when the venv it was handed is locked.
+        # Resolve that path rather than failing the consumer on the original name.
+        $fallback = Get-ChildItem -LiteralPath (Split-Path -Parent $venv) -Directory -Filter "$(Split-Path -Leaf $venv)-*" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+        if ($fallback) {
+            $venv = $fallback.FullName
+            $python = Join-Path $venv 'Scripts\python.exe'
+        }
+    }
     if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
         throw "ci: no venv at $venv; run ci\test_sdk.ps1 first (the job that builds it), or the CI job that owns it"
     }

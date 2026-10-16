@@ -23,6 +23,7 @@ dev = [
     # by per-module decode setup, so processes buy wall clock at an identical
     # test count.
     "pytest-xdist==3.8.0",
+    "pytest-timeout==2.4.0",
     "setuptools==84.0.0",
     # Property tests for the pure binary invariants of the write path. Pure
     # Python, no build step, imported only by the modules that use it.
@@ -61,7 +62,7 @@ include = ["tools*"]
 "tools.webfoot.data" = ["roms.yaml"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --timeout=120 --timeout-method=thread"
 testpaths = ["tests"]
 # Focused validation gates, assigned to every test from tests/gates.py and
 # documented in docs/testing.md. `-m fast` is the portable gate; `-m rom` is

@@ -18,6 +18,7 @@ profiles:
         animation_pointer_offset: 0x54
         object_palette_address: 0x0805652c
         bg_palette_address: 0x080701b0
+        portrait_table_address: 0x086f393c
         evidence: >-
           TOOLKIT-010 GRAPHICS_FORMAT.md, verified against the canonical image.
           All 297 table entries are ROM pointers, strictly ascending, and the
@@ -82,6 +83,17 @@ profiles:
           list. Relocation is per ENTRY, not per pool: this flag authorises the
           table, and webfoot.text still proves each body's ownership before
           publishing its anchor as movable.
+        table_literal: 0x080123CC
+        live_selectors: 7
+        grown_selector: 7
+        event_pool: [0x0877C5A4, 0x0879B704]
+        event_resource_handler: 0x0800424F
+        event_table: 0x0879B704
+        event_count: 522
+        map_name_slot_offset: 0x0800000C
+        map_array_offset: 0x08000014
+        map_count_offset: 0x08000004
+        map_descriptor_offset: 0x08000014
       scripts:
       - encoding: stack_be16_buu_v1
         family: static40
@@ -135,6 +147,50 @@ profiles:
           which is what gives the Buu branch contract canonical-byte evidence.
           Relocatable is false because no verified free region is declared for
           this profile.
+    appearances_offsets:
+      table_reference_offsets: [0x00025310, 0x000256b8, 0x0002618c, 0x00027474, 0x000279d8]
+      count_offsets: [0x00024f92, 0x00027998, 0x000279cc]
+    code_anchors:
+      - name: factory_raw
+        address: 0x0800fd55
+        kind: thumb
+        evidence: declared
+      - name: script_dispatch_handler
+        address: 0x0800421f
+        kind: thumb
+        evidence: declared
+      - name: handler_0800421d
+        address: 0x0800421d
+        kind: thumb
+        evidence: declared
+      - name: handler_0800424f
+        address: 0x0800424f
+        kind: thumb
+        evidence: declared
+      - name: sibling_factory_08017da3
+        address: 0x08017da3
+        kind: thumb
+        evidence: declared
+      - name: sibling_factory_080111a9
+        address: 0x080111a9
+        kind: thumb
+        evidence: declared
+      - name: dominant_layer_handler
+        address: 0x08008087
+        kind: thumb
+        evidence: declared
+      - name: absent_layer_handler
+        address: 0x08007a41
+        kind: thumb
+        evidence: declared
+      - name: terrain_field_layer_handler
+        address: 0x080088bd
+        kind: thumb
+        evidence: declared
+      - name: entry_class_0800a7a1
+        address: 0x0800a7a1
+        kind: thumb
+        evidence: declared
     free_regions:
       - file_offset: 0x007ea400
         size: 256

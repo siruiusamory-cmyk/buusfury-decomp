@@ -161,7 +161,6 @@ BG_PALETTE_ENTRIES = _mg.BG_PALETTE_ENTRIES
 BG_PALETTE_BYTES = _mg.BG_PALETTE_BYTES
 
 #: Sprite-definition pointer run: 297 entries, logical ids 10..306.
-SPRITE_DEFINITION_RUN = 0x086B6BDC
 SPRITE_DEFINITION_COUNT = 297
 SPRITE_ID_FLOOR = 10
 SPRITE_DEFINITION_COUNT_OFFSET = 0x00
@@ -225,7 +224,6 @@ OBJECT_PALETTE_BYTES = OBJECT_PALETTE_ENTRIES * 2
 
 #: Appearance-definition table: 232 fixed records, stride 0x10. Each record
 #: carries two text-table relationships and a sprite-definition selection.
-APPEARANCE_TABLE_ADDRESS = 0x0874D380
 APPEARANCE_COUNT = 232
 APPEARANCE_STRIDE = 0x10
 APPEARANCE_NAME_TEXT_OFFSET = 0x00   # u16 text index
@@ -261,8 +259,9 @@ class AppearanceRecord:
 def read_appearances(rom: Rom) -> tuple[AppearanceRecord, ...]:
     """Read all 232 appearance definitions at the accepted offsets."""
     records: list[AppearanceRecord] = []
+    base = rom.appearance_table_address()
     for index in range(APPEARANCE_COUNT):
-        address = APPEARANCE_TABLE_ADDRESS + index * APPEARANCE_STRIDE
+        address = base + index * APPEARANCE_STRIDE
         rom.span(address, APPEARANCE_STRIDE)
         name_index = rom.u16(address + APPEARANCE_NAME_TEXT_OFFSET)
         description_index = rom.u16(address + APPEARANCE_DESCRIPTION_TEXT_OFFSET)
@@ -479,6 +478,23 @@ class Rom:
                 f"profile {self.profile.id!r} declares no actor_sprites palette"
             )
         return sprites.bg_palette_address.raw
+
+    def sprite_definition_run_address(self) -> int:
+        sprites = self.profile.actor_sprites
+        if sprites is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no "
+                f"actor_sprites.character_table_address"
+            )
+        return sprites.character_table_address.raw
+
+    def appearance_table_address(self) -> int:
+        table = self.profile.appearances
+        if table is None:
+            raise CanonicalError(
+                f"profile {self.profile.id!r} declares no appearances.address"
+            )
+        return table.address.raw
 
     def offset(self, address: int) -> int:
         return to_file_offset(address, self.size)
@@ -726,8 +742,9 @@ def read_sprite_definitions(rom: Rom) -> tuple[SpriteDefinition, ...]:
     form is replaced by `[+0x54, +0x54 + 4 * count)` and nothing else.
     """
     definitions: list[SpriteDefinition] = []
+    base = rom.sprite_definition_run_address()
     for run_index in range(SPRITE_DEFINITION_COUNT):
-        address = rom.u32(SPRITE_DEFINITION_RUN + run_index * 4)
+        address = rom.u32(base + run_index * 4)
         count = rom.u8(address + SPRITE_DEFINITION_COUNT_OFFSET)
         high = rom.u8(address + SPRITE_DEFINITION_COUNT_OFFSET + 1)
         if high != 0:

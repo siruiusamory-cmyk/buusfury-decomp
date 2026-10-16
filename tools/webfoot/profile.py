@@ -34,11 +34,36 @@ _ALLOWED_KEYS = {
     "tables",
     "free_regions",
     "generated_expansion",
+    "code_anchors",
+    "appearances_offsets",
 }
 _ALLOWED_TABLES = {"map_entries", "enemy_stats", "character_base_stats", "text_strings", "scripts", "placement_types", "actor_sprites", "appearances"}
+_ALLOWED_CODE_ANCHOR_KEYS = {"name", "address", "kind", "evidence", "role"}
+
+#: The two ARMv4T states an anchored address can be entered in. Closed: a third
+#: name would claim a decoder this tree does not have.
+_SUPPORTED_CODE_ANCHOR_KINDS = {"arm", "thumb"}
+
+#: The five evidence classes `PINNED-MAP-DESIGN.md` section 2 defines, each
+#: with a producer that exists. Closed, so an anchor cannot carry a class as
+#: free text and a reader cannot meet a sixth name at the point of use.
+_SUPPORTED_CODE_ANCHOR_EVIDENCE = {
+    "byte-proven",
+    "ghidra",
+    "runtime-proven",
+    "declared",
+    "inferred",
+}
+
+#: The Game Pak window is 32 MiB above the base address. It is the widest ROM a
+#: profile can describe, so an anchor above it is not a ROM address for any
+#: image, and it is the only upper bound checkable before an image is in hand.
+#: Spelled as a shift so the declaration adds no address literal to the tree.
+_GBA_ROM_WINDOW_BYTES = 2 ** 25
 _ALLOWED_MAP_ENTRY_TABLE_KEYS = {"address", "count", "record_size"}
 _ALLOWED_RECORD_TABLE_KEYS = {"address", "count", "record_size"}
-_ALLOWED_TEXT_TABLE_KEYS = {
+#: The eight fields every text-table declaration carries.
+_REQUIRED_TEXT_TABLE_KEYS = {
     "pointer_table_address",
     "count",
     "pool_address",
@@ -48,6 +73,27 @@ _ALLOWED_TEXT_TABLE_KEYS = {
     "relocatable",
     "evidence",
 }
+
+#: Optional, so a declaration carrying only the required fields still loads; a reader
+#: that needs one refuses by name rather than meeting a default number.
+_OPTIONAL_TEXT_TABLE_INT_KEYS = (
+    "table_literal",
+    "live_selectors",
+    "grown_selector",
+    "event_resource_handler",
+    "event_table",
+    "map_name_slot_offset",
+    "map_array_offset",
+    "map_descriptor_offset",
+)
+
+_OPTIONAL_TEXT_TABLE_OTHER_KEYS = ("event_count", "map_count_offset", "event_pool")
+
+_ALLOWED_TEXT_TABLE_KEYS = (
+    _REQUIRED_TEXT_TABLE_KEYS
+    | set(_OPTIONAL_TEXT_TABLE_INT_KEYS)
+    | set(_OPTIONAL_TEXT_TABLE_OTHER_KEYS)
+)
 
 #: Encodings a text codec implements. A profile naming anything else is refused
 #: rather than decoded with the wrong reader.
@@ -183,6 +229,17 @@ class RecordTableProfile:
 
 
 @dataclass(frozen=True, slots=True)
+class AppearanceOffsetProfile:
+    """A profile's own file offsets for the sites that cite its appearance table."""
+
+    table_reference_offsets: tuple[int, ...]
+    count_offsets: tuple[int, ...]
+
+
+_ALLOWED_APPEARANCES_OFFSET_KEYS = {"table_reference_offsets", "count_offsets"}
+
+
+@dataclass(frozen=True, slots=True)
 class TextTableProfile:
     """A pointer-indexed pool of variable-length strings.
 
@@ -209,6 +266,20 @@ class TextTableProfile:
     alignment: int
     relocatable: bool
     evidence: str
+    #: Read through to locate the container table, whose own words are live structure.
+    table_literal: int | None = None
+    live_selectors: int | None = None
+    grown_selector: int | None = None
+    event_pool: tuple[int, int] | None = None
+    event_resource_handler: int | None = None
+    event_table: int | None = None
+    event_count: int | None = None
+    #: Byte offsets inside one map row: name slot, placement array, placement count,
+    #: placement descriptor. The first and last are both 0x14 on Buu's Fury.
+    map_name_slot_offset: int | None = None
+    map_array_offset: int | None = None
+    map_count_offset: int | None = None
+    map_descriptor_offset: int | None = None
 
     @property
     def pointer_table_size(self) -> int:
@@ -261,7 +332,7 @@ def _optional_text_table(
     if unexpected:
         joined = ", ".join(sorted(str(key) for key in unexpected))
         raise ProfileConfigError(f"{name} contains unexpected fields: {joined}")
-    missing = _ALLOWED_TEXT_TABLE_KEYS - set(table)
+    missing = _REQUIRED_TEXT_TABLE_KEYS - set(table)
     if missing:
         joined = ", ".join(sorted(missing))
         raise ProfileConfigError(f"{name} is missing required fields: {joined}")
@@ -272,6 +343,20 @@ def _optional_text_table(
     for key in ("count", "pool_size"):
         if type(table[key]) is not int or table[key] <= 0:
             raise ProfileConfigError(f"{name} {key} must be a positive integer")
+
+    for key in _OPTIONAL_TEXT_TABLE_INT_KEYS + ("event_count", "map_count_offset"):
+        if key in table and (type(table[key]) is not int or table[key] <= 0):
+            raise ProfileConfigError(f"{name} {key} must be a positive integer")
+
+    if "event_pool" in table:
+        pool = table["event_pool"]
+        if not isinstance(pool, (list, tuple)) or len(pool) != 2 or any(
+                type(value) is not int for value in pool):
+            raise ProfileConfigError(
+                f"{name} event_pool must be two integer GBA addresses")
+        pool = tuple(pool)
+    else:
+        pool = None
 
     encoding = table["encoding"]
     if encoding not in _SUPPORTED_TEXT_ENCODINGS:
@@ -312,6 +397,17 @@ def _optional_text_table(
         alignment=alignment,
         relocatable=relocatable,
         evidence=evidence.strip(),
+        table_literal=table.get("table_literal"),
+        live_selectors=table.get("live_selectors"),
+        grown_selector=table.get("grown_selector"),
+        event_pool=pool,
+        event_resource_handler=table.get("event_resource_handler"),
+        event_table=table.get("event_table"),
+        event_count=table.get("event_count"),
+        map_name_slot_offset=table.get("map_name_slot_offset"),
+        map_array_offset=table.get("map_array_offset"),
+        map_count_offset=table.get("map_count_offset"),
+        map_descriptor_offset=table.get("map_descriptor_offset"),
     )
 
 
@@ -541,6 +637,13 @@ class ActorSpriteProfile:
     renderer requantises. It is declared here rather than held as a renderer
     constant because it is a per-game ROM address of the same kind as the object
     palette beside it (CQA-15).
+
+    ``portrait_table_address`` is the dialogue-portrait pointer array, optional
+    because the profiles written before PINMAP-04 do not declare it and the key
+    set is compared exactly. A portrait swap against a profile that omits it
+    refuses by name rather than falling back to an address. The extent the array
+    occupies is NOT checked: the profile declares where the array starts and no
+    count for it, so no bound is invented here.
     """
 
     character_table_address: GbaRomAddress
@@ -549,16 +652,19 @@ class ActorSpriteProfile:
     object_palette_address: GbaRomAddress
     bg_palette_address: GbaRomAddress
     evidence: str
+    portrait_table_address: GbaRomAddress | None = None
 
 
 def _optional_actor_sprites(tables, size):
     value = (tables or {}).get("actor_sprites")
     if value is None:
         return None
-    keys = {"character_table_address", "character_count",
-            "animation_pointer_offset", "object_palette_address", "evidence"}
-    keys |= {"bg_palette_address"}
-    if not isinstance(value, Mapping) or set(value) != keys:
+    required = {"character_table_address", "character_count",
+                "animation_pointer_offset", "object_palette_address", "evidence",
+                "bg_palette_address"}
+    optional = {"portrait_table_address"}
+    if (not isinstance(value, Mapping) or set(value) - required - optional
+            or required - set(value)):
         raise ProfileConfigError("actor_sprites requires exact contract fields")
     if type(value["character_count"]) is not int or value["character_count"] <= 0:
         raise ProfileConfigError("actor_sprites character_count must be a positive integer")
@@ -569,6 +675,7 @@ def _optional_actor_sprites(tables, size):
         )
     if not isinstance(value["evidence"], str) or not value["evidence"].strip():
         raise ProfileConfigError("actor_sprites requires non-empty evidence")
+    portrait = None
     try:
         table = GbaRomAddress(value["character_table_address"])
         palette = GbaRomAddress(value["object_palette_address"])
@@ -592,10 +699,21 @@ def _optional_actor_sprites(tables, size):
             raise ProfileConfigError(
                 "actor_sprites background palette runs past the ROM"
             )
+        # The portrait pointer array is an optional address whose declared count
+        # the profile does not state, so only its alignment and its first word
+        # are checked; the array's extent is not bounded here.
+        portrait = value.get("portrait_table_address")
+        if portrait is not None:
+            portrait = GbaRomAddress(portrait)
+            if portrait.raw % 4:
+                raise ProfileConfigError(
+                    "actor_sprites portrait table is not word aligned"
+                )
+            portrait.to_file_offset(size)
     except BinaryAddressError as exc:
         raise ProfileConfigError(str(exc)) from exc
     return ActorSpriteProfile(table, value["character_count"], offset, palette,
-                              bg_palette, value["evidence"])
+                              bg_palette, value["evidence"], portrait)
 
 
 def _optional_placement_types(tables, size):
@@ -628,6 +746,138 @@ def _optional_placement_types(tables, size):
 
 
 @dataclass(frozen=True, slots=True)
+class CodeAnchor:
+    """One named ROM address the engine enters as code.
+
+    `kind` states the state the address is entered in, `arm` or `thumb`, and
+    `evidence` is the closed class that justifies the claim. They travel with
+    the address because an address alone says neither how to decode it nor why
+    it is believed, and a consumer that guessed either would be guessing about
+    bytes rather than reading a declaration.
+    """
+
+    name: str
+    address: GbaRomAddress
+    kind: str
+    evidence: str
+    role: str | None = None
+
+
+def _optional_code_anchors(value: Any) -> tuple[CodeAnchor, ...]:
+    """The profile's declared code anchors, or a refusal.
+
+    Absent means "nothing declared", which is the shipped state of every
+    profile and therefore an empty tuple rather than `None`. Every entry is
+    validated here, entry by entry; no index, key or length is trusted.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ProfileConfigError("code_anchors must be a list of anchor mappings")
+
+    anchors: list[CodeAnchor] = []
+    names: set[str] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise ProfileConfigError(f"code_anchors entry {index} must be a mapping")
+        unexpected = set(item) - _ALLOWED_CODE_ANCHOR_KEYS
+        if unexpected:
+            joined = ", ".join(sorted(str(key) for key in unexpected))
+            raise ProfileConfigError(
+                f"code_anchors entry {index} contains unexpected fields: {joined}"
+            )
+
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ProfileConfigError(
+                f"code_anchors entry {index} name must be a non-empty string"
+            )
+        name = name.strip()
+        if name in names:
+            raise ProfileConfigError(
+                f"code_anchors contains duplicate anchor name: {name!r}"
+            )
+        names.add(name)
+
+        address = item.get("address")
+        if type(address) is not int:
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} address must be an integer GBA address"
+            )
+        try:
+            GbaRomAddress(address).to_file_offset(_GBA_ROM_WINDOW_BYTES)
+        except BinaryAddressError as exc:
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} address {address!r} is outside the "
+                f"GBA ROM window: {exc}"
+            ) from exc
+
+        kind = item.get("kind")
+        if not isinstance(kind, str) or kind not in _SUPPORTED_CODE_ANCHOR_KINDS:
+            supported = ", ".join(sorted(_SUPPORTED_CODE_ANCHOR_KINDS))
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} kind {kind!r} is not supported; "
+                f"supported: {supported}"
+            )
+
+        evidence = item.get("evidence")
+        if not isinstance(evidence, str) or evidence not in _SUPPORTED_CODE_ANCHOR_EVIDENCE:
+            supported = ", ".join(sorted(_SUPPORTED_CODE_ANCHOR_EVIDENCE))
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} evidence {evidence!r} is not a "
+                f"supported class; supported: {supported}"
+            )
+
+        role = item.get("role")
+        if role is not None and (not isinstance(role, str) or not role.strip()):
+            raise ProfileConfigError(
+                f"code_anchors anchor {name!r} role must be a non-empty string"
+            )
+
+        anchors.append(
+            CodeAnchor(
+                name=name,
+                address=GbaRomAddress(address),
+                kind=kind,
+                evidence=evidence,
+                role=role.strip() if role is not None else None,
+            )
+        )
+    return tuple(anchors)
+
+
+def _optional_appearances_offsets(value: Any) -> AppearanceOffsetProfile | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ProfileConfigError("appearances_offsets must be a mapping")
+    unexpected = set(value) - _ALLOWED_APPEARANCES_OFFSET_KEYS
+    if unexpected:
+        joined = ", ".join(sorted(str(key) for key in unexpected))
+        raise ProfileConfigError(
+            f"appearances_offsets contains unexpected fields: {joined}"
+        )
+
+    families = {}
+    for key in sorted(_ALLOWED_APPEARANCES_OFFSET_KEYS):
+        offsets = value.get(key)
+        if not isinstance(offsets, (list, tuple)) or not offsets:
+            raise ProfileConfigError(
+                f"appearances_offsets {key} must be a non-empty list of file offsets"
+            )
+        if any(type(offset) is not int or offset < 0 for offset in offsets):
+            raise ProfileConfigError(
+                f"appearances_offsets {key} must be non-negative integers"
+            )
+        families[key] = tuple(offsets)
+
+    return AppearanceOffsetProfile(
+        table_reference_offsets=families["table_reference_offsets"],
+        count_offsets=families["count_offsets"],
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class RomProfile:
     id: str
     game: str
@@ -655,7 +905,14 @@ class RomProfile:
     #: project fact rather than a literal in a consuming module, exactly as
     #: `actor_sprites` is for the character registry.
     appearances: RecordTableProfile | None = None
+    #: APPEARANCE-OFFSET-KEYS-001. Absent means the consuming module's own measured
+    #: values, which every profile written before the key existed states.
+    appearances_offsets: AppearanceOffsetProfile | None = None
     generated_expansion: GeneratedExpansionProfile | None = None
+    #: PINMAP-03. Named code entry points this profile declares: handler words,
+    #: constructors, factories and patch sites. Absent is an empty tuple, so a
+    #: profile written before the key existed parses exactly as it did.
+    code_anchors: tuple[CodeAnchor, ...] = ()
 
     @property
     def identity(self) -> AtlasIdentity:
@@ -765,10 +1022,23 @@ class RomProfile:
             placement_types=_optional_placement_types(tables_value, size),
             actor_sprites=_optional_actor_sprites(tables_value, size),
             appearances=_optional_record_table(tables_value, "appearances"),
+            appearances_offsets=_optional_appearances_offsets(
+                data.get("appearances_offsets")
+            ),
             free_regions=_free_regions(data.get("free_regions", []), size),
             generated_expansion=_optional_generated_expansion(
                 data.get("generated_expansion"), size
             ),
+            code_anchors=_optional_code_anchors(data.get("code_anchors")),
+        )
+
+    def require_code_anchor(self, name: str) -> CodeAnchor:
+        for anchor in self.code_anchors:
+            if anchor.name == name:
+                return anchor
+        declared = ", ".join(anchor.name for anchor in self.code_anchors) or "none"
+        raise ProfileConfigError(
+            f"profile {self.id!r} declares no code anchor {name!r}; declared: {declared}"
         )
 
 

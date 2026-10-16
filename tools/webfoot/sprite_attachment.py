@@ -66,6 +66,7 @@ from .formats import map_entry as me
 from .formats import map_placements as mp
 from .layout import (AnchorId, OwnedRegion, Provenance, Reference,
                      ReferenceClass, ReferenceEncoding, RomRange)
+from .packaged import packaged_profile
 from .write import (ByteChange, GeneratedAllocationProvenance, ReferenceRewrite,
                     RelocationProvenance)
 
@@ -106,6 +107,12 @@ ARRAY_ANCHOR = "map:{index:04d}/placement_references"
 #: The name of the one record family this planner writes, which is what a caller
 #: passes as :attr:`NewMapActor.family`.
 FAMILY_MAP_SIBLING = "map-sibling-08017da3"
+
+SIBLING_FACTORY_RAW = packaged_profile().require_code_anchor(
+    "sibling_factory_08017da3").address.raw
+
+ENTRY_CLASS_RAW = packaged_profile().require_code_anchor(
+    "entry_class_0800a7a1").address.raw
 
 #: The sibling corpus uses sprite ids from 1 through 305, so an id is only
 #: refused when it could not be one at all.
@@ -215,7 +222,7 @@ SUPPORTED_FAMILIES: dict[str, SupportedActorFamily] = {
     FAMILY_MAP_SIBLING: SupportedActorFamily(
         name=FAMILY_MAP_SIBLING,
         factory_offset=0x00,
-        factory_raw=0x08017DA3,
+        factory_raw=SIBLING_FACTORY_RAW,
         retained_04_offset=0x04,
         position_offset=0x08,
         data_pointer_offset=0x0C,
@@ -225,7 +232,7 @@ SUPPORTED_FAMILIES: dict[str, SupportedActorFamily] = {
         header_size=0x1C,
         entry_inline_offset=0x1C,
         entry_size=0x10,
-        entry_class_raw=0x0800A7A1,
+        entry_class_raw=ENTRY_CLASS_RAW,
         entry_class_offset=0x00,
         box_offset=0x08,
         box_value_width=2,

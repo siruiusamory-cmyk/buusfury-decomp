@@ -384,16 +384,17 @@ def _roster_changes(image: bytes, count: int) -> list[ByteChange]:
     return changes
 
 
-def _count_changes(image: bytes, count: int) -> list[ByteChange]:
+def _count_changes(image: bytes, count: int, profile=None) -> list[ByteChange]:
     """The three compiled count bounds, patched or refused.
 
     The count is CODE rather than a reference field, so it cannot be expressed as
     a relocation rewrite. Each halfword is checked to hold the canonical count
     first, which is what makes the patch safe on an image that is not the one the
-    census was taken from.
+    census was taken from. The offsets come from the profile when it declares
+    them and from the module's measured census when it does not.
     """
     changes = []
-    for offset in ap.APPEARANCE_COUNT_OFFSETS:
+    for offset in ap.count_offsets(profile):
         old = image[offset:offset + ap.APPEARANCE_COUNT_OFFSET_WIDTH]
         if old != bytes([ap.APPEARANCE_CANONICAL_COUNT]):
             raise AppearanceAuthoringError(
@@ -480,7 +481,7 @@ def materialize_authored_appearances(
             old_target_file_offset=document.target_offset(reference).value,
             new_target_file_offset=table_at,
         ))
-    changes.extend(_count_changes(image, count))
+    changes.extend(_count_changes(image, count, profile))
     changes.extend(_roster_changes(image, count))
 
     generated = (allocation.generated_allocation_provenance(

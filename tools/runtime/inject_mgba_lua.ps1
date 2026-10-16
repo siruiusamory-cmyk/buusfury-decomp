@@ -589,6 +589,17 @@ $allowedLua = @(
     [System.IO.Path]::GetFullPath(
         (Join-Path $workspaceRoot 'tools\runtime\fv3wt001_cart_map_probe.lua')
     )
+    # Added by RUNTIME-PROBE-ALLOW-001: the ROM read-watch recorder. It arms one
+    # READ range watchpoint per row of an address list and records the pc, the
+    # address and the width of every read that lands inside a row, with a
+    # frame-tick liveness channel so a silent target can be told from a dead
+    # instrument. This is what lets a ROM read observed at runtime be cited as a
+    # static consumer. READ-ONLY with respect to the emulated machine: it writes
+    # host files inside the run directory only, touches no emulated memory and
+    # presses no key.
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $workspaceRoot 'tools\runtime\rt001_readwatch.lua')
+    )
 )
 $resolvedLua = [System.IO.Path]::GetFullPath($LuaPath)
 if ($resolvedLua -notin $allowedLua) {

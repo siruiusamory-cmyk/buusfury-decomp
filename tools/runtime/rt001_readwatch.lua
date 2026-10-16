@@ -14,6 +14,15 @@
 --   RT001_LIST  file of "<start hex> <end hex> <bytes>" rows to watch
 --   RT001_CSV   CSV path (default <RT001_OUT>rt001-hits.csv)
 --   RT001_CAP   stop after this many distinct (pc,address) pairs (default 20000)
+--   RT001_INPUT file of "<frame> <keys>" lines, OPTIONAL. <keys> is "0" or a
+--               "+"-joined list of GBA key names (A, B, SELECT, START, RIGHT,
+--               LEFT, UP, DOWN, R, L). Keys go through emu:addKey and
+--               emu:clearKey, which take a GBA_KEY INDEX: mgba master
+--               src/core/scripting.c binds addKey(_, S32, key) and
+--               _mScriptCoreAddKey does core->addKeys(core, 1 << key). Input is
+--               not an emulated memory write, so the read-only guarantee in
+--               docs/skills/mgba-runtime.md section 7 still holds; with
+--               RT001_INPUT unset this probe presses no key at all.
 
 local marker_path = rom011_marker_path
 assert(marker_path and #marker_path > 0, "marker path not provided")
@@ -62,11 +71,37 @@ for line in io.lines(list_path) do
 end
 assert(#rows > 0, "no rows in " .. list_path)
 
+local input_path = os.getenv("RT001_INPUT")
+local schedule = {}
+if input_path and #input_path > 0 then
+    for line in io.lines(input_path) do
+        local at, spec = line:match("^%s*(%d+)%s+(%S+)")
+        if at then schedule[tonumber(at)] = spec end
+    end
+    assert(C and C.GBA_KEY, "RT001_INPUT was given but this build exposes no C.GBA_KEY")
+end
+local KEY_NAMES = { "A", "B", "SELECT", "START", "RIGHT", "LEFT", "UP", "DOWN", "R", "L" }
+local function apply_keys(spec)
+    local want = {}
+    if spec ~= "0" then
+        for name in spec:gmatch("[^+]+") do want[name] = true end
+    end
+    for _, name in ipairs(KEY_NAMES) do
+        local index = C.GBA_KEY[name]
+        if index then
+            if want[name] then emu:addKey(index) else emu:clearKey(index) end
+        end
+    end
+end
+local scheduled = 0
+for _ in pairs(schedule) do scheduled = scheduled + 1 end
+
 local csv = assert(io.open(csv_path, "w"))
 csv:write("pc,address,width,access,frame,row_start\n")
 csv:flush()
 
 local hits, frames, armed, capped = 0, 0, 0, false
+local dirty = false
 local seen, ids = {}, {}
 
 local function disarm()
@@ -82,6 +117,7 @@ local function record(pc, address, width, access, row_start)
     hits = hits + 1
     csv:write(string.format("%08X,%08X,%d,%s,%d,%08X\n",
         pc, address, width or 0, tostring(access), frames, row_start))
+    dirty = true
     if hits % 20 == 0 then csv:flush() end
     if hits >= cap and not capped then
         capped = true
@@ -118,10 +154,13 @@ for _, r in ipairs(rows) do
     end
 end
 
-w(live_path, string.format("READY armed=%d rows=%d cap=%d\n", armed, #rows, cap))
+w(live_path, string.format("READY armed=%d rows=%d cap=%d input=%d\n", armed, #rows, cap, scheduled))
 
 callbacks:add("frame", function()
     frames = frames + 1
+    local spec = schedule[frames]
+    if spec then apply_keys(spec) end
+    if dirty then csv:flush() dirty = false end
     if frames % 10 == 0 then w(tick_path, tostring(frames)) end
     if frames % 300 == 0 then
         w(live_path, string.format("frames=%d hits=%d armed=%d\n", frames, hits, armed))

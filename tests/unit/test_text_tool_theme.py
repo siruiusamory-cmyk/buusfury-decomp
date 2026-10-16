@@ -383,6 +383,22 @@ def test_apply_theme_installs_the_proxy_style_and_returns_a_theme(qapp) -> None:
     assert disabled.name() == QColor(applied.text_disabled).name()
 
 
+def test_a_second_apply_theme_keeps_the_proxy_it_already_installed(qapp) -> None:
+    """The install happens once, because Qt deletes the style a new install replaces.
+
+    Measured before this guard: the second `apply_theme` destroyed the proxy the first
+    one installed, inside `app.setStyle`, while this module still held it. The metric
+    assertion is the other half: the proxy the module hands out is the live one, and a
+    QStyleSheetStyle sits on top of it, so `qapp.style() is proxy` would prove nothing.
+    """
+    theme.apply_theme(qapp, theme.MODE_DARK)
+    first = theme.proxy_style()
+    theme.apply_theme(qapp, theme.MODE_LIGHT)
+    assert theme.proxy_style() is first
+    assert qapp.style().pixelMetric(
+        QStyle.PixelMetric.PM_LayoutHorizontalSpacing) == theme.active_metrics().gap
+
+
 def test_the_proxy_style_floors_an_input_at_the_field_height() -> None:
     shape = theme.metrics(QApplication.instance())
     style = theme.EditorProxyStyle(shape, QApplication.instance())

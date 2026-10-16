@@ -279,18 +279,42 @@ class EditorProxyStyle(QProxyStyle):
 
 def apply_theme(app: QApplication, mode: str = MODE_SYSTEM) -> Theme:
     """Install Fusion under the proxy style, the palette and the small stylesheet."""
-    global _ACTIVE, _FAMILIES, _SHAPE, _TYPES, _PROXY
+    global _ACTIVE, _FAMILIES, _SHAPE, _TYPES
     _FAMILIES = frozenset(QFontDatabase.families())
     theme = theme_for(mode, _system_is_dark(app))
     _ACTIVE = theme
     _SHAPE = metrics(app)
     _TYPES = type_scale(app)
-    proxy = EditorProxyStyle(_SHAPE, app)
-    app.setStyle(proxy)
+    _installed_proxy(app)
     app.setPalette(build_palette(theme))
     app.setStyleSheet(app_stylesheet(theme))
-    _PROXY = proxy
     return theme
+
+
+def _installed_proxy(app: QApplication) -> EditorProxyStyle:
+    """One proxy per application, installed once.
+
+    Measured: `app.setStyle` destroys the style it replaces, so a fresh proxy on every
+    call left the previous one freed inside that call while this module and Qt's style
+    sheet still referred to it, and every module that themes the application replaced
+    the style again. Qt reports that destruction on `destroyed`, and that signal is what
+    tells the next call to install a new proxy rather than hand out a freed one.
+    """
+    global _PROXY
+    if _PROXY is None:
+        _PROXY = EditorProxyStyle(_SHAPE, app)
+        _PROXY.destroyed.connect(_forget_proxy)
+        app.setStyle(_PROXY)
+    else:
+        # The application font can move between installs, and the overrides read this.
+        _PROXY._metrics = _SHAPE
+    return _PROXY
+
+
+def _forget_proxy() -> None:
+    """Qt is deleting the installed proxy style; stop handing it out."""
+    global _PROXY
+    _PROXY = None
 
 
 def metrics(app: QApplication | None = None) -> Metrics:

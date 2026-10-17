@@ -72,11 +72,6 @@ def _stub_session() -> types.SimpleNamespace:
 
 def _run_session_end(monkeypatch, skips: dict[str, str]) -> types.SimpleNamespace:
     monkeypatch.setattr(conftest, "_SKIPPED_TEST_REASONS", dict(skips))
-    # `_TEST_SECONDS` is the session's own recording, so a stub session handed to the
-    # real hook would inherit whatever this worker has already timed and report those
-    # nodes as rule-S breaches: the "silent when nothing skipped" case then prints,
-    # and any breach makes the hook walk the session's items. Empty it for the stub.
-    monkeypatch.setattr(conftest, "_TEST_SECONDS", {})
     monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
     monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
     # This calls the real hook, which writes the module global the CI exit path carries, so
@@ -84,7 +79,17 @@ def _run_session_end(monkeypatch, skips: dict[str, str]) -> types.SimpleNamespac
     # than leaving the status of this stub session behind for another file to read.
     monkeypatch.setattr(conftest, "_SESSION_EXIT_STATUS", conftest._SESSION_EXIT_STATUS)
     session = _stub_session()
-    conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
+    # `_TEST_SECONDS` is the session's own recording, so a stub session handed to the
+    # real hook would inherit whatever this worker has already timed: the "silent when
+    # nothing skipped" case then prints those nodes as rule-S breaches. Swapped out and
+    # back rather than monkeypatched, because the monkeypatch outlives this call and
+    # would swallow this test's own call report as well.
+    recording = conftest._TEST_SECONDS
+    conftest._TEST_SECONDS = {}
+    try:
+        conftest.pytest_sessionfinish(session, pytest.ExitCode.OK)
+    finally:
+        conftest._TEST_SECONDS = recording
     return session
 
 

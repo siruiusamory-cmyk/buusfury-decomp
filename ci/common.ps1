@@ -59,6 +59,18 @@ function Remove-CiVenvDirectory {
     }
 }
 
+#: The venv a job recorded building, as an absolute path.
+#:
+#: A failed removal does NOT empty the old directory: the locked file stays and so
+#: does `Scripts\python.exe`, so a consumer that "finds an interpreter" finds the
+#: previous run's environment. The marker is therefore the only thing a consumer
+#: may trust. Absent, unreadable, or pointing at a directory with no interpreter is
+#: a failure that names the builder job, never a fallback to whatever is on disk.
+function Get-CiVenvMarkerPath {
+    param([Parameter(Mandatory)][string]$Name)
+    return "$(Get-CiVenvDirectory -Name $Name).path"
+}
+
 #: Build this job's venv FRESH, then install the project into it.
 #:
 #: Fresh every run, and not `--system-site-packages`: the job is a gate on the
@@ -75,16 +87,19 @@ function New-CiVenv {
         [Parameter(Mandatory)][string]$Extras
     )
     $venv = Get-CiVenvDirectory -Name $Name
+    $marker = Get-CiVenvMarkerPath -Name $Name
+    # A marker from an earlier run must not survive into this one: a consumer that
+    # failed to be handed this job's venv has to fail, not read a stale path.
+    Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $venv) {
         try {
             Remove-CiVenvDirectory -Path $venv
         } catch {
-            # Measured on master: a later job's cleanup can hit a handle a previous
-            # run still holds (Remove-Item refused on capstone.dll under
-            # venv-test-sdk), and failing the job there blocks the whole pipeline
-            # before a single test runs. A fresh path costs one 700 MB install and
-            # keeps the job independent of the previous run's handles; the
-            # lingering directory is removed by a later fresh run.
+            # Measured on master: the removal can hit a handle a previous run still
+            # holds (Remove-Item refused on capstone.dll under venv-test-sdk), and
+            # failing there blocks the pipeline before a single test runs. The held
+            # directory is left to the next run that can remove it; this job builds
+            # beside it and records where.
             $venv = "$venv-$PID"
             Write-Host "ci: $Name venv is locked; building a fresh one at $venv"
         }
@@ -101,6 +116,9 @@ function New-CiVenv {
     if ($LASTEXITCODE -ne 0) { throw "ci: pip upgrade failed in $venv" }
     & $python -m pip install --quiet --disable-pip-version-check -e $Extras 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "ci: install of $Extras failed in $venv" }
+    # Recorded only after the environment is complete, and the path recorded is the
+    # one this job actually built, which is what the sibling job must use.
+    Set-Content -LiteralPath $marker -Value $venv -Encoding ascii -NoNewline
     return $python
 }
 
@@ -115,23 +133,22 @@ function New-CiVenv {
 #: with the message below rather than testing the wrong environment. Building a
 #: second venv in `adjacency` would remove the constraint for about 124 s and
 #: 700 MB per pipeline; that trade is recorded in `.gitlab-ci.yml`.
+#:
+#: The path comes from the marker `New-CiVenv` writes, never from the plain
+#: directory and never from whatever sibling happens to exist: a failed removal
+#: leaves the previous run's `Scripts\python.exe` in place, so "an interpreter is
+#: there" is exactly the wrong question to ask.
 function Use-CiVenv {
     param([Parameter(Mandatory)][string]$Name)
-    $venv = Get-CiVenvDirectory -Name $Name
-    $python = Join-Path $venv 'Scripts\python.exe'
-    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-        # `New-CiVenv` moves to a fresh path when the venv it was handed is locked.
-        # Resolve that path rather than failing the consumer on the original name.
-        $fallback = Get-ChildItem -LiteralPath (Split-Path -Parent $venv) -Directory -Filter "$(Split-Path -Leaf $venv)-*" -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-        if ($fallback) {
-            $venv = $fallback.FullName
-            $python = Join-Path $venv 'Scripts\python.exe'
-        }
+    $marker = Get-CiVenvMarkerPath -Name $Name
+    $venv = if (Test-Path -LiteralPath $marker -PathType Leaf) {
+        (Get-Content -LiteralPath $marker -Raw).Trim()
+    } else {
+        $null
     }
-    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
-        throw "ci: no venv at $venv; run ci\test_sdk.ps1 first (the job that builds it), or the CI job that owns it"
+    $python = if ($venv) { Join-Path $venv 'Scripts\python.exe' } else { $null }
+    if (-not $python -or -not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        throw "ci: run ci\test_sdk.ps1 first (the job that builds the $Name venv); $marker $(if ($venv) { "records $venv, which has no interpreter" } else { 'was not written' })"
     }
     Write-Host "ci: using $venv"
     return $python

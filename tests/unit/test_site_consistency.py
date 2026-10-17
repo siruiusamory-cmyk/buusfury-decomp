@@ -83,63 +83,78 @@ def test_the_control_document_passes_every_structural_rule():
 
 
 # --- every structural rule can fail ------------------------------------------
+#
+# One case per rule: a clean document is mutated, and the rule's own sentence must
+# appear in the findings. Written as a table because the cases differ only in the
+# mutation and the sentence each rule reports.
 
 
-def test_a_missing_section_is_reported():
-    status = _clean_status()
+def _a_missing_section(status):
     status.pop("blocker")
 
-    assert any("blocker" in finding for finding in site_check.structure_findings(status))
 
-
-def test_a_duplicate_identifier_is_reported():
-    status = _clean_status()
+def _a_duplicate_identifier(status):
     status["milestones"].append(copy.deepcopy(status["milestones"][0]))
 
-    assert any("duplicate id" in finding for finding in site_check.structure_findings(status))
 
-
-def test_an_unknown_status_is_reported():
-    status = _clean_status()
+def _an_unknown_status(status):
     status["milestones"][0]["status"] = "nearly"
 
-    assert any("unknown status" in f for f in site_check.structure_findings(status))
 
-
-def test_a_second_current_phase_is_reported():
-    status = _clean_status()
+def _a_second_current_phase(status):
     status["roadmapPhases"].append({"id": "p3", "state": "next", "title": "Also next"})
 
-    assert any(
-        "more than one" in finding for finding in site_check.structure_findings(status)
-    )
 
-
-def test_a_current_milestone_in_the_programme_is_reported():
-    status = _clean_status()
+def _a_current_milestone_in_the_programme(status):
     status["milestones"][0]["status"] = "current"
 
-    assert any(
-        "marked current" in finding for finding in site_check.structure_findings(status)
-    )
 
-
-def test_a_percentage_that_does_not_follow_is_reported():
-    status = _clean_status()
+def _a_percentage_that_does_not_follow(status):
     status["buildout"]["percent"] = 99
 
-    assert any(
-        "does not follow" in finding for finding in site_check.structure_findings(status)
-    )
 
-
-def test_an_empty_public_field_is_reported():
-    status = _clean_status()
+def _an_empty_public_field(status):
     status["acceptanceTarget"] = "   "
 
-    assert any(
-        "acceptance target" in finding for finding in site_check.structure_findings(status)
-    )
+
+def _open_items_outside_a_completed_milestone(status):
+    status["milestones"][1]["openItems"] = ["Something"]
+
+
+def _empty_open_items(status):
+    status["milestones"][0]["openItems"] = []
+
+
+@pytest.mark.parametrize(
+    "mutate,expected",
+    [
+        (_a_missing_section, "blocker"),
+        (_a_duplicate_identifier, "duplicate id"),
+        (_an_unknown_status, "unknown status"),
+        (_a_second_current_phase, "more than one"),
+        (_a_current_milestone_in_the_programme, "marked current"),
+        (_a_percentage_that_does_not_follow, "does not follow"),
+        (_an_empty_public_field, "acceptance target"),
+        (_open_items_outside_a_completed_milestone, "open items while"),
+        (_empty_open_items, "empty open item"),
+    ],
+    ids=[
+        "a missing section",
+        "a duplicate identifier",
+        "an unknown status",
+        "a second current phase",
+        "a current milestone in the programme",
+        "a percentage that does not follow",
+        "an empty public field",
+        "open items outside a completed milestone",
+        "empty open items",
+    ],
+)
+def test_every_structural_rule_can_fail(mutate, expected):
+    status = _clean_status()
+    mutate(status)
+
+    assert any(expected in finding for finding in site_check.structure_findings(status))
 
 
 # --- the drift regression ----------------------------------------------------
@@ -164,20 +179,6 @@ def test_a_completed_milestone_cannot_read_as_unfinished():
     declared = copy.deepcopy(status)
     declared["milestones"][0]["openItems"] = ["The exact limit."]
     assert site_check.structure_findings(declared) == []
-
-
-def test_open_items_are_rejected_outside_a_completed_milestone():
-    status = _clean_status()
-    status["milestones"][1]["openItems"] = ["Something"]
-
-    assert any("open items while" in finding for finding in site_check.structure_findings(status))
-
-
-def test_open_items_must_not_be_empty():
-    status = _clean_status()
-    status["milestones"][0]["openItems"] = []
-
-    assert any("empty open item" in finding for finding in site_check.structure_findings(status))
 
 
 # --- the artifact rules can fail too -----------------------------------------

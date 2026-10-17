@@ -222,11 +222,11 @@ _BUDGET_EXCEPTIONS: dict[str, tuple[float, str, str, str]] = {
         (8.397, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_list.py::test_the_status_cell_paints_no_fill_of_its_own_and_the_divider_runs_its_width":
         (5.659, "38600996718 f55e32d8", "builds and themes a real Qt list view", "SPEED-DEBT-QT-001"),
-    "tests/unit/test_text_tool_shell.py::test_an_export_clears_the_unsaved_marker_and_reports_its_digest":
+    "tests/unit/test_text_tool_shell_export.py::test_an_export_clears_the_unsaved_marker_and_reports_its_digest":
         (9.314, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
-    "tests/unit/test_text_tool_shell.py::test_smoke_exits_zero_over_the_synthetic_image":
+    "tests/unit/test_text_tool_shell_startup.py::test_smoke_exits_zero_over_the_synthetic_image":
         (6.756, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
-    "tests/unit/test_text_tool_shell.py::test_undo_of_a_rename_beside_a_line_edit_restores_and_does_not_wedge":
+    "tests/unit/test_text_tool_shell_edit.py::test_undo_of_a_rename_beside_a_line_edit_restores_and_does_not_wedge":
         (6.341, "38610899807 89fb181b", "builds and themes the shell window", "SPEED-DEBT-QT-001"),
     "tests/unit/test_text_tool_theme.py::test_the_extra_control_classes_are_painted_in_the_theme_ink":
         (5.139, "38610899807 89fb181b", "paints every control class in the theme ink", "SPEED-DEBT-QT-001"),

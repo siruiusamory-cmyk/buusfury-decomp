@@ -49,7 +49,7 @@ Remove-Item -LiteralPath (Join-Path $CiProjectRoot 'dist') -Recurse -Force -Erro
 # downloading the raw job log, and xdist merges every worker's results into this
 # one file. It is written to the repository root, where the job's
 # `artifacts:reports:junit` names it.
-Invoke-CiStep { & $python -m pytest tests/unit -q -n 4 --dist loadfile --junitxml=report.xml }
+Invoke-CiStep { & $python -m pytest tests/unit -q -n 4 --dist loadfile --durations=25 --durations-min=1.0 --junitxml=report.xml }
 # The gates a reviewer is told to run, run here as well: the readability gate is
 # only asserted over the shipping package inside the suite, so the tree-wide form
 # has to be its own step or a finding outside `tools/webfoot/` would pass CI.

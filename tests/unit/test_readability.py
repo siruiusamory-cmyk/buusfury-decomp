@@ -197,40 +197,42 @@ def test_commented_out_code_positive_control():
     assert found[0].line == 3
 
 
-def test_commented_out_code_ignores_banners_and_prose():
-    text = (
-        "# ========================================\n"
-        "# The next section explains what the resolver does, and why it refuses\n"
-        "# a span from another profile before that span becomes a fact about it.\n"
-        "# ========================================\n"
-    )
-    assert "commented_out_code" not in signals(text, "synthetic.py")
-
-
-def test_commented_out_code_ignores_a_documented_address_table():
-    # Real shape from the runtime probes: it looks like assignments, but every
-    # line starts with a literal, which is not a statement.
-    text = (
-        "-- RUNTIME-PROVEN ADDRESSES (do NOT re-derive):\n"
-        "--   0x03001980 = live MapEntry pointer. table base 0x0808E2E0, stride 0x38.\n"
-        "--   0x03001C34 = the player slot, stored by 0x080109AA (080109E6 str r4,[r0]).\n"
-        "--   0x03001A34 = the player-subclass selector, read at 08008DA6..08008DB0.\n"
-    )
-    assert "commented_out_code" not in signals(text, "synthetic.lua")
-
-
-def test_commented_out_code_ignores_prose_that_quotes_a_call():
-    text = (
-        "# An empty *string* is checked before ``Path()`` sees it: ``Path(\"\")`` is\n"
-        "# ``Path(\".\")``, which would otherwise be reported as a folder, not a\n"
-        "# file - a true statement about the wrong thing.\n"
-    )
-    assert "commented_out_code" not in signals(text, "synthetic.py")
-
-
-def test_commented_out_code_needs_a_run_of_three():
-    text = "# x = 1\n# y = 2\n\n"
-    assert "commented_out_code" not in signals(text, "synthetic.py")
+@pytest.mark.parametrize(
+    "text,suffix",
+    [
+        (
+            "# ========================================\n"
+            "# The next section explains what the resolver does, and why it refuses\n"
+            "# a span from another profile before that span becomes a fact about it.\n"
+            "# ========================================\n",
+            "synthetic.py",
+        ),
+        # Real shape from the runtime probes: it looks like assignments, but every
+        # line starts with a literal, which is not a statement.
+        (
+            "-- RUNTIME-PROVEN ADDRESSES (do NOT re-derive):\n"
+            "--   0x03001980 = live MapEntry pointer. table base 0x0808E2E0, stride 0x38.\n"
+            "--   0x03001C34 = the player slot, stored by 0x080109AA (080109E6 str r4,[r0]).\n"
+            "--   0x03001A34 = the player-subclass selector, read at 08008DA6..08008DB0.\n",
+            "synthetic.lua",
+        ),
+        (
+            "# An empty *string* is checked before ``Path()`` sees it: ``Path(\"\")`` is\n"
+            "# ``Path(\".\")``, which would otherwise be reported as a folder, not a\n"
+            "# file - a true statement about the wrong thing.\n",
+            "synthetic.py",
+        ),
+        ("# x = 1\n# y = 2\n\n", "synthetic.py"),
+    ],
+    ids=[
+        "banners and prose",
+        "a documented address table",
+        "prose that quotes a call",
+        "a run of three",
+    ],
+)
+def test_commented_out_code_ignores_what_is_not_code(text, suffix):
+    assert "commented_out_code" not in signals(text, suffix)
 
 
 # --- hard signal 3: debug residue ------------------------------------------

@@ -165,7 +165,7 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
      "sys.executable"):
         "runs this interpreter on pytest itself, to read the exit status of a run whose "
         "required GUI module collapsed; it starts no emulator",
-    ("tests/unit/test_text_tool_shell.py",
+    ("tests/unit/test_text_tool_shell_startup.py",
      "test_the_exit_is_clean_after_typing_into_a_row_carrying_a_control_unit",
      "sys.executable"):
         "runs this interpreter on the text editor's own smoke start to watch how it "
@@ -437,6 +437,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs a nested collect-only pytest over one small module, with and "
         "without the shard variables, to read which nodes that shard collects; "
         "it starts no emulator",
+    ("tests/unit/test_affected_tests_script.py",
+     "git",
+     "'git'"):
+        "builds the throwaway repository the consumer fixture needs, and reads the "
+        "base commit it hands to the script; it starts no emulator",
+    ("tests/unit/test_affected_tests_script.py",
+     "test_a_consumer_that_only_reaches_the_object_is_listed",
+     "'powershell'"):
+        "runs the focused-set script against that throwaway repository to read the "
+        "files it lists; it starts no emulator",
 }
 
 

@@ -147,9 +147,11 @@ test-integration:
 # (`concurrent = 1`) AND BOTH JOBS LAND ON IT. `needs` orders jobs; it does not
 # pin them to a runner or to a build directory. A second `local-ci` runner, or a
 # build directory that moves between the two jobs, makes this job fail with
-# `ci: no venv at ...; run ci\test_sdk.ps1 first` rather than silently testing the
-# wrong environment. The alternative, building a second venv here, costs about
-# 124 s and 700 MB per pipeline for the same extras.
+# `ci: run ci\test_sdk.ps1 first (the job that builds the test-sdk venv)` rather
+# than silently testing the wrong environment: the path comes from the marker
+# `ci\common.ps1` writes after the suite job's install, and the marker names the
+# pipeline that wrote it. The alternative, building a second venv here, costs
+# about 124 s and 700 MB per pipeline for the same extras.
 adjacency:
   stage: test
   tags: ["local-ci"]

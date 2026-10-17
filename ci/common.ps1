@@ -97,13 +97,19 @@ function New-CiVenv {
         } catch {
             # Measured on master: the removal can hit a handle a previous run still
             # holds (Remove-Item refused on capstone.dll under venv-test-sdk), and
-            # failing there blocks the pipeline before a single test runs. The held
-            # directory is left to the next run that can remove it; this job builds
-            # beside it and records where.
+            # failing there blocks the pipeline before a single test runs. This job
+            # builds beside the held directory; the plain directory is retried by
+            # the next run, and the suffixed one is pruned below once it is a day
+            # old, because nothing else ever names it again.
             $venv = "$venv-$PID"
             Write-Host "ci: $Name venv is locked; building a fresh one at $venv"
         }
     }
+    # Best effort, and bounded by age: a suffixed directory is only ever read through
+    # the marker, and no job lives a day. A failed prune is not the job's failure.
+    Get-ChildItem -LiteralPath (Split-Path -Parent $venv) -Directory -Filter "$((Split-Path -Leaf (Get-CiVenvDirectory -Name $Name)))-*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -ne $venv -and $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+        ForEach-Object { try { Remove-CiVenvDirectory -Path $_.FullName } catch { } }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $venv) | Out-Null
     Write-Host "ci: building $venv"
     # `| Out-Host` rather than a bare call: a function returns everything it
@@ -116,9 +122,10 @@ function New-CiVenv {
     if ($LASTEXITCODE -ne 0) { throw "ci: pip upgrade failed in $venv" }
     & $python -m pip install --quiet --disable-pip-version-check -e $Extras 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "ci: install of $Extras failed in $venv" }
-    # Recorded only after the environment is complete, and the path recorded is the
-    # one this job actually built, which is what the sibling job must use.
-    Set-Content -LiteralPath $marker -Value $venv -Encoding ascii -NoNewline
+    # Recorded only after the environment is complete, and the path recorded is the one
+    # this job actually built. The pipeline id travels with it so a retried pipeline
+    # cannot consume an environment another pipeline's suite built.
+    Set-Content -LiteralPath $marker -Value ("{0}`n{1}" -f $env:CI_PIPELINE_ID, $venv) -Encoding ascii
     return $python
 }
 
@@ -141,14 +148,24 @@ function New-CiVenv {
 function Use-CiVenv {
     param([Parameter(Mandatory)][string]$Name)
     $marker = Get-CiVenvMarkerPath -Name $Name
-    $venv = if (Test-Path -LiteralPath $marker -PathType Leaf) {
-        (Get-Content -LiteralPath $marker -Raw).Trim()
+    $record = if (Test-Path -LiteralPath $marker -PathType Leaf) {
+        @(Get-Content -LiteralPath $marker)
     } else {
-        $null
+        @()
+    }
+    if ($record.Count -eq 2) {
+        $owner = $record[0].Trim()
+        $venv = $record[1].Trim()
+        $mine = "$env:CI_PIPELINE_ID"
+        if ($owner -ne $mine) {
+            throw "ci: $marker was written by pipeline '$owner' and this is pipeline '$mine'; run ci\test_sdk.ps1 for this pipeline before $Name"
+        }
+    } else {
+        $venv = $null
     }
     $python = if ($venv) { Join-Path $venv 'Scripts\python.exe' } else { $null }
     if (-not $python -or -not (Test-Path -LiteralPath $python -PathType Leaf)) {
-        throw "ci: run ci\test_sdk.ps1 first (the job that builds the $Name venv); $marker $(if ($venv) { "records $venv, which has no interpreter" } else { 'was not written' })"
+        throw "ci: run ci\test_sdk.ps1 first (the job that builds the $Name venv); $marker $(if ($venv) { "records $venv, which has no interpreter" } else { 'was not written by this pipeline' })"
     }
     Write-Host "ci: using $venv"
     return $python

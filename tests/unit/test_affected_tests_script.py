@@ -3,7 +3,9 @@
 The rule this pins is the miss shape: a test file constructs an object whose class is
 defined in a changed module, and it never imports that module - it reaches the class
 through a re-export. An import scan alone reports nothing, so the consumer is the
-case that proves the second rule exists.
+case that proves the second rule exists. The alias case pins the same hit when the
+class arrives under another name (``Widget as Gadget``), where the call names only
+the alias and the original name has to be recorded too.
 """
 
 from __future__ import annotations
@@ -14,6 +16,17 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "affected-tests.ps1"
+
+#: One consumer shape per case. Both reach the changed class without importing the
+#: module that defines it; the alias spells only its own name at the call.
+CONSUMERS = {
+    "re-export": "from tools import registry\n\n\n"
+                 "def test_the_consumer_builds_the_object():\n"
+                 "    assert registry.Widget().ready\n",
+    "alias": "from tools.registry import Widget as Gadget\n\n\n"
+             "def test_the_consumer_builds_the_object():\n"
+             "    assert Gadget().ready\n",
+}
 
 
 def git(repository: Path, *arguments: str) -> str:
@@ -30,9 +43,13 @@ def commit(repository: Path, message: str) -> str:
     return git(repository, "rev-parse", "HEAD").strip()
 
 
-@pytest.fixture()
-def repository(tmp_path):
-    """A repository whose change edits the module a consumer only reaches by re-export."""
+@pytest.fixture(params=sorted(CONSUMERS))
+def repository(request, tmp_path):
+    """A repository whose change edits the module a consumer only reaches by re-export.
+
+    Parametrized so the alias shape is a case of its own: the class is defined once
+    and reached two ways, and both must be listed.
+    """
     root = tmp_path / "repository"
     (root / "tools" / "pkg").mkdir(parents=True)
     (root / "tests" / "unit").mkdir(parents=True)
@@ -58,10 +75,7 @@ def repository(tmp_path):
         encoding="utf-8",
     )
     (root / "tests" / "unit" / "test_consumer.py").write_text(
-        "from tools import registry\n\n\n"
-        "def test_the_consumer_builds_the_object():\n"
-        "    assert registry.Widget().ready\n",
-        encoding="utf-8",
+        CONSUMERS[request.param], encoding="utf-8"
     )
     commit(root, "the change under test")
     return root, base

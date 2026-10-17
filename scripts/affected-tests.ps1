@@ -4,11 +4,14 @@ param(
 )
 
 # Print the test files a change since <base> can reach. The union of two rules:
-# a test file that imports a module changed since <base>, and a test file that
-# names a class or function defined in a changed file however it got hold of it
-# - a re-export through another module is the shape a plain import scan misses.
-# It prints; it never runs the suite. Only tracked changes are measured: `git
-# diff --name-only` says nothing about an untracked file until it is added.
+# a test file that imports a module changed since <base>, and a test file whose
+# source names a class, function or assigned name defined in a changed file - a
+# name reached through a re-export counts, and so does one imported under an
+# alias, because the original name is recorded beside it. It matches names in
+# the source: an object reached without naming it, through getattr or a string,
+# is not seen. It prints; it never runs the suite. Only tracked changes are
+# measured: `git diff --name-only` says nothing about an untracked file until it
+# is added.
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -105,7 +108,10 @@ def names_of(tree):
         elif isinstance(node, ast.Attribute):
             names.add(node.attr)
         elif isinstance(node, ast.alias):
-            names.add(node.asname or node.name.rsplit(".", 1)[-1])
+            # An alias hides the name the changed file contributes, so keep both.
+            names.add(node.name.rsplit(".", 1)[-1])
+            if node.asname:
+                names.add(node.asname)
     return names
 
 

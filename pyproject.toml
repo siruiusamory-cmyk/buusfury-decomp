@@ -30,7 +30,13 @@ dev = [
     "hypothesis==6.143.0",
 ]
 workbench = [
-    "PySide6",
+    # Pinned, and the reason is measured rather than assumed. Unpinned, the suite job
+    # took 6.12.0 and `tests/unit/test_text_tool_list.py` under `-n 4 --dist
+    # loadfile` died in a native abort in 8 of 12 attempts (`Fatal Python error:
+    # Aborted`, no Python frame); 6.11.2 is 0 of 12 on the same command. That is a
+    # narrower window, not a cure: a job on 6.11.2 has also died on a loaded runner,
+    # so this is a measured improvement and nothing more.
+    "PySide6==6.11.2",
 ]
 research = [
     # The Thumb decoder the disassembly helpers and the UI/HUD graphics probe
@@ -41,7 +47,9 @@ research = [
     "capstone>=5",
 ]
 packaging = [
-    "PySide6",
+    # Must match `workbench`: a frozen build that resolved the aborting version
+    # would ship the crash even while the test job is clean.
+    "PySide6==6.11.2",
     "pyinstaller>=6",
 ]
 

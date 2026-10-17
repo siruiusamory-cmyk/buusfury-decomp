@@ -178,8 +178,6 @@ def two_line_window(qapp, tmp_path, monkeypatch):
     assert len(rows) == 2, [row.text for row in rows]
     return shell, session, target, rows
 
-import tests.text_fixture as text_fixture  # noqa: E402
-
 
 @pytest.fixture(autouse=True)
 def fixture_handle_pool():

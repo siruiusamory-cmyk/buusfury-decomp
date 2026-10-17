@@ -65,12 +65,16 @@ $serial = $false
 for ($i = 0; $i -lt $args.Count - 1; $i++) {
     if ($args[$i] -eq '-n' -and $args[$i + 1] -eq '0') { $serial = $true }
 }
+$step = [System.Diagnostics.Stopwatch]::StartNew()
 if ($serial) {
     & $Python -m pytest -m fast @args
 } else {
     & $Python -m pytest -m fast -n 4 --dist loadfile @args
 }
+Write-Host ("test.ps1: pytest took {0:N1}s" -f $step.Elapsed.TotalSeconds)
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+$step.Restart()
 & $Python -m tools.webfoot --help | Out-Null
+Write-Host ("test.ps1: tools.webfoot --help took {0:N1}s" -f $step.Elapsed.TotalSeconds)
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

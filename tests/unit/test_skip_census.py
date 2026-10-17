@@ -62,7 +62,13 @@ def _stub_session() -> types.SimpleNamespace:
     config = types.SimpleNamespace(
         pluginmanager=types.SimpleNamespace(get_plugin=lambda name: None)
     )
-    return types.SimpleNamespace(config=config, exitstatus=pytest.ExitCode.OK)
+    # `_report_speed_breaches` walks the session's items to re-measure a node whose
+    # recorded time is over its allowance, so the minimum an end-of-session hook
+    # needs includes an item list. Without it this stub passes on a machine whose
+    # suite recorded no breach and raises AttributeError where one was recorded.
+    return types.SimpleNamespace(
+        config=config, exitstatus=pytest.ExitCode.OK, items=[]
+    )
 
 
 def _run_session_end(monkeypatch, skips: dict[str, str]) -> types.SimpleNamespace:

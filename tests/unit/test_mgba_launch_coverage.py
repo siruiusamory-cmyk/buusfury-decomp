@@ -102,6 +102,14 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
     ("tests/unit/test_mgba_extra_script.py", "dry_run", "prerequisites['shell']"):
         "runs the GDB launcher with -DryRun, which prints the identity it would write and exits "
         "before any emulator starts; it proves the extra-script path and hash are recorded",
+    ("tests/unit/test_affected_tests_script.py", "git", "'git'"):
+        "builds and commits the throwaway repository the focused-set script is run against; "
+        "it starts no emulator",
+    ("tests/unit/test_affected_tests_script.py",
+     "test_a_consumer_that_only_reaches_the_object_is_listed",
+     "'powershell'"):
+        "runs scripts/affected-tests.ps1 in that throwaway repository to prove it lists the "
+        "consumer that reaches the changed class through a re-export; it starts no emulator",
     ("tests/unit/test_friend_v4b_cell.py", "built", "sys.executable"):
         "runs the Cell port builder over the two retail images into the test's own temporary directory; "
         "it starts no emulator",
@@ -437,6 +445,16 @@ NON_MGBA_SITES: Mapping[tuple[str, str, str], str] = {
         "runs a nested collect-only pytest over one small module, with and "
         "without the shard variables, to read which nodes that shard collects; "
         "it starts no emulator",
+    ("tests/unit/test_affected_tests_script.py",
+     "git",
+     "'git'"):
+        "builds the throwaway repository the consumer fixture needs, and reads the "
+        "base commit it hands to the script; it starts no emulator",
+    ("tests/unit/test_affected_tests_script.py",
+     "test_a_consumer_that_only_reaches_the_object_is_listed",
+     "'powershell'"):
+        "runs the focused-set script against that throwaway repository to read the "
+        "files it lists; it starts no emulator",
 }
 
 

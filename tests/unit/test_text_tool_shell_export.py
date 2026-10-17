@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
-from tools.buufury_text import (  # noqa: F401
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6.QtWidgets")
+
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+from tools.buufury_text import (  # noqa: E402, F401
     renamedialog,
     settings,
     shell as shell_module,
     theme,
 )
-from tools.buufury_text.session import LINES
-from tools.webfoot import textedit
-from tests.unit.text_tool_shell_support import (  # noqa: F401
+from tools.buufury_text.session import LINES  # noqa: E402
+from tools.webfoot import textedit  # noqa: E402
+from tests.unit.text_tool_shell_support import (  # noqa: E402, F401
     _Dialogs,
     _Files,
     accent_share,

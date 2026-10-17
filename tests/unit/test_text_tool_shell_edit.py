@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QMimeData
+import os
 
-from tools.buufury_text import chips, shell as shell_module  # noqa: F401
-from tools.buufury_text import session as text_session
-from tools.webfoot import textedit
-from tests.unit.text_tool_shell_support import (  # noqa: F401
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6.QtWidgets")
+
+from PySide6.QtCore import QMimeData  # noqa: E402
+
+from tools.buufury_text import chips, shell as shell_module  # noqa: E402, F401
+from tools.buufury_text import session as text_session  # noqa: E402
+from tools.webfoot import textedit  # noqa: E402
+from tests.unit.text_tool_shell_support import (  # noqa: E402, F401
     fixture_handle_pool,
     prose_row,
     qapp,

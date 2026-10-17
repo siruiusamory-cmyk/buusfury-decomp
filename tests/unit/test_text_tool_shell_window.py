@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
-from tools.buufury_text import shell as shell_module
-from tools.buufury_text.session import (
+import os
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6.QtWidgets")
+
+from tools.buufury_text import shell as shell_module  # noqa: E402
+from tools.buufury_text.session import (  # noqa: E402
     BY_PLACE,
     BY_SPEAKER,
     APPEARANCE,
@@ -13,7 +20,7 @@ from tools.buufury_text.session import (
     UNGROUPED,
     State,
 )
-from tests.unit.text_tool_shell_support import (  # noqa: F401
+from tests.unit.text_tool_shell_support import (  # noqa: E402, F401
     fixture_handle_pool,
     prose_row,
     qapp,

@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+import pytest
 
-from tests.text_fixture import SPACES, build, lowered_record_floor
-from tools.buufury_text import app as app_module
-from tools.buufury_text import project as project_file, settings, theme
-from tools.buufury_text import shell as shell_module
-from tools.buufury_text import session as text_session
-from tools.buufury_text.session import (
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6.QtWidgets")
+
+from PySide6.QtWidgets import QApplication  # noqa: E402
+
+from tests.text_fixture import SPACES, build, lowered_record_floor  # noqa: E402
+from tools.buufury_text import app as app_module  # noqa: E402
+from tools.buufury_text import project as project_file, settings, theme  # noqa: E402
+from tools.buufury_text import shell as shell_module  # noqa: E402
+from tools.buufury_text import session as text_session  # noqa: E402
+from tools.buufury_text.session import (  # noqa: E402
     APPEARANCE,
     BY_SPEAKER,
     LINES,
@@ -21,7 +27,7 @@ from tools.buufury_text.session import (
     STORAGE,
     UNGROUPED,
 )
-from tests.unit.text_tool_shell_support import (  # noqa: F401
+from tests.unit.text_tool_shell_support import (  # noqa: E402, F401
     _Dialogs,
     covering_image,
     fixture_handle_pool,

@@ -62,10 +62,9 @@ def _stub_session() -> types.SimpleNamespace:
     config = types.SimpleNamespace(
         pluginmanager=types.SimpleNamespace(get_plugin=lambda name: None)
     )
-    # `_report_speed_breaches` walks the session's items to re-measure a node whose
-    # recorded time is over its allowance, so the minimum an end-of-session hook
-    # needs includes an item list. Without it this stub passes on a machine whose
-    # suite recorded no breach and raises AttributeError where one was recorded.
+    # The real session the hook is written for carries the items it collected, so the
+    # stub mirrors that shape; `_report_speed_breaches` tolerates its absence, and this
+    # keeps the stub honest rather than minimal.
     return types.SimpleNamespace(
         config=config, exitstatus=pytest.ExitCode.OK, items=[]
     )
@@ -73,6 +72,11 @@ def _stub_session() -> types.SimpleNamespace:
 
 def _run_session_end(monkeypatch, skips: dict[str, str]) -> types.SimpleNamespace:
     monkeypatch.setattr(conftest, "_SKIPPED_TEST_REASONS", dict(skips))
+    # `_TEST_SECONDS` is the session's own recording, so a stub session handed to the
+    # real hook would inherit whatever this worker has already timed and report those
+    # nodes as rule-S breaches: the "silent when nothing skipped" case then prints,
+    # and any breach makes the hook walk the session's items. Empty it for the stub.
+    monkeypatch.setattr(conftest, "_TEST_SECONDS", {})
     monkeypatch.setattr(conftest, "_collapsed_required_modules", lambda: [])
     monkeypatch.setattr(conftest, "_collapsed_gui_modules", lambda: [])
     # This calls the real hook, which writes the module global the CI exit path carries, so

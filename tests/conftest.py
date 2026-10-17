@@ -771,7 +771,7 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
         budget, allowance, ticket = _speed_budget(nodeid, nodeid.startswith("tests/integration/"))
         if seconds <= allowance:
             continue
-        item = next((candidate for candidate in session.items if candidate.nodeid == nodeid),
+        item = next((candidate for candidate in getattr(session, "items", ()) if candidate.nodeid == nodeid),
                     None)
         again = _remeasure_item(session, nodeid) if item is not None else None
         if again is not None and again <= allowance:
@@ -785,7 +785,11 @@ def _report_speed_breaches(session: pytest.Session) -> bool:
         ))
     if not breaches:
         return False
-    terminal = session.config.pluginmanager.get_plugin("terminalreporter")
+    # The suite drives this hook with stub sessions on purpose (see the exit-path
+    # cases in test_ci_gui_surface.py), so a session without a collector or a
+    # terminal reporter is a shape to report through, not to fail on.
+    terminal = getattr(getattr(session, "config", None), "pluginmanager", None)
+    terminal = terminal.get_plugin("terminalreporter") if terminal is not None else None
     if terminal is None:  # pragma: no cover - only in an embedded/plugin run
         for _, message, _ in breaches:
             print(message)

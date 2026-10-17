@@ -138,32 +138,33 @@ def test_composing_applies_every_edit_and_leaves_the_rest_alone():
     assert changed == [1 * 32 + 2, 3 * 32 + 4]
 
 
-def test_composing_refuses_a_prior_the_template_does_not_hold():
-    """A stored prior that disagrees means the chunk is not from this template."""
-    edits = (mc.ChunkEntryEdit(0, 0, prior=0x0015, entry=0x0821),)
-    with pytest.raises(mc.ChunkAuthoringError, match="not composed from this template"):
-        mc.compose_body(_plane(0x0000), edits, VOCABULARY)
-
-
-def test_composing_refuses_an_entry_outside_the_permitted_vocabulary():
-    """Authoring rearranges existing graphics; it does not add new ones."""
-    edits = (mc.ChunkEntryEdit(0, 0, prior=0x0000, entry=0x0FFF),)
-    with pytest.raises(mc.ChunkAuthoringError, match="no chunk of the template's layer"):
-        mc.compose_body(_plane(0x0000), edits, VOCABULARY)
-
-
-def test_composing_refuses_a_cell_outside_the_plane():
-    edits = (mc.ChunkEntryEdit(32, 0, prior=0x0000, entry=0x0015),)
-    with pytest.raises(mc.ChunkAuthoringError, match="outside the 32x32 plane"):
-        mc.compose_body(_plane(0x0000), edits, VOCABULARY)
-
-
-def test_composing_refuses_editing_one_cell_twice():
-    edits = (
-        mc.ChunkEntryEdit(0, 0, prior=0x0000, entry=0x0015),
-        mc.ChunkEntryEdit(0, 0, prior=0x0015, entry=0x0821),
-    )
-    with pytest.raises(mc.ChunkAuthoringError, match="edited twice"):
+@pytest.mark.parametrize(
+    "edits,match",
+    [
+        # A stored prior that disagrees means the chunk is not from this template.
+        ((mc.ChunkEntryEdit(0, 0, prior=0x0015, entry=0x0821),),
+         "not composed from this template"),
+        # Authoring rearranges existing graphics; it does not add new ones.
+        ((mc.ChunkEntryEdit(0, 0, prior=0x0000, entry=0x0FFF),),
+         "no chunk of the template's layer"),
+        ((mc.ChunkEntryEdit(32, 0, prior=0x0000, entry=0x0015),), "outside the 32x32 plane"),
+        (
+            (
+                mc.ChunkEntryEdit(0, 0, prior=0x0000, entry=0x0015),
+                mc.ChunkEntryEdit(0, 0, prior=0x0015, entry=0x0821),
+            ),
+            "edited twice",
+        ),
+    ],
+    ids=[
+        "a prior the template does not hold",
+        "an entry outside the permitted vocabulary",
+        "a cell outside the plane",
+        "editing one cell twice",
+    ],
+)
+def test_composing_refuses_an_edit_the_template_cannot_hold(edits, match):
+    with pytest.raises(mc.ChunkAuthoringError, match=match):
         mc.compose_body(_plane(0x0000), edits, VOCABULARY)
 
 

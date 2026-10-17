@@ -202,3 +202,19 @@ These are candidates, not findings: patching a private seam is sometimes the
 only way to make a failure reachable (the two `_git` seams drive a subprocess
 that is not installed in CI). Each one is a place to ask whether the public
 surface already offers the same observation.
+
+## Dead code: vulture over `tools/`
+
+`vulture 2.16`, installed in a throwaway venv (`C:\temp\lean-test-001\vulture-venv`),
+never added to the project's dependencies, run from this worktree as
+`vulture --min-confidence 80 tools/` (exit 3: findings present). Findings as
+printed, no edits made:
+
+- `tools/qa/buu_sprite_palette.py:148: unused variable 'counts_hint' (100% confidence)`
+- `tools/qa/cqa03_atlas_identity_probe.py:56: unused variable 'cat' (100% confidence)`
+- `tools/research/apply_tulma_graphics.py:34: unused import 'ANIMATION_ARRAY_OFFSET' (90% confidence)`
+- `tools/research/apply_tulma_graphics.py:34: unused import 'PORTRAIT_ARRAY_ADDRESS' (90% confidence)`
+- `tools/research/apply_tulma_graphics.py:34: unused import 'REGISTRY_TABLE_ADDRESS' (90% confidence)`
+- `tools/research/logx_gfxscan_probe.py:1756: unused variable 'reference_hits' (100% confidence)`
+- `tools/webfoot/cli.py:77: unused import '_recover_handle' (90% confidence)`
+- `tools/webfoot/cli.py:77: unused import '_unpack_handle' (90% confidence)`

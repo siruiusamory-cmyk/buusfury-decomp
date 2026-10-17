@@ -106,10 +106,16 @@ function New-CiVenv {
         }
     }
     # Best effort, and bounded by age: a suffixed directory is only ever read through
-    # the marker, and no job lives a day. A failed prune is not the job's failure.
+    # the marker, and no job lives a day. This runs before the venv is created, so
+    # nothing here can be the directory this job is about to build, including a
+    # same-named one left by a reused PID, which must go or `python -m venv` would
+    # build over it and keep packages the project no longer declares.
     Get-ChildItem -LiteralPath (Split-Path -Parent $venv) -Directory -Filter "$((Split-Path -Leaf (Get-CiVenvDirectory -Name $Name)))-*" -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -ne $venv -and $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
-        ForEach-Object { try { Remove-CiVenvDirectory -Path $_.FullName } catch { } }
+        Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+        ForEach-Object {
+            try { Remove-CiVenvDirectory -Path $_.FullName }
+            catch { Write-Host "ci: could not prune $($_.FullName); it will be retried by a later run" }
+        }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $venv) | Out-Null
     Write-Host "ci: building $venv"
     # `| Out-Host` rather than a bare call: a function returns everything it

@@ -115,8 +115,8 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046B28|
-|sub_08046B28|
+	EXPORT |__16_ll_cmpu|
+|__16_ll_cmpu|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046B2C|
@@ -126,8 +126,8 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046B38|
-|sub_08046B38|
+	EXPORT |__16_ll_mul|
+|__16_ll_mul|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046B3C|
@@ -176,8 +176,8 @@
 	B        |arm_08046B3C|
 	CODE16
 	CODE16
-	EXPORT |sub_08046B84|
-|sub_08046B84|
+	EXPORT |__16_ll_neg|
+|__16_ll_neg|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046B88|
@@ -187,8 +187,8 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046B94|
-|sub_08046B94|
+	EXPORT |__16_ll_rsb|
+|__16_ll_rsb|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046B98|
@@ -231,8 +231,8 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046BFC|
-|sub_08046BFC|
+	EXPORT |__16_ll_shift_l|
+|__16_ll_shift_l|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046C00|
@@ -250,8 +250,8 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046C28|
-|sub_08046C28|
+	EXPORT |__16_ll_sshift_r|
+|__16_ll_sshift_r|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08046C2C|
@@ -630,7 +630,7 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_08046FF4|
+	EXPORT |__vecmap1c__FPvT1iPFPv_v|
 	EXPORT |loc_08047004|
 	EXPORT |loc_08047010|
 	EXPORT |loc_08047028|
@@ -639,7 +639,7 @@
 	EXPORT |sub_08047648|
 	EXPORT |sub_080476A6|
 	EXPORT |sub_080476A8|
-|sub_08046FF4|
+|__vecmap1c__FPvT1iPFPv_v|
 	PUSH     {r6, r7, lr}
 	PUSH     {r3, r4, r5}
 	ADD      r5, r1, #0
@@ -1334,7 +1334,7 @@
 	EXPORT |sub_08047F5C|
 	EXPORT |loc_08047F84|
 	EXPORT |sub_08047F94|
-	EXPORT |sub_08047FB0|
+	EXPORT |__16__user_libspace|
 |sub_08047F5C|
 	LSL      r0, r0, #0
 	LSL      r0, r0, #0
@@ -1379,7 +1379,7 @@
 		LDMIA r1!, {r0, r1}
 		DCW     0xE7EE
 	INCBIN  baserom.gba_0x47fae_0x47fb0.extracted
-|sub_08047FB0|
+|__16__user_libspace|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_08047FB4|
@@ -1423,11 +1423,11 @@
 	B        |arm_0804803C|
 	CODE16
 	CODE16
-	EXPORT |sub_08047FF4|
+	EXPORT |__raise|
 	EXPORT |loc_08048006|
 	EXPORT |sub_0804801A|
-	EXPORT |sub_08048038|
-|sub_08047FF4|
+	EXPORT |__16_sys_exit|
+|__raise|
 	PUSH     {r4, r5, r6, lr}
 	LDR      r6, [pc, #0x38]
 	ADD      r5, r1, #0
@@ -1442,7 +1442,7 @@
 	BNE      |sub_0804801A|
 	ADD      r1, r5, #0
 	ADD      r0, r4, #0
-	BL       |sub_08048054|
+	BL       |__default_signal_handler|
 	POP      {r4, r5, r6}
 	POP      {r3}
 	BX       r3
@@ -1461,7 +1461,7 @@
 		DCW     0xE7F2
 	INCBIN  baserom.gba_0x4802e_0x48034.extracted
 		DCD     0xF7FB7FDD
-|sub_08048038|
+|__16_sys_exit|
 	BX       pc
 	LSL      r0, r0, #0
 |unk_0804803C|
@@ -1478,7 +1478,7 @@
 	ANDEQ    r0, r2, r6, lsr #32
 	CODE16
 	CODE16
-	EXPORT |sub_08048054|
+	EXPORT |__default_signal_handler|
 	EXPORT |sub_08048076|
 	EXPORT |loc_08048098|
 	EXPORT |sub_080480AC|
@@ -1737,7 +1737,7 @@
 	EXPORT |sub_08048ECA|
 	EXPORT |loc_08048F54|
 	EXPORT |loc_08049010|
-|sub_08048054|
+|__default_signal_handler|
 	PUSH     {r3, r4, r5, lr}
 	SUB      r2, r0, #1
 	CMP      r2, #0xd
@@ -2042,14 +2042,14 @@
 	ADD      r1, r0, #0
 	ADD      r1, #0x18
 	LDR      r3, [pc, #0x1c]
-	BL       |sub_08046FF4|
+	BL       |__vecmap1c__FPvT1iPFPv_v|
 	ADD      r0, r4, #0
 	ADD      r0, #0x5c
 	ADD      r1, r0, #0
 	MOV      r2, #0xc
 	ADD      r1, #0x30
 	LDR      r3, [pc, #0x10]
-	BL       |sub_08046FF4|
+	BL       |__vecmap1c__FPvT1iPFPv_v|
 	POP      {r4, pc}
 	LSL      r0, r0, #0
 	ADD      r4, r4, r6

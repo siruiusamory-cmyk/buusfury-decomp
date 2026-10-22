@@ -71,9 +71,9 @@
 	EXPORT |sub_0802C8AE|
 	EXPORT |sub_0802C8BE|
 	EXPORT |loc_0802C8F4|
-	EXPORT |Bg_WriteControl0AndMosaic1|
+	EXPORT |sub_0802C8FE|
 	EXPORT |Mosaic_WriteSize1|
-	EXPORT |Bg_WriteControl0And1AndMosaic|
+	EXPORT |sub_0802C98E|
 	EXPORT |loc_0802CA1A|
 	EXPORT |Mosaic_WriteSize2|
 	EXPORT |Bg_WriteControl0AndMosaic2|
@@ -1852,7 +1852,7 @@
 		BL       |inc_0x153f2_0x1a3f2| + 0x48d2
 		B        |inc_0x2bb4c_0x2d1c0| + 0xd70
 	INCBIN  baserom.gba_0x2c8fa_0x2c8fe.extracted
-|Bg_WriteControl0AndMosaic1|
+|sub_0802C8FE|
 	LSR      r4, r0, #0x20
 	LDR      r2, [pc, #0x70]
 	LSR      r5, r6, #1
@@ -1926,7 +1926,7 @@
 		STRB r0, [r1, #0xd]
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0xe28
-|Bg_WriteControl0And1AndMosaic|
+|sub_0802C98E|
 	LDR      r1, [pc, #0x114]
 	PUSH     {r3, lr}
 	MOV      r0, #0xff

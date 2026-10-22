@@ -62,11 +62,13 @@ CONSTANT_DEFINITION = re.compile(r"^\s*\|?([A-Za-z0-9_]+)\|?\s+EQU\b", re.I)
 ADDRESS_SYMBOL = re.compile(r"^(?:sub|loc|dat|unk|g)_[0-9A-Fa-f]{8}$")
 ADDRESS_DIGITS = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})$")
 SLICE_SYMBOL = re.compile(r"^inc_0x[0-9A-Fa-f]{6}_0x[0-9A-Fa-f]{6}$")
+LIBRARY_SYMBOL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LABEL_ROW = re.compile(r'\[\[functions\]\]\nname = "([^"]+)"\naddress = 0x([0-9a-f]+)')
 ASM_SUFFIX = ".s"
 ASM_ROOT = "asm/"
 BASELINE = "docs/NAMING_BASELINE.txt"
 LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
+RETIRED_NAMES = "docs/NAMING_RETIRED.csv"
 LABELS = "docs/research/BF_LABELS.toml"
 BATCH = (".cmd", ".bat")
 SOURCES = (".py", ".cmd", ".bat")
@@ -249,16 +251,37 @@ def label_addresses():
     return out
 
 
-def asm_symbol_findings(symbols, addresses):
+def library_symbols(text=None):
+    if text is None:
+        text = read_source(LEDGER_NAMES) or ""
+    out = set()
+    for row in csv.DictReader(io.StringIO(text)):
+        if row.get("evidence_class") != "toolchain-library" or not row.get("new"):
+            continue
+        if not LIBRARY_SYMBOL.match(row["new"]):
+            continue
+        try:
+            address = int(row.get("address") or "", 16)
+        except ValueError:
+            continue
+        if row.get("old") == "sub_%08X" % address:
+            out.add(row["new"])
+    return out
+
+
+def asm_symbol_findings(symbols, addresses, library=None):
+    if library is None:
+        library = library_symbols()
     findings = []
     for name, path, line in symbols:
-        if FUNCTION_NAME.match(name) or SLICE_SYMBOL.match(name):
+        if FUNCTION_NAME.match(name) or SLICE_SYMBOL.match(name) or name in library:
             continue
         digits = ADDRESS_DIGITS.match(name)
         if digits is None:
             findings.append(("NAMING-asm-symbol",
-                             "%s:%d: %s is not Module_Verb or sub_/loc_/dat_/unk_/g_ and its "
-                             "own address" % (path, line, name)))
+                             "%s:%d: %s is not Module_Verb, sub_/loc_/dat_/unk_/g_ and its "
+                             "own address, or a library symbol with a toolchain-library ledger "
+                             "row" % (path, line, name)))
             continue
         if name in addresses and int(digits.group(1), 16) != addresses[name]:
             findings.append(("NAMING-asm-symbol",
@@ -272,16 +295,54 @@ def symbol_counts(symbols, constants):
     return sum(1 for name in kept if ADDRESS_SYMBOL.match(name)), len(kept)
 
 
-def ratchet_findings(live, baseline):
-    if live > baseline:
+def ratchet_findings(live, baseline, retired=0):
+    permitted = baseline + retired
+    if live > permitted:
         return [("NAMING-address-ratchet",
-                 "%s: %d address-named symbols is above the baseline %d"
-                 % (BASELINE, live, baseline))]
-    if live < baseline:
+                 "%s: %d address-named symbols is above the baseline %d plus the %d retired-name "
+                 "row(s), which permits %d" % (BASELINE, live, baseline, retired, permitted))]
+    if live < permitted:
         return [("NAMING-address-ratchet",
-                 "%s: %d address-named symbols is below the baseline %d, so the baseline must "
-                 "be lowered to %d in this tree" % (BASELINE, live, baseline, live))]
+                 "%s: the baseline %d plus the %d retired-name row(s) permits %d, but %d are "
+                 "address-named, so the baseline must be lowered to %d in this tree"
+                 % (BASELINE, baseline, retired, permitted, live, live - retired))]
     return []
+
+
+def retired_rows():
+    text = read_source(RETIRED_NAMES)
+    if text is None:
+        return []
+    return [row for row in csv.DictReader(io.StringIO(text))
+            if row.get("address") and row.get("retired")]
+
+
+def retired_findings(rows, symbols, ledger):
+    findings = []
+    names = {name for name, _path, _line in symbols}
+    addresses = {address for address, _name in ledger}
+    carried = {name for _address, name in ledger}
+    for row in rows:
+        try:
+            address = int(row["address"], 16)
+        except ValueError:
+            findings.append(("NAMING-address-ratchet",
+                             "%s: %r is not an address" % (RETIRED_NAMES, row["address"])))
+            continue
+        house = "sub_%08X" % address
+        if house not in names:
+            findings.append(("NAMING-address-ratchet",
+                             "%s: 0x%08X is not exported as %s, so that name is not retired"
+                             % (RETIRED_NAMES, address, house)))
+        if address in addresses:
+            findings.append(("NAMING-address-ratchet",
+                             "%s: a ledger row still names 0x%08X, so its retirement is stale"
+                             % (RETIRED_NAMES, address)))
+        if row["retired"] in names and row["retired"] not in carried:
+            findings.append(("NAMING-address-ratchet",
+                             "%s: %s is still exported and no ledger row records where"
+                             % (RETIRED_NAMES, row["retired"])))
+    return findings
 
 
 def read_baseline():
@@ -302,11 +363,16 @@ def naming_findings():
     exports, constants = symbols
     findings = asm_symbol_findings(exports, label_addresses())
     counts = symbol_counts(exports, constants)
+    retired = retired_rows()
+    findings += retired_findings(retired, exports, [
+        (int(row["address"], 16), row.get("new") or "")
+        for row in csv.DictReader(io.StringIO(read_source(LEDGER_NAMES) or ""))
+        if row.get("address")])
     baseline = read_baseline()
     if baseline is None:
         findings.append(("NAMING-address-ratchet", "%s: no count can be read" % BASELINE))
     else:
-        findings += ratchet_findings(counts[0], baseline)
+        findings += ratchet_findings(counts[0], baseline, len(retired))
     return findings, counts
 
 

@@ -692,7 +692,7 @@
 	EXPORT |sub_0803D360|
 	EXPORT |sub_0803D362|
 	EXPORT |sub_0803D388|
-	EXPORT |KeyInput_Read|
+	EXPORT |sub_0803D478|
 	EXPORT |loc_0803D494|
 	EXPORT |loc_0803D4C8|
 	EXPORT |sub_0803D4CA|
@@ -10716,7 +10716,7 @@
 		ADD r1, r5, #0
 		MUL r1, r5
 		ADD r0, r0, r1
-		BL       |Irq_WriteMaster2|
+		BL       |sub_0803FAF6|
 		STR r0, [sp, #0xc]
 		LDR r0, [r6, #0xc]
 		ADD r1, r4, #0
@@ -14758,7 +14758,7 @@
 		ADD r2, r1, #0
 		MUL r1, r2
 		ADD r0, r0, r1
-		BL       |Irq_WriteMaster2|
+		BL       |sub_0803FAF6|
 		ADD r6, r0, #0
 		LDR r1, [sp, #0x10]
 		BL       |sub_08046E58|
@@ -17617,7 +17617,7 @@
 |loc_0803D474|
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x81c4
-|KeyInput_Read|
+|sub_0803D478|
 	PUSH     {r4, lr}
 	LDR      r0, [r0, #0xc]
 	LDR      r2, [r0]

@@ -175,7 +175,7 @@
 	EXPORT |sub_0804EC02|
 	EXPORT |sub_0804EC0A|
 	EXPORT |sub_0804EC18|
-	EXPORT |Blend_WriteAlpha5|
+	EXPORT |sub_0804EC22|
 	EXPORT |sub_0804EC9A|
 	EXPORT |sub_0804EC9E|
 	EXPORT |sub_0804ECBE|
@@ -5558,7 +5558,7 @@
 		BX       lr
 	INCBIN  baserom.gba_0x4ec1e_0x4ec20.extracted
 		BX       lr
-|Blend_WriteAlpha5|
+|sub_0804EC22|
 	LSL      r0, r0, #0
 	MOV      r1, #0
 	STR      r1, [r0, #8]

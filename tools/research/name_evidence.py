@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import os
 import re
 import struct
@@ -24,6 +25,8 @@ STORE_WIDTH = {"str": 4, "strh": 2, "strb": 1}
 LIMM = re.compile(r"\[\s*(\w+)\s*(?:,\s*#(0x[0-9a-f]+|\d+))?\s*\]$")
 REGISTER = re.compile(r"^(r\d+|sb|sl|fp|ip|sp|lr|pc|r12)$")
 TARGET = re.compile(r"^#?(0x[0-9a-f]+|\d+)$")
+SITE = re.compile(r"0x(08[0-9A-Fa-f]{6})")
+LEDGER = os.path.join("docs", "NAMING_LEDGER.csv")
 THUMB_LDR_LITERAL = 0xF800
 THUMB_LDR_BASE = 0x4800
 THUMB_SWI = 0xDF00
@@ -51,17 +54,65 @@ def instruction(rom, address, mode):
     return found
 
 
-def steps(rom, row, mode):
+def steps(rom, row, mode, end=None):
     start, length = row[0], row[1]
     address = ROM_BASE + start
-    end = address + length
-    while address < end:
+    stop = ROM_BASE + end if end is not None else address + length
+    while address < stop:
         found = instruction(rom, address, mode)
         if found is None:
             address += 2 if mode == "thumb" else 4
             continue
         yield found
         address += found.size
+
+
+def decode_one(rom, address, mode):
+    offset = address - ROM_BASE
+    if offset < 0 or offset >= len(rom) or (mode == "arm" and address % 4):
+        return None
+    found = next(iter(ENGINES[mode].disasm(rom[offset:offset + 4], address, count=1)), None)
+    if found is None or found.address != address or found.size not in (2, 4):
+        return None
+    return found
+
+
+def reachable(rom, start, mode, low, high, limit=4000):
+    seen = set()
+    queue = [start]
+    while queue and len(seen) < limit:
+        address = queue.pop()
+        while ROM_BASE + low <= address < ROM_BASE + high and address not in seen:
+            found = decode_one(rom, address, mode)
+            if found is None:
+                break
+            seen.add(address)
+            if found.mnemonic == "bx" or (found.mnemonic.startswith(("pop", "ldm"))
+                                          and "pc" in found.op_str):
+                break
+            target = TARGET.match(found.op_str.split(",")[0].strip()) \
+                if found.mnemonic.startswith("b") else None
+            if target is not None:
+                where = int(target.group(1), 0)
+                if ROM_BASE + low <= where < ROM_BASE + high:
+                    queue.append(where)
+                if found.mnemonic in ("b", "b.w"):
+                    break
+            address += found.size
+    return seen
+
+
+def function_end(rom, start, mode, low, high):
+    seen = reachable(rom, start, mode, low, high)
+    if not seen:
+        return start
+    last = max(seen)
+    found = decode_one(rom, last, mode)
+    return last + (found.size if found is not None else 2)
+
+
+def sites(text):
+    return sorted({int(found.group(1), 16) for found in SITE.finditer(text)})
 
 
 def quote(rom, address, mode, count=3):
@@ -75,11 +126,11 @@ def quote(rom, address, mode, count=3):
     return " / ".join(parts)
 
 
-def profile(rom, row):
+def profile(rom, row, end=None):
     start, length, mode = row
     words = {}
     found = []
-    for insn in steps(rom, row, mode):
+    for insn in steps(rom, row, mode, end):
         parts = [part.strip() for part in insn.op_str.split(",")]
         if insn.mnemonic == "ldr" and "[pc" in insn.op_str:
             match = re.search(r"\[pc,\s*#(0x[0-9a-f]+|\d+)\]", insn.op_str)
@@ -110,12 +161,57 @@ def profile(rom, row):
     return found
 
 
-def walk(rom):
+def walk(rom, inside=False):
     out = []
     for row in code_rows():
-        accesses = profile(rom, row)
+        end = None
+        if inside:
+            end = function_end(rom, ROM_BASE + row[0], row[2], row[0],
+                               row[0] + row[1]) - ROM_BASE
+        accesses = profile(rom, row, end)
         if accesses:
             out.append((ROM_BASE + row[0], row[1], row[2], accesses))
+    return out
+
+
+def call_to(rom, site, address):
+    for mode in ("thumb", "arm"):
+        found = decode_one(rom, site, mode)
+        if found is not None and found.mnemonic in ("bl", "blx") \
+                and found.op_str.startswith("#"):
+            return int(found.op_str[1:], 0) == address
+    return False
+
+
+def audit(rom, root=ROOT):
+    rows = code_rows()
+
+    def containing(offset):
+        for start, length, mode in rows:
+            if start <= offset < start + length:
+                return start, length, mode
+        return None
+
+    out = []
+    path = os.path.join(root, *LEDGER.split("/"))
+    with open(path, newline="", encoding="utf-8") as handle:
+        for entry in csv.DictReader(handle):
+            address = int(entry["address"], 16)
+            row = containing(address - ROM_BASE)
+            if row is None:
+                out.append({"address": entry["address"], "name": entry["new"],
+                            "class": entry["evidence_class"], "end": None, "sites": [],
+                            "outside": [], "verdict": "NO ROW"})
+                continue
+            end = function_end(rom, address, row[2], row[0], row[0] + row[1])
+            quoted = [site for site in sites(entry["evidence"]) if site != address]
+            if entry["evidence_class"] == "caller-role":
+                outside = [site for site in quoted if not call_to(rom, site, address)]
+            else:
+                outside = [site for site in quoted if not (address <= site < end)]
+            out.append({"address": entry["address"], "name": entry["new"],
+                        "class": entry["evidence_class"], "end": end, "sites": quoted,
+                        "outside": outside, "verdict": "FAIL" if outside else "PASS"})
     return out
 
 
@@ -170,13 +266,24 @@ def register(entries, wanted):
 
 def function(rom, entries, wanted):
     for address, length, mode, accesses in entries:
-        if address != wanted:
+        if address == wanted:
+            report(rom, address, mode, length, accesses)
+            return
+    for start, length, mode in code_rows():
+        if not (start <= wanted - ROM_BASE < start + length):
             continue
-        print("%08X %s len=%d" % (address, mode, length))
-        for site, kind, target, width, loaded_at in sorted(accesses):
-            print("  %s" % quote(rom, site, mode, 2))
-            print("    %s 0x%08X width=%d literal=%s"
-                  % (kind, target, width, "%08X" % loaded_at if loaded_at else "constant"))
+        end = function_end(rom, wanted, mode, start, start + length) - ROM_BASE
+        report(rom, wanted, mode, end - (wanted - ROM_BASE),
+               profile(rom, (wanted - ROM_BASE, end - (wanted - ROM_BASE), mode), end))
+        return
+
+
+def report(rom, address, mode, length, accesses):
+    print("%08X %s len=%d" % (address, mode, length))
+    for site, kind, target, width, loaded_at in sorted(accesses):
+        print("  %s" % quote(rom, site, mode, 2))
+        print("    %s 0x%08X width=%d literal=%s"
+              % (kind, target, width, "%08X" % loaded_at if loaded_at else "constant"))
 
 
 def footprint(rom, entries):
@@ -195,10 +302,19 @@ def main(argv=None):
     parser.add_argument("--register", type=lambda text: int(text, 0))
     parser.add_argument("--function", type=lambda text: int(text, 0))
     parser.add_argument("--mode", default="dump",
-                        choices=("dump", "sole", "swi", "register", "function", "footprint"))
+                        choices=("dump", "sole", "swi", "register", "function", "footprint",
+                                 "audit"))
     args = parser.parse_args(argv)
     rom = read_rom(args.rom)
-    entries = walk(rom)
+    if args.mode == "audit":
+        for row in audit(rom):
+            print("%s %-26s %-20s end=%s sites=%d outside=%s %s"
+                  % (row["address"], row["name"], row["class"],
+                     "%08X" % row["end"] if row["end"] else "-", len(row["sites"]),
+                     ",".join("%08X" % site for site in row["outside"]) or "-",
+                     row["verdict"]))
+        return 0
+    entries = walk(rom, args.mode in ("function", "footprint"))
     if args.mode == "dump":
         dump(rom, entries)
     elif args.mode == "sole":

@@ -60,7 +60,7 @@
 	EXPORT |loc_08030BA4|
 	EXPORT |loc_08030BC2|
 	EXPORT |sub_08030BCC|
-	EXPORT |Blend_WriteAlpha3|
+	EXPORT |sub_08030BCE|
 	EXPORT |loc_08030BE4|
 	EXPORT |loc_08030BEE|
 	EXPORT |loc_08030BF0|
@@ -1357,7 +1357,7 @@
 	LSR      r1, r1, #0x1f
 	LDR      r6, [pc, #0x350]
 	LDR      r7, [pc, #0x354]
-	BEQ      |Blend_WriteAlpha3|
+	BEQ      |sub_08030BCE|
 	MOV      r1, #0
 	MVN      r1, r1
 	STR      r1, [r0]
@@ -1372,11 +1372,11 @@
 	CMP      r0, #0
 	BEQ      |sub_08030BCC|
 	STR      r6, [r4, #0x60]
-	B        |Blend_WriteAlpha3|
+	B        |sub_08030BCE|
 |sub_08030BCC|
 |unk_08030BCC|
 		STR r7, [r4, #0x60]
-|Blend_WriteAlpha3|
+|sub_08030BCE|
 	LDR      r0, [r5]
 	LDRH     r0, [r0, #4]
 	LSL      r0, r0, #0x1f

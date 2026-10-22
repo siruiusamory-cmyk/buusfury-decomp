@@ -52,7 +52,7 @@
 		STRB r3, [r2]
 		B        |loc_080420E6|
 	CODE16
-	EXPORT |Timer_Write2Reload2|
+	EXPORT |sub_08042188|
 	EXPORT |sub_08042220|
 	EXPORT |loc_0804222A|
 	EXPORT |sub_0804222C|
@@ -134,7 +134,7 @@
 	EXPORT |loc_08042CE4|
 	EXPORT |loc_08042CFE|
 	EXPORT |sub_08042D00|
-	EXPORT |Irq_ReadAndWriteMaster|
+	EXPORT |sub_08042D72|
 	EXPORT |loc_08042D9A|
 	EXPORT |loc_08042DB2|
 	EXPORT |loc_08042DC2|
@@ -172,7 +172,7 @@
 	EXPORT |sub_080430E2|
 	EXPORT |sub_080430E8|
 	EXPORT |sub_08043114|
-|Timer_Write2Reload2|
+|sub_08042188|
 	MOV      r1, #4
 	STRB     r1, [r0, #4]
 	MOV      r1, #0x20
@@ -1547,7 +1547,7 @@
 		MOV r2, #8
 		SUB r5, #5
 		CMP r5, #0xe
-		BHS      |Irq_ReadAndWriteMaster|
+		BHS      |sub_08042D72|
 		ADR      r3, |loc_08042D14|
 		LDRB r3, [r3, r5]
 		LSL r3, r3, #1
@@ -1566,7 +1566,7 @@
 		MOV r0, #0x13
 		B        |inc_0x042118_0x049114| + 0xc60
 	INCBIN  baserom.gba_0x42d2a_0x42d72.extracted
-|Irq_ReadAndWriteMaster|
+|sub_08042D72|
 	STRB     r1, [r4, #5]
 	STRB     r1, [r4, #4]
 	MOV      r0, #0x43

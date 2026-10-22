@@ -7431,7 +7431,7 @@
 		MOV r2, #2
 		ADD r3, r6, #0
 		ADD r0, #0x2e
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r7, [pc, #0x160]
 		ADD r1, r5, #0
 		ADD r1, #0x4c
@@ -7439,7 +7439,7 @@
 		ADD r0, r5, #0
 		ADD r3, r7, #0
 		ADD r0, #0x3c
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r0, [pc, #0x150]
 		ADD r3, r6, #0
 		ADD r5, r4, r0
@@ -7448,14 +7448,14 @@
 		ADD r0, r5, #0
 		MOV r2, #2
 		ADD r0, #0x2e
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r1, r5, #0
 		ADD r1, #0x4c
 		ADD r3, r7, #0
 		MOV r2, #4
 		ADD r0, r5, #0
 		ADD r0, #0x3c
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 |loc_08020190|
 		ADD r0, r4, #0
 		BL       |inc_0x03d784_0x041118| + 0xcc
@@ -14224,7 +14224,7 @@
 		MOV r2, #2
 		ADD r3, r6, #0
 		ADD r0, #0x2e
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r7, [pc, #0xc0]
 		ADD r3, r7, #0
 		MOV r2, #4
@@ -14236,7 +14236,7 @@
 		ADD r1, #0x4c
 		ADD r0, r5, #0
 		ADD r0, #0x3c
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r0, [pc, #0xb0]
 		ADD r3, r6, #0
 		ADD r5, r4, r0
@@ -14245,14 +14245,14 @@
 		ADD r0, r5, #0
 		MOV r2, #2
 		ADD r0, #0x2e
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r1, r5, #0
 		ADD r1, #0x4c
 		ADD r3, r7, #0
 		MOV r2, #4
 		ADD r0, r5, #0
 		ADD r0, #0x3c
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r0, r4, #0
 		BL       |inc_0x03d784_0x041118| + 0xcc
 		MOV r0, #0

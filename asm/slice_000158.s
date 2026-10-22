@@ -390,7 +390,7 @@
 	EXPORT |loc_08004DC2|
 	EXPORT |loc_08004DCE|
 	EXPORT |sub_08004DEC|
-	EXPORT |Blend_WriteAlpha1|
+	EXPORT |sub_08004DEE|
 	EXPORT |loc_08004E1C|
 	EXPORT |loc_08004E24|
 	EXPORT |loc_08004EB8|
@@ -824,7 +824,7 @@
 	EXPORT |loc_080091C6|
 	EXPORT |loc_080091E4|
 	EXPORT |sub_080091FC|
-	EXPORT |Blend_WriteControlAndAlpha1|
+	EXPORT |sub_080091FE|
 	EXPORT |loc_08009214|
 	EXPORT |loc_0800921E|
 	EXPORT |loc_08009220|
@@ -879,7 +879,7 @@
 	EXPORT |loc_080096C4|
 	EXPORT |loc_080096EA|
 	EXPORT |sub_08009700|
-	EXPORT |Blend_WriteControlAndAlpha2|
+	EXPORT |sub_08009704|
 	EXPORT |loc_0800971A|
 	EXPORT |loc_0800971E|
 	EXPORT |loc_08009728|
@@ -10553,7 +10553,7 @@
 		MOV r2, #0x68
 		ADD r0, r4, r6
 		LDR r3, [pc, #0x280]
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r2, r5, #0
 		MOV r1, #0
 		ADD r0, r4, #0
@@ -11217,7 +11217,7 @@
 		MOV r2, #0x80
 		ADD r0, r4, #0
 		LDR r3, [pc, #0x9c]
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r7, [pc, #0x84]
 		ADD r6, sp, #4
 		ADD r0, r6, #0
@@ -11287,7 +11287,7 @@
 |sub_08004DEC|
 |unk_08004DEC|
 	INCBIN	baserom.gba_0x4dec_0x4dee.extracted
-|Blend_WriteAlpha1|
+|sub_08004DEE|
 	LSR      r5, r0, #0x20
 	LDMIA    r4!, {r2, r5, r7}
 	LSR      r7, r6, #1
@@ -17416,14 +17416,14 @@
 		ADD r6, r1, #0
 		ADD r3, r7, #0
 		ADD r0, r5, #4
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r3, r7, #0
 		MOV r7, #0x1d
 		LSL r7, r7, #5
 		ADD r1, r4, r7
 		MOV r2, #4
 		ADD r0, r6, #0
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		LDR r0, [sp, #8]
 		LDR r3, [pc, #0x380]
 		STR r0, [r4, #4]
@@ -19584,7 +19584,7 @@
 |sub_080091FC|
 |unk_080091FC|
 	INCBIN	baserom.gba_0x91fc_0x91fe.extracted
-|Blend_WriteControlAndAlpha1|
+|sub_080091FE|
 	LSR      r7, r0, #0x20
 	ADD      r0, r5, r5
 	LSL      r0, r0, #0xc
@@ -20242,12 +20242,12 @@
 	BGE      |sub_08009700|
 	ORR      r3, r5
 	STRH     r3, [r0, #4]
-	B        |Blend_WriteControlAndAlpha2|
+	B        |sub_08009704|
 |sub_08009700|
 |unk_08009700|
 		BIC r5, r3
 		STRH r5, [r0, #4]
-|Blend_WriteControlAndAlpha2|
+|sub_08009704|
 	ADD      r3, r1, #0
 	MOV      r1, #0xff
 	ADD      r1, #1
@@ -20443,7 +20443,7 @@
 		ADD r4, r6, #0
 		ADD r6, #1
 		ADD r0, r4, #0
-		BL       |Irq_WriteMaster2|
+		BL       |sub_0803FAF6|
 		LSL r1, r0, #0x1f
 		BPL      |loc_08009898|
 		ADD r3, r0, #0
@@ -31675,7 +31675,7 @@
 		MOV r0, sp
 		ADD r1, #0x18
 		ADD r0, r0, r2
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		MOV r3, #1
 		LSL r3, r3, #0xc
 		ADD r3, sp
@@ -31734,7 +31734,7 @@
 		ADD r1, #0x18
 		MOV r0, sp
 		ADD r0, r0, r2
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		MOV r3, #1
 		LSL r3, r3, #0xc
 		ADD r3, sp
@@ -35139,7 +35139,7 @@
 		ADD r6, r0, #0
 		ADD r0, #0x2e
 		LDR r3, [pc, #0xf8]
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r1, r6, #0
 		ADD r1, #0x4c
 		MOV r2, #4
@@ -35148,7 +35148,7 @@
 		ADD r0, r6, #0
 		ADD r0, #0x3c
 		LDR r3, [pc, #0xec]
-		BL       |sub_08046FF4|
+		BL       |__vecmap1c__FPvT1iPFPv_v|
 		ADD r0, r6, #0
 		ADD r0, #0x56
 		STR r0, [sp, #0x20]

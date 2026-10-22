@@ -234,7 +234,7 @@
 	EXPORT |loc_0803F18C|
 	EXPORT |loc_0803F196|
 	EXPORT |sub_0803F1B4|
-	EXPORT |Sound_WriteControlAndDma|
+	EXPORT |sub_0803F1B6|
 	EXPORT |loc_0803F24A|
 	EXPORT |loc_0803F26A|
 	EXPORT |loc_0803F278|
@@ -286,7 +286,7 @@
 	EXPORT |loc_0803F764|
 	EXPORT |loc_0803F820|
 	EXPORT |loc_0803F834|
-	EXPORT |Sys_ResetAndStop|
+	EXPORT |sub_0803F876|
 	EXPORT |loc_0803F8B4|
 	EXPORT |loc_0803F8BE|
 	EXPORT |loc_0803F8C8|
@@ -309,13 +309,13 @@
 	EXPORT |loc_0803FA82|
 	EXPORT |loc_0803FAAC|
 	EXPORT |sub_0803FAF2|
-	EXPORT |Irq_WriteMaster2|
+	EXPORT |sub_0803FAF6|
 	EXPORT |loc_0803FB00|
 	EXPORT |loc_0803FB14|
 	EXPORT |loc_0803FB2A|
 	EXPORT |loc_0803FB64|
 	EXPORT |sub_0803FB6E|
-	EXPORT |sub_0803FB7C|
+	EXPORT |Irq_WriteMaster2|
 	EXPORT |loc_0803FB8E|
 	EXPORT |loc_0803FB90|
 	EXPORT |loc_0803FBBA|
@@ -369,7 +369,7 @@
 	EXPORT |sub_080407A0|
 	EXPORT |sub_080407B4|
 	EXPORT |loc_080407BC|
-	EXPORT |Dma_Write3AndWaitControl|
+	EXPORT |sub_080407C8|
 	EXPORT |loc_080407D8|
 	EXPORT |loc_080407E8|
 	EXPORT |loc_08040834|
@@ -410,7 +410,7 @@
 	EXPORT |loc_08040B6E|
 	EXPORT |loc_08040B92|
 	EXPORT |sub_08040B9A|
-	EXPORT |Serial_WriteSetup|
+	EXPORT |sub_08040B9C|
 	EXPORT |loc_08040BE8|
 	EXPORT |loc_08040BF8|
 	EXPORT |loc_08040C08|
@@ -431,7 +431,7 @@
 	EXPORT |loc_08040DB2|
 	EXPORT |Irq_WriteEnableAndTimer3|
 	EXPORT |loc_08040E28|
-	EXPORT |Bios_CpuSetAndSerial|
+	EXPORT |sub_08040E3A|
 	EXPORT |loc_08040E3E|
 	EXPORT |loc_08040E42|
 	EXPORT |loc_08040E54|
@@ -440,7 +440,7 @@
 	EXPORT |loc_08040EEA|
 	EXPORT |loc_08040F5A|
 	EXPORT |Irq_WriteMaster3|
-	EXPORT |Serial_ReadControl|
+	EXPORT |sub_08040F7E|
 	EXPORT |sub_08040FD6|
 	EXPORT |sub_08041022|
 	EXPORT |loc_0804103A|
@@ -498,7 +498,7 @@
 		LDR r0, [r5, #0xc]
 		BL       |inc_0x03d784_0x041118| + 0x1a34
 		LDR r0, [r5]
-		BL       |sub_0803FB7C|
+		BL       |Irq_WriteMaster2|
 		LDR r0, [r5, #8]
 		BL       |loc_0803D4A0|
 		ADD r0, r4, #0
@@ -3699,7 +3699,7 @@
 |sub_0803F1B4|
 |unk_0803F1B4|
 	INCBIN	baserom.gba_0x3f1b4_0x3f1b6.extracted
-|Sound_WriteControlAndDma|
+|sub_0803F1B6|
 	LSL      r0, r0, #0
 	PUSH     {r4, r5, r6, lr}
 	ADD      r4, r0, #0
@@ -4586,10 +4586,10 @@
 		MOV r0, lr
 		ADD r0, #4
 		MOV lr, r0
-		B        |Sys_ResetAndStop|
+		B        |sub_0803F876|
 |loc_0803F874|
 		DCW     0xE00B
-|Sys_ResetAndStop|
+|sub_0803F876|
 	LDR      r0, [r0]
 	LDR      r2, [sp, #0x108]
 	MOV      r1, ip
@@ -4924,7 +4924,7 @@
 |unk_0803FAF2|
 		MOV r0, #0
 		POP {r4, pc}
-|Irq_WriteMaster2|
+|sub_0803FAF6|
 	PUSH     {r4, r5}
 	MOV      r4, #1
 	MOV      r2, #0
@@ -4989,7 +4989,7 @@
 |sub_0803FB6E|
 	DCW      0x0000
 	DCW      0x4a5c,0x0300,0xbc71,0x02cb,0xd80f,0x0632
-|sub_0803FB7C|
+|Irq_WriteMaster2|
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r4, r0, #0
 	MOV      r0, #0x40
@@ -6471,7 +6471,7 @@
 		LDR r0, [pc, #8]
 		STR r0, [r1]
 		B        |loc_080407D8|
-|Dma_Write3AndWaitControl|
+|sub_080407C8|
 	STRH     r0, [r7, r3]
 	LSL      r0, r0, #0xc
 	LDRB     r4, [r7, #5]
@@ -6978,7 +6978,7 @@
 |sub_08040B9A|
 |unk_08040B9A|
 	INCBIN	baserom.gba_0x40b9a_0x40b9c.extracted
-|Serial_WriteSetup|
+|sub_08040B9C|
 	PUSH     {r4, r5, r6, r7}
 	LDR      r0, [pc, #0x2ec]
 	SUB      sp, #8
@@ -7332,11 +7332,11 @@
 		BEQ      |loc_08040E3E|
 		LDRB r1, [r4, #8]
 		CMP r1, #8
-		BHS      |Bios_CpuSetAndSerial|
+		BHS      |sub_08040E3A|
 		ADD r1, #1
 		STRB r1, [r4, #8]
 		B        |loc_08040E3E|
-|Bios_CpuSetAndSerial|
+|sub_08040E3A|
 	MOV      r1, #2
 	STRB     r1, [r4, #1]
 |loc_08040E3E|
@@ -7507,7 +7507,7 @@
 		STRH r0, [r1, #8]
 		B        |loc_08040F5A|
 	INCBIN  baserom.gba_0x40f7c_0x40f7e.extracted
-|Serial_ReadControl|
+|sub_08040F7E|
 	LSL      r0, r0, #0xc
 	LSL      r1, r0, #0
 	LSL      r0, r0, #0x10

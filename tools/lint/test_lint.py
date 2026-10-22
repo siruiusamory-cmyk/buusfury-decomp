@@ -115,6 +115,10 @@ ASM_GOOD = "\tEXPORT |sub_08000158|\n\tEXPORT |Module_DoIt|\n\tEXPORT |loc_08000
            "\tEXPORT |inc_0x071c90_0x3715c0|\n\tEXPORT |unk_03003014|\n"
 ASM_BAD_NAME = "\tEXPORT |lowercase_verb|\n"
 ASM_BAD_DIGITS = "\tEXPORT |sub_08001|\n"
+ASM_LIBRARY = "\tEXPORT |strlen|\n"
+CRAFTED_LEDGER = ("address,old,new,evidence_class,evidence\n"
+                  "0x08046B28,sub_08046B28,strlen,toolchain-library,armlib/c_t__un.l\n"
+                  "0x08046B84,sub_08046B84,memcpy,caller-role,page\n")
 ASM_CONSTANT = "unk_03003014    EQU     0x03003014\n\tEXPORT  unk_03003014\n"
 README_SYMBOL_LINE = MEASURED_PROGRESS + " 6,739 of the 6,740 symbols"
 
@@ -321,6 +325,19 @@ def test_an_address_form_whose_digits_are_not_its_own_address_is_caught():
     assert not lints.asm_symbol_findings(exported(ASM_GOOD), {"sub_08000158": 0x08000158})
 
 
+def test_a_library_symbol_is_caught_without_its_toolchain_library_row():
+    assert lints.asm_symbol_findings(exported(ASM_LIBRARY), {}, library=())
+    assert not lints.asm_symbol_findings(exported(ASM_LIBRARY), {}, library={"strlen"})
+
+
+def test_only_a_toolchain_library_row_admits_a_library_symbol():
+    assert lints.library_symbols(CRAFTED_LEDGER) == {"strlen"}
+    assert not lints.asm_symbol_findings(exported(ASM_LIBRARY), {},
+                                         library=lints.library_symbols(CRAFTED_LEDGER))
+    assert lints.asm_symbol_findings(exported("\tEXPORT |memcpy|\n"), {},
+                                     library=lints.library_symbols(CRAFTED_LEDGER))
+
+
 def test_the_ratchet_refuses_a_count_above_the_baseline():
     assert lints.ratchet_findings(10, 9)
 
@@ -331,6 +348,33 @@ def test_the_ratchet_refuses_a_count_below_an_unlowered_baseline():
 
 def test_the_ratchet_accepts_the_count_the_baseline_holds():
     assert not lints.ratchet_findings(9, 9)
+
+
+def test_the_ratchet_refuses_a_raise_no_retired_row_covers():
+    assert lints.ratchet_findings(6690, 6680, 5)
+    assert lints.ratchet_findings(6690, 6680, 0)
+
+
+def test_the_ratchet_accepts_a_raise_the_retired_rows_cover():
+    assert not lints.ratchet_findings(6685, 6680, 5)
+    assert not lints.ratchet_findings(6680, 6680, 0)
+
+
+def test_a_retired_row_that_licenses_nothing_must_lower_the_baseline():
+    assert lints.ratchet_findings(6680, 6680, 5)
+    assert lints.ratchet_findings(6697, 6680, 16)
+
+
+def test_a_retired_row_must_be_an_address_named_export():
+    retired = [{"address": "0x08004DEE", "retired": "Blend_WriteAlpha1", "reason": "page"}]
+    assert not lints.retired_findings(retired, exported(ASM_GOOD + "\tEXPORT |sub_08004DEE|\n"),
+                                     [])
+    assert lints.retired_findings(retired, exported(ASM_GOOD), [])
+    assert lints.retired_findings(retired, exported(ASM_GOOD + "\tEXPORT |sub_08004DEE|\n"),
+                                  [(0x08004DEE, "Blend_WriteAlpha1")])
+    stale = exported(ASM_GOOD + "\tEXPORT |sub_08004DEE|\n\tEXPORT |Blend_WriteAlpha1|\n")
+    assert lints.retired_findings(retired, stale, [])
+    assert not lints.retired_findings(retired, stale, [(0x0800536A, "Blend_WriteAlpha1")])
 
 
 def test_an_exported_ram_constant_is_not_counted_as_a_symbol():
@@ -420,9 +464,15 @@ if __name__ == "__main__":
     test_an_asm_export_outside_the_convention_is_caught()
     test_module_verb_address_and_slice_exports_are_not_caught()
     test_an_address_form_whose_digits_are_not_its_own_address_is_caught()
+    test_a_library_symbol_is_caught_without_its_toolchain_library_row()
+    test_only_a_toolchain_library_row_admits_a_library_symbol()
     test_the_ratchet_refuses_a_count_above_the_baseline()
     test_the_ratchet_refuses_a_count_below_an_unlowered_baseline()
     test_the_ratchet_accepts_the_count_the_baseline_holds()
+    test_the_ratchet_refuses_a_raise_no_retired_row_covers()
+    test_the_ratchet_accepts_a_raise_the_retired_rows_cover()
+    test_a_retired_row_that_licenses_nothing_must_lower_the_baseline()
+    test_a_retired_row_must_be_an_address_named_export()
     test_an_exported_ram_constant_is_not_counted_as_a_symbol()
     test_the_readme_symbol_figure_that_disagrees_is_caught()
     test_the_readme_symbol_figure_that_agrees_is_not_caught()

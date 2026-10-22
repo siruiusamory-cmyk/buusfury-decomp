@@ -11,11 +11,16 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
 - `asm/` exports follow the same two forms, and `tools\lint\lints.py` enforces them
   (`NAMING-asm-symbol`): every export is `Module_Verb` or `sub_`/`loc_`/`dat_`/`unk_`/`g_` and eight
   hex digits equal to the symbol's own address. `inc_0x<file start>_0x<file end>` is the one other
-  admitted form: it names a raw slice by its extent, and nothing renames it.
+  admitted form: it names a raw slice by its extent, and nothing renames it. The third form is the
+  library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
+  `toolchain-library` row of the ledger carries.
 - The count of address-named exports is held in `docs/NAMING_BASELINE.txt` and may only fall
-  (`NAMING-address-ratchet`): a count above it fails, and a count below it fails until the baseline
-  is lowered to the measured figure in the same tree. README's "<a> of the <b> symbols" sentence is
-  the same two figures (`README-numbers`).
+  (`NAMING-address-ratchet`): the count may exceed the baseline only by exactly one address-named
+  symbol per retired name (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other
+  difference fails until the baseline is lowered to the measured figure in the same tree. A name
+  is retired when its quoted evidence lies outside the function it was bound to: the export
+  returns to its address form and the ledger row leaves. README's "<a> of the <b> symbols"
+  sentence is the same two figures (`README-numbers`).
 
 ## Evidence for a name
 
@@ -25,6 +30,7 @@ register, call, string or format it proves, never the story around it:
 | class | what the evidence is | where to look |
 |---|---|---|
 | a hardware register or BIOS call it drives | the instruction that writes or reads the register, or the `svc` number, quoted with its address; `python tools\research\name_evidence.py --mode function --function 0x…` prints every hardware access in the function and the literal it resolved from | GBATEK for the register or SWI name |
+| a byte-exact runtime-library member | the library file, its member, the member's exported symbol, the matched length and the masked byte count; `python tools\research\library_match.py --lib <armlib> --detail 0x…` reprints them | `armlib/` of the ARM Developer Suite 1.2 install |
 | a proven caller/callee role | the call sites and the registers they pass, or a tracked page that measured the role and quotes the bytes | `docs/research/`, the ledger's evidence cell |
 | a retail string it alone references | the string's address, its index in the string table, and the fact that no other transcribed function loads it | `tools/text/strings_layout.json` |
 | a data format a generator in `tools/` already decodes | the pointer or header the function reads into a region one of the generators emits | the generator's own record table |

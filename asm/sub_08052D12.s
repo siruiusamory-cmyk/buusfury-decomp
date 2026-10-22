@@ -16,7 +16,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_08052D42|
 	ADD      r0, r4, #0
@@ -27,7 +27,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_08052D5A|
 	ADD      r0, r4, #0
@@ -38,7 +38,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_08052D72|
 	ADD      r0, r4, #0
@@ -86,7 +86,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_08052DDE|
 	ADD      r0, r4, #0

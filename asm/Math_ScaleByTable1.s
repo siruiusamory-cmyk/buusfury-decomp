@@ -1,5 +1,5 @@
 	CODE16
-|loc_0803E8BC|
+|Math_ScaleByTable1|
 	ADD      r1, r0, #0
 	ADD      r1, #0x50
 	MOV      r3, #0x4f
@@ -75,7 +75,7 @@
 	ORR      r0, r3
 	STRB     r0, [r2, #0xa]
 	ADD      r0, r4, #0
-	BL       |loc_0803E8BC|
+	BL       |Math_ScaleByTable1|
 |loc_0803E94E|
 	POP      {r4, r5, pc}
 |sub_0803E950|

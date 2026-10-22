@@ -2,7 +2,7 @@
 |sub_0800F4E6|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |loc_08011818|
+	BL       |Handle_Acquire1|
 	LDR      r0, [r4, #0x58]
 	LDR      r0, [r0, #0x50]
 	CMP      r0, #0
@@ -39,7 +39,7 @@
 	BL       |inc_0x049120_0x055620| + 0x6d00
 |loc_0800F534|
 	ADD      r0, r4, #0
-	BL       |sub_08011568|
+	BL       |Handle_Release1|
 	POP      {r4, pc}
 	LDRB     r1, [r0, #0x11]
 	STR      r1, [r0, #0x1c]

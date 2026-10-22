@@ -1,5 +1,5 @@
 	CODE16
-|loc_08012628|
+|List_ReleaseAll3|
 	PUSH     {r3, r4, r5, lr}
 	LDR      r4, [r0]
 	ADD      r5, r0, #0

@@ -15,4 +15,4 @@
 |loc_08011424|
 	ADD      r1, r2, #0
 	POP      {r4, r5, r6, r7}
-	B        |loc_0801137C|
+	B        |Table_InitLink1|

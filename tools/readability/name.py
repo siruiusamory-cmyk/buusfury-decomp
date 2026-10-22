@@ -18,7 +18,7 @@ import lints
 LEDGER = os.path.join("docs", "NAMING_LEDGER.csv")
 INDEX = os.path.join("docs", "ASM_INDEX.csv")
 NAMES = os.path.join("docs", "research", "RECOMP_NAMES.csv")
-PAGE = os.path.join("docs", "research", "NAME_CENSUS.md")
+PAGE = "docs/research/NAME_CENSUS.md"
 BASELINE = os.path.join("docs", "NAMING_BASELINE.txt")
 README = "README.md"
 CENSUS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")

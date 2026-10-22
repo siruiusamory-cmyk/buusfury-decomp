@@ -35,7 +35,7 @@
 	INCBIN	baserom.gba_0x5c40_0x5c44.extracted
 	BL       |loc_080042FC|
 	LDR      r0, [r6, #0x10]
-	BL       |loc_0800432C|
+	BL       |Object_SubtractDelta1|
 	MOV      r0, #4
 	BL       |GBARam_Malloc|
 	CMP      r0, #0

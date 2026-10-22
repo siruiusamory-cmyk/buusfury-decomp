@@ -1,5 +1,5 @@
 	CODE16
-|loc_0804E490|
+|Gfx_BeginTileLoad1|
 	PUSH     {r4, r5, r6, lr}
 	ADD      r4, r0, #0
 	LDRB     r0, [r0]
@@ -32,7 +32,7 @@
 	PUSH     {r3, lr}
 	ADD      r0, #0xc
 	LDMIA    r0!, {r0, r1, r2}
-	BL       |loc_0804E490|
+	BL       |Gfx_BeginTileLoad1|
 	POP      {r3, pc}
 |sub_0804E4D8|
 |unk_0804E4D8|

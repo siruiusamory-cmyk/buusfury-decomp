@@ -1,5 +1,5 @@
 	CODE16
-|loc_0801137C|
+|Table_InitLink1|
 	LSL      r2, r1, #2
 	ADD      r2, r2, r1
 	LSL      r2, r2, #1

@@ -1,5 +1,5 @@
 	CODE16
-|loc_08050D30|
+|Object_InstallHandlerTable1|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r0, #0
 	LDR      r0, [pc, #0x20]

@@ -24,7 +24,7 @@
 	ADD      r1, r5, #0
 	ADD      r0, r4, #0
 	STRB     r2, [r6]
-	BL       |sub_08011200|
+	BL       |Table_Unlink1|
 	LDRH     r0, [r6, #2]
 	MOV      r1, #3
 	LSL      r1, r1, #0xa
@@ -62,7 +62,7 @@
 	ADD      r1, r7, #0
 	ADD      r0, r4, #0
 	STRB     r2, [r5]
-	BL       |sub_08011200|
+	BL       |Table_Unlink1|
 	LDRH     r0, [r5, #2]
 	MOV      r1, #3
 	LSL      r1, r1, #0xa

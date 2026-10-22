@@ -8,7 +8,7 @@
 		LDR r0, [pc, #0x264]
 		STR r0, [r4]
 		ADD r0, r4, #0
-		BL       |sub_08011568|
+		BL       |Handle_Release1|
 		LDR r7, [pc, #0x260]
 		LDRB r0, [r7]
 		ADD r1, r0, #1

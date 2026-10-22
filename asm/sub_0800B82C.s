@@ -2,7 +2,7 @@
 |sub_0800B82C|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |loc_08011818|
+	BL       |Handle_Acquire1|
 	MOV      r0, #0
 	MVN      r0, r0
 	STR      r0, [r4, #0x10]

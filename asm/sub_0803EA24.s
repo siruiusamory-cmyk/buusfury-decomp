@@ -14,7 +14,7 @@
 	ORR      r0, r1
 	STRB     r0, [r4, #0xa]
 	ADD      r0, r5, #0
-	BL       |loc_0803E8BC|
+	BL       |Math_ScaleByTable1|
 	POP      {r4, r5, r6, pc}
 |sub_0803EA46|
 |unk_0803EA46|

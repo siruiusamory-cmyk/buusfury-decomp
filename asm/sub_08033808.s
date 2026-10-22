@@ -6,13 +6,13 @@
 		LSL r0, r0, #2
 		LDR r1, [r5, r0]
 		ADD r0, r4, #0
-		BL       |loc_08033664|
+		BL       |Gfx_InitBlock2|
 		LDR r0, [r4, #0x10]
 		ADD r0, #1
 		LSL r0, r0, #2
 		LDR r1, [r5, r0]
 		ADD r0, r4, #0
-		BL       |loc_0803362A|
+		BL       |Gfx_InitBlock1|
 		B        |loc_08033836|
 |loc_08033826|
 |unk_08033826|

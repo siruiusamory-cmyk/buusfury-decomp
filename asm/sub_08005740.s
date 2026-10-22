@@ -9,7 +9,7 @@
 	LDR      r0, [r6, #0x1c]
 	BL       |loc_080115B0|
 	LDR      r0, [r6, #0x1c]
-	BL       |loc_0801157E|
+	BL       |List_ReleaseAll2|
 	LDR      r0, [pc, #0x258]
 	MOV      r2, #0
 	LDR      r7, [r0, #0x5c]
@@ -165,7 +165,7 @@
 	LDR      r4, [pc, #0x100]
 	ADD      r5, r0, #0
 	LDR      r0, [r4, #0x1c]
-	BL       |loc_0801157E|
+	BL       |List_ReleaseAll2|
 	LDR      r0, [r4, #0x1c]
 	BL       |sub_08011A1E|
 	ADD      r0, r5, #0

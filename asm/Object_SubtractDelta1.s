@@ -1,5 +1,5 @@
 	CODE16
-|loc_0800432C|
+|Object_SubtractDelta1|
 	MOV      r2, #0x13
 	LSL      r2, r2, #6
 	LDR      r1, [pc, #0x204]

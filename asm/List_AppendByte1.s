@@ -1,5 +1,5 @@
 	CODE16
-|sub_08013A90|
+|List_AppendByte1|
 	LDRB     r2, [r0, #0xc]
 	ADD      r2, r2, r0
 	STRB     r1, [r2, #0xd]

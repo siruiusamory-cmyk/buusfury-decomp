@@ -1,5 +1,5 @@
 	CODE16
-|sub_08011568|
+|Handle_Release1|
 	PUSH     {r4, lr}
 	LDRH     r1, [r0, #0xc]
 	ADD      r4, r0, #0

@@ -153,7 +153,7 @@
 	LDR      r0, [pc, #0x238]
 	ADD      r1, r4, #0
 	LDR      r0, [r0, #0x10]
-	BL       |loc_0801268A|
+	BL       |List_Remove1|
 	POP      {r4, pc}
 	CMP      r0, #0
 	BLT      |loc_0800D300|

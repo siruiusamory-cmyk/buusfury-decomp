@@ -137,7 +137,7 @@
 	LDR      r0, [r4, #0x18]
 	BL       |loc_08011B04|
 	LDR      r0, [r4, #0x28]
-	BL       |loc_08012628|
+	BL       |List_ReleaseAll3|
 	LDR      r1, [pc, #0xf0]
 	LDR      r0, [r4, #4]
 	ADD      r0, r0, r1

@@ -21,7 +21,7 @@
 		LDR r2, [sp]
 		STRB r0, [r2, #7]
 		ADD r0, r4, #0
-		BL       |loc_0801137C|
+		BL       |Table_InitLink1|
 		B        |inc_0x0158_0x143f2| + 0x11366
 |loc_080114EC|
 		ADD r1, r6, #0
@@ -66,7 +66,7 @@
 		STRB r1, [r0, #6]
 		ADD r1, r6, #0
 		ADD r0, r4, #0
-		BL       |loc_0801137C|
+		BL       |Table_InitLink1|
 		B        |inc_0x0158_0x143f2| + 0x11366
 |loc_08011540|
 		ADD r1, r6, #0

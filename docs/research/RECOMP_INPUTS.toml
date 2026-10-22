@@ -3115,7 +3115,7 @@ name = "sub_08010D58"
 addr = 0x08010d7c
 mode = "thumb"
 size = 62
-name = "sub_08010D7C"
+name = "Table_ClearSlot1"
 
 [[code]]
 addr = 0x08010dba
@@ -3202,7 +3202,7 @@ name = "sub_080111D0"
 addr = 0x08011200
 mode = "thumb"
 size = 522
-name = "sub_08011200"
+name = "Table_Unlink1"
 
 [[code]]
 addr = 0x0801140a
@@ -3238,7 +3238,7 @@ name = "sub_08011564"
 addr = 0x08011568
 mode = "thumb"
 size = 210
-name = "sub_08011568"
+name = "Handle_Release1"
 
 [[code]]
 addr = 0x0801163a
@@ -3685,7 +3685,7 @@ name = "sub_08013924"
 addr = 0x08013a90
 mode = "thumb"
 size = 156
-name = "sub_08013A90"
+name = "List_AppendByte1"
 
 [[code]]
 addr = 0x08013b2c

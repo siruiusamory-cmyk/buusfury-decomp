@@ -1,5 +1,5 @@
 	CODE16
-|loc_08006880|
+|Object_Construct2|
 	PUSH     {r0, r1, r2, r3, r4, r5, r6, r7, lr}
 	SUB      sp, #4
 	ADD      r7, sp, #0x2c

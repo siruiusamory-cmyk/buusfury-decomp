@@ -1,5 +1,5 @@
 	CODE16
-|loc_0803362A|
+|Gfx_InitBlock1|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0

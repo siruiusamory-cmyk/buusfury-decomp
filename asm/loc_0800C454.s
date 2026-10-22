@@ -17,7 +17,7 @@
 	ADD      r0, r4, #0
 	LDR      r2, [pc, #0x128]
 	LDR      r1, [pc, #0x128]
-	BL       |loc_08011874|
+	BL       |Object_Construct3|
 	LDR      r0, [pc, #0x128]
 	STR      r0, [r4]
 	LDR      r1, [r5]

@@ -1,5 +1,5 @@
 	CODE16
-|sub_08011200|
+|Table_Unlink1|
 	LSL      r2, r1, #2
 	ADD      r2, r2, r1
 	LDR      r3, [pc, #0x34c]

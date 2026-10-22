@@ -99,7 +99,7 @@
 	MOV      r2, #0x9f
 	LSL      r2, r2, #3
 	ADD      r0, r0, r2
-	BL       |sub_08013A90|
+	BL       |List_AppendByte1|
 	POP      {r3, pc}
 	PUSH     {r3, lr}
 	LDR      r2, [r0]

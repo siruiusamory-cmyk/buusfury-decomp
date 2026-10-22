@@ -1,5 +1,5 @@
 	CODE16
-|loc_08011818|
+|Handle_Acquire1|
 	PUSH     {r3, r4, r5, lr}
 	LDR      r5, [pc, #0x270]
 	LDRH     r1, [r0, #0xe]

@@ -47,7 +47,7 @@
 |loc_08006F42|
 		BL       |inc_0x03d784_0x041118| + 0x11c
 		LDR r0, [r4, #0x14]
-		BL       |loc_08011E94|
+		BL       |List_PopAll1|
 		ADD r1, r5, #0
 		LDR r0, [r4, #0x14]
 		BL       |loc_08011944|

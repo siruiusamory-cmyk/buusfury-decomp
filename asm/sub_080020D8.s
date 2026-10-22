@@ -227,7 +227,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r0, [pc, #0x160]
 	LDR      r0, [r0, #0xc]
-	BL       |loc_080091B8|
+	BL       |State_CopyBlock1|
 	MOV      r0, #0xc
 	BL       |GBARam_Malloc|
 	CMP      r0, #0

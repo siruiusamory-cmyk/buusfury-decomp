@@ -9,7 +9,7 @@
 		STR r0, [r4, #8]
 		STR r5, [r4, #0xc]
 		ADD r0, r5, #0
-		BL       |sub_08010D7C|
+		BL       |Table_ClearSlot1|
 		LDR r0, [pc, #0x1c]
 		STR r0, [r4]
 		ADD r0, r4, #0

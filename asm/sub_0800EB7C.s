@@ -39,7 +39,7 @@
 		STR r0, [r4, #0x4c]
 		LDR r0, [pc, #0x21c]
 		ADD r1, #8
-		BL       |loc_0804E490|
+		BL       |Gfx_BeginTileLoad1|
 |loc_0800EBD0|
 		LDR r0, [r6, #0x54]
 		STR r0, [r4, #0x50]
@@ -79,7 +79,7 @@
 		LDRH r2, [r0, #2]
 		LDR r1, [r0, #4]
 		LDR r0, [r0, #8]
-		BL       |loc_0804E490|
+		BL       |Gfx_BeginTileLoad1|
 |loc_0800EC22|
 		LDR r0, [r4, #0x14]
 		LDR r1, [r0]

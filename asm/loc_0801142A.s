@@ -41,7 +41,7 @@
 	CMP      r0, #0
 	BNE      |sub_080114C0|
 	ADD      r0, r4, #0
-	BL       |sub_08011200|
+	BL       |Table_Unlink1|
 	LDRH     r0, [r5, #4]
 	LDR      r2, [sp]
 	LDRH     r1, [r2, #4]
@@ -68,8 +68,8 @@
 |loc_080114AE|
 	LDRB     r1, [r5, #6]
 	ADD      r0, r4, #0
-	BL       |loc_0801137C|
+	BL       |Table_InitLink1|
 	ADD      r1, r6, #0
 	ADD      r0, r4, #0
-	BL       |loc_0801137C|
+	BL       |Table_InitLink1|
 	POP      {r3, r4, r5, r6, r7, pc}

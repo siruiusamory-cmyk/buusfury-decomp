@@ -2,7 +2,7 @@
 |sub_0800C3F8|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |loc_08011818|
+	BL       |Handle_Acquire1|
 	ADD      r0, r4, #0
 	BL       |loc_0800C298|
 	POP      {r4, pc}

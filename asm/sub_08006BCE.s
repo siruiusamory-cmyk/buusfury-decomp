@@ -15,7 +15,7 @@
 	LDR      r4, [pc, #0x16c]
 	ADD      r5, r0, #0
 	LDR      r0, [r4]
-	BL       |loc_08011E94|
+	BL       |List_PopAll1|
 	MOV      r2, #0
 	MOV      r1, #0xe
 	LDR      r0, [r4]

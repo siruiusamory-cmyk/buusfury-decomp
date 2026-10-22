@@ -3183,7 +3183,7 @@ address = 0x08004310
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800432C"
+name = "Object_SubtractDelta1"
 address = 0x0800432c
 mode = "thumb"
 
@@ -4708,7 +4708,7 @@ end = 0x08006938
 mode = "thumb"
 
 [[functions]]
-name = "sub_08006880"
+name = "Object_Construct2"
 address = 0x08006880
 mode = "thumb"
 
@@ -6590,7 +6590,7 @@ address = 0x08009196
 mode = "thumb"
 
 [[functions]]
-name = "sub_080091B8"
+name = "State_CopyBlock1"
 address = 0x080091b8
 mode = "thumb"
 
@@ -7693,7 +7693,7 @@ end = 0x0800ab50
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800A9D0"
+name = "List_ReleaseAll1"
 address = 0x0800a9d0
 mode = "thumb"
 
@@ -11496,7 +11496,7 @@ address = 0x08010d5c
 mode = "thumb"
 
 [[functions]]
-name = "sub_08010D7C"
+name = "Table_ClearSlot1"
 address = 0x08010d7c
 end = 0x08010dba
 mode = "thumb"
@@ -11646,7 +11646,7 @@ end = 0x080111fc
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011200"
+name = "Table_Unlink1"
 address = 0x08011200
 end = 0x0801140a
 mode = "thumb"
@@ -11722,7 +11722,7 @@ address = 0x08011378
 mode = "thumb"
 
 [[functions]]
-name = "sub_0801137C"
+name = "Table_InitLink1"
 address = 0x0801137c
 mode = "thumb"
 
@@ -11802,13 +11802,13 @@ end = 0x08011568
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011568"
+name = "Handle_Release1"
 address = 0x08011568
 end = 0x0801163a
 mode = "thumb"
 
 [[functions]]
-name = "sub_0801157E"
+name = "List_ReleaseAll2"
 address = 0x0801157e
 mode = "thumb"
 
@@ -11959,7 +11959,7 @@ address = 0x08011806
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011818"
+name = "Handle_Acquire1"
 address = 0x08011818
 mode = "thumb"
 
@@ -11984,7 +11984,7 @@ address = 0x08011872
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011874"
+name = "Object_Construct3"
 address = 0x08011874
 mode = "thumb"
 
@@ -12366,7 +12366,7 @@ address = 0x08011e48
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011E94"
+name = "List_PopAll1"
 address = 0x08011e94
 mode = "thumb"
 
@@ -12687,7 +12687,7 @@ address = 0x08012618
 mode = "thumb"
 
 [[functions]]
-name = "sub_08012628"
+name = "List_ReleaseAll3"
 address = 0x08012628
 mode = "thumb"
 
@@ -12722,7 +12722,7 @@ address = 0x08012688
 mode = "thumb"
 
 [[functions]]
-name = "sub_0801268A"
+name = "List_Remove1"
 address = 0x0801268a
 mode = "thumb"
 
@@ -13538,7 +13538,7 @@ end = 0x08013a90
 mode = "thumb"
 
 [[functions]]
-name = "sub_08013A90"
+name = "List_AppendByte1"
 address = 0x08013a90
 end = 0x08013b2c
 mode = "thumb"
@@ -23985,7 +23985,7 @@ address = 0x08033628
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803362A"
+name = "Gfx_InitBlock1"
 address = 0x0803362a
 mode = "thumb"
 
@@ -23995,7 +23995,7 @@ address = 0x0803365a
 mode = "thumb"
 
 [[functions]]
-name = "sub_08033664"
+name = "Gfx_InitBlock2"
 address = 0x08033664
 mode = "thumb"
 
@@ -29700,7 +29700,7 @@ address = 0x0803e8b8
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803E8BC"
+name = "Math_ScaleByTable1"
 address = 0x0803e8bc
 mode = "thumb"
 
@@ -35165,7 +35165,7 @@ end = 0x0804e4d8
 mode = "thumb"
 
 [[functions]]
-name = "sub_0804E490"
+name = "Gfx_BeginTileLoad1"
 address = 0x0804e490
 mode = "thumb"
 
@@ -39167,7 +39167,7 @@ end = 0x08050d58
 mode = "thumb"
 
 [[functions]]
-name = "sub_08050D30"
+name = "Object_InstallHandlerTable1"
 address = 0x08050d30
 mode = "thumb"
 

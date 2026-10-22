@@ -1,5 +1,5 @@
 	CODE16
-|loc_08011874|
+|Object_Construct3|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
 	ADD      r0, r1, #0

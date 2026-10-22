@@ -35,7 +35,7 @@
 		BEQ      |loc_0800F488|
 		MOV r2, #0x80
 		LDR r1, [pc, #0x38]
-		BL       |loc_0804E490|
+		BL       |Gfx_BeginTileLoad1|
 |loc_0800F488|
 		LDR r0, [r4, #0x5c]
 		CMP r0, #0
@@ -43,7 +43,7 @@
 		LDRH r2, [r0, #2]
 		LDR r1, [r0, #4]
 		LDR r0, [r0, #8]
-		BL       |loc_0804E490|
+		BL       |Gfx_BeginTileLoad1|
 |loc_0800F498|
 		MOV r0, #0
 		STR r5, [r4, #0x30]

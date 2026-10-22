@@ -2,7 +2,7 @@
 |loc_0800AB0C|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |loc_0800A9D0|
+	BL       |List_ReleaseAll1|
 	LDR      r1, [r4, #4]
 	ADD      r0, r4, #4
 	LSL      r1, r1, #3
@@ -18,7 +18,7 @@
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
-	BL       |loc_0800A9D0|
+	BL       |List_ReleaseAll1|
 	LDR      r1, [r4, #4]
 	ADD      r0, r4, #4
 	LSL      r1, r1, #3

@@ -21,7 +21,7 @@
 	LDRB     r1, [r0, #0x10]
 	ORR      r1, r2
 	STRB     r1, [r0, #0x10]
-	B        |loc_0803E8BC|
+	B        |Math_ScaleByTable1|
 	ADD      r1, r0, #0
 	ADD      r1, #0x40
 	LDRB     r2, [r1, #8]
@@ -43,7 +43,7 @@
 	LDRB     r1, [r0, #0x10]
 	ORR      r1, r2
 	STRB     r1, [r0, #0x10]
-	B        |loc_0803E8BC|
+	B        |Math_ScaleByTable1|
 |sub_0803E9A8|
 |unk_0803E9A8|
 	INCBIN	baserom.gba_0x3e9a8_0x3ea24.extracted

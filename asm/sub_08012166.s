@@ -11,6 +11,6 @@
 	LDR      r0, [r4, #4]
 	BL       |loc_08011944|
 	LDR      r0, [r4, #4]
-	BL       |loc_08011E94|
+	BL       |List_PopAll1|
 	MOV      r0, #1
 	POP      {r4, pc}

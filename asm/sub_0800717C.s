@@ -17,7 +17,7 @@
 	BNE      |loc_080071A4|
 	ADD      r1, r4, #0
 	LDR      r0, [r7, #4]
-	BL       |loc_0801268A|
+	BL       |List_Remove1|
 |loc_080071A4|
 	POP      {r3, r4, r5, r6, r7, pc}
 |sub_080071A6|

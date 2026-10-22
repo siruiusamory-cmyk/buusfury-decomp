@@ -1,5 +1,5 @@
 	CODE16
-|sub_08010D7C|
+|Table_ClearSlot1|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
 	MOV      r1, #0xff

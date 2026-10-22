@@ -6,7 +6,7 @@
 	CMP      r1, #0
 	LDR      r0, [r5, #0x10]
 	BEQ      |loc_08008AB2|
-	BL       |loc_08012628|
+	BL       |List_ReleaseAll3|
 	B        |loc_08008AB6|
 |loc_08008AB2|
 	BL       |loc_08012900|

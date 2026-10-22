@@ -56,7 +56,7 @@
 	STRH     r0, [r4, #2]
 |loc_0800D904|
 	ADD      r0, r5, #0
-	BL       |sub_08011568|
+	BL       |Handle_Release1|
 	POP      {r3, r4, r5, pc}
 |loc_0800D90C|
 	DCW      0x2588

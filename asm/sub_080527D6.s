@@ -5,7 +5,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_080527EE|
 	ADD      r0, r4, #0
@@ -16,7 +16,7 @@
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
 	MOV      r1, #0
-	BL       |loc_08050D30|
+	BL       |Object_InstallHandlerTable1|
 	CMP      r5, #0
 	BEQ      |loc_08052806|
 	ADD      r0, r4, #0

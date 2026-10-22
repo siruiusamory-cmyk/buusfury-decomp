@@ -39,7 +39,7 @@
 		LDR r0, [r7, #0x1c]
 		BL       |loc_080115B0|
 		LDR r0, [r7, #0x1c]
-		BL       |loc_0801157E|
+		BL       |List_ReleaseAll2|
 		MOV r2, #1
 		LSL r2, r2, #0x1a
 		LDRH r0, [r2]
@@ -84,7 +84,7 @@
 		LDR r0, [r0]
 		STR r0, [r4, #0x20]
 		LDR r0, [r7, #0xc]
-		BL       |loc_0800432C|
+		BL       |Object_SubtractDelta1|
 		LDR r0, [r4, #0x1c]
 		LDR r1, [pc, #0x94]
 		LSL r3, r0, #3
@@ -182,7 +182,7 @@
 		LDR r0, [r7, #0x1c]
 		BL       |loc_080115B0|
 		LDR r0, [r7, #0x1c]
-		BL       |loc_0801157E|
+		BL       |List_ReleaseAll2|
 		MOV r2, #1
 		LSL r2, r2, #0x1a
 		LDRH r0, [r2]
@@ -237,7 +237,7 @@
 		CMP r0, #2
 		BNE      |loc_080235DE|
 		LDR r0, [r7, #0xc]
-		BL       |loc_0800432C|
+		BL       |Object_SubtractDelta1|
 		LDR r0, [r7, #0xc]
 		MOV r3, #0x68
 		LDRB r1, [r0]

@@ -3,7 +3,7 @@
 	PUSH     {r0, r1, r4, r5, r6, r7, lr}
 	SUB      sp, #4
 	ADD      r5, r0, #0
-	BL       |loc_0800A9D0|
+	BL       |List_ReleaseAll1|
 	LDR      r0, [r5, #4]
 	MOV      r4, #0
 	CMP      r0, #0

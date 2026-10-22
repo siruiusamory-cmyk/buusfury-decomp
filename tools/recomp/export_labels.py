@@ -16,6 +16,7 @@ INPUTS = os.path.join("docs", "research", "RECOMP_INPUTS.toml")
 NAMES = os.path.join("docs", "research", "RECOMP_NAMES.csv")
 OUT = os.path.join("docs", "research", "BF_LABELS.toml")
 CENSUS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")
+RUNTIME = os.path.join("docs", "research", "RUNTIME_ENTRIES.csv")
 ROM = os.path.join(ROOT, "baserom.gba")
 NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
 ADDRESS_FORM = re.compile(r"^(?:sub|loc|dat|unk|g)_[0-9A-F]{8}$")
@@ -62,6 +63,26 @@ def house(addr, interior=frozenset()):
     return "%s_%08X" % ("loc" if addr in interior else "sub", addr)
 
 
+def runtime_rows(root=ROOT):
+    path = os.path.join(root, *RUNTIME.split("/"))
+    if not os.path.exists(path):
+        raise SystemExit("no %s, so the labels the runtime recorded would be lost" % RUNTIME)
+    out = {}
+    with open(path, newline="", encoding="ascii") as handle:
+        for number, row in enumerate(csv.DictReader(handle), 2):
+            addr = int(row["address"], 16)
+            if row["mode"] not in ("arm", "thumb"):
+                raise SystemExit("%s:%d gives 0x%08X the mode %r"
+                                 % (path, number, addr, row["mode"]))
+            if row["provenance"] != "runtime-recorded":
+                raise SystemExit("%s:%d gives 0x%08X the provenance %r"
+                                 % (path, number, addr, row["provenance"]))
+            if addr in out:
+                raise SystemExit("%s:%d carries 0x%08X twice" % (path, number, addr))
+            out[addr] = row["mode"]
+    return out
+
+
 def names(root=ROOT):
     path = os.path.join(root, NAMES)
     out = {}
@@ -94,6 +115,13 @@ def label_set(root=ROOT):
     table = roots(root)
     named = names(root)
     interior = interior_blocks(root)
+    for addr, mode in runtime_rows(root).items():
+        if addr in table:
+            if table[addr][0] != mode:
+                raise SystemExit("%s gives 0x%08X the mode %r, and the export gives %r"
+                                 % (RUNTIME, addr, mode, table[addr][0]))
+            continue
+        table[addr] = (mode, None)
     for addr in named:
         if addr not in table:
             raise SystemExit("%s names 0x%08X, which no export entry carries"

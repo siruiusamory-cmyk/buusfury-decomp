@@ -27,6 +27,8 @@ REGISTER = re.compile(r"^(r\d+|sb|sl|fp|ip|sp|lr|pc|r12)$")
 TARGET = re.compile(r"^#?(0x[0-9a-f]+|\d+)$")
 SITE = re.compile(r"0x(08[0-9A-Fa-f]{6})")
 LEDGER = os.path.join("docs", "NAMING_LEDGER.csv")
+BOUNDS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")
+POOL_IMMEDIATE = re.compile(r"\[pc,\s*#(0x[0-9a-f]+|\d+)\]")
 THUMB_LDR_LITERAL = 0xF800
 THUMB_LDR_BASE = 0x4800
 THUMB_SWI = 0xDF00
@@ -111,6 +113,45 @@ def function_end(rom, start, mode, low, high):
     return last + (found.size if found is not None else 2)
 
 
+def census(root=ROOT):
+    path = os.path.join(root, *BOUNDS.split("/"))
+    starts, parents = set(), {}
+    with open(path, newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            address = int(row["address"], 16)
+            if row["kind"] == "start":
+                starts.add(address)
+            elif row["kind"] == "block" and row.get("parent"):
+                parents.setdefault(int(row["parent"], 16), []).append(address)
+    return starts, parents
+
+
+def pool_address(insn, mode):
+    match = POOL_IMMEDIATE.search(insn.op_str)
+    if match is None:
+        return None
+    base = (insn.address + 4) & ~3 if mode == "thumb" else insn.address + 8
+    return base + int(match.group(1), 0)
+
+
+def extent(rom, address, row, starts, parents):
+    low, high = row[0], row[0] + row[1]
+    later = [at for at in starts if address < at < ROM_BASE + high]
+    cap = min(later) - ROM_BASE if later else high
+    body = set()
+    for begin in [address] + parents.get(address, []):
+        if low <= begin - ROM_BASE < cap:
+            body |= reachable(rom, begin, row[2], low, cap)
+    pools = set()
+    for at in sorted(body):
+        found = decode_one(rom, at, row[2])
+        if found is not None and found.mnemonic in LOAD_WIDTH and "[pc" in found.op_str:
+            target = pool_address(found, row[2])
+            if target is not None:
+                pools.update(range(target, target + LOAD_WIDTH[found.mnemonic]))
+    return body - pools
+
+
 def sites(text):
     return sorted({int(found.group(1), 16) for found in SITE.finditer(text)})
 
@@ -126,11 +167,15 @@ def quote(rom, address, mode, count=3):
     return " / ".join(parts)
 
 
-def profile(rom, row, end=None):
+def profile(rom, row, end=None, body=None):
     start, length, mode = row
     words = {}
     found = []
-    for insn in steps(rom, row, mode, end):
+    stream = (decode_one(rom, at, mode) for at in sorted(body)) if body is not None \
+        else steps(rom, row, mode, end)
+    for insn in stream:
+        if insn is None:
+            continue
         parts = [part.strip() for part in insn.op_str.split(",")]
         if insn.mnemonic == "ldr" and "[pc" in insn.op_str:
             match = re.search(r"\[pc,\s*#(0x[0-9a-f]+|\d+)\]", insn.op_str)
@@ -161,14 +206,12 @@ def profile(rom, row, end=None):
     return found
 
 
-def walk(rom, inside=False):
+def walk(rom, inside=False, root=ROOT):
+    starts, parents = census(root)
     out = []
     for row in code_rows():
-        end = None
-        if inside:
-            end = function_end(rom, ROM_BASE + row[0], row[2], row[0],
-                               row[0] + row[1]) - ROM_BASE
-        accesses = profile(rom, row, end)
+        body = extent(rom, ROM_BASE + row[0], row, starts, parents) if inside else None
+        accesses = profile(rom, row, None, body)
         if accesses:
             out.append((ROM_BASE + row[0], row[1], row[2], accesses))
     return out
@@ -185,6 +228,7 @@ def call_to(rom, site, address):
 
 def audit(rom, root=ROOT):
     rows = code_rows()
+    starts, parents = census()
 
     def containing(offset):
         for start, length, mode in rows:
@@ -203,12 +247,13 @@ def audit(rom, root=ROOT):
                             "class": entry["evidence_class"], "end": None, "sites": [],
                             "outside": [], "verdict": "NO ROW"})
                 continue
-            end = function_end(rom, address, row[2], row[0], row[0] + row[1])
+            body = extent(rom, address, row, starts, parents)
+            end = max(body) + (2 if row[2] == "thumb" else 4) if body else address
             quoted = [site for site in sites(entry["evidence"]) if site != address]
             if entry["evidence_class"] == "caller-role":
                 outside = [site for site in quoted if not call_to(rom, site, address)]
             else:
-                outside = [site for site in quoted if not (address <= site < end)]
+                outside = [site for site in quoted if site not in body]
             out.append({"address": entry["address"], "name": entry["new"],
                         "class": entry["evidence_class"], "end": end, "sites": quoted,
                         "outside": outside, "verdict": "FAIL" if outside else "PASS"})
@@ -269,12 +314,16 @@ def function(rom, entries, wanted):
         if address == wanted:
             report(rom, address, mode, length, accesses)
             return
+    starts, parents = census()
     for start, length, mode in code_rows():
         if not (start <= wanted - ROM_BASE < start + length):
             continue
-        end = function_end(rom, wanted, mode, start, start + length) - ROM_BASE
-        report(rom, wanted, mode, end - (wanted - ROM_BASE),
-               profile(rom, (wanted - ROM_BASE, end - (wanted - ROM_BASE), mode), end))
+        begin = max([at for at in starts if start <= at - ROM_BASE <= wanted - ROM_BASE]
+                    or [ROM_BASE + start])
+        body = extent(rom, begin, (start, length, mode), starts, parents)
+        step = 2 if mode == "thumb" else 4
+        report(rom, wanted, mode, max(body) + step - wanted if body else 0,
+               profile(rom, (start, length, mode), None, body))
         return
 
 

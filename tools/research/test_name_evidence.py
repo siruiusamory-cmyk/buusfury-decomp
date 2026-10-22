@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import struct
 import sys
 
 import pytest
@@ -33,12 +34,20 @@ def crafted(tmp_path, row):
     return str(tmp_path)
 
 
-def test_a_row_whose_effect_lies_past_its_return_fails(tmp_path):
-    root = crafted(tmp_path, '0x08004DEE,sub_08004DEE,Blend_WriteAlpha1,hardware-register,'
-                             '"writes 0x08004EAC then 0x08004EB2"')
+def test_an_effect_in_a_later_block_counts_for_its_function(tmp_path):
+    root = crafted(tmp_path, '0x0803FB7C,sub_0803FB7C,Irq_WriteMaster2,hardware-register,'
+                             '"writes IME 0x04000208: 0x0803FC2A strh r0, [r1, #8]"')
+    result = name_evidence.audit(image(), root)
+    assert result[0]["outside"] == []
+    assert result[0]["verdict"] == "PASS"
+
+
+def test_an_effect_in_another_function_does_not_count(tmp_path):
+    root = crafted(tmp_path, '0x0803FB7C,sub_0803FB7C,Irq_WriteMaster2,hardware-register,'
+                             '"calls BIOS Div (SWI 0x06) at 0x0800BA7A"')
     result = name_evidence.audit(image(), root)
     assert result[0]["verdict"] == "FAIL"
-    assert result[0]["outside"] == [0x08004EAC, 0x08004EB2]
+    assert result[0]["outside"] == [0x0800BA7A]
 
 
 def test_a_row_whose_effect_lies_inside_its_function_passes(tmp_path):
@@ -54,6 +63,20 @@ def test_a_caller_role_row_must_quote_a_call_to_it(tmp_path):
     bad = crafted(tmp_path / "bad", '0x08049144,sub_08049144,Thunk_PaletteCopy,caller-role,'
                                     '"0x080080D8 calls it"')
     assert name_evidence.audit(image(), bad)[0]["verdict"] == "FAIL"
+
+
+def test_a_pool_word_and_the_next_start_bound_the_body():
+    data = bytearray(0x140)
+    struct.pack_into("<8H", data, 0x100, 0x4801, 0x4770, 0x46C0, 0x46C0,
+                     0x0050, 0x0400, 0x4770, 0x46C0)
+    base = name_evidence.ROM_BASE
+    starts, parents = {base + 0x100, base + 0x10C}, {base + 0x100: [base + 0x104]}
+    body = name_evidence.extent(bytes(data), base + 0x100, (0x100, 0x40, "thumb"),
+                                starts, parents)
+    assert base + 0x104 in body
+    assert base + 0x106 in body
+    assert base + 0x108 not in body
+    assert base + 0x10C not in body
 
 
 def test_every_ledger_row_passes_the_audit():

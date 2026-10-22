@@ -35,7 +35,7 @@ The same work is planned for Dragon Ball Z: The Legacy of Goku and The Legacy of
 
 This is not a decompilation yet. Almost all of the game's code is still assembly, and only a
 handful of small C files exist in `src/`. Most functions are still named by their address
-(`sub_08000158`, `loc_0800016A`): 2,055 of the 2,097 functions `asm/` exports. Naming them is the
+(`sub_08000158`, `loc_0800016A`): 2,047 of the 2,097 functions `asm/` exports. Naming them is the
 next readability step, and `tools/lint/lints.py` holds the count to a falling baseline
 (`docs/NAMING_BASELINE.txt`) with `docs/NAMING_LEDGER.csv` as the record of every promotion. No
 part of the code is claimed to match the original compiler's C output.

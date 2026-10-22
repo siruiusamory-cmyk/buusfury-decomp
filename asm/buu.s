@@ -10257,7 +10257,7 @@ unk_03003124 EQU     0x03003124
         	BL       |loc_0800ED18|
         	ADD r0, r6, #0
         	DCW     0xE76D
-|sub_0802e97a|
+|Bg_WriteScroll3|
         PUSH     {r4,r5,r6,r7,lr}
         ADD      r4,r0,#0
         MOV      r2,#1

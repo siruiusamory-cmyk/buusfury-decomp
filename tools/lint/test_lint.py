@@ -348,10 +348,23 @@ def test_a_sub_name_on_a_function_start_is_not_caught():
     assert not lints.block_findings(exported("\tEXPORT |sub_08001000|\n"), {}, set())
 
 
-def test_the_ratchet_counts_functions_rather_than_every_export():
-    assert lints.symbol_counts(exported(ASM_GOOD), set(), {0x08000158}, {}) == (1, 1)
-    assert lints.symbol_counts(exported(ASM_GOOD), set(), set(), {}) == (0, 0)
-    assert lints.symbol_counts(exported(ASM_GOOD), set()) == (3, 5)
+def test_the_ratchet_counts_function_starts_rather_than_exports():
+    addresses = {"Module_DoIt": 0x08000158}
+    assert lints.naming_counts({0x08000158}, addresses, exported(ASM_GOOD)) == (0, 1)
+    assert lints.naming_counts({0x0800016A}, addresses, exported(ASM_GOOD)) == (1, 1)
+    assert lints.naming_counts(set(), addresses, exported(ASM_GOOD)) == (0, 0)
+
+
+def test_a_start_named_only_by_a_ledger_row_is_not_address_named():
+    assert lints.naming_counts({0x08000158}, {"Unit_Named": 0x08000158},
+                               exported("\tEXPORT |sub_08000158|\n")) == (0, 1)
+    assert lints.naming_counts({0x08000158}, {}, exported("\tEXPORT |sub_08000158|\n")) == (1, 1)
+
+
+def test_a_library_name_at_a_start_is_not_an_address_name():
+    assert lints.naming_counts({0x08000158}, {"strlen": 0x08000158},
+                               exported("\tEXPORT |sub_08000158|\n"),
+                               library={"strlen"}) == (0, 1)
 
 
 def test_only_a_toolchain_library_row_admits_a_library_symbol():
@@ -401,8 +414,9 @@ def test_a_retired_row_must_be_an_address_named_export():
     assert not lints.retired_findings(retired, stale, [(0x0800536A, "Blend_WriteAlpha1")])
 
 
-def test_an_exported_ram_constant_is_not_counted_as_a_symbol():
-    assert lints.symbol_counts(exported(ASM_CONSTANT), {"unk_03003014"}) == (0, 0)
+def test_an_exported_ram_constant_is_not_a_function_start():
+    assert lints.naming_counts({0x08000158}, {}, exported(ASM_CONSTANT)) == (1, 1)
+    assert lints.naming_counts(set(), {}, exported(ASM_CONSTANT)) == (0, 0)
 
 
 def test_the_readme_symbol_figure_that_disagrees_is_caught():

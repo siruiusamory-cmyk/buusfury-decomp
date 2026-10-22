@@ -369,7 +369,7 @@
 	EXPORT |sub_0804F854|
 	EXPORT |sub_0804F856|
 	EXPORT |sub_0804F870|
-	EXPORT |Math_Divide5|
+	EXPORT |Math_Divide7|
 	EXPORT |sub_0804F8C4|
 	EXPORT |sub_0804F8C8|
 	EXPORT |sub_0804F92C|
@@ -7263,7 +7263,7 @@
 |sub_0804F870|
 |unk_0804F870|
 	INCBIN	baserom.gba_0x4f870_0x4f872.extracted
-|Math_Divide5|
+|Math_Divide7|
 	LSR      r5, r0, #0x20
 	MOV      r2, #0xa3
 	LSL      r2, r2, #2

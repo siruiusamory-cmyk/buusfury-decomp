@@ -322,12 +322,20 @@ def block_findings(symbols, addresses, blocks):
     return findings
 
 
-def symbol_counts(symbols, constants, starts=None, addresses=None):
-    kept = [name for name, _path, _line in symbols if name not in constants]
-    if starts is not None:
-        kept = [name for name in kept
-                if symbol_address(name, addresses or {}) in starts]
-    return sum(1 for name in kept if ADDRESS_SYMBOL.match(name)), len(kept)
+def naming_counts(starts, addresses, symbols, library=None):
+    if library is None:
+        library = library_symbols()
+    names = {}
+    for name, address in addresses.items():
+        names.setdefault(address, set()).add(name)
+    for name, _path, _line in symbols:
+        address = symbol_address(name, addresses)
+        if address is not None:
+            names.setdefault(address, set()).add(name)
+    named = sum(1 for start in starts
+                if any(FUNCTION_NAME.match(name) or name in library
+                       for name in names.get(start, ())))
+    return len(starts) - named, len(starts)
 
 
 def ratchet_findings(live, baseline, retired=0):
@@ -395,7 +403,7 @@ def naming_findings():
     if symbols is None:
         return [("lint-enumeration",
                  "git ls-files failed, the asm symbol checks cannot see the tree")], None
-    exports, constants = symbols
+    exports = symbols[0]
     addresses = label_addresses()
     findings = asm_symbol_findings(exports, addresses)
     census = census_kinds()
@@ -407,7 +415,7 @@ def naming_findings():
     else:
         starts, blocks = census
         findings += block_findings(exports, addresses, blocks)
-    counts = symbol_counts(exports, constants, starts, addresses)
+    counts = naming_counts(starts, addresses, exports)
     retired = retired_rows()
     findings += retired_findings(retired, exports, [
         (int(row["address"], 16), row.get("new") or "")

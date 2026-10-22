@@ -16,15 +16,16 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
   other admitted form: it names a raw slice by its extent, and nothing renames it. The third form is
   the library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
   `toolchain-library` row of the ledger carries.
-- The count of address-named function symbols is held in `docs/NAMING_BASELINE.txt` and may only
-  fall (`NAMING-address-ratchet`): a function symbol is an `asm/` export whose address
-  `docs/research/FUNCTION_BOUNDS.csv` records as a start, so a block and a data address are outside
-  the count. It may exceed the baseline only by exactly one address-named symbol per retired name
-  (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference fails until the
-  baseline is lowered to the measured figure in the same tree. A name is retired when its quoted
-  evidence lies outside the function it was bound to: the export returns to its address form and the
-  ledger row leaves. README's "<a> of the <b> functions" sentence is the same two figures
-  (`README-numbers`).
+- The count of address-named functions is held in `docs/NAMING_BASELINE.txt` and may only fall
+  (`NAMING-address-ratchet`): the population is every start `docs/research/FUNCTION_BOUNDS.csv`
+  carries, and a start is address-named unless the ledger or a label at its address gives it a
+  `Module_Verb` or a library name, so a block, a data address and an address no name reaches are
+  outside the named count. It may exceed the baseline only by exactly one address-named function
+  per retired name (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference
+  fails until the baseline is lowered to the measured figure in the same tree. A name is retired
+  when its quoted evidence lies outside the function it was bound to: the export returns to its
+  address form and the ledger row leaves. README's "<a> of the <b> functions" sentence is the same
+  two figures (`README-numbers`).
 - `NAMING-asm-symbol` refuses `sub_` and `Module_Verb` on an interior block: a name of either form
   claims a function, and the census proved that address is inside one.
 

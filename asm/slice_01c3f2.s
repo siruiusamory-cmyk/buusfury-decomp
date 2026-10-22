@@ -121,7 +121,7 @@
 		ADD r1, r6, #0
 		BL       |sub_0801191A|
 		B        |loc_0801C482|
-|sub_0801C4F4|
+|Math_Divide5|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r5, r1, #0
 	ADD      r0, r1, #0
@@ -17648,7 +17648,7 @@
 		ADD r0, r4, #0
 		BL       |inc_0x1c3f2_0x2ab4c| + 0x8812
 		DCW     0xE7F9
-|sub_080253EA|
+|Blend_WriteControl4|
 	PUSH     {r3, lr}
 	LDRB     r1, [r0, #0xe]
 	CMP      r1, #1
@@ -17662,7 +17662,7 @@
 |unk_080253FE|
 		BL       |inc_0x1c3f2_0x2ab4c| + 0x8800
 		DCW     0xE7FB
-|Blend_WriteControl4|
+|Blend_WriteControl5|
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r5, r0, #0
 	LDR      r0, [pc, #0x2b0]
@@ -17888,9 +17888,9 @@
 |sub_080255BC|
 |unk_080255BC|
 		ADD r0, r5, #0
-		BL       |Blend_WriteControl4|
+		BL       |Blend_WriteControl5|
 		DCW     0xE7FA
-|sub_080255C4|
+|Blend_WriteControlAndAlpha4|
 	PUSH     {r4, r5, r6, r7, lr}
 	ADD      r5, r0, #0
 	MOV      r0, #3
@@ -18814,7 +18814,7 @@
 		CMP r7, r5
 		BLT      |loc_08025D16|
 		B        |loc_08025C62|
-|sub_08025D2E|
+|Bg_WriteScroll2And3|
 	MOV      r1, #1
 	LSL      r1, r1, #0xf
 	ADD      r0, r0, r1

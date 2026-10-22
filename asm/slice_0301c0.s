@@ -66,7 +66,7 @@
 	EXPORT |loc_08030BF0|
 	EXPORT |loc_08030C12|
 	EXPORT |Bg_WriteScroll0AndBlendAlpha|
-	EXPORT |Blend_WriteControlAndAlpha4|
+	EXPORT |Blend_WriteControlAndAlpha5|
 	EXPORT |loc_08030FA4|
 	EXPORT |loc_08030FB2|
 	EXPORT |sub_08030FB4|
@@ -1833,7 +1833,7 @@
 		BL       |sub_0803F58C|
 		ADD r0, r6, #0
 		B        |inc_0x301c0_0x311c0| + 0xa6a
-|Blend_WriteControlAndAlpha4|
+|Blend_WriteControlAndAlpha5|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r0, #0
 	LDR      r0, [pc, #0x70]

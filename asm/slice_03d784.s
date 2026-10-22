@@ -94,7 +94,7 @@
 	EXPORT |loc_0803E14E|
 	EXPORT |loc_0803E152|
 	EXPORT |loc_0803E18C|
-	EXPORT |Math_Divide4|
+	EXPORT |Math_Divide6|
 	EXPORT |loc_0803E1D0|
 	EXPORT |loc_0803E230|
 	EXPORT |loc_0803E232|
@@ -1811,7 +1811,7 @@
 	BPL      |loc_0803E1D0|
 	LDR      r1, [r4, #0x20]
 	CMP      r1, r7
-	BGT      |Math_Divide4|
+	BGT      |Math_Divide6|
 	ADD      r2, r5, #0
 	ADD      r1, r6, #0
 	ADD      r0, r4, #0
@@ -1820,7 +1820,7 @@
 	STR      r7, [r4]
 |loc_0803E18C|
 	POP      {r3, r4, r5, r6, r7, pc}
-|Math_Divide4|
+|Math_Divide6|
 |unk_0803E18E|
 		LDR r2, [r4, #0x1c]
 		ADD r0, r0, r2

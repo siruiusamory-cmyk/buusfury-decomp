@@ -8493,7 +8493,7 @@ name = "Bg_WriteScroll0AndBlendAlpha"
 addr = 0x08030f78
 mode = "thumb"
 size = 60
-name = "Blend_WriteControlAndAlpha4"
+name = "Blend_WriteControlAndAlpha5"
 
 [[code]]
 addr = 0x08030fb8
@@ -11237,7 +11237,7 @@ size = 74
 addr = 0x0803e18e
 mode = "thumb"
 size = 254
-name = "Math_Divide4"
+name = "Math_Divide6"
 
 [[code]]
 addr = 0x0803e2d6
@@ -13966,7 +13966,7 @@ name = "sub_0804F856"
 addr = 0x0804f872
 mode = "thumb"
 size = 82
-name = "Math_Divide5"
+name = "Math_Divide7"
 
 [[code]]
 addr = 0x0804f8c8

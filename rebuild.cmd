@@ -10,6 +10,8 @@ set "ARMLIB=%ADS%\Lib"
 cd /d "%ROOT%"
 if not exist build mkdir build
 echo === incbin slices ===
+python "%ROOT%\tools\gate\build_cache.py" slices
+if not errorlevel 1 goto slices_done
 call tools\incbin.bat baserom.gba 0x3bbbb0 0x3bbe70
 call tools\incbin.bat baserom.gba 0x7594ec 0x7594f0
 call tools\incbin.bat baserom.gba 0x759510 0x759620
@@ -472,6 +474,7 @@ call tools\incbin.bat baserom.gba 0x3724f2 0x372574
 call tools\incbin.bat baserom.gba 0x37259c 0x3725c0
 call tools\incbin.bat baserom.gba 0x42118 0x4212c
 call tools\incbin.bat baserom.gba 0x42168 0x42170
+:slices_done
 echo === compiling source files ===
 python "%ROOT%\tools\assets\generate_assets.py" build --rom "%ROOT%\baserom.gba"
 if errorlevel 1 exit /b 1
@@ -502,7 +505,7 @@ echo tcpp_sub_08046124_exit=%ERRORLEVEL%
 tcpp -c -cpu ARM7TDMI -Iinclude -O2 -apcs /interwork src/sub_080461F8.c -o build/sub_080461F8.o
 echo tcpp_sub_080461F8_exit=%ERRORLEVEL%
 echo === building asm files ===
-armasm asm/buu.s -o build/buu.o
+python "%ROOT%\tools\gate\build_cache.py" buu
 echo armasm_buu_exit=%ERRORLEVEL%
 armasm asm/GBARam.s -o build/GBARam.o
 echo armasm_gbaram_exit=%ERRORLEVEL%
@@ -511,12 +514,16 @@ echo armasm_ewram_exit=%ERRORLEVEL%
 armasm asm/iwram.s -o build/iwram.o
 echo armasm_iwram_exit=%ERRORLEVEL%
 echo === generating sections ===
+python "%ROOT%\tools\gate\build_cache.py" emit
+if not errorlevel 1 goto sections_done
 python "%ROOT%\tools\gate\emit_all.py"
 if errorlevel 1 exit /b 1
+python "%ROOT%\tools\gate\build_cache.py" emit-keep
+:sections_done
 echo === compiling generated source ===
 armcpp -c build/strings.cpp -o build/strings.o
 echo armcpp_strings_exit=%ERRORLEVEL%
-armasm asm/rest_of_the_game.s -o build/rest_of_the_game.o
+python "%ROOT%\tools\gate\build_cache.py" rest
 echo armasm_rest_exit=%ERRORLEVEL%
 echo === linking and converting ===
 armlink build/GBARam.o build/color_transforms.o build/strings.o build/buu.o build/sub_0801C62C.o build/sub_0801C634.o build/sub_08043860.o build/sub_0802B960.o build/sub_0803431C.o build/sub_08045598.o build/sub_08045658.o build/sub_0803E44C.o build/sub_0803E4A0.o build/sub_0802AD88.o build/sub_08046124.o build/sub_080461F8.o build/rest_of_the_game.o build/ewram.o build/iwram.o -noremove -scatter scatter.ld -map -symbols -o build/buu.axf 2> build\buu.map

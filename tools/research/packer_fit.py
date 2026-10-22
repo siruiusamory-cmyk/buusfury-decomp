@@ -135,12 +135,6 @@ def _length_at(payload, pos, chain):
     return find_chain(payload, pos, chain)[0]
 
 
-def literal_cost(value, bits, base):
-    if bits == 7:
-        return 7 if value == base else 8
-    return 9
-
-
 def choose_modes(payload, runs, first):
     choices = []
     state = first
@@ -190,13 +184,6 @@ class Writer:
         while self.count:
             self.bit(0)
         return b"".join(struct.pack("<I", word) for word in self.words)
-
-
-def chain_for(payload):
-    chain = {}
-    for index in range(len(payload) - 2):
-        chain.setdefault(payload[index:index + 3], []).append(index)
-    return chain
 
 
 def runs_of(payload, tokens):

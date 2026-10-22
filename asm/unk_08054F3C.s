@@ -1,0 +1,777 @@
+	CODE16
+|unk_08054F3C|
+; cited by 0x00000172 (a pool word names 0x08054FBC)
+	CODE32
+|arm_08054F3C|
+	TST      ip, #64, 18
+	BEQ      |arm_08054FB0|
+	TST      ip, #240, 20
+	BEQ      |arm_08054F68|
+	TST      r0, #8
+	BNE      |arm_08054F5C|
+	RSBS     r0, r0, #2
+	BX       lr
+|arm_08054F5C|
+	AND      r1, ip, #240, 20
+	CMP      r1, #64, 20
+	BX       lr
+|arm_08054F68|
+	MOV      r1, #224, 8
+	ANDS     r1, r1, r0, lsl #29
+	ORRHS    r1, r1, #192, 10
+	STMDB    sp!, {r0, r1}
+	STMDB    sp!, {r2, r3, ip, lr}
+	BL       |arm_08047A2C|
+	LDMIA    sp!, {r2, r3, ip, lr}
+	MOV      ip, r0
+	LDMIA    sp!, {r0, r1}
+	LDR      r3, [ip]
+	BIC      r3, r3, #240, 8
+	ORR      r3, r3, r1
+	STR      r3, [ip]
+|arm_08054F9C|
+	DCD     0xE10F2000
+	BIC      r2, r2, #240, 8
+	ORR      r2, r2, r1
+|arm_08054FA8|
+	DCD     0xE128F002
+	BX       lr
+|arm_08054FB0|
+	ANDS     r0, ip, r0, lsl #16
+	MOVNE    r0, #1
+	BX       lr
+|arm_08054FBC|
+	DCD     0x03003300
+|arm_08054FC0|
+	DCD     0x03003898
+|arm_08054FC4|
+	DCD     0x030038A4
+|arm_08054FC8|
+	DCD     0x0300197C
+|arm_08054FCC|
+	DCD     0x03001990
+|arm_08054FD0|
+	DCD     0x03001068
+|arm_08054FD4|
+	DCD     0x03001C4C
+|arm_08054FD8|
+	DCD     0x03002BAC
+|arm_08054FDC|
+	DCD     0x03002BD8
+|arm_08054FE0|
+	DCD     0x030019A4
+|arm_08054FE4|
+	DCD     0x03002A64
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+|arm_08055000|
+	DCD     0x08080101
+	ANDEQ    r2, r0, r0
+|arm_08055008|
+	DCD     0x08055018
+|arm_0805500C|
+	DCD     0x08080303
+	ANDEQ    r2, r0, r0
+|arm_08055014|
+	DCD     0x08055058
+	SUBEQS   r5, r8, sb, asr sb
+	ANDEQ    r0, r0, r0
+	SUBEQS   r5, r7, sb, asr fp
+	ANDEQ    r0, r0, r0
+	SUBEQS   r5, r7, r8, asr r7
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	STREQ    r0, [r0], #-0
+	ANDEQ    r0, r0, r0
+	STCVS    p0, c0, [r4, #-0]
+	ANDEQ    r0, r0, r4
+|arm_08055068|
+	DCD     0x6E6D0404
+	ANDEQ    r0, r4, sp, ror #8
+|arm_08055070|
+	DCD     0x056E6D00
+	ANDEQ    r6, r0, lr, ror #26
+|arm_08055078|
+	DCD     0x6E6D0400
+	ANDEQ    r0, r0, sp, ror #8
+	ANDEQ    r0, r0, r0, lsl #8
+	ANDEQ    r0, r0, r0, lsl #8
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, r0
+|arm_08055098|
+	DCD     0x08000207
+|arm_0805509C|
+	DCD     0x0800021F
+|arm_080550A0|
+	DCD     0x08000237
+|arm_080550A4|
+	DCD     0x0800024F
+|arm_080550A8|
+	DCD     0x0800026F
+|arm_080550AC|
+	DCD     0x0800028B
+|arm_080550B0|
+	DCD     0x080002A7
+|arm_080550B4|
+	DCD     0x080002C3
+|arm_080550B8|
+	DCD     0x080002DD
+|arm_080550BC|
+	DCD     0x080002F5
+|arm_080550C0|
+	DCD     0x0800030D
+|arm_080550C4|
+	DCD     0x08000325
+|arm_080550C8|
+	DCD     0x08000337
+|arm_080550CC|
+	DCD     0x0800035D
+|arm_080550D0|
+	DCD     0x080004BB
+|arm_080550D4|
+	DCD     0x08000383
+|arm_080550D8|
+	DCD     0x080003A9
+|arm_080550DC|
+	DCD     0x080003E5
+|arm_080550E0|
+	DCD     0x080005DD
+|arm_080550E4|
+	DCD     0x080005F1
+|arm_080550E8|
+	DCD     0x08000605
+|arm_080550EC|
+	DCD     0x08000619
+|arm_080550F0|
+	DCD     0x0800062D
+|arm_080550F4|
+	DCD     0x08000679
+|arm_080550F8|
+	DCD     0x080006ED
+|arm_080550FC|
+	DCD     0x08000727
+|arm_08055100|
+	DCD     0x08000739
+|arm_08055104|
+	DCD     0x080007B7
+|arm_08055108|
+	DCD     0x080007CD
+|arm_0805510C|
+	DCD     0x080007E7
+|arm_08055110|
+	DCD     0x080007FF
+|arm_08055114|
+	DCD     0x08000817
+|arm_08055118|
+	DCD     0x08000841
+|arm_0805511C|
+	DCD     0x08000873
+|arm_08055120|
+	DCD     0x08000899
+|arm_08055124|
+	DCD     0x080008A9
+|arm_08055128|
+	DCD     0x080008FD
+|arm_0805512C|
+	DCD     0x08000907
+|arm_08055130|
+	DCD     0x0800091F
+|arm_08055134|
+	DCD     0x08000937
+|arm_08055138|
+	DCD     0x0800097B
+|arm_0805513C|
+	DCD     0x08003097
+|arm_08055140|
+	DCD     0x08000959
+|arm_08055144|
+	DCD     0x0800099D
+|arm_08055148|
+	DCD     0x080009F7
+|arm_0805514C|
+	DCD     0x08000A51
+|arm_08055150|
+	DCD     0x08000AA1
+|arm_08055154|
+	DCD     0x08000AF1
+|arm_08055158|
+	DCD     0x08000AFD
+|arm_0805515C|
+	DCD     0x0800201F
+|arm_08055160|
+	DCD     0x08001FE5
+|arm_08055164|
+	DCD     0x0800207F
+|arm_08055168|
+	DCD     0x080020D9
+|arm_0805516C|
+	DCD     0x08000BF1
+|arm_08055170|
+	DCD     0x08000C37
+|arm_08055174|
+	DCD     0x08000C4F
+|arm_08055178|
+	DCD     0x08000C9B
+|arm_0805517C|
+	DCD     0x08000CA7
+|arm_08055180|
+	DCD     0x08000CE9
+|arm_08055184|
+	DCD     0x08000D0B
+|arm_08055188|
+	DCD     0x08000D63
+|arm_0805518C|
+	DCD     0x08000DB3
+|arm_08055190|
+	DCD     0x08000E1D
+|arm_08055194|
+	DCD     0x08000E75
+|arm_08055198|
+	DCD     0x08000EC1
+|arm_0805519C|
+	DCD     0x08000F19
+|arm_080551A0|
+	DCD     0x08000F79
+|arm_080551A4|
+	DCD     0x08000FDF
+|arm_080551A8|
+	DCD     0x0800101F
+|arm_080551AC|
+	DCD     0x08001081
+|arm_080551B0|
+	DCD     0x08001105
+|arm_080551B4|
+	DCD     0x0800115D
+|arm_080551B8|
+	DCD     0x080011B1
+|arm_080551BC|
+	DCD     0x08001209
+|arm_080551C0|
+	DCD     0x0800126D
+|arm_080551C4|
+	DCD     0x080012B9
+|arm_080551C8|
+	DCD     0x08001305
+|arm_080551CC|
+	DCD     0x080013B5
+|arm_080551D0|
+	DCD     0x080013F5
+|arm_080551D4|
+	DCD     0x08001441
+|arm_080551D8|
+	DCD     0x0800148D
+|arm_080551DC|
+	DCD     0x080014EF
+|arm_080551E0|
+	DCD     0x0800154B
+|arm_080551E4|
+	DCD     0x080015BB
+|arm_080551E8|
+	DCD     0x08001607
+|arm_080551EC|
+	DCD     0x08001671
+|arm_080551F0|
+	DCD     0x080016E7
+|arm_080551F4|
+	DCD     0x08001733
+|arm_080551F8|
+	DCD     0x0800178B
+|arm_080551FC|
+	DCD     0x080017D9
+|arm_08055200|
+	DCD     0x08001885
+|arm_08055204|
+	DCD     0x080018D3
+|arm_08055208|
+	DCD     0x08001941
+|arm_0805520C|
+	DCD     0x08001999
+|arm_08055210|
+	DCD     0x080019F1
+|arm_08055214|
+	DCD     0x08001A49
+|arm_08055218|
+	DCD     0x08001AB1
+|arm_0805521C|
+	DCD     0x08001B0B
+|arm_08055220|
+	DCD     0x08001B6D
+|arm_08055224|
+	DCD     0x08001BC3
+|arm_08055228|
+	DCD     0x08001C1D
+|arm_0805522C|
+	DCD     0x08001C5F
+|arm_08055230|
+	DCD     0x08001CB1
+|arm_08055234|
+	DCD     0x08001D13
+|arm_08055238|
+	DCD     0x08001D67
+|arm_0805523C|
+	DCD     0x08001DAF
+|arm_08055240|
+	DCD     0x08001E2D
+|arm_08055244|
+	DCD     0x08001E6F
+|arm_08055248|
+	DCD     0x08001ED1
+|arm_0805524C|
+	DCD     0x08001F01
+|arm_08055250|
+	DCD     0x08001F31
+|arm_08055254|
+	DCD     0x08001F61
+|arm_08055258|
+	DCD     0x08001F9D
+|arm_0805525C|
+	DCD     0x080020E5
+|arm_08055260|
+	DCD     0x08002185
+|arm_08055264|
+	DCD     0x080020ED
+|arm_08055268|
+	DCD     0x0800221D
+|arm_0805526C|
+	DCD     0x080022B5
+|arm_08055270|
+	DCD     0x080022E7
+|arm_08055274|
+	DCD     0x08002391
+|arm_08055278|
+	DCD     0x08002405
+|arm_0805527C|
+	DCD     0x08002439
+|arm_08055280|
+	DCD     0x08002461
+|arm_08055284|
+	DCD     0x08002497
+|arm_08055288|
+	DCD     0x080024ED
+|arm_0805528C|
+	DCD     0x08002515
+|arm_08055290|
+	DCD     0x080024BF
+|arm_08055294|
+	DCD     0x08000B09
+|arm_08055298|
+	DCD     0x08000B1D
+|arm_0805529C|
+	DCD     0x08000B81
+|arm_080552A0|
+	DCD     0x08000BB3
+|arm_080552A4|
+	DCD     0x08000BCD
+|arm_080552A8|
+	DCD     0x0800253D
+|arm_080552AC|
+	DCD     0x08002557
+|arm_080552B0|
+	DCD     0x080025A5
+|arm_080552B4|
+	DCD     0x080025F3
+|arm_080552B8|
+	DCD     0x08002687
+|arm_080552BC|
+	DCD     0x080026D5
+|arm_080552C0|
+	DCD     0x080026EB
+|arm_080552C4|
+	DCD     0x08002703
+|arm_080552C8|
+	DCD     0x08002721
+|arm_080552CC|
+	DCD     0x080027DF
+|arm_080552D0|
+	DCD     0x08002863
+|arm_080552D4|
+	DCD     0x080028B1
+|arm_080552D8|
+	DCD     0x080028DB
+|arm_080552DC|
+	DCD     0x08002919
+|arm_080552E0|
+	DCD     0x08002929
+|arm_080552E4|
+	DCD     0x08002979
+|arm_080552E8|
+	DCD     0x080029C1
+|arm_080552EC|
+	DCD     0x08002A45
+|arm_080552F0|
+	DCD     0x08002B4B
+|arm_080552F4|
+	DCD     0x08002B7D
+|arm_080552F8|
+	DCD     0x08002BA3
+|arm_080552FC|
+	DCD     0x08002BC9
+|arm_08055300|
+	DCD     0x08002C05
+|arm_08055304|
+	DCD     0x08002C2B
+|arm_08055308|
+	DCD     0x08002C69
+|arm_0805530C|
+	DCD     0x08002CA3
+|arm_08055310|
+	DCD     0x08002DE1
+|arm_08055314|
+	DCD     0x08002E1D
+|arm_08055318|
+	DCD     0x08002E59
+|arm_0805531C|
+	DCD     0x08002D3F
+|arm_08055320|
+	DCD     0x08002D7F
+|arm_08055324|
+	DCD     0x08002DBD
+|arm_08055328|
+	DCD     0x08002AB7
+|arm_0805532C|
+	DCD     0x08002AE5
+|arm_08055330|
+	DCD     0x08002B13
+|arm_08055334|
+	DCD     0x08002EB9
+|arm_08055338|
+	DCD     0x08002EE3
+|arm_0805533C|
+	DCD     0x0800262B
+|arm_08055340|
+	DCD     0x08002669
+|arm_08055344|
+	DCD     0x08002F73
+|arm_08055348|
+	DCD     0x08002FA9
+|arm_0805534C|
+	DCD     0x08002FD9
+|arm_08055350|
+	DCD     0x08002FE5
+|arm_08055354|
+	DCD     0x0800300D
+|arm_08055358|
+	DCD     0x0800301B
+|arm_0805535C|
+	DCD     0x0800337D
+|arm_08055360|
+	DCD     0x08003031
+|arm_08055364|
+	DCD     0x08000751
+|arm_08055368|
+	DCD     0x08000783
+|arm_0805536C|
+	DCD     0x080030DB
+|arm_08055370|
+	DCD     0x080030F9
+|arm_08055374|
+	DCD     0x08003127
+|arm_08055378|
+	DCD     0x08003165
+|arm_0805537C|
+	DCD     0x080031C9
+|arm_08055380|
+	DCD     0x080032C3
+|arm_08055384|
+	DCD     0x08003311
+|arm_08055388|
+	DCD     0x08003367
+|arm_0805538C|
+	DCD     0x0800337D
+|arm_08055390|
+	DCD     0x0800338D
+|arm_08055394|
+	DCD     0x0800339D
+|arm_08055398|
+	DCD     0x080033AB
+|arm_0805539C|
+	DCD     0x080033B9
+|arm_080553A0|
+	DCD     0x080033D3
+|arm_080553A4|
+	DCD     0x080033EB
+|arm_080553A8|
+	DCD     0x0800340F
+|arm_080553AC|
+	DCD     0x0800341D
+|arm_080553B0|
+	DCD     0x0800342B
+|arm_080553B4|
+	DCD     0x08003451
+|arm_080553B8|
+	DCD     0x080006FF
+|arm_080553BC|
+	DCD     0x0800347B
+|arm_080553C0|
+	DCD     0x0800348B
+|arm_080553C4|
+	DCD     0x080034B9
+|arm_080553C8|
+	DCD     0x08003557
+|arm_080553CC|
+	DCD     0x080035F5
+|arm_080553D0|
+	DCD     0x08003627
+|arm_080553D4|
+	DCD     0x0800365F
+|arm_080553D8|
+	DCD     0x080036A5
+|arm_080553DC|
+	DCD     0x08003725
+|arm_080553E0|
+	DCD     0x08003735
+|arm_080553E4|
+	DCD     0x080006AD
+|arm_080553E8|
+	DCD     0x0800374D
+|arm_080553EC|
+	DCD     0x080029D9
+|arm_080553F0|
+	DCD     0x08003227
+|arm_080553F4|
+	DCD     0x0800324B
+|arm_080553F8|
+	DCD     0x0800327F
+|arm_080553FC|
+	DCD     0x080038B5
+|arm_08055400|
+	DCD     0x080038D5
+|arm_08055404|
+	DCD     0x08003755
+|arm_08055408|
+	DCD     0x08001E01
+|arm_0805540C|
+	DCD     0x08003775
+|arm_08055410|
+	DCD     0x080037A7
+|arm_08055414|
+	DCD     0x080037C5
+|arm_08055418|
+	DCD     0x080037E1
+|arm_0805541C|
+	DCD     0x080037FD
+|arm_08055420|
+	DCD     0x08003819
+|arm_08055424|
+	DCD     0x0800382F
+|arm_08055428|
+	DCD     0x08003845
+|arm_0805542C|
+	DCD     0x0800385B
+|arm_08055430|
+	DCD     0x0800386D
+|arm_08055434|
+	DCD     0x0800387F
+|arm_08055438|
+	DCD     0x08003891
+|arm_0805543C|
+	DCD     0x08003905
+|arm_08055440|
+	DCD     0x0800393D
+|arm_08055444|
+	DCD     0x08003979
+|arm_08055448|
+	DCD     0x08003987
+|arm_0805544C|
+	DCD     0x080039E5
+|arm_08055450|
+	DCD     0x08003A15
+|arm_08055454|
+	DCD     0x08003071
+|arm_08055458|
+	DCD     0x08003A4F
+|arm_0805545C|
+	DCD     0x08002A23
+|arm_08055460|
+	DCD     0x08003A75
+|arm_08055464|
+	DCD     0x08003B49
+|arm_08055468|
+	DCD     0x08003B95
+|arm_0805546C|
+	DCD     0x0800389F
+|arm_08055470|
+	DCD     0x08003BEB
+|arm_08055474|
+	DCD     0x08003BFD
+|arm_08055478|
+	DCD     0x08000219
+|arm_0805547C|
+	DCD     0x08000231
+|arm_08055480|
+	DCD     0x08000249
+|arm_08055484|
+	DCD     0x08000261
+|arm_08055488|
+	DCD     0x08000267
+|arm_0805548C|
+	DCD     0x08000283
+|arm_08055490|
+	DCD     0x0800029F
+|arm_08055494|
+	DCD     0x080002BB
+|arm_08055498|
+	DCD     0x080002D7
+|arm_0805549C|
+	DCD     0x080002EF
+|arm_080554A0|
+	DCD     0x08000307
+|arm_080554A4|
+	DCD     0x0800031F
+|arm_080554A8|
+	DCD     0x080003FD
+|arm_080554AC|
+	DCD     0x08000479
+|arm_080554B0|
+	DCD     0x0800051B
+|arm_080554B4|
+	DCD     0x0800058F
+|arm_080554B8|
+	DCD     0x080005C5
+|arm_080554BC|
+	DCD     0x080003F7
+|arm_080554C0|
+	DCD     0x08003C75
+|arm_080554C4|
+	DCD     0x08003C8B
+|arm_080554C8|
+	DCD     0x08003CBF
+|arm_080554CC|
+	DCD     0x08003CD5
+|arm_080554D0|
+	DCD     0x08003CF7
+|arm_080554D4|
+	DCD     0x08003D17
+|arm_080554D8|
+	DCD     0x08003D31
+|arm_080554DC|
+	DCD     0x08003D3F
+|arm_080554E0|
+	DCD     0x08003D53
+|arm_080554E4|
+	DCD     0x08003D67
+|arm_080554E8|
+	DCD     0x08003D7B
+|arm_080554EC|
+	DCD     0x08003DAB
+|arm_080554F0|
+	DCD     0x08003DC5
+|arm_080554F4|
+	DCD     0x08003DDF
+|arm_080554F8|
+	DCD     0x08003DF9
+|arm_080554FC|
+	DCD     0x08003E13
+|arm_08055500|
+	DCD     0x08003E2D
+	ANDEQ    r0, r0, r0
+|arm_08055508|
+	DCD     0x08003E47
+|arm_0805550C|
+	DCD     0x08003E57
+|arm_08055510|
+	DCD     0x08003E7D
+|arm_08055514|
+	DCD     0x08003E85
+|arm_08055518|
+	DCD     0x08003EB5
+|arm_0805551C|
+	DCD     0x08003EE5
+|arm_08055520|
+	DCD     0x08003F11
+|arm_08055524|
+	DCD     0x08003F49
+|arm_08055528|
+	DCD     0x08003F79
+|arm_0805552C|
+	DCD     0x08003FA5
+|arm_08055530|
+	DCD     0x08003FC1
+|arm_08055534|
+	DCD     0x08003FEF
+|arm_08055538|
+	DCD     0x08003D93
+	SUBEQ    r0, r5, r2, lsr #32
+	RSBEQS   r0, r0, r8, ror r0
+	RSBEQ    r0, r3, r5, rrx
+	RSBEQ    r0, r5, r4, ror r0
+	EOREQ    r0, r0, r4, rrx
+	RSBEQ    r0, sb, r4, rrx
+	RSBEQ    r0, ip, r1, rrx
+	RSBEQ    r0, r7, pc, rrx
+	RSBEQS   r0, r4, r0, lsr #32
+	EOREQ    r0, r0, pc, rrx
+	RSBEQS   r0, r4, r3, ror r0
+	RSBEQS   r0, r2, r1, rrx
+	EOREQ    r0, r0, r4, ror r0
+	RSBEQ    r0, sb, r7, ror r0
+	RSBEQ    r0, r8, r4, ror r0
+	RSBEQ    r0, r1, r0, lsr #32
+	RSBEQ    r0, r3, r0, lsr #32
+	RSBEQ    r0, r4, pc, rrx
+	EOREQ    r0, r0, r5, rrx
+	RSBEQ    r0, ip, r2, rrx
+	RSBEQ    r0, r3, pc, rrx
+	EOREQ    r0, r2, fp, rrx
+	ANDEQ    r0, r0, r0
+|arm_08055598|
+	DCD     0x030038A4
+|arm_0805559C|
+	DCD     0x03001914
+|arm_080555A0|
+	DCD     0x0800421D
+|arm_080555A4|
+	DCD     g_EepromCachePresent
+|arm_080555A8|
+	DCD     0x03001068
+|arm_080555AC|
+	DCD     0x0300197C
+|arm_080555B0|
+	DCD     0x030019A4
+|arm_080555B4|
+	DCD     0x03001C4C
+	ANDEQ    r0, r0, r0
+	ANDEQ    r0, r0, ip, lsr #32
+	ANDEQ    r0, r0, sp, asr #32
+	ANDEQ    r0, r0, r0, ror r0
+	SUBEQ    r0, sb, r2, lsr #32
+	RSBEQS   r0, r4, lr, rrx
+	RSBEQS   r0, r2, r5, rrx
+	RSBEQ    r0, r1, lr, rrx
+	EOREQ    r0, r0, ip, rrx
+	RSBEQS   r0, r1, r5, rrx
+	RSBEQ    r0, sb, r5, ror r0
+	RSBEQ    r0, sp, r0, ror r0
+	RSBEQ    r0, lr, r5, rrx
+	EOREQ    r0, r0, r4, ror r0
+	RSBEQ    r0, pc, r3, rrx
+	RSBEQS   r0, r3, lr, rrx
+	RSBEQS   r0, r3, sb, rrx
+	RSBEQ    r0, r5, r4, ror r0
+	RSBEQ    r0, r3, lr, rrx
+	EOREQ    r0, r0, sb, ror r0
+	RSBEQS   r0, r2, r5, rrx
+|arm_0805560C|
+	DCD     0x006F0072
+	EOREQ    r0, r1, r2, ror r0
+	ANDEQ    r0, r0, r2, lsr #32
+|arm_08055618|
+	DCD     0x03001068
+|arm_0805561C|
+	DCD     0x03003300
+	CODE16

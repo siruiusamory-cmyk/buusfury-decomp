@@ -1,4 +1,6 @@
 	AREA Other, CODE, READONLY
+	INCLUDE gba.inc
+	INCLUDE ram.inc
 unk_03000FB0    EQU     0x03000FB0
 unk_03001068    EQU     0x03001068
 unk_03001914    EQU     0x03001914
@@ -18,10 +20,10 @@ unk_03002F58    EQU     0x03002F58
 unk_03003300    EQU     0x03003300
 unk_03003898    EQU     0x03003898
 unk_030038A4    EQU     0x030038A4
-unk_03004A68    EQU     0x03004A68
 unk_03004A8C    EQU     0x03004A8C
         EXPORT  unk_03002A60
-	INCLUDE slice_06d4e0.s
+	INCLUDE sub_0806FE1A.s
+	INCLUDE sub_080701EC.s
 		INCBIN		build\asset_dialogbox.compressed
 		INCBIN		build\asset_dialogbox_small.compressed
         CODE16
@@ -14372,7 +14374,7 @@ unk_03004A8C    EQU     0x03004A8C
         INCLUDE  raw_labeled_7b5b64.s
 |sub_087b79a4|
         STMFD    sp!,{r8,sb,sl,fp}
-        MOV      ip,#0x4000000
+        MOV      ip,#REG_DISPCNT
         LDR      fp,[pc,#0x2c]
         ADD      sl,fp,#0x28
         MOV      sb,#1
@@ -15122,7 +15124,7 @@ unk_03004A8C    EQU     0x03004A8C
         MOVS     ip,r1,LSL #0x17
         BNE      |loc_087b84d0|
         MOVS     r2,r1,LSL #0x16
-        MOV      r2,#0x2000000
+        MOV      r2,#EWRAM_BASE
         BPL      |loc_087b84b8|
         STR      ip,[r3,#-0x130]!
         ADD      r2,r2,#0x400
@@ -15155,7 +15157,7 @@ unk_03004A8C    EQU     0x03004A8C
         DCD      0xf6400004
         DCD      0x0803f297
 |sub_087b8510|
-        MOV      r3,#0x4000000
+        MOV      r3,#REG_DISPCNT
         LDR      r2,[r3,#0x200]!
         LDRH     r1,[r3,#8]
         MRS      r0,SPSR

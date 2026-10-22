@@ -63,7 +63,7 @@ def main(argv=None):
     parser.add_argument("--manifest", default=MANIFEST)
     parser.add_argument("--key", default="converted", choices=("converted", "runs"))
     parser.add_argument("--region", default="arm_body")
-    parser.add_argument("--source", default="asm/slice_*.s")
+    parser.add_argument("--source", default="asm/*.s")
     args = parser.parse_args(argv)
     if not os.path.exists(os.path.join(ROOT, "build", "buu.map")):
         print("build/buu.map is missing: rebuild before recording ledger rows")

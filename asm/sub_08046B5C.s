@@ -1,0 +1,7 @@
+	CODE16
+|sub_08046B5C|
+|unk_08046B5C|
+	CODE32
+	MOV      r3, r2, ASR #0x20
+	B        |arm_08046B3C|
+	CODE16

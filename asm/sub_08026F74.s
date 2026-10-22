@@ -1,0 +1,5 @@
+	CODE16
+|sub_08026F74|
+|unk_08026F74|
+		MOV r0, #0
+		DCW     0xE7FA

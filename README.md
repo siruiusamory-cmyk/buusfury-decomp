@@ -57,7 +57,8 @@ list to `docs/research/RESIDUAL_LEDGER.csv`.
 ## Building
 
 You need ARM Developer Suite 1.2, Python 3.12 and your own copy of the game saved as `baserom.gba`.
-[INSTALL.md](INSTALL.md) has the details.
+[INSTALL.md](INSTALL.md) has the details, and [docs/NEWCOMER.md](docs/NEWCOMER.md) walks the whole
+path from a clone to a changed function, one command per step.
 
 ```
 extract.cmd

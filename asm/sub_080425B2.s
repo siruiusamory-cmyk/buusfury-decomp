@@ -1,0 +1,15 @@
+	CODE16
+|sub_080425B2|
+|unk_080425B2|
+; cited by 0x08042244 (a pc-relative load targets 0x080425E8)
+		B        |inc_0x042118_0x049114| + 0x5ac
+	INCBIN  baserom.gba_0x425b4_0x425f0.extracted
+		B        |inc_0x042118_0x049114| + 0x638
+	INCBIN  baserom.gba_0x425f2_0x42604.extracted
+		B        |inc_0x042118_0x049114| + 0x5b8
+		B        |inc_0x042118_0x049114| + 0x5e4
+		B        |inc_0x042118_0x049114| + 0x6fa
+	INCBIN  baserom.gba_0x4260a_0x42638.extracted
+		B        |inc_0x042118_0x049114| + 0x66c
+		B        |inc_0x042118_0x049114| + 0x6a6
+	INCBIN  baserom.gba_0x4263c_0x4269c.extracted

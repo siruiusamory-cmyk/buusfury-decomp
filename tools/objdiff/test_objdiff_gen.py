@@ -27,7 +27,7 @@ def tree(tmp_path):
         "0x1f0,8,t,thumb_body_0001F0,s,t,p,8\n", encoding="ascii")
     (tmp_path / "asm" / "buu.s").write_text(
         "    INCBIN  baserom.gba_0x00300_0x00400.extracted\n", encoding="ascii")
-    (tmp_path / "asm" / "slice_000158.s").write_text("", encoding="ascii")
+    (tmp_path / "asm" / "sub_080001F0.s").write_text("", encoding="ascii")
     (tmp_path / "rebuild.cmd").write_text(
         "tcpp -c -cpu ARM7TDMI -Iinclude -O2 -Otime -apcs /nointerwork "
         "src/sub_0801C62C.c -o build/sub_0801C62C.o\n", encoding="ascii")
@@ -60,7 +60,7 @@ def test_units_follow_the_ledger_and_need_no_image(tmp_path):
     assert by_name["asm/buu/code_158_143F2"]["metadata"]["progress_categories"] == ["code"]
     assert by_name["asm/GBARam/data_1D8"]["metadata"]["progress_categories"] == ["data"]
     assert by_name["asm/slices/thumb_body_0001F0"]["metadata"]["source_path"] == \
-        "asm/slice_000158.s"
+        "asm/sub_080001F0.s"
     assert by_name["data/generated/structured_run_0001E8"]["metadata"]["progress_categories"] \
         == ["data"]
     assert by_name["data/generated/structured_run_0001E8"]["metadata"]["source_path"] == \

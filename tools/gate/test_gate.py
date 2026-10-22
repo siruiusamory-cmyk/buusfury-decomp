@@ -169,6 +169,8 @@ def test_the_stage_rule_cases():
     assert gate.classify(edit, 2) == "edit"
     assert gate.classify(ONE_BLOCK, 1973) == "partial"
     assert gate.classify((), 0) == "partial"
+    assert gate.classify((), 0, 2) == "warm"
+    assert gate.classify((), 5000, 2) == "materialise"
 
 
 def test_cold_start_isolates_the_cache_purges_and_runs_the_extract_step():

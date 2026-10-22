@@ -1,0 +1,4 @@
+	CODE16
+|loc_08021EAA|
+		MOV r0, #0
+		DCW     0xE70F

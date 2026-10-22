@@ -1,0 +1,50 @@
+	CODE16
+|unk_08046DD4|
+	CODE32
+|arm_08046DD4|
+	STMDB    sp!, {r4, lr}
+	SUBS     r2, r2, #0x20
+	BLO      |arm_08046DF8|
+|arm_08046DE0|
+	DCD     0x28B15018
+|arm_08046DE4|
+	DCD     0x28A05018
+|arm_08046DE8|
+	DCD     0x28B15018
+|arm_08046DEC|
+	DCD     0x28A05018
+	SUBHSS   r2, r2, #0x20
+	BHS      |arm_08046DE0|
+|arm_08046DF8|
+	MOVS     ip, r2, LSL #0x1c
+|arm_08046DFC|
+	DCD     0x28B15018
+|arm_08046E00|
+	DCD     0x28A05018
+|arm_08046E04|
+	DCD     0x48B10018
+|arm_08046E08|
+	DCD     0x48A00018
+	LDMIA    sp!, {r4, lr}
+	MOVS     ip, r2, LSL #0x1e
+	LDRHS    r3, [r1], #4
+	STRHS    r3, [r0], #4
+	BXEQ     lr
+|arm_08046E20|
+	MOVS     r2, r2, LSL #0x1f
+|arm_08046E24|
+	DCD     0x44D12001
+|arm_08046E28|
+	DCD     0x24D13001
+|arm_08046E2C|
+	DCD     0x24D1C001
+|arm_08046E30|
+	DCD     0x44C02001
+|arm_08046E34|
+	DCD     0x24C03001
+|arm_08046E38|
+	DCD     0x24C0C001
+	BX       lr
+	CODE16
+	CODE16
+	EXPORT |sub_08046E40|

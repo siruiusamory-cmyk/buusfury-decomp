@@ -640,18 +640,6 @@ def _split(rom, offsets, maximum, parts):
             for start in range(0, len(offsets), step)]
 
 
-def read_incbin(path):
-    return emitted.incbin_tokens(emitted.source_text(ROOT, path if os.path.isabs(path)
-                                                     else os.path.join(ROOT, path)))
-
-
-def token_addresses(token):
-    parts = re.search(r"(?:^|_)0x([0-9a-fA-F]+)_0x([0-9a-fA-F]+)\.extracted$", token)
-    if not parts:
-        parts = re.search(r"(?:^|_)([0-9a-fA-F]+)_([0-9a-fA-F]+)\.bin$", token)
-    return None if not parts else (int(parts.group(1), 16), int(parts.group(2), 16))
-
-
 def write_incbin(path, sections):
     lines = ["        INCBIN  %s" % section_output(section).replace(os.sep, "\\")
              for section in sections]

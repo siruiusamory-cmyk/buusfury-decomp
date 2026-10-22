@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "lint"))
 
 import encode_cache
+import build_cache
 import emitted
 import lints
 CANONICAL_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
@@ -37,11 +38,13 @@ COLD_STRINGS = "strings.cpp"
 COLD_RECORDS = ("endromrecords.s", "musicrecords.s")
 
 
-def classify(rows, rewritten=0):
+def classify(rows, rewritten=0, restored=0):
     misses = sum(row[2] for row in rows)
     total = sum(row[4] for row in rows)
     trusted = bool(rows) and all(row[3] == 1 for row in rows)
     if total and misses == 0 and rewritten == 0:
+        return "warm"
+    if not rows and restored and rewritten == 0:
         return "warm"
     if trusted and total and 0 < misses < EDIT_MISS_SHARE * total:
         return "edit"
@@ -58,6 +61,14 @@ def files_rewritten(log_path):
         match = re.search(r"files rewritten=(\d+)", line)
         if match:
             total += int(match.group(1))
+    return total
+
+
+def restored_steps(log_path):
+    total = 0
+    for line in open(log_path, errors="replace"):
+        if re.search(r"asm-cache \S+: restored", line):
+            total += 1
     return total
 
 
@@ -165,7 +176,8 @@ def cold_shortfall(rows):
 
 def stage_of(log_path, label=None):
     rows = emitter_rows(log_path)
-    return label or classify(rows, files_rewritten(log_path)), sum(row[2] for row in rows)
+    return (label or classify(rows, files_rewritten(log_path), restored_steps(log_path)),
+            sum(row[2] for row in rows))
 
 
 def timing(log_path, seconds, label=None):
@@ -220,6 +232,7 @@ def cold_start():
     cache = cold_cache_dir()
     shutil.rmtree(cache, ignore_errors=True)
     os.environ[encode_cache.CACHE_ENV] = cache
+    os.environ[build_cache.COLD_ENV] = "1"
     slices = cold_purge()
     print("cold start: %s isolated and empty, %d INCBIN slice(s) and every generated section purged,"
           " the shared store untouched" % (cache, slices))
@@ -459,7 +472,8 @@ def diff_runs(a, b, limit=20):
 
 LEDGER_CODES = {
     2: {"thumb": "t", "arm": "a", "data": "d"},
-    4: {"asm/buu.s": "b", "asm/slice_*.s": "s", "asm/rest_of_the_game.s": "r", "asm/GBARam.s": "G"},
+    4: {"asm/buu.s": "b", "asm/<symbol>.s": "s", "asm/rest_of_the_game.s": "r",
+        "asm/GBARam.s": "G"},
     5: {"transcription": "t", "generated": "g", "c": "c"},
     6: {"byte-proven": "p", "c-matched": "m"},
 }

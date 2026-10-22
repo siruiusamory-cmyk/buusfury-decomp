@@ -1,6 +1,6 @@
 # Build
 
-Prerequisites: ARM Developer Suite 1.2 (`armasm`, `armcpp`, `armlink`, `fromelf`), Python 3.12 on `PATH`, grit (devkitPro), and the retail ROM as `baserom.gba` in this directory. `rebuild.cmd` defaults `ADS` to an ADS 1.2 Build 805 install beside this checkout's parent directory; set `ADS` to use another installation. `tools\assets\generate_assets.py` finds grit on `PATH`, through `GRIT`, or through `DEVKITPRO`. The ROM's sha1 must equal `baserom.sha1`; `extract.cmd` refuses anything else.
+Prerequisites: ARM Developer Suite 1.2 (`armasm`, `armcpp`, `armlink`, `fromelf`), Python 3.12 on `PATH`, grit (devkitPro), and the retail ROM as `baserom.gba` in this directory. `rebuild.cmd` defaults `ADS` to an ADS 1.2 Build 805 install beside this checkout's parent directory; set `ADS` to use another installation. `tools\assets\generate_assets.py` finds grit on `PATH`, through `GRIT`, or through `DEVKITPRO`. The ROM's sha1 must equal `baserom.sha1`; `extract.cmd` refuses anything else. [docs/NEWCOMER.md](docs/NEWCOMER.md) runs the same path from a clone and says where a function lives.
 
 ```
 extract.cmd

@@ -1,0 +1,36 @@
+	CODE16
+|unk_08053184|
+; cited by 0x08053184 (a pc-relative load targets 0x0805319C)
+	CODE32
+	LDR      r3, [pc, #0x10]
+	UMULL    r1, r2, r3, r0
+	LDR      r3, [pc, #0xc]
+	MOV      r1, r2, LSR #0xf
+	MLA      r0, r3, r1, r0
+	BX       lr
+|arm_0805319C|
+	DCD     0x80078071
+|arm_080531A0|
+	DCD     0xFFFF000F
+	CODE16
+	CODE16
+	EXPORT |sub_080531A4|
+	EXPORT |loc_080531CE|
+	EXPORT |loc_080531E2|
+	EXPORT |loc_080531E8|
+	EXPORT |loc_080531FC|
+	EXPORT |loc_080531FE|
+	EXPORT |loc_0805320A|
+	EXPORT |loc_08053218|
+	EXPORT |sub_08053238|
+	EXPORT |sub_0805324E|
+	EXPORT |loc_0805326A|
+	EXPORT |loc_08053274|
+	EXPORT |loc_0805327E|
+	EXPORT |loc_08053288|
+	EXPORT |loc_0805329E|
+	EXPORT |loc_080532A8|
+	EXPORT |loc_080532B2|
+	EXPORT |loc_080532BC|
+	EXPORT |sub_080532E4|
+	EXPORT |sub_080532E8|

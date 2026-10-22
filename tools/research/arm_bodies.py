@@ -120,23 +120,6 @@ def symbols():
     return out
 
 
-def existing_labels():
-    out = {}
-    directory = os.path.join(ROOT, "asm")
-    for name in sorted(os.listdir(directory)):
-        if not name.endswith(".s"):
-            continue
-        for line in open(os.path.join(directory, name), errors="replace"):
-            found = LABEL_DEF.match(line)
-            if not found:
-                continue
-            label = found.group(1)
-            digits = re.fullmatch(r"(?:sub|loc|unk|gap)_([0-9A-Fa-f]{8})", label)
-            if digits:
-                out.setdefault(int(digits.group(1), 16) - ROM_BASE, "|%s|" % label)
-    return out
-
-
 def arm_decode(start, end):
     engine = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM)
     instructions, gaps = [], []

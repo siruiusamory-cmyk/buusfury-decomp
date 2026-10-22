@@ -1,0 +1,120 @@
+	IMPORT |GBARam_Free|
+	IMPORT |GBARam_Malloc|
+	CODE16
+	EXPORT |sub_080331C0|
+	EXPORT |loc_080331CC|
+	EXPORT |sub_08033208|
+	EXPORT |loc_080332AC|
+	EXPORT |sub_080332E0|
+	EXPORT |loc_080332FC|
+	EXPORT |sub_08033334|
+	EXPORT |loc_08033338|
+	EXPORT |sub_0803333C|
+	EXPORT |loc_08033352|
+	EXPORT |sub_08033380|
+	EXPORT |sub_08033384|
+	EXPORT |sub_080333A4|
+	EXPORT |sub_080333A6|
+	EXPORT |loc_08033442|
+	EXPORT |loc_080334EC|
+	EXPORT |sub_080335B4|
+	EXPORT |sub_080335B6|
+	EXPORT |loc_080335D4|
+	EXPORT |loc_08033628|
+	EXPORT |loc_0803362A|
+	EXPORT |loc_0803365A|
+	EXPORT |loc_08033664|
+	EXPORT |loc_08033694|
+	EXPORT |sub_0803377A|
+	EXPORT |Blend_WriteAlpha4|
+	EXPORT |sub_08033808|
+	EXPORT |loc_08033826|
+	EXPORT |loc_08033836|
+	EXPORT |sub_08033862|
+	EXPORT |loc_080338AC|
+	EXPORT |loc_080338D8|
+	EXPORT |sub_080338FC|
+	EXPORT |sub_08033948|
+	EXPORT |loc_08033966|
+	EXPORT |sub_0803396E|
+	EXPORT |sub_08033972|
+	EXPORT |loc_08033996|
+	EXPORT |loc_08033A14|
+	EXPORT |sub_08033A40|
+	EXPORT |sub_08033AF6|
+	EXPORT |loc_08033B30|
+	EXPORT |sub_08033B32|
+	EXPORT |sub_08033B88|
+	EXPORT |loc_08033BAA|
+	EXPORT |sub_08033BB2|
+	EXPORT |sub_08033BB6|
+	EXPORT |loc_08033BC0|
+	EXPORT |sub_08033BC4|
+	EXPORT |loc_08033C3C|
+	EXPORT |loc_08033C44|
+	EXPORT |sub_08033C66|
+	EXPORT |loc_08033C76|
+	EXPORT |sub_08033CA4|
+	EXPORT |sub_08033CB8|
+	EXPORT |sub_08033CBA|
+	EXPORT |loc_08033CEC|
+	EXPORT |sub_08033CF0|
+	EXPORT |sub_08033D2C|
+	EXPORT |sub_08033D4C|
+	EXPORT |sub_08033D66|
+	EXPORT |sub_08033D80|
+	EXPORT |sub_08033D82|
+	EXPORT |sub_08033DC0|
+	EXPORT |sub_08033E74|
+	EXPORT |loc_08033E96|
+	EXPORT |loc_08033EAA|
+	EXPORT |loc_08033ED2|
+	EXPORT |sub_08033EE8|
+	EXPORT |sub_08033EFA|
+	EXPORT |loc_08033F20|
+	EXPORT |sub_08033F22|
+	EXPORT |sub_08033F26|
+	EXPORT |sub_08033F48|
+	EXPORT |loc_080340A8|
+	EXPORT |sub_080340C8|
+	EXPORT |loc_080340E8|
+	EXPORT |loc_080340F4|
+	EXPORT |sub_08034120|
+	CODE16
+|sub_080331C0|
+	BEQ      |loc_080331CC|
+	LDR      r1, [pc, #0x24]
+	STR      r1, [r0]
+	MOV      r1, #0
+	STR      r1, [r0, #8]
+	STR      r4, [r0, #4]
+|loc_080331CC|
+	POP      {r4, pc}
+	LSL      r0, r0, #0
+	STMIA    r6!, {r4, r7}
+	LSR      r4, r0, #0x20
+	STR      r2, [sp, #0x170]
+	LSR      r5, r6, #1
+	BGE      |loc_080332AC|
+	LSR      r1, r6, #1
+	ADD      r4, r6, #0
+	LSL      r0, r0, #0xc
+	ADD      r6, sp, #0x1c0
+	LSR      r4, r0, #0x20
+	LDR      r2, [sp, #0x330]
+	LSR      r4, r0, #0x20
+	ADR      r6, |loc_080334EC|
+	LSR      r4, r0, #0x20
+	PUSH     {r4, lr}
+	ADD      r4, r1, #0
+	ADD      r0, r1, #0
+	LDR      r1, [r1]
+	SUB      sp, #0x40
+	LDR      r2, [r1, #0x34]
+	ADD      r2, r2, r1
+	MOV      r1, #0
+	BL       |inc_0x046118_0x049114| + 0x98c
+	CMP      r0, #0
+	BNE      |sub_08033208|
+	ADD      sp, #0x40
+	POP      {r4, pc}

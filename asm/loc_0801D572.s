@@ -1,0 +1,4 @@
+	CODE16
+|loc_0801D572|
+		MOV r0, #0
+		DCW     0xE768

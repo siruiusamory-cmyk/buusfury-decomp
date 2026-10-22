@@ -1,0 +1,5 @@
+	CODE16
+|unk_08048170|
+	CODE32
+	BX       lr
+	CODE16

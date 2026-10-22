@@ -575,10 +575,6 @@ def _placement_whole(rom: bytes, start: int, end: int) -> bool:
     return offset == end
 
 
-def walk_extents(rom_bytes: bytes) -> dict[str, list[tuple[int, int]]]:
-    return {family: list(rows) for family, rows in plan(bytes(rom_bytes)).kept.items()}
-
-
 def round_trip(rom_bytes: bytes) -> dict[str, tuple[int, int, int, int]]:
     rom = bytes(rom_bytes)
     result = {}

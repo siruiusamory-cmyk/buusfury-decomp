@@ -1,0 +1,7 @@
+	CODE16
+|sub_08019EAE|
+|unk_08019EAE|
+		MOV r1, #0xff
+		ADD r1, #0x2d
+		BL       |inc_0x0158_0x143f2| + 0x13360
+		B        |inc_0x153f2_0x1a3f2| + 0x4aba

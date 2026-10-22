@@ -502,6 +502,71 @@ def test_a_row_of_another_class_cites_no_test():
     assert not lints.behaviour_findings([row], names_of=lambda path: set())
 
 
+def test_a_raw_hardware_literal_the_baseline_does_not_admit_is_caught():
+    documents = [("asm/probe.s", "\tDCD     0x04000040\n")]
+    findings = lints.hardware_literal_findings(documents, "")
+    assert [finding[0] for finding in findings] == ["ASM-hardware-literal"]
+    assert "0x04000040" in findings[0][1]
+    assert not lints.hardware_literal_findings(documents, "0x04000040 1\n")
+    stale = lints.hardware_literal_findings(documents, "0x04000040 2\n")
+    assert stale and "must be lowered" in stale[0][1]
+    named = [("asm/probe.s", "REG_BLDCNT\tEQU\t0x04000050\n\tDCD     REG_BLDCNT\n")]
+    assert not lints.hardware_literal_findings(named, "")
+
+
+def test_a_raw_ram_literal_above_the_baseline_is_caught():
+    documents = [("asm/probe.s", "\tDCD     0x03004000\n")]
+    high = lints.ram_ratchet_findings(documents, "0\n")
+    assert [finding[0] for finding in high] == ["ASM-ram-ratchet"]
+    assert not lints.ram_ratchet_findings(documents, "1\n")
+    low = lints.ram_ratchet_findings(documents, "2\n")
+    assert low and "must be lowered" in low[0][1]
+
+
+def test_a_slice_file_and_a_misnamed_function_file_are_caught():
+    census = "address,kind,limb,parent\n0x08000158,start,,\n0x08000159,start,,\n"
+    index = ("address,kind,symbol,file\n"
+             "0x08000158,start,sub_08000158,asm/sub_08000158.s\n"
+             "0x08000159,start,sub_08000159,asm/sub_08000159.s\n")
+    good = [("asm/sub_08000158.s", "|sub_08000158|\n\tBX lr\n"),
+            ("asm/sub_08000159.s", "|sub_08000159|\n\tBX lr\n")]
+    assert not lints.layout_findings(good, census, index)
+    sliced = lints.layout_findings(good + [("asm/slice_000158.s", "")], census, index)
+    assert [finding[0] for finding in sliced] == ["ASM-layout"]
+    misnamed = lints.layout_findings([("asm/sub_08000158.s", "|sub_08000159|\n")], census, index)
+    assert any("does not carry the label of its own address" in finding[1]
+               for finding in misnamed)
+
+
+def test_a_ledger_row_without_its_label_at_its_address_is_caught():
+    ledger = ("address,old,new,evidence_class,evidence\n"
+              "0x0800536A,sub_0800536A,Blend_WriteControl1,hardware-register,cited\n")
+    unnamed = ("address,kind,symbol,file\n"
+               "0x0800536A,start,,asm/loc_08005228.s\n")
+    documents = [("asm/loc_08005228.s", "|loc_08005228|\n\tBX lr\n")]
+    findings = lints.ledger_label_findings(ledger, unnamed, documents)
+    assert [finding[0] for finding in findings] == ["NAMING-ledger-label"]
+    assert "carries no asm label" in findings[0][1]
+    named = ("address,kind,symbol,file\n"
+             "0x0800536A,start,Blend_WriteControl1,asm/Blend_WriteControl1.s\n")
+    carried = [("asm/Blend_WriteControl1.s", "|Blend_WriteControl1|\n\tBX lr\n")]
+    assert not lints.ledger_label_findings(ledger, named, carried)
+    elsewhere = lints.ledger_label_findings(ledger, named, documents)
+    assert any("carries no such label" in finding[1] for finding in elsewhere)
+    other = ("address,kind,symbol,file\n"
+             "0x0800536A,start,unk_0800536A,asm/unk_0800536A.s\n")
+    wrong = lints.ledger_label_findings(ledger, other, [("asm/unk_0800536A.s", "|unk_0800536A|\n")])
+    assert any("is labelled unk_0800536A" in finding[1] for finding in wrong)
+
+
+def test_a_newcomer_page_without_the_gate_step_is_caught():
+    findings = lints.doc_path_findings("git clone x\n")
+    assert [finding[0] for finding in findings] == ["DOC-newcomer-path"] * len(findings)
+    assert any("gate" in finding[1] for finding in findings)
+    complete = " ".join(needle for _label, needle in lints.NEWCOMER_STEPS)
+    assert not lints.doc_path_findings(complete)
+
+
 if __name__ == "__main__":
     for answer in ANSWER_CASES:
         test_the_lint_answer_to_one_input(*answer.values)

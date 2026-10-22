@@ -1,0 +1,10 @@
+INT_MAX                     EQU     0x7FFFFFFF
+g_HeapStart                 EQU     0x02000800
+g_FreeListTail              EQU     0x03003488
+g_SramPresentFlag           EQU     0x03001004
+g_EepromCachePresent        EQU     0x03004A68
+g_EepromDescriptorPointer   EQU     0x030052F8
+HEAP_WORDS                  EQU     0x0000FDFE
+WAITCNT_INIT                EQU     0x00004014
+g_SysStackTop               EQU     0x03007E00
+g_IrqStackTop               EQU     0x03007FA0

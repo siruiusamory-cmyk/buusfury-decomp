@@ -1,0 +1,10 @@
+	CODE16
+|unk_08047FB4|
+	CODE32
+|arm_08047FB4|
+	LDR      r0, [pc]
+	BX       lr
+	CODE16
+	CODE16
+	EXPORT |sub_08047FBC|
+	EXPORT |loc_08047FC0|

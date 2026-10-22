@@ -1,0 +1,4 @@
+	CODE16
+|sub_0803DAE6|
+|unk_0803DAE6|
+		ADD r5, #2

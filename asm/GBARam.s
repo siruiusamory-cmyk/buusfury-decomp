@@ -1,4 +1,5 @@
 	INCLUDE asm/macros.inc
+	INCLUDE asm/ram.inc
 
 	CODE16
 	AREA GBARam, CODE, READONLY
@@ -349,8 +350,8 @@
         BX       lr
 	thumb_func_end |GBARam_Free_LARGEST|
 |GBARam_LocalVars| DATA
-        DCD      0x02000800
-        DCD      0x03003488
-        DCD      0x0000fdfe
-		DCD      0x7fffffff
+        DCD      g_HeapStart
+        DCD      g_FreeListTail
+        DCD      HEAP_WORDS
+		DCD      INT_MAX
 	END

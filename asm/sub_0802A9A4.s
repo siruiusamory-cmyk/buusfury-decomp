@@ -1,0 +1,5 @@
+	CODE16
+|sub_0802A9A4|
+|unk_0802A9A4|
+		MOV r0, #0
+		DCW     0xE7FB

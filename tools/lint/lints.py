@@ -36,7 +36,9 @@ ASSETS = "assets/"
 CHECKS = ("P-148-repo-module-path", "P-159-bare-interpreter", "P-167-pool-guard",
           "NAMING-function-name", "NAMING-c-status", "NAMING-asm-symbol",
           "NAMING-address-ratchet", "NAMING-behaviour-test", "ROM-tracked-image",
-          "README-numbers", "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block")
+          "README-numbers", "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block",
+          "ASM-hardware-literal", "ASM-ram-ratchet", "ASM-layout", "DOC-newcomer-path",
+          "NAMING-ledger-label")
 STALE_CALL = re.compile(r"incbin\.bat\s+baserom\.gba\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
 TEST_FILE = re.compile(r"^test_[^/\\]*\.py$")
 DUP_MINIMUM = 8
@@ -44,11 +46,11 @@ DUP_PYTHON_ROOT = "tools/"
 DUP_C_ROOTS = ("src/", "include/")
 DUP_IMPORT_LINE = re.compile(r"^(?:from|import|#include)\b")
 DUP_ALLOWLIST = (
-    ("tools/gate/gate.py", 441, "tools/match/compare_rows.py", 24,
+    ("tools/gate/gate.py", 454, "tools/match/compare_rows.py", 24,
      "11 identical lines: gate.diff_runs and compare_rows.differing_runs are the same loop, and "
      "tools/match belongs to a separate unit, which this ticket forbids editing; compare_rows imports "
      "gate, so gate cannot import it back. Reported for the other ticket. The "
-     "line moved 522 -> 567 -> 446 -> 444 -> 440 as guards and identity ranges left the file above "
+     "line moved 522 -> 567 -> 446 -> 444 -> 440 -> 454 as guards and identity ranges left the file above "
      "diff_runs (P-646)."),
 )
 README_PERCENT = re.compile(r"([\d.]+)\s*%")
@@ -815,6 +817,184 @@ def checks_or_refuses(statement):
             and function.value.id == "pytest" and function.attr in ("skip", "fail", "xfail"))
 
 
+HEX_LITERAL = re.compile(r"0x[0-9A-Fa-f]+")
+IO_BANDS = ((0x04000000, 0x040003FF), (0x05000000, 0x050003FF), (0x06000000, 0x0601FFFF),
+            (0x07000000, 0x070003FF))
+RAM_BANDS = ((0x02000000, 0x0203FFFF), (0x03000000, 0x03007FFF))
+ADDRESS_LABEL = re.compile(r"^\|((?:sub|loc|dat|unk|g)_[0-9A-Fa-f]{8})\|\s*$")
+FUNCTION_FILE = re.compile(r"^asm/(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})\.s$")
+SLICE_FILE = re.compile(r"^asm/slice_[0-9A-Fa-f]+\.s$")
+HARDWARE_BASELINE = "docs/HARDWARE_BASELINE.txt"
+RAM_BASELINE = "docs/RAM_BASELINE.txt"
+ASM_INDEX = "docs/ASM_INDEX.csv"
+NEWCOMER = "docs/NEWCOMER.md"
+NEWCOMER_STEPS = (("clone", "git clone"), ("extract", "extract.cmd"),
+                  ("build", "rebuild.cmd"), ("gate", "python tools\\gate\\gate.py"),
+                  ("find", "ASM_INDEX"), ("change", "NAMING_LEDGER"))
+
+
+def raw_literals(text, bands):
+    for number, line in enumerate(text.splitlines(), 1):
+        if CONSTANT_DEFINITION.match(line) or line.strip().startswith("#define"):
+            continue
+        for match in HEX_LITERAL.finditer(line):
+            value = int(match.group(0), 16)
+            if any(start <= value <= end for start, end in bands):
+                yield number, value, line.strip()
+
+
+def read_baselines(text):
+    admitted = {}
+    for row in text.splitlines():
+        parts = row.split()
+        if len(parts) == 2:
+            try:
+                admitted[int(parts[0], 16)] = int(parts[1])
+            except ValueError:
+                continue
+    return admitted
+
+
+def hardware_literal_findings(documents, baseline):
+    admitted = read_baselines(baseline)
+    seen = {}
+    sites = {}
+    for name, text in documents:
+        for number, value, line in raw_literals(text, IO_BANDS):
+            seen[value] = seen.get(value, 0) + 1
+            sites.setdefault(value, (name, number, line))
+    findings = []
+    for value in sorted(seen):
+        allowed = admitted.get(value, 0)
+        if seen[value] > allowed:
+            name, number, line = sites[value]
+            findings.append(("ASM-hardware-literal",
+                             "%s:%d: 0x%08X is a raw hardware address and %s admits %d "
+                             "occurrence(s): %s"
+                             % (name, number, value, HARDWARE_BASELINE, allowed, line)))
+    for value in sorted(admitted):
+        if seen.get(value, 0) < admitted[value]:
+            findings.append(("ASM-hardware-literal",
+                             "%s: 0x%08X is admitted %d time(s) and the tree carries %d, so the "
+                             "baseline must be lowered in this tree"
+                             % (HARDWARE_BASELINE, value, admitted[value], seen.get(value, 0))))
+    return findings
+
+
+def ram_ratchet_findings(documents, baseline):
+    live = sum(1 for _name, text in documents for _row in raw_literals(text, RAM_BANDS))
+    try:
+        permitted = int(baseline.split()[0])
+    except (IndexError, ValueError):
+        return [("ASM-ram-ratchet", "%s: no count can be read" % RAM_BASELINE)]
+    if live > permitted:
+        return [("ASM-ram-ratchet",
+                 "%s: %d raw RAM literal(s) is above the baseline %d, and a named address is the "
+                 "only way to add one" % (RAM_BASELINE, live, permitted))]
+    if live < permitted:
+        return [("ASM-ram-ratchet",
+                 "%s: the baseline permits %d raw RAM literal(s) and the tree carries %d, so the "
+                 "baseline must be lowered to %d in this tree"
+                 % (RAM_BASELINE, permitted, live, live))]
+    return []
+
+
+def layout_findings(documents, census_text, index_text):
+    findings = []
+    for name, _text in documents:
+        if SLICE_FILE.match(name):
+            findings.append(("ASM-layout", "%s: a slice file, which the layout rule replaced"
+                             % name))
+    starts = set()
+    for row in csv.DictReader(io.StringIO(census_text)):
+        if row.get("kind") in ("start", "unreferenced"):
+            starts.add(int(row["address"], 16))
+    for name, text in documents:
+        found = FUNCTION_FILE.match(name)
+        if not found:
+            continue
+        address = int(found.group(1), 16)
+        labels = {int(match.group(1).split("_")[1], 16)
+                  for match in (ADDRESS_LABEL.match(line) for line in text.splitlines())
+                  if match and int(match.group(1).split("_")[1], 16) in starts}
+        if address not in starts:
+            findings.append(("ASM-layout", "%s: names 0x%08X, which the census does not carry"
+                             % (name, address)))
+        elif address not in labels:
+            findings.append(("ASM-layout", "%s: does not carry the label of its own address"
+                             % name))
+        if len(labels) > 1:
+            findings.append(("ASM-layout", "%s: carries %d function starts, and one file carries one"
+                             % (name, len(labels))))
+    indexed = {}
+    for row in csv.DictReader(io.StringIO(index_text)):
+        if row.get("address"):
+            indexed[int(row["address"], 16)] = row.get("file") or ""
+    names = {name for name, _text in documents}
+    for address in sorted(starts - set(indexed)):
+        findings.append(("ASM-layout", "%s: no row for 0x%08X, so a reader cannot find it"
+                         % (ASM_INDEX, address)))
+    for address in sorted(set(indexed) - starts):
+        findings.append(("ASM-layout", "%s: row 0x%08X is not a census start"
+                         % (ASM_INDEX, address)))
+    for address, name in sorted(indexed.items()):
+        if name and name not in names:
+            findings.append(("ASM-layout", "%s: row 0x%08X names %s, which the tree does not carry"
+                             % (ASM_INDEX, address, name)))
+    return findings
+
+
+def ledger_label_findings(ledger_text, index_text, documents):
+    findings = []
+    by_address = {}
+    for row in csv.DictReader(io.StringIO(index_text)):
+        if not row.get("address"):
+            continue
+        try:
+            by_address[int(row["address"], 16)] = row
+        except ValueError:
+            continue
+    files = dict(documents)
+    for row in csv.DictReader(io.StringIO(ledger_text)):
+        name = row.get("new") or ""
+        try:
+            address = int(row.get("address") or "", 16)
+        except ValueError:
+            continue
+        entry = by_address.get(address)
+        if entry is None:
+            findings.append(("NAMING-ledger-label",
+                             "%s: 0x%08X has no %s row, so no label can be read at that address"
+                             % (LEDGER_NAMES, address, ASM_INDEX)))
+            continue
+        if not entry.get("symbol"):
+            findings.append(("NAMING-ledger-label",
+                             "%s: 0x%08X carries no asm label, and %s names %s there"
+                             % (LEDGER_NAMES, address, LEDGER_NAMES, name)))
+            continue
+        if entry["symbol"] != name:
+            findings.append(("NAMING-ledger-label",
+                             "%s: 0x%08X is labelled %s at its address and %s names %s there"
+                             % (LEDGER_NAMES, address, entry["symbol"], LEDGER_NAMES, name)))
+            continue
+        if not re.search(r"^\|%s\|$" % re.escape(name), files.get(entry.get("file") or "", ""),
+                         re.M):
+            findings.append(("NAMING-ledger-label",
+                             "%s: 0x%08X is named %s and %s names %s, which carries no such label"
+                             % (LEDGER_NAMES, address, name, entry.get("file") or "-", name)))
+    return findings
+
+
+def doc_path_findings(text):
+    findings = []
+    lowered = text.lower()
+    for label, needle in NEWCOMER_STEPS:
+        if needle.lower() not in lowered:
+            findings.append(("DOC-newcomer-path",
+                             "%s: carries no %s step (looked for %s)" % (NEWCOMER, label, needle)))
+    return findings
+
+
 def run(files=None):
     whole_tree = files is None
     if whole_tree:
@@ -842,8 +1022,33 @@ def run(files=None):
         findings += readme_findings(counts)
         findings += stale_call_tree_findings()
         findings += dup_block_findings()
+        findings += asm_readability_findings()
     else:
         findings += dup_block_findings(files)
+    return findings
+
+
+def tracked_paths(suffix):
+    proc = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                          cwd=ROOT, capture_output=True)
+    if proc.returncode != 0:
+        return None
+    return sorted(name for name in proc.stdout.decode("utf-8", "replace").split("\0")
+                  if name.endswith(suffix))
+
+
+def asm_readability_findings():
+    documents = [(name, read_source(name) or "") for name in asm_files() or []]
+    documents += [(name, read_source(name) or "") for name in c_source_files() or []]
+    documents += [(name, read_source(name) or "") for name in tracked_paths(".inc") or []]
+    documents += [(name, read_source(name) or "") for name in tracked_paths(".h") or []
+                  if name.startswith("include/")]
+    findings = hardware_literal_findings(documents, read_source(HARDWARE_BASELINE) or "")
+    findings += ram_ratchet_findings(documents, read_source(RAM_BASELINE) or "")
+    findings += layout_findings(documents, read_source(CENSUS) or "", read_source(ASM_INDEX) or "")
+    findings += ledger_label_findings(read_source(LEDGER_NAMES) or "", read_source(ASM_INDEX) or "",
+                                      documents)
+    findings += doc_path_findings(read_source(NEWCOMER) or "")
     return findings
 
 

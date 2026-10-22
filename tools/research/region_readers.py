@@ -142,16 +142,6 @@ def decode(pc):
     return thumb_bodies.decode(pc - ROM_BASE)
 
 
-def literal_offset(pc):
-    got = decode(pc)
-    if not got or got[1] not in ("ldr", "ldrb", "ldrh"):
-        return None
-    found = OFFSET.search(got[2])
-    if not found:
-        return None
-    return ((pc + 4) & ~3) + int(found.group(1), 16) - ROM_BASE
-
-
 def reader_class(pc):
     if pc & 1:
         for start in (pc - 5, pc - 3):
@@ -257,19 +247,6 @@ def reader_table(census, found):
     for pc in by_pc:
         kinds[reader_class(pc)[0]] += 1
     return by_pc, kinds
-
-
-def null_cost(table_rows):
-    out = []
-    for kind in ("copy", "pool", "fragment", "scan", "concentration"):
-        got = [row for row in table_rows if row[0] == kind]
-        if not got:
-            continue
-        ratios = sorted(row[3] / max(1, row[2]) for row in got)
-        out.append((kind, len(got), sum(row[1] for row in got), ratios[len(ratios) // 2],
-                    sum(row[4] for row in got), sum(row[5] for row in got),
-                    sorted(row[2] for row in got)[len(got) // 2]))
-    return out
 
 
 def pending(span, klass):

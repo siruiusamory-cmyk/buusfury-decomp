@@ -1,5 +1,9 @@
 # Contributing
 
+[docs/NEWCOMER.md](docs/NEWCOMER.md) is the path from a clone to a changed function; read it first if
+you have not built this tree before. [docs/READABILITY.md](docs/READABILITY.md) is what a change has to
+keep readable.
+
 ## Naming
 
 Follow [docs/NAMING.md](docs/NAMING.md). A function whose purpose is known is `Module_Verb`; one

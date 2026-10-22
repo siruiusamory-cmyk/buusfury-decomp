@@ -59,7 +59,10 @@ still holds no ROM byte.
 
 Every promotion adds one row to `docs/NAMING_LEDGER.csv` (`address,old,new,evidence_class,evidence`)
 in the same commit as the rename, and the row's evidence cell must be checkable by itself: the
-address, the instruction or page, and the command or file that reprints it. When several functions
+address, the instruction or page, and the command or file that reprints it. The label at that
+address carries the row's name, in a file named after it (`asm/Blend_WriteControl1.s`), so a reader
+who has the name opens one file and finds the bytes; `NAMING-ledger-label` refuses a row whose
+address carries no such label. When several functions
 drive one register set and nothing further separates them, the name carries the set and a 1-based
 ordinal in ascending address order (`Blend_WriteControl1`, `Blend_WriteControl2`); the ordinal is a
 disambiguator, not a claim. A name that would claim more than its evidence is left `sub_`.

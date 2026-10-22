@@ -11,15 +11,15 @@
 											
 		ldr         sp, sys_stack_addr      
 
-		mov         r0, #0x4000000          
-		ldr         r1, display_control     
+		mov         r0, #REG_DISPCNT          
+		ldr         r1, waitcnt_value     
 		str         r1, [r0, #0x204]        
 
 		mov         r1, #0x0                
 		stmdb       sp!, {r1}               
 
 		str         sp, [r0, #0xD4]         
-		ldr         r1, sound_control       
+		ldr         r1, sram_present_addr       
 		str         r1, [r0, #0xD8]         
 
 		ldr         r1, hardware_conf_1     
@@ -41,10 +41,10 @@
 		ldr         lr, jump_address        
 		b           |MaybeStart|           	
 
-irq_stack_addr	    DCD		0x03007FA0  	
-sys_stack_addr	    DCD		0x03007E00  	
-display_control		DCD		0x00004014  	
-sound_control		DCD		0x03001004   	
+irq_stack_addr	    DCD		g_IrqStackTop  	
+sys_stack_addr	    DCD		g_SysStackTop  	
+waitcnt_value		DCD		WAITCNT_INIT  	
+sram_present_addr	DCD		g_SramPresentFlag   	
 hardware_conf_1		DCD		0x000042FB   	
 hardware_conf_2		DCD		0x087B79A4   	
 hardware_conf_3		DCD		0x03000000   	

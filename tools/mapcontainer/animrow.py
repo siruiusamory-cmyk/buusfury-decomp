@@ -34,7 +34,7 @@ CONSUMER = ((0x08009B94, 0x68CA), (0x08009BAE, 0x59AD), (0x08009B26, 0x6841),
 NULLS = {0x2B7E58: "interior labels at +1 +2 +4 +0x10 inside the 28-byte record"}
 
 
-def u8(rom: bytes, offset: int) -> int:
+def read_u8(rom: bytes, offset: int) -> int:
     return rom[offset]
 
 
@@ -43,7 +43,7 @@ def u32(rom: bytes, offset: int) -> int:
 
 
 def fields(rom: bytes, offset: int, size: int = None) -> dict:
-    count = u8(rom, offset)
+    count = read_u8(rom, offset)
     extent = 4 + 4 * count
     if size is not None and size != extent:
         raise ValueError("%s at %#x is %d bytes, not %d" % (FAMILY, offset, extent, size))
@@ -51,7 +51,7 @@ def fields(rom: bytes, offset: int, size: int = None) -> dict:
         raise ValueError("%s at %#x frame_count is %d" % (FAMILY, offset, count))
     try:
         parsed = {"frame_count": count,
-                  "vram_units": u8(rom, offset + 1),
+                  "vram_units": read_u8(rom, offset + 1),
                   "vram_slot": struct.unpack_from("<H", rom, offset + 2)[0],
                   "frame": tuple(u32(rom, offset + 4 + 4 * index) for index in range(count))}
     except struct.error:
@@ -86,7 +86,7 @@ def parse(rom: bytes, offset: int):
 def sites(rom: bytes) -> dict[int, int]:
     out = {}
     for root in mapcontainer.map_roots(rom):
-        count = u8(rom, root + 0x0C)
+        count = read_u8(rom, root + 0x0C)
         array = u32(rom, root + 0x10)
         if not 1 <= count <= 32 or not ROM_BASE <= array < ROM_BASE + len(rom):
             continue

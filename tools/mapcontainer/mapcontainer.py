@@ -548,13 +548,6 @@ def decode_many(blob: bytes, offsets: Sequence[int]) -> list[Member]:
     return [decode(blob, offset) for offset in offsets]
 
 
-def decode_many_parallel(blob: bytes, offsets: Sequence[int],
-                        pool: ThreadPoolExecutor) -> list[Member]:
-    if list(offsets) != sorted(set(offsets)):
-        raise MapContainerError("offsets must be a strictly increasing list")
-    return list(pool.map(lambda offset: decode(blob, offset), offsets))
-
-
 def encode(member: Member, compress: Callable[[bytes], bytes]) -> bytes:
     if member.declared_size != len(member.payload):
         raise MapContainerError("declared %d against a %d-byte payload"

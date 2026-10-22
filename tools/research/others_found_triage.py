@@ -208,10 +208,6 @@ def tally(rows, key):
     return out
 
 
-def step_name(name):
-    return dict(STEPS)[name]
-
-
 def regions_text(found):
     return ", ".join("`%s`" % region for region in sorted({row["region"] for row in found}))
 

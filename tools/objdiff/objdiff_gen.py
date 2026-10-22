@@ -18,7 +18,7 @@ BUILD = "rebuild.cmd"
 SCHEMA = "https://raw.githubusercontent.com/encounter/objdiff/main/config.schema.json"
 ASM = {"b": "asm/buu.s", "G": "asm/GBARam.s", "r": "asm/rest_of_the_game.s"}
 INCBIN = re.compile(r"INCBIN\s+baserom\.gba_0x([0-9a-fA-F]+)_0x([0-9a-fA-F]+)\.extracted")
-SLICE = re.compile(r"slice_([0-9a-fA-F]+)\.s$")
+FUNCTION = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})\.s$")
 COMPILED = re.compile(r"src/[^\s\"]+\.(?:c|cpp)\b")
 CODE = ("t", "a")
 KINDS = {"thumb": "t", "arm": "a", "data": "d"}
@@ -47,12 +47,12 @@ def slices(root=ROOT):
     return sorted(found)
 
 
-def slice_file(root, offset):
+def function_file(root, offset):
     starts = []
     for name in os.listdir(os.path.join(root, "asm")):
-        match = SLICE.search(name)
+        match = FUNCTION.search(name)
         if match:
-            starts.append((int(match.group(1), 16), "asm/" + name))
+            starts.append((int(match.group(1), 16) - 0x08000000, "asm/" + name))
     starts.sort()
     chosen = None
     for start, name in starts:
@@ -66,7 +66,7 @@ def folder(row, root):
     if kind == "g":
         return ASM["r"]
     if source == "s":
-        return slice_file(root, offset)
+        return function_file(root, offset)
     return ASM[source]
 
 

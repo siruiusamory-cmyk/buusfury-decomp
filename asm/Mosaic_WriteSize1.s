@@ -1,0 +1,14 @@
+|Mosaic_WriteSize1|
+	CODE16
+|unk_0802C976|
+		LSL r1, r1, #4
+		BL       |sub_08046E58|
+		MOV r1, #0xf
+		SUB r0, r1, r0
+		LSL r3, r0, #4
+		LDR r1, [pc, #0x120]
+		ADD r0, r3, r0
+		STRB r0, [r1, #0xc]
+		STRB r0, [r1, #0xd]
+		MOV r0, #0
+		B        |inc_0x2bb4c_0x2d1c0| + 0xe28

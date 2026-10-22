@@ -43,17 +43,6 @@ def carrier_comments(root):
     return out
 
 
-def token_bytes(root, rom, token, start, end) -> bool:
-    path = os.path.join(root, token)
-    if not os.path.exists(path):
-        print("VERIFY FAIL: %s is missing" % token)
-        return False
-    if open(path, "rb").read() != rom[start:end]:
-        print("VERIFY FAIL: %s is not the retail bytes" % token)
-        return False
-    return True
-
-
 def token_span(token):
     for pattern in (SLICE, RUN):
         found = pattern.search(token)

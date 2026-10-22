@@ -227,21 +227,6 @@ def label_table():
     return table
 
 
-def containing_slice(address):
-    for name in sorted(os.listdir(os.path.join(arm_bodies.ROOT, "asm"))):
-        if not name.endswith(".s"):
-            continue
-        path = os.path.join(arm_bodies.ROOT, "asm", name)
-        text = open(path, errors="replace").read()
-        for found in re.finditer(r"\|\s*inc_0x([0-9a-fA-F]+)_0x([0-9a-fA-F]+)\s*\|",
-                                 text):
-            start, end = int(found.group(1), 16), int(found.group(2), 16)
-            if arm_bodies.ROM_BASE + start <= address < arm_bodies.ROM_BASE + end:
-                label = "|inc_0x%s_0x%s|" % (found.group(1), found.group(2))
-                return "%s + 0x%x" % (label, address - (arm_bodies.ROM_BASE + start))
-    return None
-
-
 def branch_text(mnemonic, operands, address, start, end, labels, table, arm_spans=()):
     found = BRANCH.search(operands)
     if not found:

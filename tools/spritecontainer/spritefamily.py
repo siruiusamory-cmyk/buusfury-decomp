@@ -47,10 +47,6 @@ def frame_span(rom: bytes, offset: int, fields: tuple = None) -> int:
     return FRAME_PREFIX + PIECE_SIZE * struct.unpack_from("<I", rom, offset)[0]
 
 
-def definition_extent(rom: bytes, offset: int, fields: tuple = None) -> int:
-    return definition_end(rom, offset) - offset
-
-
 def definition_end(rom: bytes, offset: int) -> int:
     for index in range(COUNT):
         site = struct.unpack_from("<I", rom, TABLE + 4 * index)[0] - ROM_BASE

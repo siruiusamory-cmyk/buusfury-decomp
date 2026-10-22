@@ -1,0 +1,25 @@
+	CODE16
+	EXPORT |sub_08046118|
+	EXPORT |sub_08046A7A|
+	EXPORT |loc_08046AA0|
+	EXPORT |loc_08046AA4|
+	EXPORT |sub_08046AA8|
+	EXPORT |sub_08046AAE|
+	EXPORT |loc_08046AB6|
+	EXPORT |loc_08046AC0|
+	EXPORT |loc_08046ACE|
+	EXPORT |loc_08046ADC|
+	EXPORT |loc_08046AFA|
+	EXPORT |loc_08046B08|
+	CODE16
+|sub_08046118|
+	STRB     r0, [r1, #4]
+	BL       |loc_08045b40|
+	POP      {r7}
+	POP      {r3}
+	BX       r3
+	AREA UnusedGBARam8, CODE, READONLY
+	CODE16
+|unk_080462AC|
+; cited by 0x080462B0 (a pc-relative load targets 0x08046A64)
+	INCBIN	baserom.gba_0x462ac_0x46a7a.extracted

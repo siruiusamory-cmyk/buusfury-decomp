@@ -1,0 +1,14 @@
+	CODE16
+|sub_08051856|
+	LSR      r4, r0, #0x20
+	LDR      r2, [pc, #0xc]
+	PUSH     {r3, lr}
+	STR      r2, [r0]
+	CMP      r1, #0
+	BEQ      |loc_08051866|
+	BL       |GBARam_Free|
+|loc_08051866|
+	POP      {r3, pc}
+|sub_08051868|
+|unk_08051868|
+	INCBIN	baserom.gba_0x51868_0x5186a.extracted

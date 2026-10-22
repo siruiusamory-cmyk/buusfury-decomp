@@ -104,15 +104,6 @@ def reachable(rom, start, mode, low, high, limit=4000):
     return seen
 
 
-def function_end(rom, start, mode, low, high):
-    seen = reachable(rom, start, mode, low, high)
-    if not seen:
-        return start
-    last = max(seen)
-    found = decode_one(rom, last, mode)
-    return last + (found.size if found is not None else 2)
-
-
 def census(root=ROOT):
     path = os.path.join(root, *BOUNDS.split("/"))
     starts, parents = set(), {}

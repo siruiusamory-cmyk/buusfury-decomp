@@ -22,7 +22,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r7, [pc, #0x1ec]
 	LDR      r0, [r7, #0x18]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	MOV      r0, #0xc1
 	LSL      r0, r0, #2
 	BL       |GBARam_Malloc|
@@ -84,7 +84,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r5, [pc, #0x160]
 	LDR      r0, [r5, #0x18]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	ADD      r1, r4, #0
 	MOV      r0, #0
 	BL       |sub_0802e83c|

@@ -21,7 +21,7 @@
 	PUSH     {r3, lr}
 	ADD      r1, r0, #0
 	MOV      r0, #0
-	BL       |loc_08050544|
+	BL       |Object_Create1|
 	POP      {r3, pc}
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0

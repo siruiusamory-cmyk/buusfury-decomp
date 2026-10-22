@@ -4,7 +4,7 @@
 	STR      r1, [r0, #0x38]
 	LDR      r2, [r0, #0x3c]
 	CMP      r2, #0
-	BEQ      |sub_0800EEFE|
+	BEQ      |Object_ClearFields2|
 	CMP      r1, #0
 	BEQ      |sub_0800EEFA|
 	ADD      r2, r0, #0

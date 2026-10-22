@@ -159,7 +159,7 @@
 		ADD r1, r1, r2
 		STR r1, [r0, #0x34]
 		CMP r1, r3
-		BLT      |sub_080216E6|
+		BLT      |Object_ClearFields3|
 		MOV r1, #1
 		MVN r1, r1
 		STR r1, [r0, #0x38]

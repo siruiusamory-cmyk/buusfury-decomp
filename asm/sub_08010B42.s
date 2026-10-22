@@ -51,7 +51,7 @@
 	BL       |inc_0x046118_0x049114| + 0x98c
 	MOV      r1, #0
 	ADD      r0, r4, #0
-	BL       |sub_0800E6F8|
+	BL       |Object_Destroy5|
 	CMP      r5, #0
 	BEQ      |loc_08010BB6|
 	ADD      r0, r4, #0

@@ -12,7 +12,7 @@
 	CMP      r0, #0
 	BEQ      |loc_0800C092|
 	MOV      r0, #0
-	BL       |loc_0800C0C8|
+	BL       |Object_Construct5|
 	ADD      r1, r0, #0
 	LDR      r0, [r4]
 	BL       |List_Append|

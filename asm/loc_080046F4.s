@@ -9,7 +9,7 @@
 	ORR      r1, r2
 	STRB     r1, [r0, #1]
 	MOV      r0, #0
-	BL       |loc_0800B854|
+	BL       |Object_Construct4|
 	ADD      r1, r0, #0
 	MOV      r0, #0xf
 	MVN      r0, r0
@@ -37,7 +37,7 @@
 	B        |loc_0800474E|
 |loc_0800473E|
 	ADD      r0, r4, #0
-	BL       |loc_0800B854|
+	BL       |Object_Construct4|
 	LDR      r0, [pc, #0xec]
 	ADD      r1, r4, #0
 	STR      r0, [r4]

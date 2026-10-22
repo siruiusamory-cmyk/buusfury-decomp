@@ -1887,7 +1887,7 @@ name = "sub_0800B1A6"
 addr = 0x0800b2be
 mode = "thumb"
 size = 106
-name = "sub_0800B2BE"
+name = "Object_Destroy1"
 
 [[code]]
 addr = 0x0800b32a
@@ -2168,7 +2168,7 @@ name = "sub_0800C4BE"
 addr = 0x0800c4da
 mode = "thumb"
 size = 84
-name = "sub_0800C4DA"
+name = "Object_ClearFields1"
 
 [[code]]
 addr = 0x0800c52e
@@ -2215,7 +2215,7 @@ name = "sub_0800C680"
 addr = 0x0800c7b6
 mode = "thumb"
 size = 194
-name = "sub_0800C7B6"
+name = "Object_Destroy2"
 
 [[code]]
 addr = 0x0800c878
@@ -2308,7 +2308,7 @@ name = "sub_0800CE32"
 addr = 0x0800ce5a
 mode = "thumb"
 size = 132
-name = "sub_0800CE5A"
+name = "Object_Destroy3"
 
 [[code]]
 addr = 0x0800cede
@@ -2474,7 +2474,7 @@ name = "sub_0800D97C"
 addr = 0x0800d9f0
 mode = "thumb"
 size = 158
-name = "sub_0800D9F0"
+name = "Object_Destroy4"
 
 [[code]]
 addr = 0x0800da8e
@@ -2641,7 +2641,7 @@ name = "sub_0800E6D6"
 addr = 0x0800e6f8
 mode = "thumb"
 size = 84
-name = "sub_0800E6F8"
+name = "Object_Destroy5"
 
 [[code]]
 addr = 0x0800e74e
@@ -2671,7 +2671,7 @@ name = "sub_0800E814"
 addr = 0x0800e85e
 mode = "thumb"
 size = 238
-name = "sub_0800E85E"
+name = "Object_Destroy6"
 
 [[code]]
 addr = 0x0800e94c
@@ -2761,7 +2761,7 @@ name = "sub_0800EEFA"
 addr = 0x0800eefe
 mode = "thumb"
 size = 210
-name = "sub_0800EEFE"
+name = "Object_ClearFields2"
 
 [[code]]
 addr = 0x0800efd0
@@ -3762,7 +3762,7 @@ name = "sub_08013E82"
 addr = 0x08013eec
 mode = "thumb"
 size = 144
-name = "sub_08013EEC"
+name = "Object_Destroy7"
 
 [[code]]
 addr = 0x08013f7c
@@ -4078,7 +4078,7 @@ name = "sub_08016220"
 addr = 0x08016240
 mode = "thumb"
 size = 192
-name = "sub_08016240"
+name = "Object_Destroy8"
 
 [[code]]
 addr = 0x08016302
@@ -4096,7 +4096,7 @@ name = "sub_08016322"
 addr = 0x08016384
 mode = "thumb"
 size = 160
-name = "sub_08016384"
+name = "Object_Destroy9"
 
 [[code]]
 addr = 0x08016424
@@ -4357,7 +4357,7 @@ name = "sub_08017C3E"
 addr = 0x08017c90
 mode = "thumb"
 size = 262
-name = "sub_08017C90"
+name = "Object_Destroy10"
 
 [[code]]
 addr = 0x08017d96
@@ -4462,7 +4462,7 @@ name = "sub_0801856C"
 addr = 0x080185b8
 mode = "thumb"
 size = 110
-name = "sub_080185B8"
+name = "Object_Destroy11"
 
 [[code]]
 addr = 0x08018626
@@ -9127,7 +9127,7 @@ name = "sub_0803560A"
 addr = 0x080356b2
 mode = "thumb"
 size = 82
-name = "sub_080356B2"
+name = "Object_Destroy20"
 
 [[code]]
 addr = 0x08035704
@@ -9492,7 +9492,7 @@ name = "sub_08036FC0"
 addr = 0x080370cc
 mode = "thumb"
 size = 102
-name = "sub_080370CC"
+name = "Object_Destroy21"
 
 [[code]]
 addr = 0x08037132
@@ -9707,7 +9707,7 @@ name = "sub_08037EC4"
 addr = 0x08037f8a
 mode = "thumb"
 size = 42
-name = "sub_08037F8A"
+name = "Object_Destroy22"
 
 [[code]]
 addr = 0x08037fb4
@@ -9784,7 +9784,7 @@ name = "sub_080383EE"
 addr = 0x08038498
 mode = "thumb"
 size = 106
-name = "sub_08038498"
+name = "Object_Destroy23"
 
 [[code]]
 addr = 0x08038502
@@ -9878,7 +9878,7 @@ name = "sub_08038AF8"
 addr = 0x08038bb2
 mode = "thumb"
 size = 128
-name = "sub_08038BB2"
+name = "Object_Destroy24"
 
 [[code]]
 addr = 0x08038c32
@@ -9955,7 +9955,7 @@ name = "sub_08039152"
 addr = 0x08039182
 mode = "thumb"
 size = 56
-name = "sub_08039182"
+name = "Object_Destroy25"
 
 [[code]]
 addr = 0x080391c0
@@ -10464,7 +10464,7 @@ name = "sub_0803B40A"
 addr = 0x0803b410
 mode = "thumb"
 size = 8
-name = "sub_0803B410"
+name = "Object_ClearFields4"
 
 [[code]]
 addr = 0x0803b418
@@ -11425,7 +11425,7 @@ name = "sub_0803F0B2"
 addr = 0x0803f0e6
 mode = "thumb"
 size = 206
-name = "sub_0803F0E6"
+name = "Object_InitStrideLinks1"
 
 [[code]]
 addr = 0x0803f1b6

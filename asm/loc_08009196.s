@@ -12,5 +12,5 @@
 	LDR      r0, [r4, #0xc]
 	BL       |loc_080099B6|
 	LDR      r0, [r4, #0x14]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	POP      {r4, pc}

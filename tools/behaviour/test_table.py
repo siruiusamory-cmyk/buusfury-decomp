@@ -188,6 +188,382 @@ ROWS = {
              (OBJECT + 0x14, 4, 0x3),
              (OBJECT + 0x0, 4, 0x804ABA0),
          ], [0x0804E490]),
+    0x0800B2BE: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049F60),
+        (0x0200000C, 4, 0x8049F90),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0801142A, 0x0801142A, 0x0803F58C, 0x0803D63C]),
+    0x0800C7B6: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804CE00),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0803D63C]),
+    0x0800CE5A: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804E2FC),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x0800D9F0: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804A85C),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x0800E6F8: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804D0F8),
+    ], [0x0800E85E, 0x0803D63C]),
+    0x0800E85E: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804C888),
+    ], [0x08004102, 0x0800EC34, 0x0803D63C]),
+    0x08013EEC: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049880),
+        (0x02000000, 4, 0x804929C),
+    ], [0x0803D63C, 0x0803D63C]),
+    0x08016240: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049898),
+        (0x02000000, 4, 0x804929C),
+    ], [0x0803D63C, 0x0803D63C]),
+    0x08016384: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804A298),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0803D63C, 0x0801142A, 0x0803D63C]),
+    0x08017C90: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804C92C),
+    ], [0x08004102, 0x0800EC34, 0x0803D63C]),
+    0x080185B8: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804C534),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x080212FA: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804A33C),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0803E302, 0x0801142A, 0x0803D63C]),
+    0x08024768: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804BFCC),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08025EF0: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804A52C),
+        (0x02000000, 4, 0x80491F0),
+    ], [0x0803D63C]),
+    0x08026DA8: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804E148),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08028782: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08028CCA: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x0802A3A8: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x080356B2: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x080370CC: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804AF24),
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0803E302, 0x0801142A, 0x0803D63C]),
+    0x08037F8A: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08038498: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08038BB2: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x02000000, 4, 0x804E454),
+    ], [0x0801142A, 0x0803D63C]),
+    0x08039182: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x02000000, 4, 0x804D514),
+    ], [0x0800A9FE, 0x0800E6F8, 0x0803D63C]),
+    0x0800B854: ({0: OBJECT}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x0200000E, 2, 0x500),
+        (0x0200000C, 2, 0x1C4C),
+        (0x02000000, 4, 0x8049FEC),
+        (0x02000008, 1, 0x10),
+        (0x02000004, 4, 0x0),
+        (0x02000028, 4, 0x8),
+        (0x02000014, 4, 0x0),
+        (0x02000018, 4, 0x0),
+        (0x0200002C, 4, 0x0),
+        (0x02000010, 4, 0x0),
+        (0x0200001C, 1, 0xFF),
+    ], [0x0801124C]),
+    0x0800C0C8: ({0: OBJECT}, {},
+        [
+        (0x02000000, 4, 0x8049680),
+        (0x0200000E, 2, 0xF00),
+        (0x0200000C, 2, 0x1C4C),
+        (0x02000000, 4, 0x804D8C8),
+        (0x02000010, 1, 0x0),
+        (0x02000018, 4, 0x0),
+        (0x02000014, 4, 0x0),
+        (0x02000004, 4, 0x0),
+        (0x02000008, 1, 0x11),
+        (0x02000028, 4, 0x806E050),
+        (0x02000020, 4, 0x78),
+        (0x02000024, 4, 0xB),
+        (0x0200001F, 1, 0x2),
+        (0x0200001E, 1, 0x1),
+        (0x0200003C, 4, 0x803F5A5),
+        (0x0200001C, 1, 0x1),
+    ], [0x0801124C, 0x0803F540]),
+    0x08017160: ({0: OBJECT}, {},
+        [
+        (0x02000000, 4, 0x804920C),
+        (0x02000004, 4, 0x0),
+        (0x0200010C, 4, 0x0),
+        (0x02000108, 4, 0x0),
+        (0x02000110, 4, 0x0),
+        (0x02000000, 4, 0x804B024),
+        (0x02000120, 4, 0x0),
+        (0x02000114, 4, 0x0),
+        (0x0200011C, 4, 0x0),
+        (0x02000118, 4, 0x0),
+    ], []),
+    0x08011DB4: ({0: OBJECT}, {},
+        [
+        (0x02000BFC, 4, 0x3003E5C),
+        (0x02000BF8, 4, 0xE00),
+        (0x02000610, 4, 0x0),
+        (0x02000004, 4, 0x0),
+        (0x0200040C, 4, 0x0),
+    ], [0x08011C0C, 0x08011D36, 0x0803E44C, 0x0803D5B8, 0x08046DD0, 0x08011B04]),
+    0x08050544: ({0: OBJECT}, {},
+        [
+        (0x02000000, 4, 0x8049EFC),
+        (0x02000004, 4, 0x0),
+        (0x02000008, 4, 0x0),
+        (0x0200000C, 4, 0x0),
+    ], []),
+    0x0800C4DA: ({0: OBJECT}, {},
+        [
+        (0x02000004, 4, 0x0),
+        (0x02000030, 4, 0x0),
+        (0x0200002C, 4, 0x0),
+    ], []),
+    0x0800EEFE: ({0: OBJECT}, {},
+        [
+        (0x02000034, 4, 0x0),
+        (0x02000030, 4, 0x0),
+    ], []),
+    0x080216E6: ({0: OBJECT}, {},
+        [
+        (0x0200002C, 4, 0x0),
+        (0x02000030, 4, 0x0),
+    ], []),
+    0x0803B410: ({0: OBJECT}, {},
+        [
+        (0x02000008, 4, 0x0),
+        (0x02000004, 4, 0x0),
+    ], []),
+    0x0802A8AA: ({0: OBJECT}, {},
+        [
+        (0x02000038, 4, 0x0),
+        (0x02000038, 4, 0x0),
+    ], []),
+    0x0803E3E4: ({0: OBJECT}, {},
+        [
+        (0x02000010, 1, 0x0),
+        (0x02000050, 1, 0x0),
+        (0x02000090, 1, 0x0),
+        (0x020000D0, 1, 0x0),
+        (0x02000110, 1, 0x0),
+        (0x02000150, 1, 0x0),
+        (0x02000190, 1, 0x0),
+        (0x020001D0, 1, 0x0),
+        (0x02000210, 1, 0x0),
+        (0x02000250, 1, 0x0),
+        (0x02000290, 1, 0x0),
+        (0x020002D0, 1, 0x0),
+        (0x02000310, 1, 0x0),
+        (0x02000350, 1, 0x0),
+        (0x02000390, 1, 0x0),
+        (0x020003D0, 1, 0x0),
+    ], []),
+    0x0803E42A: ({0: OBJECT}, {},
+        [
+        (0x02000034, 1, 0x0),
+        (0x02000010, 1, 0x10),
+        (0x02000074, 1, 0x0),
+        (0x02000050, 1, 0x10),
+        (0x020000B4, 1, 0x0),
+        (0x02000090, 1, 0x10),
+        (0x020000F4, 1, 0x0),
+        (0x020000D0, 1, 0x10),
+        (0x02000134, 1, 0x0),
+        (0x02000110, 1, 0x10),
+        (0x02000174, 1, 0x0),
+        (0x02000150, 1, 0x10),
+        (0x020001B4, 1, 0x0),
+        (0x02000190, 1, 0x10),
+        (0x020001F4, 1, 0x0),
+        (0x020001D0, 1, 0x10),
+        (0x02000234, 1, 0x0),
+        (0x02000210, 1, 0x10),
+        (0x02000274, 1, 0x0),
+        (0x02000250, 1, 0x10),
+        (0x020002B4, 1, 0x0),
+        (0x02000290, 1, 0x10),
+        (0x020002F4, 1, 0x0),
+        (0x020002D0, 1, 0x10),
+        (0x02000334, 1, 0x0),
+        (0x02000310, 1, 0x10),
+        (0x02000374, 1, 0x0),
+        (0x02000350, 1, 0x10),
+        (0x020003B4, 1, 0x0),
+        (0x02000390, 1, 0x10),
+        (0x020003F4, 1, 0x0),
+        (0x020003D0, 1, 0x10),
+    ], []),
+    0x0803F0E6: ({0: OBJECT}, {},
+        [
+        (0x02000062, 1, 0x0),
+        (0x02000077, 1, 0x0),
+        (0x02000070, 1, 0x0),
+        (0x02000028, 1, 0x0),
+        (0x02000044, 4, 0x2000018),
+        (0x020000C2, 1, 0x0),
+        (0x020000D7, 1, 0x0),
+        (0x020000D0, 1, 0x0),
+        (0x02000088, 1, 0x0),
+        (0x020000A4, 4, 0x2000078),
+        (0x02000122, 1, 0x0),
+        (0x02000137, 1, 0x0),
+        (0x02000130, 1, 0x0),
+        (0x020000E8, 1, 0x0),
+        (0x02000104, 4, 0x20000D8),
+        (0x02000182, 1, 0x0),
+        (0x02000197, 1, 0x0),
+        (0x02000190, 1, 0x0),
+        (0x02000148, 1, 0x0),
+        (0x02000164, 4, 0x2000138),
+        (0x020001E2, 1, 0x0),
+        (0x020001F7, 1, 0x0),
+        (0x020001F0, 1, 0x0),
+        (0x020001A8, 1, 0x0),
+        (0x020001C4, 4, 0x2000198),
+        (0x02000242, 1, 0x0),
+        (0x02000257, 1, 0x0),
+        (0x02000250, 1, 0x0),
+        (0x02000208, 1, 0x0),
+        (0x02000224, 4, 0x20001F8),
+        (0x020002A2, 1, 0x0),
+        (0x020002B7, 1, 0x0),
+        (0x020002B0, 1, 0x0),
+        (0x02000268, 1, 0x0),
+        (0x02000284, 4, 0x2000258),
+        (0x02000302, 1, 0x0),
+        (0x02000317, 1, 0x0),
+        (0x02000310, 1, 0x0),
+        (0x020002C8, 1, 0x0),
+        (0x020002E4, 4, 0x20002B8),
+        (0x02000362, 1, 0x0),
+        (0x02000377, 1, 0x0),
+        (0x02000370, 1, 0x0),
+        (0x02000328, 1, 0x0),
+        (0x02000344, 4, 0x2000318),
+        (0x020003C2, 1, 0x0),
+        (0x020003D7, 1, 0x0),
+        (0x020003D0, 1, 0x0),
+        (0x02000388, 1, 0x0),
+        (0x020003A4, 4, 0x2000378),
+        (0x02000422, 1, 0x0),
+        (0x02000437, 1, 0x0),
+        (0x02000430, 1, 0x0),
+        (0x020003E8, 1, 0x0),
+        (0x02000404, 4, 0x20003D8),
+        (0x02000482, 1, 0x0),
+        (0x02000497, 1, 0x0),
+        (0x02000490, 1, 0x0),
+        (0x02000448, 1, 0x0),
+        (0x02000464, 4, 0x2000438),
+        (0x020004E2, 1, 0x0),
+        (0x020004F7, 1, 0x0),
+        (0x020004F0, 1, 0x0),
+        (0x020004A8, 1, 0x0),
+        (0x020004C4, 4, 0x2000498),
+        (0x02000542, 1, 0x0),
+        (0x02000557, 1, 0x0),
+        (0x02000550, 1, 0x0),
+        (0x02000508, 1, 0x0),
+        (0x02000524, 4, 0x20004F8),
+        (0x020005A2, 1, 0x0),
+        (0x020005B7, 1, 0x0),
+        (0x020005B0, 1, 0x0),
+        (0x02000568, 1, 0x0),
+        (0x02000584, 4, 0x2000558),
+    ], []),
+    0x0803F18C: ({0: OBJECT}, {},
+        [
+        (0x0200004C, 1, 0x0),
+        (0x02000028, 1, 0x10),
+        (0x020000AC, 1, 0x0),
+        (0x02000088, 1, 0x10),
+        (0x0200010C, 1, 0x0),
+        (0x020000E8, 1, 0x10),
+        (0x0200016C, 1, 0x0),
+        (0x02000148, 1, 0x10),
+        (0x020001CC, 1, 0x0),
+        (0x020001A8, 1, 0x10),
+        (0x0200022C, 1, 0x0),
+        (0x02000208, 1, 0x10),
+        (0x0200028C, 1, 0x0),
+        (0x02000268, 1, 0x10),
+        (0x020002EC, 1, 0x0),
+        (0x020002C8, 1, 0x10),
+        (0x0200034C, 1, 0x0),
+        (0x02000328, 1, 0x10),
+        (0x020003AC, 1, 0x0),
+        (0x02000388, 1, 0x10),
+        (0x0200040C, 1, 0x0),
+        (0x020003E8, 1, 0x10),
+        (0x0200046C, 1, 0x0),
+        (0x02000448, 1, 0x10),
+        (0x020004CC, 1, 0x0),
+        (0x020004A8, 1, 0x10),
+        (0x0200052C, 1, 0x0),
+        (0x02000508, 1, 0x10),
+        (0x0200058C, 1, 0x0),
+        (0x02000568, 1, 0x10),
+    ], []),
 }
 
 
@@ -299,3 +675,118 @@ def test_table_clear_slot1_clears_the_slot_word_and_calls_the_two_record_helpers
 
 def test_object_construct3_stores_the_table_word_and_the_three_arguments():
     assert result(0x08011874) == ROWS[0x08011874][2:]
+
+def test_object_destroy1_stores_the_three_tables_and_frees_the_object():
+    assert result(0x0800B2BE) == ROWS[0x0800B2BE][2:]
+
+def test_object_destroy2_stores_the_two_tables_and_frees_the_object():
+    assert result(0x0800C7B6) == ROWS[0x0800C7B6][2:]
+
+def test_object_destroy3_stores_the_two_tables_relinks_and_frees_the_object():
+    assert result(0x0800CE5A) == ROWS[0x0800CE5A][2:]
+
+def test_object_destroy4_stores_the_three_tables_and_frees_the_object():
+    assert result(0x0800D9F0) == ROWS[0x0800D9F0][2:]
+
+def test_object_destroy5_stores_the_table_and_frees_through_the_other_destructor():
+    assert result(0x0800E6F8) == ROWS[0x0800E6F8][2:]
+
+def test_object_destroy6_stores_the_table_and_frees_the_object():
+    assert result(0x0800E85E) == ROWS[0x0800E85E][2:]
+
+def test_object_destroy7_stores_the_two_tables_and_frees_the_field_and_the_object():
+    assert result(0x08013EEC) == ROWS[0x08013EEC][2:]
+
+def test_object_destroy8_stores_the_two_tables_and_frees_the_field_and_the_object():
+    assert result(0x08016240) == ROWS[0x08016240][2:]
+
+def test_object_destroy9_stores_the_three_tables_and_frees_the_field_and_the_object():
+    assert result(0x08016384) == ROWS[0x08016384][2:]
+
+def test_object_destroy10_stores_the_table_and_frees_the_object():
+    assert result(0x08017C90) == ROWS[0x08017C90][2:]
+
+def test_object_destroy11_stores_the_three_tables_and_frees_the_object():
+    assert result(0x080185B8) == ROWS[0x080185B8][2:]
+
+def test_object_destroy13_stores_the_three_tables_and_frees_the_object():
+    assert result(0x080212FA) == ROWS[0x080212FA][2:]
+
+def test_object_destroy14_stores_the_three_tables_and_frees_the_object():
+    assert result(0x08024768) == ROWS[0x08024768][2:]
+
+def test_object_destroy15_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08025EF0) == ROWS[0x08025EF0][2:]
+
+def test_object_destroy16_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08026DA8) == ROWS[0x08026DA8][2:]
+
+def test_object_destroy17_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08028782) == ROWS[0x08028782][2:]
+
+def test_object_destroy18_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08028CCA) == ROWS[0x08028CCA][2:]
+
+def test_object_destroy19_stores_the_two_tables_and_frees_the_object():
+    assert result(0x0802A3A8) == ROWS[0x0802A3A8][2:]
+
+def test_object_destroy20_stores_the_two_tables_and_frees_the_object():
+    assert result(0x080356B2) == ROWS[0x080356B2][2:]
+
+def test_object_destroy21_stores_the_three_tables_and_frees_the_object():
+    assert result(0x080370CC) == ROWS[0x080370CC][2:]
+
+def test_object_destroy22_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08037F8A) == ROWS[0x08037F8A][2:]
+
+def test_object_destroy23_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08038498) == ROWS[0x08038498][2:]
+
+def test_object_destroy24_stores_the_two_tables_and_frees_the_object():
+    assert result(0x08038BB2) == ROWS[0x08038BB2][2:]
+
+def test_object_destroy25_stores_the_table_and_frees_the_object():
+    assert result(0x08039182) == ROWS[0x08039182][2:]
+
+def test_object_construct4_stores_the_two_tables_and_initialises_the_fields():
+    assert result(0x0800B854) == ROWS[0x0800B854][2:]
+
+def test_object_construct5_stores_the_two_tables_and_initialises_the_fields():
+    assert result(0x0800C0C8) == ROWS[0x0800C0C8][2:]
+
+def test_object_construct6_stores_the_two_tables_and_initialises_the_fields():
+    assert result(0x08017160) == ROWS[0x08017160][2:]
+
+def test_object_construct8_stores_the_two_tables_and_clears_the_three_fields():
+    assert result(0x08011DB4) == ROWS[0x08011DB4][2:]
+
+def test_object_create1_stores_the_table_and_the_argument_and_clears_the_two_fields():
+    assert result(0x08050544) == ROWS[0x08050544][2:]
+
+def test_object_clear_fields1_clears_the_three_words():
+    assert result(0x0800C4DA) == ROWS[0x0800C4DA][2:]
+
+def test_object_clear_fields2_clears_the_two_words():
+    assert result(0x0800EEFE) == ROWS[0x0800EEFE][2:]
+
+def test_object_clear_fields3_clears_the_two_words():
+    assert result(0x080216E6) == ROWS[0x080216E6][2:]
+
+def test_object_clear_fields4_clears_the_two_words():
+    assert result(0x0803B410) == ROWS[0x0803B410][2:]
+
+def test_object_clear_fields5_clears_the_word_twice():
+    assert result(0x0802A8AA) == ROWS[0x0802A8AA][2:]
+
+def test_object_clear_stride_field1_clears_the_byte_at_0x10_of_sixteen_records():
+    assert result(0x0803E3E4) == ROWS[0x0803E3E4][2:]
+
+def test_object_set_stride_fields1_sets_the_byte_at_0x34_and_ors_0x10_into_the_byte_at_0x10_of_sixteen_records():
+    assert result(0x0803E42A) == ROWS[0x0803E42A][2:]
+
+def test_object_init_stride_links1_clears_the_fields_and_points_each_record_at_its_own_block_of_fifteen_records():
+    assert result(0x0803F0E6) == ROWS[0x0803F0E6][2:]
+
+def test_object_set_stride_field1_sets_the_byte_at_0x28_and_clears_the_byte_at_0x4c_of_fifteen_records():
+    assert result(0x0803F18C) == ROWS[0x0803F18C][2:]
+

@@ -28,7 +28,7 @@
 |loc_0800D504|
 	MOV      r1, #0
 	ADD      r0, r5, #0
-	BL       |sub_0800D9F0|
+	BL       |Object_Destroy4|
 	CMP      r6, #0
 	BEQ      |loc_0800D516|
 	ADD      r0, r5, #0

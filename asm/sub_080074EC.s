@@ -15,7 +15,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r4, [pc, #0x60]
 	LDR      r0, [r4, #4]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	MOV      r0, #0
 	BL       |inc_0x1c3f2_0x2ab4c| + 0x8b4a
 	BL       |inc_0x03d784_0x041118| + 0x11c

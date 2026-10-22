@@ -93,7 +93,7 @@
 |loc_0800F7F6|
 	MOV      r1, #0
 	ADD      r0, r4, #0
-	BL       |sub_0800E85E|
+	BL       |Object_Destroy6|
 	CMP      r6, #0
 	BEQ      |loc_0800F808|
 	ADD      r0, r4, #0

@@ -66,7 +66,7 @@
 |loc_08006F6C|
 		BL       |inc_0x03d784_0x041118| + 0x11c
 		LDR r0, [r4, #0x14]
-		BL       |loc_08011DB4|
+		BL       |Object_Construct8|
 		MOV r0, #0xff
 		ADD r0, #0x59
 		DCW     0xF036

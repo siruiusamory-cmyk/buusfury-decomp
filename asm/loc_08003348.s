@@ -357,7 +357,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r4, [pc, #0xe4]
 	LDR      r0, [r4, #0x18]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	MOV      r0, #0
 	BL       |sub_080315b0|
 	BL       |inc_0x03d784_0x041118| + 0x11c
@@ -377,7 +377,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	LDR      r5, [pc, #0xa8]
 	LDR      r0, [r5, #0x18]
-	BL       |loc_08011DB4|
+	BL       |Object_Construct8|
 	LDR      r0, [r4]
 	SUB      r0, #1
 	STR      r0, [r4]

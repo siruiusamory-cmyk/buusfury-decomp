@@ -15,10 +15,10 @@
 	LDR      r0, [pc, #0x1c4]
 	ADD      r0, r4, r0
 	ADD      r6, r0, #0
-	BL       |loc_0803E3E4|
+	BL       |Object_ClearStrideField1|
 	ADD      r4, #0xc
 	ADD      r0, r4, #0
-	BL       |sub_0803F0E6|
+	BL       |Object_InitStrideLinks1|
 	LDR      r0, [pc, #0x1b8]
 	MOV      r1, #0x80
 	STRH     r1, [r0, #4]
@@ -64,8 +64,8 @@
 	STRH     r0, [r1, #2]
 	MOV      r1, #4
 	ADD      r0, r4, #0
-	BL       |loc_0803F18C|
+	BL       |Object_SetStrideField1|
 	MOV      r1, #8
 	ADD      r0, r6, #0
-	BL       |loc_0803E42A|
+	BL       |Object_SetStrideFields1|
 	POP      {r4, r5, r6, pc}

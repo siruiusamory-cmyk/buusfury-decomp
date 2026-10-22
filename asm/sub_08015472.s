@@ -82,7 +82,7 @@
 	EXPORT |sub_08016202|
 	EXPORT |loc_08016208|
 	EXPORT |sub_08016220|
-	EXPORT |sub_08016240|
+	EXPORT |Object_Destroy8|
 	EXPORT |loc_0801625E|
 	EXPORT |loc_080162A4|
 	EXPORT |loc_080162BC|
@@ -90,7 +90,7 @@
 	EXPORT |sub_08016302|
 	EXPORT |loc_08016304|
 	EXPORT |sub_08016322|
-	EXPORT |sub_08016384|
+	EXPORT |Object_Destroy9|
 	EXPORT |loc_0801639A|
 	EXPORT |loc_080163B4|
 	EXPORT |loc_080163C2|
@@ -136,7 +136,7 @@
 	EXPORT |sub_08017078|
 	EXPORT |sub_080170A8|
 	EXPORT |sub_080170FA|
-	EXPORT |loc_08017160|
+	EXPORT |Object_Construct6|
 	EXPORT |loc_08017174|
 	EXPORT |loc_080171A6|
 	EXPORT |loc_080172A8|
@@ -187,7 +187,7 @@
 	EXPORT |sub_08017BF2|
 	EXPORT |loc_08017C1C|
 	EXPORT |sub_08017C3E|
-	EXPORT |sub_08017C90|
+	EXPORT |Object_Destroy10|
 	EXPORT |loc_08017CB8|
 	EXPORT |loc_08017CCE|
 	EXPORT |loc_08017CE0|
@@ -231,7 +231,7 @@
 	EXPORT |sub_08018546|
 	EXPORT |sub_08018550|
 	EXPORT |sub_0801856C|
-	EXPORT |sub_080185B8|
+	EXPORT |Object_Destroy11|
 	EXPORT |loc_080185F0|
 	EXPORT |loc_08018600|
 	EXPORT |loc_08018610|
@@ -587,7 +587,7 @@
 	ADD      r0, r1, r0
 	LDR      r1, [r0, #8]
 	MOV      r0, #0
-	BL       |loc_08017160|
+	BL       |Object_Construct6|
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	CMP      r0, #2
 	BEQ      |loc_080155F8|

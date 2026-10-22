@@ -25,7 +25,7 @@
 	LSR      r0, r0, #0x1f
 	BEQ      |loc_08008FCE|
 	MOV      r0, #0
-	BL       |loc_0800B854|
+	BL       |Object_Construct4|
 	ADD      r1, r0, #0
 	LDR      r0, [r7, #0x14]
 	BL       |List_Append|

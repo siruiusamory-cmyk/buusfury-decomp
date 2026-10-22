@@ -40,7 +40,7 @@
 		ADD r2, r7, #0
 		MOV r1, #0
 		LDR r0, [r6]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		CMP r0, #0
 		BEQ      |inc_0x351c0_0x3d4d0| + 0x910
 		ADD r0, r4, #0

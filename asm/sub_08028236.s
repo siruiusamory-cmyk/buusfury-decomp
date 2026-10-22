@@ -16,7 +16,7 @@
 		LDR r0, [r4, #0x14]
 		LSL r1, r1, #0xb
 		STR r0, [sp, #0x10]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		MOV ip, r0
 		LDR r0, [sp, #0x10]
 		LDR r2, [pc, #0x12c]

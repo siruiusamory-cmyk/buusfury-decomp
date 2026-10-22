@@ -41,7 +41,7 @@
 		BHS      |loc_08035CB6|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x14
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x14]
 		LDR r1, [sp, #0x1c]
 		LDR r2, [sp, #0x20]
@@ -59,7 +59,7 @@
 		STR r1, [sp, #0x24]
 		LDR r1, [r0]
 		ADD r0, sp, #0xc
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0xc]
 		LDR r1, [sp, #0x14]
 		LDR r2, [sp, #0x18]
@@ -130,7 +130,7 @@
 |loc_08035CC8|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x14
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x14]
 		LDR r1, [sp, #0x1c]
 		LDR r2, [sp, #0x20]

@@ -13,6 +13,6 @@
 	MOV      r2, #0
 	SUB      r0, #0x14
 	LDR      r0, [r0, #0x10]
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 |loc_08004782|
 	POP      {r3, pc}

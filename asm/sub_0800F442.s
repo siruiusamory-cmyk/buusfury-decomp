@@ -10,7 +10,7 @@
 		LDR r2, [r1, #0x10]
 		ADD r2, r2, r1
 		ADD r1, r4, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #0
 		B        |inc_0x0158_0x143f2| + 0xf2e8
 |loc_0800F45C|

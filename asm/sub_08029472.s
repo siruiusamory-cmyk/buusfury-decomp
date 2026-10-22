@@ -61,7 +61,7 @@
 		STR r4, [sp, #0x30]
 		LDR r0, [r7, #4]
 		MOV r2, sp
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		CMP r0, #0
 		BEQ      |loc_0802946E|
 		LDR r7, [r7]

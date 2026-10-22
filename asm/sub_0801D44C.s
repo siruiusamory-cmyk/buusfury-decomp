@@ -31,7 +31,7 @@
 		MOV r2, #0
 		MOV r1, #9
 		LDR r0, [r5, #0x38]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		ADD r6, r0, #0
 		LDR r0, [r7, #0x10]
 		ADD r0, #0x80
@@ -100,7 +100,7 @@
 		LDR r5, [r5, #0x38]
 		ADD r1, r6, #0
 		ADD r0, sp, #0xc
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0xc]
 		LDR r1, [sp, #0x14]
 		LDR r2, [sp, #0x18]

@@ -9,7 +9,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r6, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0x14
 	BL       |GBARam_Malloc|
@@ -41,7 +41,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r5, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0xc
 	BL       |GBARam_Malloc|
@@ -78,7 +78,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r5, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0xc
 	BL       |GBARam_Malloc|
@@ -120,7 +120,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r7, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0x10
 	BL       |GBARam_Malloc|
@@ -165,7 +165,7 @@
 	LDR      r0, [pc, #0x1d0]
 	MOV      r1, #8
 	LDR      r0, [r0, #0x18]
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0x34
 	BL       |GBARam_Malloc|
@@ -208,7 +208,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r7, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0x30
 	BL       |GBARam_Malloc|
@@ -244,7 +244,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r6, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0xc
 	BL       |GBARam_Malloc|
@@ -284,7 +284,7 @@
 	LDR      r2, [r0, #4]
 	LDR      r0, [r7, #0x18]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	MOV      r0, #0x10
 	BL       |GBARam_Malloc|
@@ -319,7 +319,7 @@
 	LDR      r0, [pc, #0x94]
 	MOV      r1, #8
 	LDR      r0, [r0, #0x18]
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	STR      r4, [r0, #0x18]
 	LDR      r1, [r0, #0x30]
 	ADD      r1, r1, r4
@@ -583,7 +583,7 @@
 	BL       |loc_080001C6|
 	ADD      r1, r0, #0
 	ADD      r0, sp, #8
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [sp, #8]
 	LDR      r2, [sp, #0x10]
 	LDR      r3, [sp, #0x14]

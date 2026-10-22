@@ -14,5 +14,5 @@
 		LSL r2, r0, #1
 		SUB r1, r2, r1
 		LSL r1, r1, #8
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		B        |inc_0x153f2_0x1a3f2| + 0x24b8

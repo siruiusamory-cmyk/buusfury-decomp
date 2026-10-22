@@ -6,7 +6,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		DCW     0xD107
 		LDR r0, [r4, #0x34]
@@ -14,7 +14,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08022EAC|
 |unk_08022EAC|
 		DCW     0xE086
@@ -23,7 +23,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_08022ED0|
 		LDR r0, [r4, #0x30]
@@ -31,7 +31,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_08022FBC|
 |loc_08022ED0|
 		LDR r0, [r4, #0x38]
@@ -39,7 +39,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		DCW     0xD109
 		LDR r0, [r4, #0x38]
@@ -47,7 +47,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_08022FBC|
 |loc_08022EF2|
 |unk_08022EF2|
@@ -60,7 +60,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_08022F18|
 		LDR r0, [r4, #0x2c]
@@ -68,7 +68,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_08022FBC|
 |loc_08022F18|
 		LDR r0, [r4, #0x3c]
@@ -76,7 +76,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_08022FBC|
 		LDR r0, [r4, #0x3c]
@@ -84,7 +84,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_08022FBC|
 		LDR r7, [r4, #0x1c]
 		LDR r6, [pc, #0x148]
@@ -114,7 +114,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08022F78|
 		LDR r1, [sp, #4]
 		MOV r3, #0x2a

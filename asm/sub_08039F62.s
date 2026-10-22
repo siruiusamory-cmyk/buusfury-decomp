@@ -43,11 +43,11 @@
 		STR r2, [sp, #8]
 		LDR r0, [sp, #0xc]
 		STR r1, [sp, #4]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp]
 		ADD r1, sp, #0xc
 		LDMIA r1!, {r0, r1}
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LDR r1, [sp]
 		STR r0, [sp, #8]
 		ADD r0, r1, #0

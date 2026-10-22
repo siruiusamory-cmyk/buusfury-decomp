@@ -56,7 +56,7 @@
 |loc_080078D4|
 		LDR r1, [r0]
 		LDR r0, [sp, #0x30]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ASR r0, r0, #0xa
 		ADD r0, #1
 		STR r0, [r4, #0xc]
@@ -66,12 +66,12 @@
 		LDR r0, [sp, #0x20]
 		LSL r1, r0, #0xa
 		ADD r0, r5, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ADD r6, r0, #0
 		LDR r0, [sp, #0x24]
 		LSL r1, r0, #0xa
 		ADD r0, r5, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #8]
 		LDR r1, [sp, #8]
 		ADD r0, r6, #0

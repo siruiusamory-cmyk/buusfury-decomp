@@ -84,7 +84,7 @@
 		B        |loc_0803629A|
 		ADD r1, r4, #0
 		ADD r0, sp, #4
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #4]
 		CMP r6, #0
 		STR r0, [sp, #0x1c]

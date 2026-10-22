@@ -123,7 +123,7 @@ Sections 5-11 were dated per-run logs; their tables are kept and their prose is 
 
 | file | B | flags | callees | caller repointed | AREA kept / new |
 |---|---:|---|---|---|---|
-| `0x3431C` | 20 | `-O2 -Otime -apcs /nointerwork` | `loc_08046AA4` | none | `CPilotTail2` / `CPilotTail3` at `0x34330` |
+| `0x3431C` | 20 | `-O2 -Otime -apcs /nointerwork` | `Thunk_JumpRegister1` | none | `CPilotTail2` / `CPilotTail3` at `0x34330` |
 | `0x45598` | 28 | `-O2 -apcs /interwork` | `loc_08043b66`, `loc_080437c2` | none | `UnusedGBARam2` / `UnusedGBARam3` at `0x455B4` |
 | `0x45658` | 24 | `-O2 -apcs /interwork` | `loc_080437c2` | none | `UnusedGBARam3` / `UnusedGBARam4` at `0x45670` |
 | `0x3E44C` | 84 | `-O2 -Otime -apcs /nointerwork` | `GBARam_Malloc`, `sub_08049138` | file `0x11DCE` | `UnusedGBARam` / `UnusedGBARam5` at `0x3E4A0` |

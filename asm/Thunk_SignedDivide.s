@@ -1,4 +1,4 @@
 	CODE16
-|sub_08046E58|
+|Thunk_SignedDivide|
 	BX       pc
 	LSL      r0, r0, #0

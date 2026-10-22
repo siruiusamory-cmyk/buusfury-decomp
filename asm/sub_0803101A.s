@@ -70,7 +70,7 @@
 		STR r0, [r2, #4]
 |loc_08031090|
 		ADD r0, sp, #0xc
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0xc]
 		LDR r1, [sp, #0x14]
 		LDR r2, [sp, #0x18]
@@ -87,7 +87,7 @@
 		STR r0, [sp, #0x20]
 		ADD r0, sp, #0x24
 		ADD r1, r5, #0
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x24]
 		LDR r1, [sp, #0x2c]
 		LDR r2, [sp, #0x30]
@@ -206,7 +206,7 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		ADD r4, r5, #0
 		ADD r4, #0xff
 		ADD r4, #0xa1
@@ -228,6 +228,6 @@
 		ADD r7, r4, #4
 		ADD r2, r2, r1
 		ADD r1, sp, #0x34
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		DCW     0xD004

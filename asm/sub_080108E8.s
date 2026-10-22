@@ -23,7 +23,7 @@
 	STR      r0, [sp, #0x70]
 	ADD      r0, sp, #0x5c
 	ADD      r1, r4, #0
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [sp, #0x5c]
 	LDR      r1, [sp, #0x64]
 	LDR      r3, [sp, #0x68]

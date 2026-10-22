@@ -26,7 +26,7 @@
 		STR r7, [r4, #0x14]
 		LDRB r2, [r7, #4]
 		LDR r0, [r5]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		STR r0, [r4, #0x10]
 		LDR r1, [r0, #4]
 		ADD r1, #1

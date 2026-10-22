@@ -126,7 +126,7 @@
 		STR r4, [sp, #0x38]
 		LDR r0, [r0]
 		ADD r2, sp, #8
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		CMP r0, #0
 		BEQ      |loc_08034088|
 		LDR r0, [pc, #0xa0]

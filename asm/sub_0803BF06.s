@@ -59,13 +59,13 @@
 		LSL r0, r0, #0xa
 		STR r2, [sp, #4]
 		STR r2, [sp, #0xc]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ADD r7, r0, #0
 		LDR r0, [sp, #0x10]
 		LSL r1, r0, #8
 		MOV r0, #0xf
 		LSL r0, r0, #0xa
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #8]
 		LDR r1, [sp, #8]
 		STR r7, [sp, #4]

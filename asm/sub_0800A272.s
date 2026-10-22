@@ -52,7 +52,7 @@
 		ADD r0, r4, #0
 		ADD r0, #0x28
 		STR r0, [sp, #0x1c]
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		MOV r0, #5
 		BL       |inc_0x03d784_0x041118| + 0x2348
 		CMP r0, #4
@@ -157,7 +157,7 @@
 		LDR r2, [r1, #0x10]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_0800A3B0|
 |loc_0800A3AC|
 		B        |loc_0800A3D0|
@@ -175,7 +175,7 @@
 		LDR r2, [r1, #0x18]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_0800A3CA|
 		LDR r0, [r4, #8]
 		CMP r0, #0
@@ -210,7 +210,7 @@
 		LDR r2, [r1, #0x14]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r1, [r4]
 		ADD r0, r4, #0
 		LDR r2, [r1, #0x1c]

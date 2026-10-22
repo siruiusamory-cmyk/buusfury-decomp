@@ -9,7 +9,7 @@
 	SUB      sp, #0x24
 	LDR      r1, [r0, #4]
 	ADD      r0, sp, #0x14
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [pc, #0x58]
 	LDR      r1, [r0]
 	LDR      r2, [r1]

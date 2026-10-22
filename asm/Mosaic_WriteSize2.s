@@ -2,7 +2,7 @@
 	CODE16
 |unk_0802CA2E|
 		LSL r1, r1, #4
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LSL r3, r0, #4
 		LDR r1, [pc, #0x6c]
 		ADD r0, r3, r0

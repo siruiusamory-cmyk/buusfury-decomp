@@ -38,13 +38,13 @@
 		BNE      |loc_08030724|
 		ADD r1, r7, #0
 		ADD r0, sp, #0x10
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r1, sp, #0x10
 		ADD r0, sp, #0x20
 		BL       |inc_0x049120_0x055620| + 0x67e0
 		ADD r1, r4, #0
 		ADD r0, sp, #0x28
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r1, sp, #0x28
 		ADD r0, sp, #0x38
 		BL       |inc_0x049120_0x055620| + 0x67e0
@@ -88,14 +88,14 @@
 		STR r0, [sp, #0x3c]
 		ADD r0, r7, #0
 		STR r2, [sp, #0x38]
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r1, r7, #0
 		ADD r0, sp, #0x18
 		BL       |inc_0x049120_0x055620| + 0x67e0
 		ADD r1, r4, #0
 		ADD r7, sp, #0x20
 		ADD r0, r7, #0
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r1, r7, #0
 		ADD r0, sp, #0x30
 		BL       |inc_0x049120_0x055620| + 0x67e0

@@ -205,7 +205,7 @@
 	BL       |loc_080001C6|
 	ADD      r1, r0, #0
 	ADD      r0, sp, #0xc
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [sp, #0xc]
 	LDR      r1, [sp, #0x14]
 	LDR      r2, [sp, #0x18]
@@ -279,7 +279,7 @@
 	BL       |loc_080001C6|
 	ADD      r1, r0, #0
 	ADD      r0, sp, #0xc
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [sp, #0xc]
 	LDR      r1, [sp, #0x14]
 	LDR      r2, [sp, #0x18]

@@ -6,6 +6,6 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #1
 		B        |inc_0x351c0_0x3d4d0| + 0x7558

@@ -112,7 +112,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_0803901E|
 		LDR r1, [r5]
@@ -120,7 +120,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_0803901E|
 		LDR r0, [sp, #0x24]
 		LDR r1, [sp, #0x28]
@@ -145,12 +145,12 @@
 		STR r0, [sp, #0xc]
 		LSL r4, r4, #8
 		ADD r0, r4, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ADD r6, r0, #0
 		LDR r0, [sp, #0x10]
 		LSL r1, r0, #8
 		ADD r0, r4, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #8]
 		LDR r1, [sp, #8]
 		STR r6, [sp, #4]

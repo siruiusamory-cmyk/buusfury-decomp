@@ -92,13 +92,13 @@
 		LDR r2, [r1, #0x5c]
 		ADD r2, r2, r1
 		ADD r1, r6, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r1, [r5]
 		ADD r0, r5, #0
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #0x17
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		DCW     0xD094
 		LDR r1, [r5]
@@ -106,5 +106,5 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		DCW     0xE78C

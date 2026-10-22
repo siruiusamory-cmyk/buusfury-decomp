@@ -42,11 +42,11 @@
 		BL       |sub_0803FAF6|
 		ADD r6, r0, #0
 		LDR r1, [sp, #0x10]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #0x10]
 		ADD r0, r6, #0
 		LDR r1, [sp, #0x14]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #0x14]
 		MOV r0, #1
 		STRH r0, [r4, #0x12]

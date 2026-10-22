@@ -13,7 +13,7 @@
 		LDR r2, [r1, #0x10]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_08038F12|
 |loc_08038F00|
 		LDR r0, [r4, #0x48]
@@ -23,7 +23,7 @@
 		LDR r2, [r1, #0x10]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08038F12|
 		ADD r1, r5, #0
 		ADD r0, r4, #0

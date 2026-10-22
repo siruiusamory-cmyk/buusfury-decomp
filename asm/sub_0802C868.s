@@ -27,7 +27,7 @@
 		ADD r2, r7, #0
 		MOV r1, #0
 		LDR r0, [r5]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		CMP r0, #0
 		BEQ      |inc_0x2bb4c_0x2d1c0| + 0xd18
 		ADD r1, r4, #0

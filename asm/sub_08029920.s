@@ -28,7 +28,7 @@
 		LDR r3, [r2, #0x5c]
 		MOV r1, sp
 		ADD r2, r3, r2
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_0802995A|
 		MOV r0, #0
 		DCW     0xE7DE

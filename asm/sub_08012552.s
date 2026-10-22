@@ -7,7 +7,7 @@
 		LSL r0, r0, #2
 		LDR r2, [r5, r0]
 		ADD r0, r4, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		STR r0, [r4, #0x28]
 		LDR r1, [r0]
 		LDR r2, [r1, #4]
@@ -22,7 +22,7 @@
 		LDR r2, [r1]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08012584|
 		STR r6, [r4, #0x28]
 		B        |loc_08012530|

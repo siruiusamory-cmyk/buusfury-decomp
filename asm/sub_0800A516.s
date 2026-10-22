@@ -18,7 +18,7 @@
 	CMP      r1, #0
 	BEQ      |sub_0800A560|
 	ADD      r0, sp, #4
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [sp, #4]
 	LDR      r1, [r4, #0x40]
 	CMP      r0, r1

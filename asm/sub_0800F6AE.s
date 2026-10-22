@@ -48,7 +48,7 @@
 		ADD r1, r4, #0
 		LDR r5, [r0, #8]
 		ADD r0, sp, #4
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r5, #0x80
 		LDR r1, [r5, #0x30]
 		MOV r2, #0

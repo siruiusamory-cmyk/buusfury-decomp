@@ -6,7 +6,7 @@
 	ADD      r5, r0, #0
 	ADD      r4, r1, #0
 	ADD      r0, r7, #0
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	ADD      r1, r4, #0
 	ADD      r1, #0xff
 	ADD      r1, #0xa1
@@ -26,14 +26,14 @@
 	STR      r0, [r1, #4]
 	ADD      r1, r4, #0
 	ADD      r0, r6, #0
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r0, [pc, #0x184]
 	STR      r6, [sp, #0x14]
 	LDR      r1, [r0]
 	CMP      r1, #0
 	BEQ      |sub_08009F06|
 	ADD      r0, sp, #4
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	LDR      r2, [sp, #0xc]
 	LDR      r3, [sp, #0x10]
 	LDR      r0, [sp, #4]

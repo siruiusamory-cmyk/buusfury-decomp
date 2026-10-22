@@ -7,6 +7,6 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |inc_0x153f2_0x1a3f2| + 0x4f08
 	INCBIN  baserom.gba_0x1a30e_0x1a322.extracted

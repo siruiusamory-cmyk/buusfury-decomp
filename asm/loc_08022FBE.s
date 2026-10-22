@@ -23,14 +23,14 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08022FF0|
 		LDR r0, [r4, #0x34]
 		LDR r1, [r0]
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r1, [r4, #0x1c]
 		LDR r0, [sp]
 		ADD r1, #2

@@ -4,7 +4,7 @@
 		ADD r1, r6, #0
 		ADD r6, sp, #0x1c
 		ADD r0, r6, #0
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		ADD r2, r6, #0
 		ADD r2, #8
 		ADD r1, sp, #0x1c

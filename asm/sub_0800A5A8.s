@@ -19,7 +19,7 @@
 	BL       |loc_08009930|
 	ADD      r1, r6, #0
 	MOV      r0, sp
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	MOV      r2, #0
 	MOV      r0, sp
 	LDR      r1, [r5, #0x28]

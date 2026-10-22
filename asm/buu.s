@@ -619,7 +619,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_0800FD08.s
 	INCLUDE sub_0800FD34.s
 	INCLUDE sub_0800FD96.s
-	INCLUDE sub_0800FDFA.s
+	INCLUDE Object_WriteBounds1.s
 	INCLUDE loc_0800FE78.s
 	INCLUDE loc_0800FEE2.s
 	INCLUDE sub_0800FF32.s
@@ -700,7 +700,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_08011AA0.s
 	INCLUDE loc_08011B04.s
 	INCLUDE loc_08011C0C.s
-	INCLUDE loc_08011C70.s
+	INCLUDE List_CallMethod1.s
 	INCLUDE loc_08011CCA.s
 	INCLUDE loc_08011D36.s
 	INCLUDE sub_08011DA6.s
@@ -3066,7 +3066,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801a76c|
 |loc_0801a780|
 |unk_0801A780|
@@ -3089,7 +3089,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801a76c|
         	PUSH {r3, lr}
         	ADD r0, r1, #0
@@ -3097,7 +3097,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801a7c0|
         PUSH     {r4,r5,r6,lr}
@@ -3153,7 +3153,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0801A834|
         	POP {r3, pc}
 |loc_0801A836|
@@ -3409,7 +3409,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801aa3a|
 |loc_0801aa4e|
 |unk_0801AA4E|
@@ -3433,7 +3433,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801aa3a|
         	PUSH {r3, lr}
         	ADD r0, r1, #0
@@ -3441,7 +3441,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801aa90|
         PUSH     {r4,r5,r6,r7,lr}
@@ -3526,7 +3526,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE7F3
 |sub_0801ab3e|
         PUSH     {r4,lr}
@@ -3778,7 +3778,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE74D
 |loc_0801AD44|
         	LDRH r0, [r4, #0x12]
@@ -3824,7 +3824,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801ada8|
         PUSH     {r4,r5,r6,r7,lr}
@@ -3972,7 +3972,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801aed8|
 |loc_0801aeec|
 |unk_0801AEEC|
@@ -3996,7 +3996,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801aed8|
         	PUSH {r3, lr}
         	ADD r0, r1, #0
@@ -4004,7 +4004,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801af2e|
         PUSH     {r4,lr}
@@ -4076,7 +4076,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE7F5
 |loc_0801afc4|
 |unk_0801AFC4|
@@ -4226,7 +4226,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [sp]
         	LDR r1, [r6]
         	MOV r0, #2
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp]
         	MOV r2, #2
         	SUB r0, r1, r0
@@ -4245,7 +4245,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [sp]
         	LDR r1, [r6]
         	MOV r0, #2
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp]
         	MOV r2, #2
         	ADD r0, r1, r0
@@ -4266,7 +4266,7 @@ unk_03003124 EQU     0x03003124
         	LDR r1, [r6]
         	MOV r0, #2
         	MOV r7, sp
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp, #4]
         	MOV r2, #1
         	SUB r0, r1, r0
@@ -4286,7 +4286,7 @@ unk_03003124 EQU     0x03003124
         	LDR r1, [r6]
         	MOV r0, #2
         	MOV r7, sp
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp, #4]
         	MOV r2, #1
         	ADD r0, r1, r0
@@ -4361,7 +4361,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE752
 |loc_0801B20C|
         	LDR r1, [r4]
@@ -4389,7 +4389,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
         	PUSH {r4, lr}
         	BL       |Record_InitFields|
@@ -4455,7 +4455,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE7E8
 |loc_0801B2DE|
         	LDRH r0, [r4, #0x12]
@@ -4659,7 +4659,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
         	PUSH {r4, lr}
         	MOV r3, #0
@@ -4839,7 +4839,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE78C
 |loc_0801B60C|
         	LDR r0, [r5, #4]
@@ -4851,7 +4851,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE77F
         	PUSH {r3, lr}
         	ADD r0, r1, #0
@@ -4859,7 +4859,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801b638|
         PUSH     {r4,r5,r6,r7,lr}
@@ -4967,7 +4967,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE7E7
 |loc_0801B714|
         	LDR r0, [pc, #0xec]
@@ -5067,7 +5067,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE77A
 |loc_0801B7EE|
         	LDRH r0, [r4, #0x12]
@@ -5125,7 +5125,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
         	MOV r2, #0
         	STRH r2, [r1, #0x12]
@@ -5328,7 +5328,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801b9fa|
 |loc_0801ba0e|
 |unk_0801BA0E|
@@ -5397,7 +5397,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
         	PUSH {r3, r4, r5, lr}
         	ADD r5, r1, #0
@@ -5631,7 +5631,7 @@ unk_03003124 EQU     0x03003124
         	BNE      |loc_0801BCA2|
         	MOV r4, #1
         	ADD r0, sp, #0x50
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r0, r5, #0
         	ADD r0, #0xff
         	ADD r0, #0xa1
@@ -5683,7 +5683,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE759
 |loc_0801BCD8|
         	LSL r0, r0, #3
@@ -5937,7 +5937,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801bee8|
 |loc_0801befc|
 |unk_0801BEFC|
@@ -5961,7 +5961,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801bee8|
         	PUSH {r3, lr}
         	ADD r0, r1, #0
@@ -5969,7 +5969,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801bf3e|
         PUSH     {r4,r5,r6,r7,lr}
@@ -6110,7 +6110,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801c054|
 |loc_0801c068|
 |unk_0801C068|
@@ -6135,7 +6135,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0801c054|
         DCD	|unk_0871E0F8|
         DCD	|unk_0871DA68|
@@ -6147,7 +6147,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r3, pc}
 |sub_0801c0ba|
         PUSH     {r4,r5,r6,r7,lr}
@@ -6331,7 +6331,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0801C23A|
         	POP {r3, r4, r5, r6, r7, pc}
 |loc_0801C23C|
@@ -6385,7 +6385,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	ADD r0, r5, #0
         	BL       |loc_0801064C|
         	B        |loc_0801C23A|
@@ -6492,7 +6492,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	ADD r0, r5, #0
         	BL       |loc_0801064C|
         	LDRB r0, [r4, #0x14]
@@ -7107,7 +7107,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r4, #0
         	MOV r1, #0x26
         	LDR r0, [r0, #4]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	POP {r4, r5, r6, pc}
 |sub_0802acb2|
         PUSH     {r4,r5,lr}
@@ -7295,7 +7295,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802AE6C|
         	POP {r3, pc}
 |loc_0802AE6E|
@@ -7550,7 +7550,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x60]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x20
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802B066|
         	LDRH r0, [r4, #0x12]
         	LSL r0, r0, #0x1b
@@ -7668,7 +7668,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r0]
         	LDR r3, [r2, #0x5c]
         	ADD r2, r3, r2
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0802AFE6|
 |loc_0802B162|
         	B        |loc_0802B164|
@@ -7680,7 +7680,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0802AFE6|
         	DCD     0x03003048
         	DCD     0x03001C34
@@ -7786,7 +7786,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802B266|
         	ADD sp, #0x1c
         	POP {r4, r5, r6, r7, pc}
@@ -7981,7 +7981,7 @@ unk_03003124 EQU     0x03003124
 |unk_0802B3FC|
         	ADD r0, sp, #0xc
         	LDR r1, [r5, #8]
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0xc]
         	LDR r1, [sp, #0x14]
         	LDR r2, [sp, #0x18]
@@ -7999,7 +7999,7 @@ unk_03003124 EQU     0x03003124
         	MOV r7, #1
         	ADD r1, r4, #0
         	ADD r0, sp, #0x24
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0x24]
         	LDR r1, [sp, #0x2c]
         	LDR r2, [sp, #0x30]
@@ -8067,7 +8067,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [sp, #0x3c]
         	LDR r1, [sp, #0x40]
         	ADD r5, r4, #0
@@ -8080,12 +8080,12 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x34]
         	LSL r6, r6, #8
         	ADD r0, r6, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	ADD r7, r0, #0
         	LDR r0, [sp, #0x38]
         	LSL r1, r0, #8
         	ADD r0, r6, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp, #0x18]
         	LDR r1, [sp, #0x18]
         	STR r7, [sp, #0x14]
@@ -8108,7 +8108,7 @@ unk_03003124 EQU     0x03003124
         	ADD r6, r5, #4
         	ADD r2, r2, r1
         	ADD r1, sp, #0x2c
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802B50C|
         	LDR r0, [sp, #0x2c]
@@ -8140,7 +8140,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x24
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802B54A|
         	LDR r0, [sp, #0x24]
@@ -8168,7 +8168,7 @@ unk_03003124 EQU     0x03003124
         	ADD r0, r4, #0
         	LDR r3, [r2, #0x54]
         	ADD r2, r3, r2
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802B57E|
         	LDR r0, [sp, #0x24]
@@ -8181,7 +8181,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0
         	DCW     0xE733
 |sub_0802b590|
@@ -8303,7 +8303,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_0802b664|
 |sub_0802b684|
         PUSH     {r4,lr}
@@ -8450,7 +8450,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0
         	ADD sp, #0x20
         	POP {r4, r5, r6, pc}
@@ -8496,7 +8496,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802B820|
         	ADD sp, #0xc
         	POP {r4, r5, pc}
@@ -8989,7 +8989,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802D236|
         	ADD sp, #0x1c
         	POP {r4, r5, r6, r7, pc}
@@ -9179,7 +9179,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802d3b6|
 |unk_0802D3B6|
 ; cited by 0x0802D43E (a pc-relative load targets 0x0802D4A4)
@@ -9338,7 +9338,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, r7, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BNE      |loc_0802D512|
         	STRB r6, [r5, #1]
@@ -9357,7 +9357,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDRB r5, [r4, #0x10]
         	MOV r0, #0xc8
         	BL       |inc_0x03d784_0x041118| + 0x2348
@@ -9398,7 +9398,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x34
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802D60C|
         	LDR r0, [sp, #0x34]
@@ -9424,7 +9424,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [sp, #0x44]
         	LDR r0, [r0, #4]
         	CMP r0, #0
@@ -9538,7 +9538,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802D698|
         	LDR r0, [r6, #0x24]
         	CMP r0, #0
@@ -9570,7 +9570,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDRB r0, [r4, #0x10]
         	LDR r2, [pc, #0xb4]
         	ADD r1, r4, #0
@@ -9600,7 +9600,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [r6, #0x30]
         	CMP r0, #0
         	BEQ      |loc_0802D722|
@@ -9957,7 +9957,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r7, #0
         	MOV r1, #0
         	LDR r0, [r5, #8]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	CMP r0, #0
         	DCW     0xD099
         	MOV r2, #0
@@ -10391,7 +10391,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r5, #0
         	MOV r1, #0
         	LDR r0, [r6, #4]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	CMP r0, #0
         	BEQ      |loc_0802DDE0|
         	MOV r0, #2
@@ -10507,7 +10507,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [sp, #0x14]
         	LDR r1, [r0]
         	ADD r0, sp, #0x18
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0x18]
         	LDR r1, [sp, #0x20]
         	LDR r3, [sp, #0x24]
@@ -10821,7 +10821,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802E166|
         	ADD sp, #0x1c
         	POP {pc}
@@ -11157,7 +11157,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802E42A|
         	ADD sp, #0x24
         	POP {r4, r5, r6, r7, pc}
@@ -11261,7 +11261,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r6, #0
         	MOV r1, #0
         	LDR r0, [r7, #4]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	CMP r0, #0
         	BEQ      |loc_0802E5CE|
         	LDR r0, [pc, #0x30]
@@ -11559,7 +11559,7 @@ unk_03003124 EQU     0x03003124
         	BL       |inc_0x0158_0x143f2| + 0x41e6
         	ADD r7, r0, #0
         	MOV r1, #0x90
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp]
         	CMP r0, #0x30
         	BLE      |loc_0802E8B2|
@@ -12729,7 +12729,7 @@ unk_03003124 EQU     0x03003124
 |dat_0802f250|
 |unk_0802F250|
         	ADD r0, sp, #0xc
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0xc]
         	LDR r1, [sp, #0x14]
         	LDR r2, [sp, #0x18]
@@ -12746,7 +12746,7 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x20]
         	ADD r0, sp, #0x24
         	ADD r1, r4, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0x24]
         	LDR r1, [sp, #0x2c]
         	LDR r2, [sp, #0x30]
@@ -12827,7 +12827,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [sp, #0x3c]
         	LDR r1, [sp, #0x40]
         	LSL r0, r0, #8
@@ -12850,12 +12850,12 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x14]
         	LSL r7, r7, #8
         	ADD r0, r7, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp, #8]
         	LDR r0, [sp, #0x18]
         	LSL r1, r0, #8
         	ADD r0, r7, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp, #8]
         	STR r0, [sp, #0x10]
         	ADD r0, r1, #0
@@ -12881,7 +12881,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x2c
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802F394|
         	LDR r0, [sp, #0x2c]
@@ -12916,7 +12916,7 @@ unk_03003124 EQU     0x03003124
         	ADD r0, r4, #0
         	LDR r3, [r2, #0x54]
         	ADD r2, r3, r2
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802F3D8|
         	LDR r0, [sp, #0x24]
@@ -12946,7 +12946,7 @@ unk_03003124 EQU     0x03003124
         	ADD r0, r4, #0
         	LDR r3, [r2, #0x54]
         	ADD r2, r3, r2
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802F422|
         	LDR r0, [sp, #0x24]
@@ -12959,7 +12959,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0
         	DCW     0xE714
 |loc_0802F422|
@@ -12968,7 +12968,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #1
         	DCW     0xE70B
 |sub_0802f434|
@@ -13120,7 +13120,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #1
         	DCW     0xE7BA
         	MOV r2, #0x78
@@ -13222,7 +13222,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0802F63C|
         	ADD sp, #0x18
         	POP {r4, r5, r6, pc}
@@ -13484,7 +13484,7 @@ unk_03003124 EQU     0x03003124
 |loc_0802F84E|
         	ADD r1, r4, #0
         	ADD r0, sp, #4
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #4]
         	CMP r6, #0
         	STR r0, [sp, #0x18]
@@ -13547,7 +13547,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #4
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #1
         	DCW     0xE75E
 |sub_0802f8da|
@@ -13608,7 +13608,7 @@ unk_03003124 EQU     0x03003124
         	LDR r0, [pc, #0x40]
         	MOV r1, #5
         	LDR r0, [r0]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	CMP r0, #0
         	BEQ      |loc_0802F972|
         	LDR r2, [pc, #0x38]
@@ -13790,7 +13790,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x34]
         	ADD r2, r2, r1
         	MOV r1, #9
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802FAE0|
         	LDR r0, [r4, #0x18]
@@ -13814,7 +13814,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #8]
         	ADD r2, r2, r1
         	ADD r1, r5, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0802FB92|
         	MOV r0, #0xff
@@ -14276,7 +14276,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r1, #0
         	MOV r1, #0x1e
         	LDR r0, [r0]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	MOV r0, #1
         	POP {r3, pc}
 |unk_0802FF66|
@@ -14341,7 +14341,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r1, #0
         	MOV r1, #0x1d
         	LDR r0, [r0]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
         	MOV r0, #1
         	POP {r3, pc}
 |unk_0802FFEE|
@@ -14437,7 +14437,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x20]
         	ADD r2, r2, r1
         	ADD r1, r4, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #4
         	BEQ      |loc_080300BE|
         	MOV r0, #0
@@ -14737,7 +14737,7 @@ unk_03003124 EQU     0x03003124
 |unk_08031304|
         	ADD r1, r4, #0
         	MOV r0, sp
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp]
         	CMP r6, #0
         	STR r0, [sp, #0x14]
@@ -14878,7 +14878,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	ADD r5, sp, #0x14
         	ADD r0, r5, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r0, r4, #0
         	ADD r0, #0xff
         	ADD r0, #0xa1
@@ -14897,7 +14897,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [r0, #4]
         	ADD r1, r4, #0
         	ADD r0, r6, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x4c]
@@ -14910,7 +14910,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x50]
         	ADD r2, r2, r1
         	ADD r1, r6, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0803147E|
         	LDR r1, [r4]
@@ -15046,7 +15046,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #1
         	B        |loc_080314EA|
         INCBIN  baserom.gba_0x315a4_0x315a8.extracted
@@ -17381,7 +17381,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x34]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BNE      |loc_08032866|
         	LDR r1, [r4]
@@ -17389,7 +17389,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08032866|
         	MOV r0, #0x3c
         	STR r0, [r6, #4]
@@ -17456,13 +17456,13 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, r6, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_08032916|
         	LDR r0, [sp]
@@ -17474,7 +17474,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x34]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BNE      |loc_08032936|
         	LDR r1, [r4]
@@ -17482,7 +17482,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_08032936|
 |loc_08032916|
         	LDR r1, [r4]
@@ -17490,7 +17490,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x34]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BNE      |loc_08032936|
         	LDR r1, [r4]
@@ -17498,14 +17498,14 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08032936|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08032944|
 |unk_08032944|
         	ADD sp, #8
@@ -17683,7 +17683,7 @@ unk_03003124 EQU     0x03003124
 |unk_08032A84|
 ; cited by 0x08032960 (a pc-relative load targets 0x08032B90)
         	ADD r0, sp, #8
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #8]
         	LDR r1, [sp, #0x10]
         	LDR r2, [sp, #0x14]
@@ -17700,7 +17700,7 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x1c]
         	ADD r0, sp, #0x20
         	ADD r1, r6, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0x20]
         	LDR r1, [sp, #0x28]
         	LDR r2, [sp, #0x2c]
@@ -17968,7 +17968,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0xa3
         	LSL r0, r0, #2
         	ADD r6, r5, r0
@@ -18319,7 +18319,7 @@ unk_03003124 EQU     0x03003124
         	BNE      |loc_08032FC6|
         	MOV r0, #4
         	LDR r1, [sp, #0x18]
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp, #0x18]
 |loc_08032FC6|
         	LDR r1, [r4]
@@ -18327,7 +18327,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x58]
         	ADD r2, r2, r1
         	ADD r1, r5, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_08032FDC|
         	MOV r0, #2
@@ -18777,7 +18777,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #8]
         	ADD r2, r2, r1
         	ADD r1, r5, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034302|
         	MOV r0, #0
         	DCW     0xE7F1
@@ -18789,7 +18789,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r0]
         	LDR r3, [r2, #8]
         	ADD r2, r3, r2
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_0803431A|
         	POP {r3, pc}
 	AREA CPilotTail3, CODE, READONLY
@@ -18978,7 +18978,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_080344A2|
         	ADD sp, #0x5c
         	POP {r4, r5, r6, r7, pc}
@@ -19313,14 +19313,14 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r5, #0
         	ADD r5, sp, #8
         	ADD r0, r5, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r1, r5, #0
         	ADD r0, sp, #0x18
         	BL       |inc_0x049120_0x055620| + 0x67e0
         	ADD r1, r4, #0
         	ADD r5, sp, #0x20
         	ADD r0, r5, #0
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r1, r5, #0
         	ADD r0, sp, #0x30
         	BL       |inc_0x049120_0x055620| + 0x67e0
@@ -19367,7 +19367,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x254]
         	ADD r5, r4, #0
@@ -19405,7 +19405,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x30
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_08034804|
         	LDR r0, [sp, #0x30]
@@ -19417,7 +19417,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	B        |loc_08034812|
 |loc_08034804|
         	LDR r1, [r6]
@@ -19425,7 +19425,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034812|
         	MOV r0, #0
         	DCW     0xE77B
@@ -19454,13 +19454,13 @@ unk_03003124 EQU     0x03003124
         	CMP r0, #0
         	BNE      |loc_08034904|
         	ADD r0, sp, #0xc
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r1, sp, #0xc
         	ADD r0, sp, #0x1c
         	BL       |inc_0x049120_0x055620| + 0x67e0
         	ADD r1, r4, #0
         	ADD r0, sp, #0x24
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	ADD r1, sp, #0x24
         	ADD r0, sp, #0x34
         	BL       |inc_0x049120_0x055620| + 0x67e0
@@ -19535,12 +19535,12 @@ unk_03003124 EQU     0x03003124
         	LSL r1, r1, #8
         	STR r0, [sp, #0x48]
         	STR r2, [sp, #0x30]
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp, #0x20]
         	LDR r0, [sp, #0x30]
         	LSL r1, r0, #8
         	LDR r0, [sp, #0x48]
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	LDR r1, [sp, #0x20]
         	STR r0, [sp, #0x28]
         	ADD r0, r1, #0
@@ -19576,13 +19576,13 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x3c
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_08034954|
         	LDR r0, [sp, #0x3c]
@@ -19619,7 +19619,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, r3, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0803499A|
         	LDR r0, [sp, #0x34]
@@ -19652,7 +19652,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, r3, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_080349F8|
         	LDR r0, [sp, #0x34]
@@ -19665,7 +19665,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_080349E4|
         	MOV r0, #0
         	DCW     0xE724
@@ -19676,7 +19676,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0
         	DCW     0xE713
         	PUSH {r3, lr}
@@ -19746,7 +19746,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	POP {r4, pc}
 |loc_08034a90|
 |unk_08034A90|
@@ -19784,7 +19784,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034ADA|
         	ADD sp, #0x1c
         	POP {r4, r5, pc}
@@ -20013,7 +20013,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034CBA|
         	ADD sp, #0x5c
         	POP {r4, r5, r6, r7, pc}
@@ -20213,7 +20213,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x88]
         	ADD r5, r4, #0
@@ -20252,7 +20252,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x54]
         	ADD r2, r2, r1
         	ADD r1, sp, #0x30
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_08034EAE|
         	LDR r0, [sp, #0x30]
@@ -20264,7 +20264,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034EAC|
         	B        |loc_08034EBC|
 |loc_08034EAE|
@@ -20273,7 +20273,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034EBC|
         	MOV r0, #0
         	B        |loc_08034E2A|
@@ -20297,7 +20297,7 @@ unk_03003124 EQU     0x03003124
 |dat_08034eee|
 |unk_08034EEE|
         	ADD r0, sp, #0xc
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0xc]
         	LDR r1, [sp, #0x14]
         	LDR r2, [sp, #0x18]
@@ -20315,7 +20315,7 @@ unk_03003124 EQU     0x03003124
         	MOV r6, #1
         	ADD r1, r4, #0
         	ADD r0, sp, #0x24
-        	BL       |sub_0800FDFA|
+        	BL       |Object_WriteBounds1|
         	LDR r0, [sp, #0x24]
         	LDR r1, [sp, #0x2c]
         	LDR r2, [sp, #0x30]
@@ -20382,7 +20382,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x34]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BNE      |loc_08034FA6|
         	LDR r1, [r4]
@@ -20390,14 +20390,14 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
 |loc_08034FA6|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #1
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [sp, #0x3c]
         	LDR r1, [sp, #0x40]
         	LSL r0, r0, #8
@@ -20420,12 +20420,12 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x14]
         	LSL r5, r5, #8
         	ADD r0, r5, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	ADD r7, r0, #0
         	LDR r0, [sp, #0x18]
         	LSL r1, r0, #8
         	ADD r0, r5, #0
-        	BL       |sub_08046E58|
+        	BL       |Thunk_SignedDivide|
         	STR r0, [sp, #0x10]
         	LDR r1, [sp, #0x10]
         	STR r7, [sp, #0xc]
@@ -20448,7 +20448,7 @@ unk_03003124 EQU     0x03003124
         	ADD r5, r6, #4
         	ADD r2, r2, r1
         	ADD r1, sp, #0x2c
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	CMP r0, #0
         	BEQ      |loc_0803503E|
         	LDR r0, [sp, #0x2c]
@@ -20460,7 +20460,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #0
         	DCW     0xE755
 |loc_0803503E|
@@ -20469,7 +20469,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x48]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	MOV r0, #1
         	DCW     0xE74C
 |sub_08035050|
@@ -20591,7 +20591,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #0x28]
         	ADD r2, r2, r1
         	MOV r1, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	DCW     0xE7AE
         	PUSH {r3, r4, r5, r6, r7, lr}
         	ADD r4, r0, #0
@@ -20616,7 +20616,7 @@ unk_03003124 EQU     0x03003124
 |loc_0803515E|
         	MOV r1, #0x26
         	LDR r0, [r0]
-        	BL       |loc_08011C70|
+        	BL       |List_CallMethod1|
 |loc_08035166|
         	ADD r0, r4, #0
         	DCD     0xFA68F008
@@ -22206,7 +22206,7 @@ unk_03003124 EQU     0x03003124
         	LDR r2, [r1, #8]
         	ADD r2, r2, r1
         	ADD r1, r6, #0
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	LDR r0, [r6]
         	STR r0, [r5, #4]
 |loc_08041968|
@@ -22355,7 +22355,7 @@ unk_03003124 EQU     0x03003124
         	ADD r2, r2, r1
         	ADD r1, r7, #0
         	ADD r1, #8
-        	BL       |loc_08046AA4|
+        	BL       |Thunk_JumpRegister1|
         	ADD r1, r7, #0
         	ADD r0, r4, #0
         	BL       |inc_0x042118_0x049114| + 0x1410
@@ -29530,7 +29530,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08046118.s
 	INCLUDE sub_08046A7A.s
 	INCLUDE loc_08046AA0.s
-	INCLUDE loc_08046AA4.s
+	INCLUDE Thunk_JumpRegister1.s
 	INCLUDE sub_08046AAE.s
 	INCLUDE loc_08046AB6.s
 	INCLUDE loc_08046AC0.s
@@ -29565,7 +29565,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE unk_08046DD4.s
 	INCLUDE sub_08046E40.s
 	INCLUDE unk_08046E44.s
-	INCLUDE sub_08046E58.s
+	INCLUDE Thunk_SignedDivide.s
 	INCLUDE unk_08046E5C.s
 	INCLUDE sub_08046F30.s
 	INCLUDE unk_08046F34.s

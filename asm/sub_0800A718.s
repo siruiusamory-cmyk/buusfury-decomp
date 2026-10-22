@@ -19,7 +19,7 @@
 		ADD r1, r5, #0
 		ADD r1, #0x38
 		ADD r6, r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r1, [r4]
 		ADD r5, r0, #0
 		LDR r2, [r1, #0x4c]

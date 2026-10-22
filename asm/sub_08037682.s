@@ -38,7 +38,7 @@
 |loc_080376C0|
 		LDR r1, [r4, #0x54]
 		ASR r1, r1, #2
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ADD r0, r1, r5
 		STR r0, [r4, #0x58]
 		B        |loc_0803774E|
@@ -55,7 +55,7 @@
 		BLT      |loc_080376EC|
 		LDR r1, [r4, #0x54]
 		ASR r1, r1, #2
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		ADD r0, r1, r5
 		STR r0, [r4, #0x58]
 |loc_080376EC|

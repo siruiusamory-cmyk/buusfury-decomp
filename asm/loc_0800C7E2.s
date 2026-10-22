@@ -6,7 +6,7 @@
 	LDRB     r2, [r0, #4]
 	LDR      r0, [r6]
 	MOV      r1, #8
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	ADD      r4, r0, #0
 	LDR      r0, [r6]
 	ADD      r1, r0, #4

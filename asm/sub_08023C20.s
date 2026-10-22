@@ -103,12 +103,12 @@
 		LDR r0, [sp, #0x14]
 		LSL r1, r0, #8
 		ADD r0, r6, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp]
 		LDR r0, [sp, #0x18]
 		LSL r1, r0, #8
 		ADD r0, r6, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LDR r1, [sp]
 		STR r0, [sp, #8]
 		ADD r0, r1, #0

@@ -83,7 +83,7 @@
 	LDR      r4, [r1, #8]
 	ADD      r1, r0, #0
 	MOV      r0, sp
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	ADD      r4, #0x80
 	LDR      r1, [r4, #0x30]
 	MOV      r2, #1
@@ -106,7 +106,7 @@
 	ADD      r1, r4, #0
 	LDR      r5, [r0, #8]
 	ADD      r0, sp, #4
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	ADD      r7, r5, #0
 	ADD      r7, #0x80
 	LDR      r1, [r7, #0x30]
@@ -118,7 +118,7 @@
 	STRB     r0, [r6, #1]
 	ADD      r0, sp, #4
 	ADD      r1, r4, #0
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	MOV      r2, #0
 	ADD      r0, sp, #4
 	LDR      r1, [r7, #0x30]

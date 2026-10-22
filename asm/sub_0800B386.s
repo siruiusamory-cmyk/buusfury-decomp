@@ -17,7 +17,7 @@
 		LSL r1, r1, #0xb
 		ADD r0, r3, #0
 		STR r3, [sp, #0x20]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp]
 		LDR r3, [sp, #0x20]
 		LDR r1, [r4, #0x5c]

@@ -55,7 +55,7 @@
 		STR r1, [sp, #0x18]
 		ADD r1, r5, #0
 		ADD r0, sp, #0x1c
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x1c]
 		LDR r1, [sp, #0x24]
 		LDR r2, [sp, #0x28]

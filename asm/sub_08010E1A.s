@@ -80,7 +80,7 @@
 		LDR r2, [r1, #0x58]
 		ADD r2, r2, r1
 		ADD r1, r5, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #1
 		B        |inc_0x0158_0x143f2| + 0x10cbe
 |loc_08010ECA|

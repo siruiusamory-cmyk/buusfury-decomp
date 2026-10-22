@@ -16,7 +16,7 @@
 		BL       |sub_0800EE78|
 		ADD r1, r5, #0
 		ADD r0, sp, #0xc
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0xc]
 		LDR r1, [sp, #0x14]
 		LDR r2, [sp, #0x18]

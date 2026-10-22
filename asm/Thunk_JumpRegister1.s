@@ -1,5 +1,5 @@
 	CODE16
-|loc_08046AA4|
+|Thunk_JumpRegister1|
 	BX       r2
 	BX       r3
 |sub_08046AA8|

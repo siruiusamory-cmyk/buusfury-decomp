@@ -48,7 +48,7 @@
 |loc_08010F8E|
 		ADD r2, r2, r1
 		ADD r1, r6, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08010F96|
 		MOV r0, #1
 		B        |inc_0x0158_0x143f2| + 0x10cbe
@@ -64,7 +64,7 @@
 		ADD r5, r0, #0
 		MOV r0, sp
 		ADD r1, r4, #0
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [r5]
 		LDR r1, [sp, #8]
 		CMP r0, r1
@@ -93,7 +93,7 @@
 		LDR r2, [r1, #0x58]
 		ADD r2, r2, r1
 		ADD r1, r6, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08010FF0|
 		MOV r0, #1
 		B        |inc_0x0158_0x143f2| + 0x10cbe

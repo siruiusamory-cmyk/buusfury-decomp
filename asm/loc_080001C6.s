@@ -9,7 +9,7 @@
 	INCBIN	baserom.gba_0x1d0_0x1d2.extracted
 	LDR      r0, [r4, #0x18]
 	MOV      r1, #7
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	POP      {r4, pc}
 |loc_080001DC|
 	CMP      r0, #0
@@ -31,7 +31,7 @@
 	ADD      r2, r0, #0
 	LDR      r0, [r4, #0x18]
 	MOV      r1, #5
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	POP      {r4, pc}
 	LDR      r1, [pc, #0x1cc]
 	LDR      r2, [r1]

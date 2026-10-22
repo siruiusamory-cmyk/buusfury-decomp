@@ -8,7 +8,7 @@
 		BEQ      |loc_0804802A|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_0804802A|
 		MOV r0, #0
 		DCW     0xE7F2

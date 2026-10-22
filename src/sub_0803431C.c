@@ -9,11 +9,11 @@ typedef struct Unk0803431CHead {
     Unk0803431CBody* unk_00;
 } Unk0803431CHead;
 
-extern "C" void loc_08046AA4(Unk0803431CHead* self, s32 one, u32 address);
+extern "C" void Thunk_JumpRegister1(Unk0803431CHead* self, s32 one, u32 address);
 
 extern "C" void sub_0803431C(Unk0803431CHead* self) {
     if (self != 0) {
         Unk0803431CBody* body = self->unk_00;
-        loc_08046AA4(self, 1, (u32)body + body->unk_10);
+        Thunk_JumpRegister1(self, 1, (u32)body + body->unk_10);
     }
 }

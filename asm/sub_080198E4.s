@@ -109,7 +109,7 @@
 		MOV r1, #0
 		SUB r6, #0xc
 		LDR r0, [r6, #4]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		MOV r7, #1
 		CMP r0, #0
 		BEQ      |loc_080199E2|

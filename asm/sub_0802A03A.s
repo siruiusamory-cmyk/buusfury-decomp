@@ -44,7 +44,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #0
 		DCW     0xE7CE
 	INCBIN  baserom.gba_0x2a098_0x2a09a.extracted
@@ -164,7 +164,7 @@
 |loc_0802A176|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp]
 		CMP r6, #0
 		STR r0, [sp, #0x14]

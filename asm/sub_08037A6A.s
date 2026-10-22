@@ -34,7 +34,7 @@
 		LDR r2, [r1]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08037AB2|
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x28a6
@@ -44,7 +44,7 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LSL r0, r5, #8
 		ADD r5, r4, #0
 		ADD r5, #0xff
@@ -70,7 +70,7 @@
 		LDR r2, [r1, #0x54]
 		ADD r2, r2, r1
 		ADD r1, sp, #0x10
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BEQ      |loc_08037B06|
 		LDR r0, [sp, #0x10]
@@ -83,7 +83,7 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r0, [sp, #0x24]
 		MOV r4, #0
 		CMP r0, #0
@@ -93,7 +93,7 @@
 		LDR r2, [r1]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08037B2A|
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x28a6

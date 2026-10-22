@@ -1,5 +1,5 @@
 	CODE16
-|sub_0800FDFA|
+|Object_WriteBounds1|
 	PUSH     {r4}
 	MOV      r2, #0xff
 	ADD      r2, #0xa1

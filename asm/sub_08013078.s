@@ -20,7 +20,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #8
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		B        |loc_080130A6|
 |loc_080130A4|
 		STR r6, [r5, #4]
@@ -59,7 +59,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #2
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_080130F0|
 		B        |inc_0x0158_0x143f2| + 0x12f1e
 |loc_080130F2|
@@ -132,7 +132,7 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_08013180|
 		LDR r1, [r4]
 		MOV r2, #0x84

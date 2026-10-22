@@ -616,7 +616,7 @@ address,kind,symbol,file
 0x0800FD08,unreferenced,loc_0800FD08,asm/loc_0800FD08.s
 0x0800FD34,start,sub_0800FD34,asm/sub_0800FD34.s
 0x0800FD96,unreferenced,sub_0800FD96,asm/sub_0800FD96.s
-0x0800FDFA,start,sub_0800FDFA,asm/sub_0800FDFA.s
+0x0800FDFA,start,Object_WriteBounds1,asm/Object_WriteBounds1.s
 0x0800FE78,start,loc_0800FE78,asm/loc_0800FE78.s
 0x0800FEE2,start,loc_0800FEE2,asm/loc_0800FEE2.s
 0x0800FF32,unreferenced,sub_0800FF32,asm/sub_0800FF32.s
@@ -700,7 +700,7 @@ address,kind,symbol,file
 0x08011AA0,start,loc_08011AA0,asm/loc_08011AA0.s
 0x08011B04,start,loc_08011B04,asm/loc_08011B04.s
 0x08011C0C,start,loc_08011C0C,asm/loc_08011C0C.s
-0x08011C70,start,loc_08011C70,asm/loc_08011C70.s
+0x08011C70,start,List_CallMethod1,asm/List_CallMethod1.s
 0x08011CCA,start,loc_08011CCA,asm/loc_08011CCA.s
 0x08011D36,start,loc_08011D36,asm/loc_08011D36.s
 0x08011DA6,unreferenced,sub_08011DA6,asm/sub_08011DA6.s
@@ -2445,7 +2445,7 @@ address,kind,symbol,file
 0x080461F8,start,,asm/sub_08046118.s
 0x08046A7A,unreferenced,sub_08046A7A,asm/sub_08046A7A.s
 0x08046AA0,start,loc_08046AA0,asm/loc_08046AA0.s
-0x08046AA4,start,loc_08046AA4,asm/loc_08046AA4.s
+0x08046AA4,start,Thunk_JumpRegister1,asm/Thunk_JumpRegister1.s
 0x08046AAE,start,sub_08046AAE,asm/sub_08046AAE.s
 0x08046AB6,start,loc_08046AB6,asm/loc_08046AB6.s
 0x08046AC0,start,loc_08046AC0,asm/loc_08046AC0.s
@@ -2481,7 +2481,7 @@ address,kind,symbol,file
 0x08046DD4,start,unk_08046DD4,asm/unk_08046DD4.s
 0x08046E40,start,sub_08046E40,asm/sub_08046E40.s
 0x08046E44,unreferenced,unk_08046E44,asm/unk_08046E44.s
-0x08046E58,start,sub_08046E58,asm/sub_08046E58.s
+0x08046E58,start,Thunk_SignedDivide,asm/Thunk_SignedDivide.s
 0x08046E5C,unreferenced,unk_08046E5C,asm/unk_08046E5C.s
 0x08046F30,start,sub_08046F30,asm/sub_08046F30.s
 0x08046F34,unreferenced,unk_08046F34,asm/unk_08046F34.s

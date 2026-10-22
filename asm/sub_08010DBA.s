@@ -12,7 +12,7 @@
 		BEQ      |inc_0x0158_0x143f2| + 0x10c60
 		MOV r2, #0
 		MOV r1, #9
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		CMP r0, #0
 		BEQ      |inc_0x0158_0x143f2| + 0x10c60
 	INCBIN  baserom.gba_0x10dd8_0x10dda.extracted

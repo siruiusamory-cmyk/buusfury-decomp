@@ -8,4 +8,4 @@
 	B        |arm_08047A48|
 	CODE16
 	CODE16
-	EXPORT |sub_08046E58|
+	EXPORT |Thunk_SignedDivide|

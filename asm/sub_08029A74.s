@@ -15,7 +15,7 @@
 		LDR r2, [r1, #0x1c]
 		ADD r2, r2, r1
 		ADD r1, r4, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_08029A98|
 		DCW     0xE7EB

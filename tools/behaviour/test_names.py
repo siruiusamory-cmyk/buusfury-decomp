@@ -77,3 +77,30 @@ def test_struct_zero_fields_writes_four_zero_stores_over_the_first_eight_bytes()
     assert result.writes == [(OBJECT, 1, 0), (OBJECT + 2, 2, 0),
                              (OBJECT + 4, 2, 0), (OBJECT + 6, 2, 0)]
     assert result.registers[0] == OBJECT
+
+
+OBJECT_BOUNDS = 0x0800FDFA
+LIST_CALL_METHOD = 0x08011C70
+OUTPUT = 0x02000300
+VTABLE = 0x02000400
+
+
+def test_object_write_bounds1_stores_the_position_and_the_sum_of_position_and_size():
+    fields = bytearray(0x1B0)
+    struct.pack_into("<II", fields, 0x1A0, 0x00012300, 0x000456FF)
+    struct.pack_into("<BB", fields, 0x19C, 2, 3)
+    result = run(OBJECT_BOUNDS, {0: OUTPUT, 1: OBJECT},
+                 {OBJECT: bytes(fields), OUTPUT: bytes(0x20)})
+    assert [entry for entry in result.writes if 0x02000000 <= entry[0] <= 0x0203FFFF] == [
+        (OUTPUT, 4, 0x123), (OUTPUT + 4, 4, 0x456),
+        (OUTPUT + 8, 4, 0x125), (OUTPUT + 12, 4, 0x459)]
+    assert result.calls == []
+
+
+def test_list_call_method1_calls_through_the_table_word_the_single_record_names():
+    table = bytearray(0x40)
+    struct.pack_into("<I", table, 0x24, 0x1000)
+    memory = {OBJECT: struct.pack("<III", 0, 1, TABLE), TABLE: struct.pack("<I", VTABLE),
+              VTABLE: bytes(table)}
+    result = run(LIST_CALL_METHOD, {0: OBJECT, 1: 0x11, 2: 0x22}, memory)
+    assert result.calls == [(0x08011C94, 0x08046AA6)]

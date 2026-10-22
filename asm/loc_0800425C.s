@@ -61,7 +61,7 @@
 	LDR      r0, [pc, #0x254]
 	LDR      r5, [r0, #0xc]
 	MOV      r0, sp
-	BL       |sub_0800FDFA|
+	BL       |Object_WriteBounds1|
 	ADD      r5, #0x80
 	LDR      r1, [r5, #0x2c]
 	MOV      r0, sp

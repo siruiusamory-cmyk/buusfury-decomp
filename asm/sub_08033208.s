@@ -4,7 +4,7 @@
 		LDR r0, [pc, #0xf4]
 		LDR r1, [r0]
 		ADD r0, sp, #8
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #8]
 		LDR r1, [sp, #0x10]
 		LDR r2, [sp, #0x14]
@@ -21,7 +21,7 @@
 		STR r0, [sp, #0x1c]
 		ADD r0, sp, #0x20
 		ADD r1, r4, #0
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x20]
 		LDR r1, [sp, #0x28]
 		LDR r2, [sp, #0x2c]

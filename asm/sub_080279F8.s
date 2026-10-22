@@ -37,14 +37,14 @@
 		SUB r0, r0, r1
 		LSL r1, r0, #0x16
 		LDR r0, [r6]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [r4, #0x18]
 		LDR r0, [r5, #0xc]
 		LDR r1, [r5, #4]
 		SUB r0, r0, r1
 		LSL r1, r0, #0x16
 		LDR r0, [r6, #4]
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [r4, #0x1c]
 		MOV r0, #0
 		STR r0, [r4, #4]

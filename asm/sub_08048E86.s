@@ -12,7 +12,7 @@
 	LDR      r2, [r1]
 	ADD      r2, r2, r1
 	MOV      r1, #1
-	BL       |loc_08046AA4|
+	BL       |Thunk_JumpRegister1|
 |loc_08048EA2|
 	POP      {r3, pc}
 |sub_08048EA4|

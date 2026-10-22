@@ -2,7 +2,7 @@
 |sub_0801CBB6|
 |unk_0801CBB6|
 		ADD r0, sp, #0xc
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0xc]
 		LDR r1, [sp, #0x14]
 		LDR r2, [sp, #0x18]
@@ -20,7 +20,7 @@
 		MOV r5, #1
 		ADD r1, r4, #0
 		ADD r0, sp, #0x24
-		BL       |sub_0800FDFA|
+		BL       |Object_WriteBounds1|
 		LDR r0, [sp, #0x24]
 		LDR r1, [sp, #0x2c]
 		LDR r2, [sp, #0x30]
@@ -87,7 +87,7 @@
 		LDR r2, [r1, #0x34]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BNE      |loc_0801CC6E|
 		LDR r1, [r4]
@@ -95,14 +95,14 @@
 		LDR r2, [r1, #0x28]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 |loc_0801CC6E|
 		LDR r1, [r4]
 		ADD r0, r4, #0
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #1
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		LDR r0, [sp, #0x3c]
 		LDR r1, [sp, #0x40]
 		LSL r0, r0, #8
@@ -125,12 +125,12 @@
 		STR r0, [sp, #0x14]
 		LSL r7, r7, #8
 		ADD r0, r7, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		STR r0, [sp, #8]
 		LDR r0, [sp, #0x18]
 		LSL r1, r0, #8
 		ADD r0, r7, #0
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LDR r1, [sp, #8]
 		STR r0, [sp, #0x10]
 		ADD r0, r1, #0
@@ -156,7 +156,7 @@
 		LDR r2, [r1, #0x54]
 		ADD r2, r2, r1
 		ADD r1, sp, #0x2c
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BEQ      |loc_0801CCFC|
 		LDR r0, [sp, #0x2c]
@@ -192,7 +192,7 @@
 		LDR r2, [r1, #0x54]
 		ADD r2, r2, r1
 		ADD r1, r3, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BEQ      |loc_0801CD42|
 		LDR r0, [sp, #0x24]
@@ -223,7 +223,7 @@
 		LDR r2, [r1, #0x54]
 		ADD r2, r2, r1
 		ADD r1, r3, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		CMP r0, #0
 		BEQ      |loc_0801CD8E|
 		LDR r0, [sp, #0x24]
@@ -236,7 +236,7 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #0
 		DCW     0xE711
 |loc_0801CD8E|
@@ -245,6 +245,6 @@
 		LDR r2, [r1, #0x48]
 		ADD r2, r2, r1
 		MOV r1, #0
-		BL       |loc_08046AA4|
+		BL       |Thunk_JumpRegister1|
 		MOV r0, #1
 		DCW     0xE708

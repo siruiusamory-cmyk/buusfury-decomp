@@ -53,7 +53,7 @@
 		MOV r2, #0
 		MOV r1, #9
 		LDR r0, [r0, #0x38]
-		BL       |loc_08011C70|
+		BL       |List_CallMethod1|
 		ADD r0, #0xff
 		ADD r0, #0xa1
 		LDMIA r0!, {r1}
@@ -77,7 +77,7 @@
 		LDR r0, [r6]
 		ASR r2, r0, #1
 		ADD r1, r1, r2
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LDR r1, [sp, #0xe0]
 		LDR r1, [r1, #4]
 		LSL r1, r1, #3
@@ -92,7 +92,7 @@
 		LDR r0, [r6, #4]
 		ASR r2, r0, #1
 		ADD r1, r1, r2
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		LDR r1, [sp, #0xe0]
 		LDR r1, [r1, #8]
 		LSL r1, r1, #3

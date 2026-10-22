@@ -2,7 +2,7 @@
 	CODE16
 |unk_0802C976|
 		LSL r1, r1, #4
-		BL       |sub_08046E58|
+		BL       |Thunk_SignedDivide|
 		MOV r1, #0xf
 		SUB r0, r1, r0
 		LSL r3, r0, #4

@@ -215,7 +215,7 @@
 	MOV      r2, #0
 	MOV      r1, #0x13
 	LDR      r0, [r0, #0x18]
-	BL       |loc_08011C70|
+	BL       |List_CallMethod1|
 	POP      {r3, pc}
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0

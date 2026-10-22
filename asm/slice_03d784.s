@@ -359,7 +359,7 @@
 	EXPORT |loc_0804023A|
 	EXPORT |loc_08040280|
 	EXPORT |sub_08040292|
-	EXPORT |sub_080402D6|
+	EXPORT |Struct_ZeroFields|
 	EXPORT |sub_080402F0|
 	EXPORT |sub_08040314|
 	EXPORT |loc_08040332|
@@ -481,7 +481,7 @@
 |unk_0803D7BE|
 		LDR r5, [pc, #0x16c]
 		LDR r0, [r5, #8]
-		BL       |sub_080402D6|
+		BL       |Struct_ZeroFields|
 		DCW     0xF7FF
 		DCW     0xFE83
 		LDR r0, [r5, #4]
@@ -5916,7 +5916,7 @@
 |loc_080402D2|
 		MOV r0, #1
 		DCW     0xE7DB
-|sub_080402D6|
+|Struct_ZeroFields|
 	MOV      r1, #0
 	STRB     r1, [r0]
 	STRH     r1, [r0, #2]

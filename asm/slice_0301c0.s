@@ -470,7 +470,7 @@
 		BL       |loc_0800F68C|
 		ADD r1, r0, #0
 		LDR r0, [r6]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r0, #1
 		B        |inc_0x301c0_0x311c0| + 0x2aa
 	INCBIN  baserom.gba_0x304dc_0x304de.extracted
@@ -774,7 +774,7 @@
 		BNE      |inc_0x301c0_0x311c0| + 0x58a
 		MOV r1, #0xe
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		B        |inc_0x301c0_0x311c0| + 0x58a
 |sub_08030740|
 	STRH     r1, [r4, #0x12]
@@ -1749,7 +1749,7 @@
 		STR r0, [r6, #0x54]
 		LDR r0, [pc, #0x58]
 		LDR r0, [r0, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08030EA4|
 		LDR r4, [pc, #0x74]
 		LDR r0, [r4, #8]

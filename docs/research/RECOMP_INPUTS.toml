@@ -3286,7 +3286,7 @@ name = "sub_08011916"
 addr = 0x0801191a
 mode = "thumb"
 size = 100
-name = "sub_0801191A"
+name = "List_Append"
 
 [[code]]
 addr = 0x0801197e
@@ -11614,7 +11614,7 @@ name = "sub_08040292"
 addr = 0x080402d6
 mode = "thumb"
 size = 26
-name = "sub_080402D6"
+name = "Struct_ZeroFields"
 
 [[code]]
 addr = 0x080402f0

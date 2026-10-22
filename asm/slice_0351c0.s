@@ -2191,7 +2191,7 @@
 		ADD r1, r0, #0
 		LDR r0, [pc, #0xa4]
 		LDR r0, [r0]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08035D34|
 		LDR r6, [pc, #0x9c]
 		LDR r0, [r6]
@@ -2223,7 +2223,7 @@
 		BL       |loc_0802A81C|
 		ADD r1, r0, #0
 		LDR r0, [r6]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08035D7A|
 		LDR r6, [pc, #0x58]
 |loc_08035D7C|
@@ -5584,7 +5584,7 @@
 		BL       |loc_0801952C|
 		ADD r1, r0, #0
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |inc_0x351c0_0x3d4d0| + 0x24be
 		LDR r1, [r4, #0x58]
 		LDR r0, [r4, #0x50]
@@ -6407,7 +6407,7 @@
 		ADD r1, r0, #0
 		STR r0, [r6, #4]
 		LDR r0, [r5]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |inc_0x351c0_0x3d4d0| + 0x2bbe
 |loc_08037DFE|
 		LDR r0, [r5]
@@ -8164,7 +8164,7 @@
 		STR r0, [r4, #0x48]
 		LDR r0, [pc, #0x238]
 		LDR r0, [r0]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r0, #0
 		STR r0, [r4, #0x58]
 |loc_08038BA4|
@@ -9116,7 +9116,7 @@
 		LDR r0, [pc, #0x68]
 		SUB r0, #0x24
 		LDR r0, [r0]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		ADD r1, r5, #0
 		ADD r1, #0xff
 		ADD r1, #0xc1
@@ -10128,7 +10128,7 @@
 		LDR r0, [pc, #0xd8]
 		SUB r0, #0x24
 		LDR r0, [r0]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08039AFA|
 		LDR r0, [r4, #8]
 		ADD r5, #1
@@ -10211,7 +10211,7 @@
 		ADD r6, r0, #0
 		MOV r1, #0x13
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r6, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -11096,7 +11096,7 @@
 		ADD r5, r0, #0
 		MOV r1, #0x12
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -11304,7 +11304,7 @@
 		ADD r5, r0, #0
 		MOV r1, #0x12
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -11381,7 +11381,7 @@
 		MOV r1, #0x12
 		STR r5, [r0, #4]
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		LDR r1, [pc, #0x3c]
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -11516,7 +11516,7 @@
 		MOV r1, #0x12
 		STR r5, [r0, #4]
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		LDR r1, [pc, #0x3c]
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -11668,7 +11668,7 @@
 		ADD r1, r0, #0
 		STR r0, [r6, #4]
 		LDR r0, [r5]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |inc_0x351c0_0x3d4d0| + 0x5514
 |loc_0803A71E|
 |unk_0803A71E|
@@ -15575,7 +15575,7 @@
 		ADD r4, r0, #0
 		ADD r0, r5, #0
 		SUB sp, #0x24
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r0, r5, #0
 		BL       |sub_0800EE78|
 		ADD r1, r5, #0
@@ -16760,7 +16760,7 @@
 		ADD r1, r0, #0
 		STR r0, [r6, #4]
 		LDR r0, [r7]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_0803CDE6|
 |unk_0803CDE6|
 		LDR r0, [r4, #0x50]
@@ -16803,7 +16803,7 @@
 		ADD r5, r0, #0
 		MOV r1, #0x13
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|

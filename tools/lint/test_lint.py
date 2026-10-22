@@ -481,6 +481,27 @@ def test_a_char_literal_holding_a_slash_is_not_a_comment():
     assert lints.c_lines("if (c == '/') { n++; }\n") == [(1, "if (c == '/') { n++; }")]
 
 
+def test_a_behaviour_test_row_must_cite_a_test_the_tree_has():
+    row = {"address": "0x0801191A", "new": "List_Append",
+           "evidence_class": "behaviour-test",
+           "evidence": "tools/behaviour/test_names.py::test_list_append_stores"}
+    assert not lints.behaviour_findings(
+        [row], names_of=lambda path: {"test_list_append_stores"})
+    assert lints.behaviour_findings(
+        [row], names_of=lambda path: {"test_something_else"})
+    assert lints.behaviour_findings([row], names_of=lambda path: None)
+    assert lints.behaviour_findings(
+        [dict(row, evidence="the function appends")],
+        names_of=lambda path: {"test_list_append_stores"})
+
+
+def test_a_row_of_another_class_cites_no_test():
+    row = {"address": "0x0800536A", "new": "Blend_WriteControl1",
+           "evidence_class": "hardware-register",
+           "evidence": "writes BLDCNT 0x04000050"}
+    assert not lints.behaviour_findings([row], names_of=lambda path: set())
+
+
 if __name__ == "__main__":
     for answer in ANSWER_CASES:
         test_the_lint_answer_to_one_input(*answer.values)
@@ -532,4 +553,6 @@ if __name__ == "__main__":
     test_a_block_comment_marker_inside_a_string_hides_nothing()
     test_an_inline_block_comment_leaves_the_code_on_both_sides()
     test_a_char_literal_holding_a_slash_is_not_a_comment()
+    test_a_behaviour_test_row_must_cite_a_test_the_tree_has()
+    test_a_row_of_another_class_cites_no_test()
     print("PASS test_lint")

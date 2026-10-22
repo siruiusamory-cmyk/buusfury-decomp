@@ -7486,7 +7486,7 @@
 		BEQ      |loc_08018CFA|
 		MOV r1, #1
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -9305,7 +9305,7 @@
 		BL       |loc_080197B4|
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08019ABE|
 		ADD r1, r4, #0
 		LDR r0, [r5, #4]

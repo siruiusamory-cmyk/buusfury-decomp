@@ -46,6 +46,16 @@ register, call, string or format it proves, never the story around it:
 | a proven caller/callee role | the call sites and the registers they pass, or a tracked page that measured the role and quotes the bytes | `docs/research/`, the ledger's evidence cell |
 | a retail string it alone references | the string's address, its index in the string table, and the fact that no other transcribed function loads it | `tools/text/strings_layout.json` |
 | a data format a generator in `tools/` already decodes | the pointer or header the function reads into a region one of the generators emits | the generator's own record table |
+| a behaviour test | a tracked test that runs the function from a private image copy on crafted registers and memory and asserts the stores it makes, the registers it returns and the calls it takes; the ledger row cites the test as `tools/…/test_*.py::test_*`, and `tools\lint\lints.py` (`NAMING-behaviour-test`) refuses a row whose cited file is absent or defines no such test | `tools/behaviour/` |
+
+A `behaviour-test` row claims only what its test asserts. The harness in `tools/behaviour/harness.py`
+starts the function at its census start with the registers and memory the test crafts, steps it to
+its return inside the reachable body of the transcribed row that holds the start, records every
+store and every `BL` target, and refuses to run past a 256-step budget or at an address outside
+that body. A call is recorded and stubbed rather than followed, so a row on a function that calls
+another proves only what its own body runs, and a Thumb body is what the harness runs. A test that
+needs the image skips when `baserom.gba` is absent, so the class costs nothing in CI and the tree
+still holds no ROM byte.
 
 Every promotion adds one row to `docs/NAMING_LEDGER.csv` (`address,old,new,evidence_class,evidence`)
 in the same commit as the rename, and the row's evidence cell must be checkable by itself: the

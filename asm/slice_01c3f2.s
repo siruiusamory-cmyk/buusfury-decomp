@@ -119,7 +119,7 @@
 		STR r6, [r4, #0xc]
 		LDR r0, [r5, #4]
 		ADD r1, r6, #0
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |loc_0801C482|
 |Math_Divide5|
 	PUSH     {r3, r4, r5, lr}
@@ -326,7 +326,7 @@
 		ADD r1, r0, #0
 		LDR r0, [pc, #8]
 		LDR r0, [r0, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		DCW     0xE7DF
 		DCD     0x0871DD38
 	INCBIN  baserom.gba_0x1c6a4_0x1c6c6.extracted
@@ -8531,7 +8531,7 @@
 		BL       |loc_0802A81C|
 		ADD r1, r0, #0
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08020A26|
 		LDRB r0, [r4, #0x11]
 		CMP r0, #0
@@ -11032,7 +11032,7 @@
 |loc_08021DB6|
 		LDR r1, [r4, #0x24]
 		LDR r0, [r6, #0xc]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r0, #0x3c
 		STR r0, [r4, #0x28]
 |loc_08021DC2|
@@ -11141,7 +11141,7 @@
 		ADD r1, r0, #0
 		STR r0, [r4, #0x14]
 		LDR r0, [r6, #0xc]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08021E8C|
 |unk_08021E8C|
 		B        |loc_08021EAA|
@@ -11483,7 +11483,7 @@
 		ADD r1, r0, #0
 		STR r0, [r4, #8]
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r0, [r6]
 		LDR r2, [r4, #8]
 		ADD r1, r0, #1
@@ -11622,7 +11622,7 @@
 		LDR r7, [pc, #0xac]
 		ADD r1, r6, #0
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r0, [r5]
 		ADD r1, r0, #1
 		LSL r0, r0, #2
@@ -13329,7 +13329,7 @@
 		LDR r0, [pc, #0xe8]
 		LDR r1, [r1, #0x2c]
 		LDR r0, [r0, #0x1c]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |loc_08022FB4|
 |loc_08022FA8|
 		LSL r0, r6, #2
@@ -13387,7 +13387,7 @@
 		ADD r1, r0, #0
 		STR r0, [r4, #0x3c]
 		LDR r0, [r6, #0x1c]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_08023018|
 		MOV r0, #0
 		MOV r6, #0x6a
@@ -18359,7 +18359,7 @@
 		ADD r1, r0, #0
 		LDR r0, [pc, #0x160]
 		LDR r0, [r0, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r0, [r5, #0x2c]
 		SUB r0, #0x78
 		STR r0, [r5, #0x2c]
@@ -18446,7 +18446,7 @@
 		LDR r7, [pc, #0xa0]
 		ADD r1, r5, #0
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r0, [sp, #0xe8]
 		MOV r5, #1
 		LDR r0, [r0]
@@ -18468,7 +18468,7 @@
 		BL       |inc_0x1c3f2_0x2ab4c| + 0xa8aa
 		ADD r1, r0, #0
 		LDR r0, [r7, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r0, [sp, #0xe8]
 		ADD r5, #1
 		LDR r0, [r0]
@@ -18495,21 +18495,21 @@
 		LDR r5, [pc, #0x38]
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r2, #1
 		ADD r1, r4, #0
 		MOV r0, #0
 		BL       |loc_08026B4C|
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r2, #2
 		ADD r1, r4, #0
 		MOV r0, #0
 		BL       |loc_08026B4C|
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		DCW     0xE013
 	INCBIN  baserom.gba_0x25ad4_0x25adc.extracted
 		DCD     0x0000802C
@@ -19840,7 +19840,7 @@
 		BL       |inc_0x1c3f2_0x2ab4c| + 0xb0c2
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r4, [pc, #0x80]
 		LDR r0, [r5]
 		MOV r3, #0
@@ -20160,7 +20160,7 @@
 		BL       |inc_0x1c3f2_0x2ab4c| + 0xb2b6
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		LDR r4, [pc, #0x80]
 		LDR r0, [r5]
 		MOV r3, #0
@@ -20444,7 +20444,7 @@
 		BL       |inc_0x1c3f2_0x2ab4c| + 0x2f2
 		ADD r1, r0, #0
 		LDR r0, [r5]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		DCW     0xE7C8
 |sub_08026A26|
 	PUSH     {r4, r5, r6, lr}
@@ -24031,7 +24031,7 @@
 		ADD r5, r0, #0
 		MOV r1, #0
 		ADD r0, r4, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r5, #0
 		ADD r0, r4, #0
 		BL       |loc_0800ED18|
@@ -24359,7 +24359,7 @@
 		ADD r7, r0, #0
 		MOV r1, #0
 		ADD r0, r5, #0
-		BL       |loc_0800ECDA|
+		BL       |Record_SelectIndexed|
 		ADD r1, r7, #0
 		ADD r0, r5, #0
 		BL       |loc_0800ED18|
@@ -28023,7 +28023,7 @@
 		LDR r6, [pc, #0x88]
 		ADD r1, r0, #0
 		LDR r0, [r6, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_0802A504|
 		STRB r5, [r4, #0x10]
 		B        |loc_0802A53C|

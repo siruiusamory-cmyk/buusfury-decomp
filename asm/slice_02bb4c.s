@@ -838,7 +838,7 @@
 		BL       |inc_0x2bb4c_0x2d1c0| + 0xc44
 		ADD r1, r0, #0
 		LDR r0, [r5, #4]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		MOV r1, #0xb7
 		LDR r2, [pc, #0x7c]
 		LSL r1, r1, #2
@@ -1036,7 +1036,7 @@
 		ADD r1, r0, #0
 		LDR r0, [pc, #0x90]
 		LDR r0, [r0]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_0802C2BA|
 		LDR r0, [sp, #0x2c]
 		STR r0, [r7]
@@ -1084,7 +1084,7 @@
 		BL       |loc_0802A81C|
 		ADD r1, r0, #0
 		LDR r0, [r6]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 		B        |sub_0802C328|
 |loc_0802C320|
 		ADD r5, #1
@@ -1231,7 +1231,7 @@
 		BL       |loc_0802A81C|
 		ADD r1, r0, #0
 		LDR r0, [r7]
-		BL       |sub_0801191A|
+		BL       |List_Append|
 |loc_0802C442|
 		MOV r0, #1
 		B        |inc_0x2bb4c_0x2d1c0| + 0x896

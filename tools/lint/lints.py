@@ -35,8 +35,8 @@ ASSETS = "assets/"
 
 CHECKS = ("P-148-repo-module-path", "P-159-bare-interpreter", "P-167-pool-guard",
           "NAMING-function-name", "NAMING-c-status", "NAMING-asm-symbol",
-          "NAMING-address-ratchet", "ROM-tracked-image", "README-numbers",
-          "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block")
+          "NAMING-address-ratchet", "NAMING-behaviour-test", "ROM-tracked-image",
+          "README-numbers", "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block")
 STALE_CALL = re.compile(r"incbin\.bat\s+baserom\.gba\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
 TEST_FILE = re.compile(r"^test_[^/\\]*\.py$")
 DUP_MINIMUM = 8
@@ -66,6 +66,8 @@ LIBRARY_SYMBOL = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LABEL_ROW = re.compile(r'\[\[functions\]\]\nname = "([^"]+)"\naddress = 0x([0-9a-f]+)')
 ASM_SUFFIX = ".s"
 ASM_ROOT = "asm/"
+BEHAVIOUR_CLASS = "behaviour-test"
+TEST_REFERENCE = re.compile(r"((?:[\w.-]+/)*test_[A-Za-z0-9_]+\.py)::(test_[A-Za-z0-9_]+)")
 BASELINE = "docs/NAMING_BASELINE.txt"
 LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
 RETIRED_NAMES = "docs/NAMING_RETIRED.csv"
@@ -388,6 +390,40 @@ def retired_findings(rows, symbols, ledger):
     return findings
 
 
+def test_names(path, root=ROOT):
+    full = os.path.join(root, *path.split("/"))
+    if not os.path.exists(full):
+        return None
+    with open(full, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+
+
+def behaviour_findings(rows, names_of=None):
+    names_of = names_of or test_names
+    findings = []
+    for row in rows:
+        if row.get("evidence_class") != BEHAVIOUR_CLASS:
+            continue
+        cited = TEST_REFERENCE.findall(row.get("evidence") or "")
+        if not cited:
+            findings.append(("NAMING-behaviour-test",
+                             "%s: the %s row for %s cites no test.py::test_name"
+                             % (LEDGER_NAMES, BEHAVIOUR_CLASS, row.get("address"))))
+            continue
+        for path, name in cited:
+            defined = names_of(path)
+            if defined is None:
+                findings.append(("NAMING-behaviour-test",
+                                 "%s: the row for %s cites %s, which the tree does not carry"
+                                 % (LEDGER_NAMES, row.get("address"), path)))
+            elif name not in defined:
+                findings.append(("NAMING-behaviour-test",
+                                 "%s: the row for %s cites %s::%s, which %s does not define"
+                                 % (LEDGER_NAMES, row.get("address"), path, name, path)))
+    return findings
+
+
 def read_baseline():
     text = read_source(BASELINE)
     if text is None:
@@ -417,10 +453,11 @@ def naming_findings():
         findings += block_findings(exports, addresses, blocks)
     counts = naming_counts(starts, addresses, exports)
     retired = retired_rows()
+    ledger = list(csv.DictReader(io.StringIO(read_source(LEDGER_NAMES) or "")))
     findings += retired_findings(retired, exports, [
         (int(row["address"], 16), row.get("new") or "")
-        for row in csv.DictReader(io.StringIO(read_source(LEDGER_NAMES) or ""))
-        if row.get("address")])
+        for row in ledger if row.get("address")])
+    findings += behaviour_findings(ledger)
     baseline = read_baseline()
     if baseline is None:
         findings.append(("NAMING-address-ratchet", "%s: no count can be read" % BASELINE))

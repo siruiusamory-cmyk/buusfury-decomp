@@ -180,7 +180,7 @@
 	EXPORT |sub_0801794C|
 	EXPORT |sub_0801795C|
 	EXPORT |sub_08017966|
-	EXPORT |sub_080179CC|
+	EXPORT |loc_080179CC|
 	EXPORT |sub_080179E6|
 	EXPORT |loc_080179FC|
 	EXPORT |Blend_WriteAlpha2|
@@ -5074,7 +5074,7 @@
 	ADD      sp, #0x10
 	MOV      r0, #0
 	POP      {r4, pc}
-|sub_080179CC|
+|loc_080179CC|
 	DCW      0x9680
 	DCW      0x0804,0x9ec4,0x086f,0xc974,0x0804,0x7e8c,0x086b,0x0000
 	DCW      0x0601,0x2000,0x4000,0xffff

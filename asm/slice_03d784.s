@@ -246,8 +246,8 @@
 	EXPORT |sub_0803F36E|
 	EXPORT |loc_0803F382|
 	EXPORT |loc_0803F390|
-	EXPORT |sub_0803F398|
-	EXPORT |sub_0803F3CA|
+	EXPORT |loc_0803F398|
+	EXPORT |loc_0803F3CA|
 	EXPORT |loc_0803F3F4|
 	EXPORT |loc_0803F40A|
 	EXPORT |loc_0803F416|
@@ -331,7 +331,7 @@
 	EXPORT |loc_0803FC9C|
 	EXPORT |sub_0803FCA4|
 	EXPORT |sub_0803FCA6|
-	EXPORT |sub_0803FFE4|
+	EXPORT |loc_0803FFE4|
 	EXPORT |sub_0803FFE8|
 	EXPORT |loc_0803FFF2|
 	EXPORT |loc_08040000|
@@ -3939,12 +3939,12 @@
 	STR      r0, [r7]
 	ADD      sp, #0x1c
 	POP      {r4, r5, r6, r7, pc}
-|sub_0803F398|
+|loc_0803F398|
 	DCW      0x05c4
 	DCW      0x0000,0x0080,0x0400,0x9a0e,0x0000,0x00a0,0x0400,0xb660
 	DCW      0x0000,0x0600,0x0200,0x00a4,0x0400,0xf660,0x0000,0x6edc
 	DCW      0x087b,0x0ae0,0x0300,0x0200,0x0400,0xfbe6,0xffff,0x0100
-|sub_0803F3CA|
+|loc_0803F3CA|
 	LSL      r0, r0, #0x10
 	LSR      r4, r0, #7
 	LSL      r0, r0, #0
@@ -5539,7 +5539,7 @@
 	STMIA    r6!, {r2, r3}
 	ADD      sp, #0x18
 	POP      {r4, r5, r6, pc}
-|sub_0803FFE4|
+|loc_0803FFE4|
 	DCW      0x0761
 	DCW      0x0805
 |sub_0803FFE8|

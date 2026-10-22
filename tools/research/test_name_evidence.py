@@ -79,6 +79,16 @@ def test_a_pool_word_and_the_next_start_bound_the_body():
     assert base + 0x10C not in body
 
 
+def test_an_unreferenced_census_row_starts_a_body(tmp_path):
+    docs = tmp_path / "docs" / "research"
+    docs.mkdir(parents=True)
+    (docs / "FUNCTION_BOUNDS.csv").write_text(
+        "address,kind,limb,parent\n0x08000100,unreferenced,,\n", encoding="utf-8")
+    starts, parents = name_evidence.census(str(tmp_path))
+    assert starts == {0x08000100}
+    assert parents == {}
+
+
 def test_every_ledger_row_passes_the_audit():
     for row in name_evidence.audit(image()):
         assert row["verdict"] == "PASS", row

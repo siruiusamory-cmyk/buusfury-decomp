@@ -467,6 +467,21 @@ end = 0x080003c0
 mode = "thumb"
 
 [[functions]]
+name = "loc_080001DC"
+address = 0x080001dc
+mode = "thumb"
+
+[[functions]]
+name = "loc_080001EC"
+address = 0x080001ec
+mode = "thumb"
+
+[[functions]]
+name = "loc_080001F6"
+address = 0x080001f6
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800026E"
 address = 0x0800026e
 mode = "thumb"
@@ -1188,6 +1203,16 @@ address = 0x08001104
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800113C"
+address = 0x0800113c
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800114E"
+address = 0x0800114e
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800115C"
 address = 0x0800115c
 mode = "thumb"
@@ -1198,8 +1223,28 @@ address = 0x0800118e
 mode = "thumb"
 
 [[functions]]
+name = "loc_08001190"
+address = 0x08001190
+mode = "thumb"
+
+[[functions]]
+name = "loc_080011A2"
+address = 0x080011a2
+mode = "thumb"
+
+[[functions]]
 name = "sub_080011B0"
 address = 0x080011b0
+mode = "thumb"
+
+[[functions]]
+name = "loc_080011E8"
+address = 0x080011e8
+mode = "thumb"
+
+[[functions]]
+name = "loc_080011FA"
+address = 0x080011fa
 mode = "thumb"
 
 [[functions]]
@@ -1208,13 +1253,43 @@ address = 0x08001208
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800124C"
+address = 0x0800124c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001260"
+address = 0x08001260
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800126C"
 address = 0x0800126c
 mode = "thumb"
 
 [[functions]]
+name = "loc_08001298"
+address = 0x08001298
+mode = "thumb"
+
+[[functions]]
+name = "loc_080012AA"
+address = 0x080012aa
+mode = "thumb"
+
+[[functions]]
 name = "sub_080012B8"
 address = 0x080012b8
+mode = "thumb"
+
+[[functions]]
+name = "loc_080012E4"
+address = 0x080012e4
+mode = "thumb"
+
+[[functions]]
+name = "loc_080012F6"
+address = 0x080012f6
 mode = "thumb"
 
 [[functions]]
@@ -1228,7 +1303,22 @@ address = 0x08001336
 mode = "thumb"
 
 [[functions]]
-name = "sub_08001394"
+name = "loc_08001346"
+address = 0x08001346
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001374"
+address = 0x08001374
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001386"
+address = 0x08001386
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001394"
 address = 0x08001394
 mode = "thumb"
 
@@ -1238,7 +1328,7 @@ address = 0x0800139a
 mode = "thumb"
 
 [[functions]]
-name = "sub_080013B2"
+name = "loc_080013B2"
 address = 0x080013b2
 mode = "thumb"
 
@@ -1248,8 +1338,28 @@ address = 0x080013b4
 mode = "thumb"
 
 [[functions]]
+name = "loc_080013D4"
+address = 0x080013d4
+mode = "thumb"
+
+[[functions]]
+name = "loc_080013E6"
+address = 0x080013e6
+mode = "thumb"
+
+[[functions]]
 name = "sub_080013F4"
 address = 0x080013f4
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001420"
+address = 0x08001420
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001432"
+address = 0x08001432
 mode = "thumb"
 
 [[functions]]
@@ -1258,13 +1368,38 @@ address = 0x08001440
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800146C"
+address = 0x0800146c
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800147E"
+address = 0x0800147e
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800148C"
 address = 0x0800148c
 mode = "thumb"
 
 [[functions]]
+name = "loc_080014E0"
+address = 0x080014e0
+mode = "thumb"
+
+[[functions]]
 name = "sub_080014EE"
 address = 0x080014ee
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800152A"
+address = 0x0800152a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800153C"
+address = 0x0800153c
 mode = "thumb"
 
 [[functions]]
@@ -1278,8 +1413,23 @@ address = 0x08001580
 mode = "thumb"
 
 [[functions]]
+name = "loc_080015AE"
+address = 0x080015ae
+mode = "thumb"
+
+[[functions]]
 name = "sub_080015BA"
 address = 0x080015ba
+mode = "thumb"
+
+[[functions]]
+name = "loc_080015E6"
+address = 0x080015e6
+mode = "thumb"
+
+[[functions]]
+name = "loc_080015F8"
+address = 0x080015f8
 mode = "thumb"
 
 [[functions]]
@@ -1288,12 +1438,22 @@ address = 0x08001606
 mode = "thumb"
 
 [[functions]]
-name = "sub_08001652"
+name = "loc_08001632"
+address = 0x08001632
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001644"
+address = 0x08001644
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001652"
 address = 0x08001652
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800166A"
+name = "loc_0800166A"
 address = 0x0800166a
 mode = "thumb"
 
@@ -1303,8 +1463,28 @@ address = 0x08001670
 mode = "thumb"
 
 [[functions]]
+name = "loc_080016C4"
+address = 0x080016c4
+mode = "thumb"
+
+[[functions]]
+name = "loc_080016D8"
+address = 0x080016d8
+mode = "thumb"
+
+[[functions]]
 name = "sub_080016E6"
 address = 0x080016e6
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001712"
+address = 0x08001712
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001724"
+address = 0x08001724
 mode = "thumb"
 
 [[functions]]
@@ -1313,8 +1493,28 @@ address = 0x08001732
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800176A"
+address = 0x0800176a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800177C"
+address = 0x0800177c
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800178A"
 address = 0x0800178a
+mode = "thumb"
+
+[[functions]]
+name = "loc_080017B8"
+address = 0x080017b8
+mode = "thumb"
+
+[[functions]]
+name = "loc_080017CA"
+address = 0x080017ca
 mode = "thumb"
 
 [[functions]]
@@ -1658,8 +1858,23 @@ address = 0x08001ed0
 mode = "thumb"
 
 [[functions]]
+name = "loc_08001ED4"
+address = 0x08001ed4
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001EF2"
+address = 0x08001ef2
+mode = "thumb"
+
+[[functions]]
 name = "sub_08001F00"
 address = 0x08001f00
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001F22"
+address = 0x08001f22
 mode = "thumb"
 
 [[functions]]
@@ -1668,13 +1883,28 @@ address = 0x08001f30
 mode = "thumb"
 
 [[functions]]
+name = "loc_08001F52"
+address = 0x08001f52
+mode = "thumb"
+
+[[functions]]
 name = "sub_08001F60"
 address = 0x08001f60
 mode = "thumb"
 
 [[functions]]
+name = "loc_08001F8E"
+address = 0x08001f8e
+mode = "thumb"
+
+[[functions]]
 name = "sub_08001F9C"
 address = 0x08001f9c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08001FD6"
+address = 0x08001fd6
 mode = "thumb"
 
 [[functions]]
@@ -1690,6 +1920,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_0800207E"
 address = 0x0800207e
+mode = "thumb"
+
+[[functions]]
+name = "loc_080020B4"
+address = 0x080020b4
 mode = "thumb"
 
 [[functions]]
@@ -1896,6 +2131,11 @@ end = 0x080026b4
 mode = "thumb"
 
 [[functions]]
+name = "loc_080025F0"
+address = 0x080025f0
+mode = "thumb"
+
+[[functions]]
 name = "sub_080025F2"
 address = 0x080025f2
 mode = "thumb"
@@ -1916,6 +2156,11 @@ address = 0x08002686
 mode = "thumb"
 
 [[functions]]
+name = "loc_080026A4"
+address = 0x080026a4
+mode = "thumb"
+
+[[functions]]
 name = "sub_080026B6"
 address = 0x080026b6
 end = 0x08002720
@@ -1927,6 +2172,11 @@ address = 0x080026d4
 mode = "thumb"
 
 [[functions]]
+name = "loc_080026E4"
+address = 0x080026e4
+mode = "thumb"
+
+[[functions]]
 name = "sub_080026EA"
 address = 0x080026ea
 mode = "thumb"
@@ -1934,6 +2184,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_08002702"
 address = 0x08002702
+mode = "thumb"
+
+[[functions]]
+name = "loc_08002716"
+address = 0x08002716
 mode = "thumb"
 
 [[functions]]
@@ -2012,6 +2267,21 @@ mode = "thumb"
 name = "sub_08002992"
 address = 0x08002992
 end = 0x080029c0
+mode = "thumb"
+
+[[functions]]
+name = "loc_08002994"
+address = 0x08002994
+mode = "thumb"
+
+[[functions]]
+name = "loc_080029A8"
+address = 0x080029a8
+mode = "thumb"
+
+[[functions]]
+name = "loc_080029B8"
+address = 0x080029b8
 mode = "thumb"
 
 [[functions]]
@@ -2272,18 +2542,33 @@ address = 0x0800342a
 mode = "thumb"
 
 [[functions]]
-name = "sub_08003440"
+name = "loc_0800343A"
+address = 0x0800343a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08003440"
 address = 0x08003440
 mode = "thumb"
 
 [[functions]]
-name = "sub_08003446"
+name = "loc_08003446"
 address = 0x08003446
 mode = "thumb"
 
 [[functions]]
 name = "sub_0800348A"
 address = 0x0800348a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08003494"
+address = 0x08003494
+mode = "thumb"
+
+[[functions]]
+name = "loc_080034B0"
+address = 0x080034b0
 mode = "thumb"
 
 [[functions]]
@@ -2314,6 +2599,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_080036A4"
 address = 0x080036a4
+mode = "thumb"
+
+[[functions]]
+name = "loc_080036FC"
+address = 0x080036fc
 mode = "thumb"
 
 [[functions]]
@@ -2560,8 +2850,18 @@ address = 0x08003daa
 mode = "thumb"
 
 [[functions]]
+name = "loc_08003DC0"
+address = 0x08003dc0
+mode = "thumb"
+
+[[functions]]
 name = "sub_08003DC4"
 address = 0x08003dc4
+mode = "thumb"
+
+[[functions]]
+name = "loc_08003DDA"
+address = 0x08003dda
 mode = "thumb"
 
 [[functions]]
@@ -2570,8 +2870,18 @@ address = 0x08003dde
 mode = "thumb"
 
 [[functions]]
+name = "loc_08003DF4"
+address = 0x08003df4
+mode = "thumb"
+
+[[functions]]
 name = "sub_08003DF8"
 address = 0x08003df8
+mode = "thumb"
+
+[[functions]]
+name = "loc_08003E0E"
+address = 0x08003e0e
 mode = "thumb"
 
 [[functions]]
@@ -2580,13 +2890,28 @@ address = 0x08003e12
 mode = "thumb"
 
 [[functions]]
+name = "loc_08003E28"
+address = 0x08003e28
+mode = "thumb"
+
+[[functions]]
 name = "sub_08003E2C"
 address = 0x08003e2c
 mode = "thumb"
 
 [[functions]]
+name = "loc_08003E42"
+address = 0x08003e42
+mode = "thumb"
+
+[[functions]]
 name = "sub_08003E56"
 address = 0x08003e56
+mode = "thumb"
+
+[[functions]]
+name = "loc_08003E76"
+address = 0x08003e76
 mode = "thumb"
 
 [[functions]]
@@ -2937,8 +3262,48 @@ end = 0x08004792
 mode = "thumb"
 
 [[functions]]
+name = "loc_080045D0"
+address = 0x080045d0
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800460E"
+address = 0x0800460e
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800462A"
+address = 0x0800462a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08004634"
+address = 0x08004634
+mode = "thumb"
+
+[[functions]]
+name = "loc_08004652"
+address = 0x08004652
+mode = "thumb"
+
+[[functions]]
 name = "sub_08004656"
 address = 0x08004656
+mode = "thumb"
+
+[[functions]]
+name = "loc_08004690"
+address = 0x08004690
+mode = "thumb"
+
+[[functions]]
+name = "loc_08004698"
+address = 0x08004698
+mode = "thumb"
+
+[[functions]]
+name = "loc_080046AC"
+address = 0x080046ac
 mode = "thumb"
 
 [[functions]]
@@ -3434,8 +3799,23 @@ end = 0x08005332
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800526A"
+address = 0x0800526a
+mode = "thumb"
+
+[[functions]]
+name = "loc_080052A8"
+address = 0x080052a8
+mode = "thumb"
+
+[[functions]]
 name = "sub_080052C4"
 address = 0x080052c4
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800531E"
+address = 0x0800531e
 mode = "thumb"
 
 [[functions]]
@@ -3687,6 +4067,11 @@ end = 0x08005c6e
 mode = "thumb"
 
 [[functions]]
+name = "loc_08005C5C"
+address = 0x08005c5c
+mode = "thumb"
+
+[[functions]]
 name = "sub_08005E3A"
 address = 0x08005e3a
 end = 0x08005f86
@@ -3884,8 +4269,28 @@ address = 0x080064e6
 mode = "thumb"
 
 [[functions]]
+name = "loc_08006500"
+address = 0x08006500
+mode = "thumb"
+
+[[functions]]
+name = "loc_08006510"
+address = 0x08006510
+mode = "thumb"
+
+[[functions]]
 name = "sub_08006532"
 address = 0x08006532
+mode = "thumb"
+
+[[functions]]
+name = "loc_08006552"
+address = 0x08006552
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800655A"
+address = 0x0800655a
 mode = "thumb"
 
 [[functions]]
@@ -6738,6 +7143,16 @@ address = 0x0800a222
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800A248"
+address = 0x0800a248
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800A260"
+address = 0x0800a260
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800A272"
 address = 0x0800a272
 end = 0x0800a2a8
@@ -6766,13 +7181,28 @@ address = 0x0800a432
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800A444"
+address = 0x0800a444
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800A446"
 address = 0x0800a446
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800A46A"
+address = 0x0800a46a
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800A46C"
 address = 0x0800a46c
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800A490"
+address = 0x0800a490
 mode = "thumb"
 
 [[functions]]
@@ -7013,6 +7443,16 @@ mode = "thumb"
 name = "sub_0800A93A"
 address = 0x0800a93a
 end = 0x0800a9ae
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800A94E"
+address = 0x0800a94e
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800A958"
+address = 0x0800a958
 mode = "thumb"
 
 [[functions]]
@@ -8311,6 +8751,26 @@ end = 0x0800cbb8
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800CB2E"
+address = 0x0800cb2e
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800CB7C"
+address = 0x0800cb7c
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800CBA2"
+address = 0x0800cba2
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800CBA4"
+address = 0x0800cba4
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800CBA8"
 address = 0x0800cba8
 mode = "thumb"
@@ -8587,6 +9047,21 @@ end = 0x0800d300
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800D1D6"
+address = 0x0800d1d6
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D1E8"
+address = 0x0800d1e8
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D1F6"
+address = 0x0800d1f6
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800D1F8"
 address = 0x0800d1f8
 mode = "thumb"
@@ -8597,18 +9072,53 @@ address = 0x0800d20e
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800D230"
+address = 0x0800d230
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800D232"
 address = 0x0800d232
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800D280"
+name = "loc_0800D248"
+address = 0x0800d248
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D258"
+address = 0x0800d258
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D25A"
+address = 0x0800d25a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D270"
+address = 0x0800d270
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D272"
+address = 0x0800d272
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D280"
 address = 0x0800d280
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800D28E"
+name = "loc_0800D28E"
 address = 0x0800d28e
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D2AA"
+address = 0x0800d2aa
 mode = "thumb"
 
 [[functions]]
@@ -8680,6 +9190,11 @@ end = 0x0800d6ce
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800D666"
+address = 0x0800d666
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800D6CE"
 address = 0x0800d6ce
 end = 0x0800d6d2
@@ -8709,8 +9224,23 @@ end = 0x0800d7b4
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800D772"
+address = 0x0800d772
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D782"
+address = 0x0800d782
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800D78A"
 address = 0x0800d78a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0800D7B0"
+address = 0x0800d7b0
 mode = "thumb"
 
 [[functions]]
@@ -9861,6 +10391,11 @@ end = 0x0800f4e2
 mode = "thumb"
 
 [[functions]]
+name = "loc_0800F4DA"
+address = 0x0800f4da
+mode = "thumb"
+
+[[functions]]
 name = "sub_0800F4E2"
 address = 0x0800f4e2
 end = 0x0800f4e6
@@ -10309,6 +10844,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_0801003A"
 address = 0x0801003a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08010092"
+address = 0x08010092
 mode = "thumb"
 
 [[functions]]
@@ -10996,7 +11536,7 @@ end = 0x08011564
 mode = "thumb"
 
 [[functions]]
-name = "loc_0801155C"
+name = "sub_0801155C"
 address = 0x0801155c
 mode = "thumb"
 
@@ -11877,7 +12417,7 @@ end = 0x080127be
 mode = "thumb"
 
 [[functions]]
-name = "loc_080125E0"
+name = "sub_080125E0"
 address = 0x080125e0
 mode = "thumb"
 
@@ -12128,6 +12668,11 @@ end = 0x08012bc6
 mode = "thumb"
 
 [[functions]]
+name = "loc_08012B8E"
+address = 0x08012b8e
+mode = "thumb"
+
+[[functions]]
 name = "sub_08012B90"
 address = 0x08012b90
 mode = "thumb"
@@ -12135,6 +12680,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_08012BA2"
 address = 0x08012ba2
+mode = "thumb"
+
+[[functions]]
+name = "loc_08012BBE"
+address = 0x08012bbe
 mode = "thumb"
 
 [[functions]]
@@ -12178,6 +12728,11 @@ address = 0x08012d24
 mode = "thumb"
 
 [[functions]]
+name = "loc_08012D62"
+address = 0x08012d62
+mode = "thumb"
+
+[[functions]]
 name = "sub_08012D64"
 address = 0x08012d64
 mode = "thumb"
@@ -12185,6 +12740,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_08012D8A"
 address = 0x08012d8a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08012DB4"
+address = 0x08012db4
 mode = "thumb"
 
 [[functions]]
@@ -12214,6 +12774,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_08012FC4"
 address = 0x08012fc4
+mode = "thumb"
+
+[[functions]]
+name = "loc_08012FE4"
+address = 0x08012fe4
 mode = "thumb"
 
 [[functions]]
@@ -12254,6 +12819,11 @@ mode = "thumb"
 name = "sub_080131BA"
 address = 0x080131ba
 end = 0x08013210
+mode = "thumb"
+
+[[functions]]
+name = "loc_080131FA"
+address = 0x080131fa
 mode = "thumb"
 
 [[functions]]
@@ -12878,7 +13448,7 @@ end = 0x08013e54
 mode = "thumb"
 
 [[functions]]
-name = "loc_08013E38"
+name = "sub_08013E38"
 address = 0x08013e38
 mode = "thumb"
 
@@ -12961,6 +13531,16 @@ mode = "thumb"
 name = "sub_08013FC4"
 address = 0x08013fc4
 end = 0x08014000
+mode = "thumb"
+
+[[functions]]
+name = "loc_08013FE0"
+address = 0x08013fe0
+mode = "thumb"
+
+[[functions]]
+name = "loc_08013FFC"
+address = 0x08013ffc
 mode = "thumb"
 
 [[functions]]
@@ -13837,6 +14417,11 @@ end = 0x0801678c
 mode = "thumb"
 
 [[functions]]
+name = "loc_08016784"
+address = 0x08016784
+mode = "thumb"
+
+[[functions]]
 name = "sub_0801678E"
 address = 0x0801678e
 end = 0x08016800
@@ -13884,6 +14469,16 @@ mode = "thumb"
 name = "sub_0801699C"
 address = 0x0801699c
 end = 0x08016a92
+mode = "thumb"
+
+[[functions]]
+name = "loc_08016A2E"
+address = 0x08016a2e
+mode = "thumb"
+
+[[functions]]
+name = "loc_08016A60"
+address = 0x08016a60
 mode = "thumb"
 
 [[functions]]
@@ -14074,6 +14669,11 @@ end = 0x080175a0
 mode = "thumb"
 
 [[functions]]
+name = "loc_08017544"
+address = 0x08017544
+mode = "thumb"
+
+[[functions]]
 name = "sub_080175C8"
 address = 0x080175c8
 end = 0x080175ca
@@ -14251,7 +14851,7 @@ end = 0x080179e6
 mode = "thumb"
 
 [[functions]]
-name = "sub_080179CC"
+name = "loc_080179CC"
 address = 0x080179cc
 mode = "thumb"
 
@@ -14259,6 +14859,11 @@ mode = "thumb"
 name = "sub_080179EA"
 address = 0x080179ea
 end = 0x08017afc
+mode = "thumb"
+
+[[functions]]
+name = "loc_080179FC"
+address = 0x080179fc
 mode = "thumb"
 
 [[functions]]
@@ -14510,13 +15115,53 @@ end = 0x08018546
 mode = "thumb"
 
 [[functions]]
+name = "loc_080183AC"
+address = 0x080183ac
+mode = "thumb"
+
+[[functions]]
+name = "loc_080183B4"
+address = 0x080183b4
+mode = "thumb"
+
+[[functions]]
 name = "sub_08018406"
 address = 0x08018406
 mode = "thumb"
 
 [[functions]]
+name = "loc_0801842E"
+address = 0x0801842e
+mode = "thumb"
+
+[[functions]]
 name = "sub_08018432"
 address = 0x08018432
+mode = "thumb"
+
+[[functions]]
+name = "loc_08018448"
+address = 0x08018448
+mode = "thumb"
+
+[[functions]]
+name = "loc_08018450"
+address = 0x08018450
+mode = "thumb"
+
+[[functions]]
+name = "loc_080184AE"
+address = 0x080184ae
+mode = "thumb"
+
+[[functions]]
+name = "loc_080184F6"
+address = 0x080184f6
+mode = "thumb"
+
+[[functions]]
+name = "loc_08018532"
+address = 0x08018532
 mode = "thumb"
 
 [[functions]]
@@ -15483,8 +16128,18 @@ end = 0x080198e4
 mode = "thumb"
 
 [[functions]]
+name = "loc_08019886"
+address = 0x08019886
+mode = "thumb"
+
+[[functions]]
 name = "sub_08019888"
 address = 0x08019888
+mode = "thumb"
+
+[[functions]]
+name = "loc_080198D8"
+address = 0x080198d8
 mode = "thumb"
 
 [[functions]]
@@ -16014,6 +16669,11 @@ end = 0x0801a3a0
 mode = "thumb"
 
 [[functions]]
+name = "loc_0801A37C"
+address = 0x0801a37c
+mode = "thumb"
+
+[[functions]]
 name = "sub_0801A3A0"
 address = 0x0801a3a0
 end = 0x0801a3b0
@@ -16023,6 +16683,11 @@ mode = "thumb"
 name = "sub_0801A3B6"
 address = 0x0801a3b6
 end = 0x0801a3ec
+mode = "thumb"
+
+[[functions]]
+name = "loc_0801A3D8"
+address = 0x0801a3d8
 mode = "thumb"
 
 [[functions]]
@@ -20650,7 +21315,17 @@ end = 0x0802beea
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802BEC4"
+name = "loc_0802BDE6"
+address = 0x0802bde6
+mode = "thumb"
+
+[[functions]]
+name = "loc_0802BE8A"
+address = 0x0802be8a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0802BEC4"
 address = 0x0802bec4
 mode = "thumb"
 
@@ -21159,6 +21834,16 @@ mode = "thumb"
 name = "sub_0802D16C"
 address = 0x0802d16c
 end = 0x0802d1ba
+mode = "thumb"
+
+[[functions]]
+name = "loc_0802D18A"
+address = 0x0802d18a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0802D1B6"
+address = 0x0802d1b6
 mode = "thumb"
 
 [[functions]]
@@ -22028,13 +22713,43 @@ address = 0x08030b24
 mode = "thumb"
 
 [[functions]]
+name = "loc_08030B42"
+address = 0x08030b42
+mode = "thumb"
+
+[[functions]]
 name = "sub_08030B46"
 address = 0x08030b46
 mode = "thumb"
 
 [[functions]]
+name = "loc_08030B5A"
+address = 0x08030b5a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08030B66"
+address = 0x08030b66
+mode = "thumb"
+
+[[functions]]
 name = "sub_08030B6C"
 address = 0x08030b6c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08030B90"
+address = 0x08030b90
+mode = "thumb"
+
+[[functions]]
+name = "loc_08030BA4"
+address = 0x08030ba4
+mode = "thumb"
+
+[[functions]]
+name = "loc_08030BC2"
+address = 0x08030bc2
 mode = "thumb"
 
 [[functions]]
@@ -22638,6 +23353,11 @@ end = 0x08033bb2
 mode = "thumb"
 
 [[functions]]
+name = "loc_08033BAA"
+address = 0x08033baa
+mode = "thumb"
+
+[[functions]]
 name = "sub_08033BB6"
 address = 0x08033bb6
 end = 0x08033c3a
@@ -22744,6 +23464,21 @@ mode = "thumb"
 name = "sub_08033E78"
 address = 0x08033e78
 end = 0x08033ee8
+mode = "thumb"
+
+[[functions]]
+name = "loc_08033E96"
+address = 0x08033e96
+mode = "thumb"
+
+[[functions]]
+name = "loc_08033EAA"
+address = 0x08033eaa
+mode = "thumb"
+
+[[functions]]
+name = "loc_08033ED2"
+address = 0x08033ed2
 mode = "thumb"
 
 [[functions]]
@@ -23153,6 +23888,16 @@ end = 0x0803593c
 mode = "thumb"
 
 [[functions]]
+name = "loc_080358E0"
+address = 0x080358e0
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803590A"
+address = 0x0803590a
+mode = "thumb"
+
+[[functions]]
 name = "sub_08035914"
 address = 0x08035914
 mode = "thumb"
@@ -23373,6 +24118,26 @@ mode = "thumb"
 name = "sub_08035F06"
 address = 0x08035f06
 end = 0x08035f80
+mode = "thumb"
+
+[[functions]]
+name = "loc_08035F30"
+address = 0x08035f30
+mode = "thumb"
+
+[[functions]]
+name = "loc_08035F34"
+address = 0x08035f34
+mode = "thumb"
+
+[[functions]]
+name = "loc_08035F58"
+address = 0x08035f58
+mode = "thumb"
+
+[[functions]]
+name = "loc_08035F7C"
+address = 0x08035f7c
 mode = "thumb"
 
 [[functions]]
@@ -23714,6 +24479,11 @@ address = 0x080369b2
 mode = "thumb"
 
 [[functions]]
+name = "loc_080369CE"
+address = 0x080369ce
+mode = "thumb"
+
+[[functions]]
 name = "sub_080369D0"
 address = 0x080369d0
 mode = "thumb"
@@ -23721,6 +24491,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_080369FA"
 address = 0x080369fa
+mode = "thumb"
+
+[[functions]]
+name = "loc_08036A0E"
+address = 0x08036a0e
 mode = "thumb"
 
 [[functions]]
@@ -24051,6 +24826,11 @@ end = 0x08037644
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803759A"
+address = 0x0803759a
+mode = "thumb"
+
+[[functions]]
 name = "sub_08037644"
 address = 0x08037644
 end = 0x0803764a
@@ -24156,6 +24936,11 @@ mode = "thumb"
 name = "sub_08037A26"
 address = 0x08037a26
 end = 0x08037a6a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08037A3A"
+address = 0x08037a3a
 mode = "thumb"
 
 [[functions]]
@@ -24289,6 +25074,21 @@ end = 0x08037ec4
 mode = "thumb"
 
 [[functions]]
+name = "loc_08037E4A"
+address = 0x08037e4a
+mode = "thumb"
+
+[[functions]]
+name = "loc_08037E76"
+address = 0x08037e76
+mode = "thumb"
+
+[[functions]]
+name = "loc_08037E88"
+address = 0x08037e88
+mode = "thumb"
+
+[[functions]]
 name = "sub_08037EC4"
 address = 0x08037ec4
 end = 0x08037f8a
@@ -24350,6 +25150,16 @@ end = 0x0803813c
 mode = "thumb"
 
 [[functions]]
+name = "loc_08038124"
+address = 0x08038124
+mode = "thumb"
+
+[[functions]]
+name = "loc_08038136"
+address = 0x08038136
+mode = "thumb"
+
+[[functions]]
 name = "sub_08038192"
 address = 0x08038192
 end = 0x0803828a
@@ -24380,6 +25190,16 @@ mode = "thumb"
 name = "sub_080382C4"
 address = 0x080382c4
 end = 0x0803834c
+mode = "thumb"
+
+[[functions]]
+name = "loc_080382F6"
+address = 0x080382f6
+mode = "thumb"
+
+[[functions]]
+name = "loc_08038320"
+address = 0x08038320
 mode = "thumb"
 
 [[functions]]
@@ -24493,6 +25313,16 @@ end = 0x080387ac
 mode = "thumb"
 
 [[functions]]
+name = "loc_08038734"
+address = 0x08038734
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803875E"
+address = 0x0803875e
+mode = "thumb"
+
+[[functions]]
 name = "sub_080387AC"
 address = 0x080387ac
 end = 0x080387c6
@@ -24569,6 +25399,11 @@ mode = "thumb"
 name = "sub_08038A86"
 address = 0x08038a86
 end = 0x08038acc
+mode = "thumb"
+
+[[functions]]
+name = "loc_08038A9C"
+address = 0x08038a9c
 mode = "thumb"
 
 [[functions]]
@@ -25091,6 +25926,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_0803999C"
 address = 0x0803999c
+mode = "thumb"
+
+[[functions]]
+name = "loc_080399EE"
+address = 0x080399ee
 mode = "thumb"
 
 [[functions]]
@@ -25886,6 +26726,16 @@ address = 0x0803b1f0
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803B204"
+address = 0x0803b204
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803B234"
+address = 0x0803b234
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803B238"
 address = 0x0803b238
 end = 0x0803b240
@@ -26069,6 +26919,11 @@ end = 0x0803b56c
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803B530"
+address = 0x0803b530
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803B56E"
 address = 0x0803b56e
 end = 0x0803b572
@@ -26162,9 +27017,24 @@ end = 0x0803b7b8
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803B7AC"
+address = 0x0803b7ac
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803B7BA"
 address = 0x0803b7ba
 end = 0x0803b824
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803B7BC"
+address = 0x0803b7bc
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803B7C2"
+address = 0x0803b7c2
 mode = "thumb"
 
 [[functions]]
@@ -26318,6 +27188,11 @@ mode = "thumb"
 name = "sub_0803BC26"
 address = 0x0803bc26
 end = 0x0803bcaa
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803BC48"
+address = 0x0803bc48
 mode = "thumb"
 
 [[functions]]
@@ -26574,6 +27449,16 @@ address = 0x0803c378
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803C3D6"
+address = 0x0803c3d6
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803C3DA"
+address = 0x0803c3da
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803C3DE"
 address = 0x0803c3de
 mode = "thumb"
@@ -26602,8 +27487,18 @@ address = 0x0803c436
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803C4A6"
+address = 0x0803c4a6
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803C4AA"
 address = 0x0803c4aa
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803C4D0"
+address = 0x0803c4d0
 mode = "thumb"
 
 [[functions]]
@@ -27584,6 +28479,21 @@ end = 0x0803e18e
 mode = "thumb"
 
 [[functions]]
+name = "loc_0803E148"
+address = 0x0803e148
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803E14A"
+address = 0x0803e14a
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803E14E"
+address = 0x0803e14e
+mode = "thumb"
+
+[[functions]]
 name = "sub_0803E152"
 address = 0x0803e152
 mode = "thumb"
@@ -28440,12 +29350,22 @@ end = 0x0803f45e
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803F398"
+name = "loc_0803F382"
+address = 0x0803f382
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803F390"
+address = 0x0803f390
+mode = "thumb"
+
+[[functions]]
+name = "loc_0803F398"
 address = 0x0803f398
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803F3CA"
+name = "loc_0803F3CA"
 address = 0x0803f3ca
 mode = "thumb"
 
@@ -29029,7 +29949,7 @@ end = 0x08040292
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803FFE4"
+name = "loc_0803FFE4"
 address = 0x0803ffe4
 mode = "thumb"
 
@@ -29954,6 +30874,16 @@ end = 0x080422c6
 mode = "thumb"
 
 [[functions]]
+name = "loc_0804228C"
+address = 0x0804228c
+mode = "thumb"
+
+[[functions]]
+name = "loc_0804229C"
+address = 0x0804229c
+mode = "thumb"
+
+[[functions]]
 name = "sub_080422C6"
 address = 0x080422c6
 end = 0x080422ca
@@ -30854,7 +31784,7 @@ end = 0x08046aa8
 mode = "thumb"
 
 [[functions]]
-name = "loc_08046AA0"
+name = "sub_08046AA0"
 address = 0x08046aa0
 mode = "thumb"
 
@@ -31034,6 +31964,21 @@ mode = "arm"
 name = "sub_08046C54"
 address = 0x08046c54
 end = 0x08046c82
+mode = "thumb"
+
+[[functions]]
+name = "loc_08046C62"
+address = 0x08046c62
+mode = "thumb"
+
+[[functions]]
+name = "loc_08046C70"
+address = 0x08046c70
+mode = "thumb"
+
+[[functions]]
+name = "loc_08046C78"
+address = 0x08046c78
 mode = "thumb"
 
 [[functions]]
@@ -31252,7 +32197,7 @@ end = 0x08047f94
 mode = "thumb"
 
 [[functions]]
-name = "loc_08047F84"
+name = "sub_08047F84"
 address = 0x08047f84
 mode = "thumb"
 
@@ -31281,7 +32226,7 @@ end = 0x08047fc4
 mode = "thumb"
 
 [[functions]]
-name = "loc_08047FC0"
+name = "sub_08047FC0"
 address = 0x08047fc0
 mode = "thumb"
 
@@ -31600,8 +32545,18 @@ address = 0x0804843c
 mode = "thumb"
 
 [[functions]]
+name = "loc_08048464"
+address = 0x08048464
+mode = "thumb"
+
+[[functions]]
 name = "sub_08048488"
 address = 0x08048488
+mode = "thumb"
+
+[[functions]]
+name = "loc_0804848C"
+address = 0x0804848c
 mode = "thumb"
 
 [[functions]]
@@ -31707,7 +32662,7 @@ end = 0x0804856c
 mode = "thumb"
 
 [[functions]]
-name = "loc_08048564"
+name = "sub_08048564"
 address = 0x08048564
 mode = "thumb"
 
@@ -31784,6 +32739,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_0804861C"
 address = 0x0804861c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08048620"
+address = 0x08048620
 mode = "thumb"
 
 [[functions]]
@@ -32017,12 +32977,12 @@ address = 0x0804882c
 mode = "thumb"
 
 [[functions]]
-name = "sub_08048834"
+name = "loc_08048834"
 address = 0x08048834
 mode = "thumb"
 
 [[functions]]
-name = "sub_0804883A"
+name = "loc_0804883A"
 address = 0x0804883a
 mode = "thumb"
 
@@ -32046,6 +33006,11 @@ mode = "thumb"
 [[functions]]
 name = "sub_0804884C"
 address = 0x0804884c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08048860"
+address = 0x08048860
 mode = "thumb"
 
 [[functions]]
@@ -32400,6 +33365,11 @@ address = 0x08048abc
 mode = "thumb"
 
 [[functions]]
+name = "loc_08048AC0"
+address = 0x08048ac0
+mode = "thumb"
+
+[[functions]]
 name = "sub_08048AC6"
 address = 0x08048ac6
 end = 0x08048ae4
@@ -32577,7 +33547,7 @@ end = 0x08048bf4
 mode = "thumb"
 
 [[functions]]
-name = "loc_08048BEC"
+name = "sub_08048BEC"
 address = 0x08048bec
 mode = "thumb"
 
@@ -32883,7 +33853,7 @@ end = 0x08048de6
 mode = "thumb"
 
 [[functions]]
-name = "loc_08048DD8"
+name = "sub_08048DD8"
 address = 0x08048dd8
 mode = "thumb"
 
@@ -33712,6 +34682,11 @@ mode = "thumb"
 name = "sub_0804EF46"
 address = 0x0804ef46
 end = 0x0804ef68
+mode = "thumb"
+
+[[functions]]
+name = "loc_0804EF66"
+address = 0x0804ef66
 mode = "thumb"
 
 [[functions]]
@@ -35814,8 +36789,18 @@ address = 0x08050750
 mode = "thumb"
 
 [[functions]]
+name = "loc_0805075C"
+address = 0x0805075c
+mode = "thumb"
+
+[[functions]]
 name = "sub_08050760"
 address = 0x08050760
+mode = "thumb"
+
+[[functions]]
+name = "loc_0805076C"
+address = 0x0805076c
 mode = "thumb"
 
 [[functions]]
@@ -35824,13 +36809,33 @@ address = 0x08050770
 mode = "thumb"
 
 [[functions]]
+name = "loc_08050782"
+address = 0x08050782
+mode = "thumb"
+
+[[functions]]
+name = "loc_0805078E"
+address = 0x0805078e
+mode = "thumb"
+
+[[functions]]
 name = "sub_08050790"
 address = 0x08050790
 mode = "thumb"
 
 [[functions]]
+name = "loc_0805079C"
+address = 0x0805079c
+mode = "thumb"
+
+[[functions]]
 name = "sub_080507A0"
 address = 0x080507a0
+mode = "thumb"
+
+[[functions]]
+name = "loc_080507B0"
+address = 0x080507b0
 mode = "thumb"
 
 [[functions]]
@@ -35852,13 +36857,38 @@ end = 0x08050896
 mode = "thumb"
 
 [[functions]]
+name = "loc_08050842"
+address = 0x08050842
+mode = "thumb"
+
+[[functions]]
+name = "loc_0805085C"
+address = 0x0805085c
+mode = "thumb"
+
+[[functions]]
 name = "sub_08050868"
 address = 0x08050868
 mode = "thumb"
 
 [[functions]]
+name = "loc_0805086C"
+address = 0x0805086c
+mode = "thumb"
+
+[[functions]]
+name = "loc_08050874"
+address = 0x08050874
+mode = "thumb"
+
+[[functions]]
 name = "sub_08050878"
 address = 0x08050878
+mode = "thumb"
+
+[[functions]]
+name = "loc_08050890"
+address = 0x08050890
 mode = "thumb"
 
 [[functions]]
@@ -39753,7 +40783,7 @@ end = 0x08052ef8
 mode = "thumb"
 
 [[functions]]
-name = "loc_08052EE0"
+name = "sub_08052EE0"
 address = 0x08052ee0
 mode = "thumb"
 

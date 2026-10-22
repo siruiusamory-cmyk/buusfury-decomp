@@ -116,6 +116,10 @@ ASM_GOOD = "\tEXPORT |sub_08000158|\n\tEXPORT |Module_DoIt|\n\tEXPORT |loc_08000
 ASM_BAD_NAME = "\tEXPORT |lowercase_verb|\n"
 ASM_BAD_DIGITS = "\tEXPORT |sub_08001|\n"
 ASM_LIBRARY = "\tEXPORT |strlen|\n"
+CRAFTED_BOUNDS = ("address,kind,limb,parent\n"
+                  "0x08000158,start,prologue,\n"
+                  "0x0800016A,unreferenced,,\n"
+                  "0x08000170,block,,0x08000158\n")
 CRAFTED_LEDGER = ("address,old,new,evidence_class,evidence\n"
                   "0x08046B28,sub_08046B28,strlen,toolchain-library,armlib/c_t__un.l\n"
                   "0x08046B84,sub_08046B84,memcpy,caller-role,page\n")
@@ -346,6 +350,14 @@ def test_a_loc_name_on_an_interior_block_is_not_caught():
 
 def test_a_sub_name_on_a_function_start_is_not_caught():
     assert not lints.block_findings(exported("\tEXPORT |sub_08001000|\n"), {}, set())
+
+
+def test_an_unreferenced_census_row_is_a_start_the_naming_rules_cover():
+    starts, blocks = lints.census_kinds(CRAFTED_BOUNDS)
+    assert starts == {0x08000158, 0x0800016A}
+    assert blocks == {0x08000170}
+    assert not lints.block_findings(exported("\tEXPORT |Unit_DoIt|\n"),
+                                    {"Unit_DoIt": 0x0800016A}, blocks)
 
 
 def test_the_ratchet_counts_function_starts_rather_than_exports():

@@ -87,8 +87,8 @@
 	EXPORT |loc_08001346|
 	EXPORT |loc_08001374|
 	EXPORT |loc_08001386|
-	EXPORT |sub_08001394|
-	EXPORT |sub_080013B2|
+	EXPORT |loc_08001394|
+	EXPORT |loc_080013B2|
 	EXPORT |loc_080013D4|
 	EXPORT |loc_080013E6|
 	EXPORT |loc_08001420|
@@ -103,8 +103,8 @@
 	EXPORT |loc_080015F8|
 	EXPORT |loc_08001632|
 	EXPORT |loc_08001644|
-	EXPORT |sub_08001652|
-	EXPORT |sub_0800166A|
+	EXPORT |loc_08001652|
+	EXPORT |loc_0800166A|
 	EXPORT |loc_080016C4|
 	EXPORT |loc_080016D8|
 	EXPORT |loc_08001712|
@@ -224,8 +224,8 @@
 	EXPORT |loc_08003348|
 	EXPORT |sub_08003354|
 	EXPORT |loc_0800343A|
-	EXPORT |sub_08003440|
-	EXPORT |sub_08003446|
+	EXPORT |loc_08003440|
+	EXPORT |loc_08003446|
 	EXPORT |loc_08003494|
 	EXPORT |loc_080034B0|
 	EXPORT |loc_080036FC|
@@ -1267,8 +1267,8 @@
 	EXPORT |loc_0800D25A|
 	EXPORT |loc_0800D270|
 	EXPORT |loc_0800D272|
-	EXPORT |sub_0800D280|
-	EXPORT |sub_0800D28E|
+	EXPORT |loc_0800D280|
+	EXPORT |loc_0800D28E|
 	EXPORT |loc_0800D2AA|
 	EXPORT |loc_0800D300|
 	EXPORT |loc_0800D30E|
@@ -4253,11 +4253,11 @@
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	ADD      sp, #0xc
 	POP      {r4, r5, r6, r7, pc}
-|sub_08001394|
+|loc_08001394|
 	DCW      0xc428
 	DCW      0x0804,0x4fbc,0x0805,0xae70,0x0804,0xc43c,0x0804,0xae84
 	DCW      0x0804,0xab58,0x0804,0xc450,0x0804,0xc800
-|sub_080013B2|
+|loc_080013B2|
 	LSR      r4, r0, #0x20
 	PUSH     {r4, r5, r6, lr}
 	LDR      r1, [r0]
@@ -4584,11 +4584,11 @@
 	LDR      r0, [r0, #0x1c]
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	POP      {r4, r5, r6, pc}
-|sub_08001652|
+|loc_08001652|
 	DCW      0x0000
 	DCW      0xae9c,0x0804,0x4fbc,0x0805,0xb2c8,0x0804,0xdea0,0x0804
 	DCW      0xdd1c,0x0804,0xdec8
-|sub_0800166A|
+|loc_0800166A|
 	LSR      r4, r0, #0x20
 	LDMIA    r0!, {r2, r4}
 	LSR      r4, r0, #0x20
@@ -8138,10 +8138,10 @@
 |loc_0800343A|
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	POP      {r3, pc}
-|sub_08003440|
+|loc_08003440|
 	DCW      0x1030
 	DCW      0x0300,0xb704
-|sub_08003446|
+|loc_08003446|
 	LSR      r1, r7, #1
 	LDR      r7, [pc, #0x2f0]
 	LSR      r5, r0, #0x20
@@ -27930,10 +27930,10 @@
 	BNE      |loc_0800D270|
 	ADD      r0, r4, #0
 	POP      {r4, r5, r6, pc}
-|sub_0800D280|
+|loc_0800D280|
 	DCW      0xd1e4
 	DCW      0x0804,0xffff,0x0000,0x2580,0x0807,0xe454
-|sub_0800D28E|
+|loc_0800D28E|
 	LSR      r4, r0, #0x20
 	PUSH     {r4, r5, r6, lr}
 	ADD      r6, r1, #0

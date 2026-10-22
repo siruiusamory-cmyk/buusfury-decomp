@@ -298,7 +298,7 @@ def census_kinds(text=None):
         return None
     starts, blocks = set(), set()
     for row in csv.DictReader(io.StringIO(text)):
-        if row.get("kind") == "start":
+        if row.get("kind") in ("start", "unreferenced"):
             starts.add(int(row["address"], 16))
         elif row.get("kind") == "block":
             blocks.add(int(row["address"], 16))

@@ -119,7 +119,7 @@ def census(root=ROOT):
     with open(path, newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
             address = int(row["address"], 16)
-            if row["kind"] == "start":
+            if row["kind"] in ("start", "unreferenced"):
                 starts.add(address)
             elif row["kind"] == "block" and row.get("parent"):
                 parents.setdefault(int(row["parent"], 16), []).append(address)

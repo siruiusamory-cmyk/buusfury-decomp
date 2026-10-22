@@ -21,7 +21,7 @@ ROM_BASE = 0x08000000
 ROM_SHA256 = name_evidence.ROM_SHA256
 BOUNDS = os.path.join(ROOT, "docs", "research", "FUNCTION_BOUNDS.csv")
 HEADER = "address,kind,limb,parent"
-LIMBS = ("call", "vector", "table", "prologue", "block")
+LIMBS = ("call", "vector", "table", "prologue", "unreferenced")
 EXPORT = re.compile(r"^\s*EXPORT\s+\|([^|]+)\|\s*$")
 ADDRESS_FORM = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})$")
 SEED = 716
@@ -69,11 +69,13 @@ def row_of(address, rows):
     return (begin, end, mode) if address < end else None
 
 
-def classify(rom, entries, modes, rows, calls, table, vectors):
+def classify(rom, entries, modes, rows, calls, table, vectors, spans=()):
     rows = [(row[0], row[1], row[2] if len(row) > 2 else "thumb") for row in rows]
+    spans = set(spans)
+    entries = set(entries) | spans
     if entries and not any(ROM_BASE <= address < ROM_BASE + len(rom) for address in entries):
         raise SystemExit("no candidate lies inside the image, so the address space is wrong")
-    limbs_of, bodies, ends = {}, {}, {}
+    limbs_of, bodies, ends, unreferenced = {}, {}, {}, set()
     for address in sorted(entries):
         row = row_of(address, rows)
         if row is None:
@@ -89,20 +91,21 @@ def classify(rom, entries, modes, rows, calls, table, vectors):
             limbs.append("table")
         if prologue(rom, address, mode):
             limbs.append("prologue")
-        if address == begin:
-            limbs.append("block")
-        if not limbs:
+        if not limbs and address not in spans:
             continue
         seen = name_evidence.reachable(rom, address, mode, begin - ROM_BASE, end - ROM_BASE)
-        if not seen:
+        if not seen and address not in spans:
             continue
         limbs_of[address] = limbs
         bodies[address] = seen
-        ends[address] = max(seen)
+        if seen:
+            ends[address] = max(seen)
+        if not limbs:
+            unreferenced.add(address)
     starts, contained = {}, 0
     for address in sorted(limbs_of):
-        if "prologue" not in limbs_of[address] and "block" not in limbs_of[address]:
-            if any(address in bodies[start] for start in starts):
+        if address not in spans and "prologue" not in limbs_of[address]:
+            if any(address in bodies[start] for start in starts if limbs_of[start]):
                 contained += 1
                 continue
         starts[address] = limbs_of[address]
@@ -117,7 +120,7 @@ def classify(rom, entries, modes, rows, calls, table, vectors):
         if earlier:
             blocks[address] = max(earlier)
     return {"entries": sorted(entries), "starts": starts, "bodies": bodies, "ends": ends,
-            "blocks": blocks, "contained": contained}
+            "blocks": blocks, "unreferenced": unreferenced, "contained": contained}
 
 
 def describe(rom, root=ROOT):
@@ -146,7 +149,8 @@ def describe(rom, root=ROOT):
                       + int.from_bytes(rom[at:at + 4], "little", signed=True) - 1)
     table.update(ROM_BASE + off for off in accepted)
     calls = set(ROM_BASE + off for off in export_inputs.call_targets(rom, code_rows))
-    return classify(rom, entries, modes, rows, calls, table, {ROM_BASE})
+    spans = set(ROM_BASE + off for off, _length, _mode in code_rows)
+    return classify(rom, entries, modes, rows, calls, table, {ROM_BASE}, spans=spans)
 
 
 def census(rom, root=ROOT):
@@ -158,6 +162,7 @@ def counts(found):
     for address in found["starts"]:
         for limb in found["starts"][address]:
             by_limb[limb] = by_limb.get(limb, 0) + 1
+    by_limb["unreferenced"] = len(found["unreferenced"])
     return {"entries": len(found["entries"]), "starts": len(found["starts"]),
             "blocks": len(found["blocks"]), "contained": found["contained"],
             "by_limb": by_limb}
@@ -167,7 +172,11 @@ def rows_text(found):
     lines = [HEADER]
     for address in found["entries"]:
         if address in found["starts"]:
-            lines.append("0x%08x,start,%s," % (address, "+".join(found["starts"][address])))
+            limbs = found["starts"][address]
+            if limbs:
+                lines.append("0x%08x,start,%s," % (address, "+".join(limbs)))
+            else:
+                lines.append("0x%08x,unreferenced,," % address)
         elif address in found["blocks"]:
             lines.append("0x%08x,block,,0x%08x" % (address, found["blocks"][address]))
     return "\n".join(lines) + "\n"

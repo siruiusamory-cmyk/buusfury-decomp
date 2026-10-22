@@ -1580,8 +1580,8 @@
 	EXPORT |sub_080487F6|
 	EXPORT |sub_08048804|
 	EXPORT |sub_08048806|
-	EXPORT |sub_08048834|
-	EXPORT |sub_0804883A|
+	EXPORT |loc_08048834|
+	EXPORT |loc_0804883A|
 	EXPORT |sub_08048844|
 	EXPORT |sub_08048846|
 	EXPORT |loc_08048860|
@@ -2840,10 +2840,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048834|
+|loc_08048834|
 	DCW      0x30a0
 	DCW      0x0300,0xbd88
-|sub_0804883A|
+|loc_0804883A|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]

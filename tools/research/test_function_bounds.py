@@ -26,12 +26,13 @@ def put_word(data, address, value):
     struct.pack_into("<I", data, address - BASE, value & 0xFFFFFFFF)
 
 
-def classify(data, entries, rows, modes=None, calls=(), table=(), vectors=()):
+def classify(data, entries, rows, modes=None, calls=(), table=(), vectors=(), spans=()):
     return function_bounds.classify(bytes(data), entries, modes or {},
                                     [(BASE + start, BASE + stop) for start, stop in rows],
                                     set(BASE + value for value in calls),
                                     set(BASE + value for value in table),
-                                    set(BASE + value for value in vectors))
+                                    set(BASE + value for value in vectors),
+                                    spans=set(BASE + value for value in spans))
 
 
 def kind_of(found, address):
@@ -42,16 +43,17 @@ def test_a_push_that_saves_lr_is_the_prologue_limb():
     data = image()
     put_half(data, BASE + 0x10, 0xB510)
     put_half(data, BASE + 0x12, 0xBD10)
-    found = classify(data, [BASE + 0x10], [(0x10, 0x14)])
-    assert kind_of(found, BASE + 0x10) == ["prologue", "block"]
+    found = classify(data, [BASE + 0x10], [(0x10, 0x14)], spans=[0x10])
+    assert kind_of(found, BASE + 0x10) == ["prologue"]
 
 
 def test_a_push_that_does_not_save_lr_is_no_prologue_limb():
     data = image()
     put_half(data, BASE + 0x20, 0xB410)
     put_half(data, BASE + 0x22, 0xBD10)
-    found = classify(data, [BASE + 0x20], [(0x20, 0x24)])
-    assert kind_of(found, BASE + 0x20) == ["block"]
+    found = classify(data, [BASE + 0x20], [(0x20, 0x24)], spans=[0x20])
+    assert kind_of(found, BASE + 0x20) == []
+    assert BASE + 0x20 in found["unreferenced"]
 
 
 def test_an_arm_stmfd_that_saves_lr_is_the_prologue_limb():
@@ -69,14 +71,14 @@ def test_a_bl_target_is_the_call_limb():
     put_half(data, BASE + 0x60, 0x2001)
     put_half(data, BASE + 0x62, 0xBD00)
     found = classify(data, [BASE + 0x60], [(0x60, 0x64)], calls=[0x60])
-    assert kind_of(found, BASE + 0x60) == ["call", "block"]
+    assert kind_of(found, BASE + 0x60) == ["call"]
 
 
 def test_a_jump_table_word_is_the_table_limb():
     data = image()
     put_half(data, BASE + 0xA0, 0x4770)
     found = classify(data, [BASE + 0xA0], [(0xA0, 0xA4)], table=[0xA0])
-    assert kind_of(found, BASE + 0xA0) == ["table", "block"]
+    assert kind_of(found, BASE + 0xA0) == ["table"]
 
 
 def test_the_reset_entry_is_the_vector_limb():
@@ -84,7 +86,7 @@ def test_the_reset_entry_is_the_vector_limb():
     put_half(data, BASE, 0x2001)
     put_half(data, BASE + 2, 0xBD00)
     found = classify(data, [BASE], [(0, 4)], vectors=[0])
-    assert kind_of(found, BASE) == ["vector", "block"]
+    assert kind_of(found, BASE) == ["vector"]
 
 
 def test_an_entry_with_no_limb_inside_a_proved_body_is_a_block_with_its_parent():
@@ -104,8 +106,10 @@ def test_an_entry_that_opens_a_proved_code_run_is_a_start():
     put_half(data, BASE + 0x82, 0xBD00)
     put_half(data, BASE + 0x84, 0x2002)
     put_half(data, BASE + 0x86, 0xBD00)
-    found = classify(data, [BASE + 0x80, BASE + 0x84], [(0x80, 0x84), (0x84, 0x88)])
-    assert kind_of(found, BASE + 0x84) == ["block"]
+    found = classify(data, [BASE + 0x80, BASE + 0x84], [(0x80, 0x84), (0x84, 0x88)],
+                     spans=[0x80, 0x84])
+    assert kind_of(found, BASE + 0x84) == []
+    assert BASE + 0x84 in found["unreferenced"]
 
 
 def test_a_call_target_inside_another_body_is_reported_and_not_a_start():
@@ -124,7 +128,8 @@ def test_a_call_target_inside_another_body_is_reported_and_not_a_start():
 def test_a_body_stops_at_the_end_of_its_run():
     data = image()
     put_half(data, BASE + 0xE0, 0x2001)
-    found = classify(data, [BASE + 0xE0, BASE + 0xF0], [(0xE0, 0xE2), (0xF0, 0xF2)])
+    found = classify(data, [BASE + 0xE0, BASE + 0xF0], [(0xE0, 0xE2), (0xF0, 0xF2)],
+                     spans=[0xE0, 0xF0])
     assert found["ends"][BASE + 0xE0] == BASE + 0xE0
     assert BASE + 0xF0 in found["starts"]
 
@@ -136,6 +141,36 @@ def test_an_entry_outside_every_code_run_is_classified_by_nothing():
     found = classify(data, [BASE + 0x100], [])
     assert BASE + 0x100 not in found["starts"]
     assert BASE + 0x100 not in found["blocks"]
+
+
+def test_a_transcribed_span_start_that_no_rule_reaches_is_unreferenced():
+    data = image()
+    put_half(data, BASE + 0x10, 0x2001)
+    put_half(data, BASE + 0x12, 0xBD00)
+    found = classify(data, [], [(0x10, 0x14)], spans=[0x10])
+    assert kind_of(found, BASE + 0x10) == []
+    assert found["unreferenced"] == {BASE + 0x10}
+    assert function_bounds.rows_text(found).splitlines()[1] == "0x08000010,unreferenced,,"
+
+
+def test_a_transcribed_span_start_with_a_prologue_carries_no_block_limb():
+    data = image()
+    put_half(data, BASE + 0x10, 0xB510)
+    put_half(data, BASE + 0x12, 0xBD10)
+    found = classify(data, [], [(0x10, 0x14)], spans=[0x10])
+    assert kind_of(found, BASE + 0x10) == ["prologue"]
+    assert BASE + 0x10 not in found["unreferenced"]
+
+
+def test_a_transcribed_span_start_parents_the_blocks_in_its_row():
+    data = image()
+    put_half(data, BASE + 0x20, 0x2001)
+    put_half(data, BASE + 0x22, 0x2002)
+    put_half(data, BASE + 0x24, 0x2003)
+    put_half(data, BASE + 0x26, 0xBD00)
+    found = classify(data, [BASE + 0x24], [(0x20, 0x28)], spans=[0x20])
+    assert found["unreferenced"] == {BASE + 0x20}
+    assert found["blocks"][BASE + 0x24] == BASE + 0x20
 
 
 def test_the_sample_names_ten_blocks_with_their_parent():

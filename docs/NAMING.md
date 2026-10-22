@@ -16,13 +16,18 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
   other admitted form: it names a raw slice by its extent, and nothing renames it. The third form is
   the library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
   `toolchain-library` row of the ledger carries.
-- The count of address-named functions is held in `docs/NAMING_BASELINE.txt` and may only fall
+- The count of address-named functions is held in `docs/NAMING_BASELINE.txt` as a ratchet
   (`NAMING-address-ratchet`): the population is every start `docs/research/FUNCTION_BOUNDS.csv`
   carries, and a start is address-named unless the ledger or a label at its address gives it a
   `Module_Verb` or a library name, so a block, a data address and an address no name reaches are
-  outside the named count. It may exceed the baseline only by exactly one address-named function
+  outside the named count. The census carries every exported address and every transcribed
+  code-span start, the beginning of a `work/ledger.csv` code row; a start that no call, table,
+  vector or prologue rule reaches is carried with kind `unreferenced` rather than dropped, so an
+  unexported transcribed start takes its place in the population and a name on it obeys the same
+  rules. It may exceed the baseline only by exactly one address-named function
   per retired name (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference
-  fails until the baseline is lowered to the measured figure in the same tree. A name is retired
+  fails until the baseline is set to the measured figure in the same tree; a commit that adds
+  census starts records the figure those starts give. A name is retired
   when its quoted evidence lies outside the function it was bound to: the export returns to its
   address form and the ledger row leaves. README's "<a> of the <b> functions" sentence is the same
   two figures (`README-numbers`).

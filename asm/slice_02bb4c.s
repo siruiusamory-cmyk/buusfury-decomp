@@ -19,7 +19,7 @@
 	EXPORT |sub_0802BDBE|
 	EXPORT |loc_0802BDE6|
 	EXPORT |loc_0802BE8A|
-	EXPORT |sub_0802BEC4|
+	EXPORT |loc_0802BEC4|
 	EXPORT |sub_0802BECC|
 	EXPORT |sub_0802BEEA|
 	EXPORT |sub_0802BFBC|
@@ -552,7 +552,7 @@
 	ADD      sp, #8
 	POP      {r4, r5}
 	BX       lr
-|sub_0802BEC4|
+|loc_0802BEC4|
 	DCW      0x05d3
 	DCW      0x0000,0x45a0,0xffff
 |sub_0802BECC|

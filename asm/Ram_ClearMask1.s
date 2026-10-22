@@ -1,5 +1,5 @@
 	CODE16
-|loc_08040D4E|
+|Ram_ClearMask1|
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r7, r0, #0
 	BL       |inc_0x049120_0x055620| + 0xa0

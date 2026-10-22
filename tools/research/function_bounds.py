@@ -6,11 +6,14 @@ import random
 import re
 import sys
 
+import capstone
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "gate"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "recomp"))
 sys.path.insert(0, HERE)
+
 
 import export_inputs
 import lints
@@ -20,11 +23,27 @@ import romfile
 ROM_BASE = 0x08000000
 ROM_SHA256 = name_evidence.ROM_SHA256
 BOUNDS = os.path.join(ROOT, "docs", "research", "FUNCTION_BOUNDS.csv")
+ALLOW = os.path.join(ROOT, "docs", "research", "FUNCTION_ENTRY_ALLOW.csv")
 HEADER = "address,kind,limb,parent"
+FLAG_HEADER = "address,kind,limb,flags,entry,reason"
 LIMBS = ("call", "vector", "table", "prologue", "unreferenced")
+FLAGS = ("data", "undecodable", "clobber")
+REASONS = ("prefix", "row-start")
 EXPORT = re.compile(r"^\s*EXPORT\s+\|([^|]+)\|\s*$")
 ADDRESS_FORM = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})$")
 SEED = 716
+ARGUMENTS = (0, 1, 2, 3)
+SAVES = ("push", "stmdb", "stmfd")
+TERMINALS = ("bx", "pop", "b")
+WRITES = ("add", "sub", "rsb", "mov", "mvn", "and", "eor", "orr", "bic", "adc", "sbc",
+          "mul", "lsl", "lsr", "asr", "ror", "ldr", "ldrb", "ldrh", "ldrsb", "ldrsh")
+BASE = SAVES + TERMINALS + WRITES + ("bl",)
+ENGINES = {mode: capstone.Cs(capstone.CS_ARCH_ARM, getattr(capstone, "CS_MODE_" + mode.upper()))
+           for mode in ("thumb", "arm")}
+for _engine in ENGINES.values():
+    _engine.detail = True
+NAMES = {"r%d" % index: index for index in range(13)}
+NAMES.update({"sp": 13, "lr": 14, "pc": 15, "ip": 12})
 
 
 def exports(root=ROOT):
@@ -67,6 +86,154 @@ def row_of(address, rows):
         return None
     begin, end, mode = rows[low - 1]
     return (begin, end, mode) if address < end else None
+
+
+def decoded(rom, address, mode):
+    offset = address - ROM_BASE
+    if not 0 <= offset <= len(rom) - 4:
+        return None
+    return next(iter(ENGINES[mode].disasm(bytes(rom[offset:offset + 4]), address, count=1)), None)
+
+
+def operation(found):
+    name = found.mnemonic
+    return name[:-1] if name.endswith("s") and name[:-1] in BASE else name
+
+
+def written(found):
+    if operation(found) not in WRITES:
+        return set()
+    first = found.operands[0]
+    name = found.reg_name(first.reg) if first.type == 1 else ""
+    return {NAMES[name]} if name in NAMES else set()
+
+
+def leading(rom, address, mode, limit=8):
+    out, at = [], address
+    while len(out) < limit:
+        found = decoded(rom, at, mode)
+        if found is None:
+            break
+        out.append(found)
+        at += found.size
+        if operation(found) in SAVES or operation(found) in TERMINALS:
+            break
+    return out, at
+
+
+def homed(found, register):
+    if operation(found) not in ("add", "mov"):
+        return False
+    if len(found.operands) < 2:
+        return False
+    target, source = found.operands[0], found.operands[1]
+    if target.type != 1 or source.type != 1:
+        return False
+    name = found.reg_name(target.reg)
+    return (name in NAMES and NAMES[name] in (4, 5, 6, 7)
+            and NAMES.get(found.reg_name(source.reg)) == register)
+
+
+def undecodable(rom, found, mode):
+    if not found or mode != "thumb":
+        return not found
+    for one in found:
+        offset = one.address - ROM_BASE
+        halfword = int.from_bytes(rom[offset:offset + 2], "little")
+        if any(low <= halfword <= high for low, high in export_inputs.THUMB_UNDEFINED):
+            return True
+        if one.size == 4 and operation(one) != "bl":
+            return True
+    return False
+
+
+def clobbered(found, after, rom, mode):
+    hit = set()
+    for one in found:
+        if operation(one) in SAVES or operation(one) in TERMINALS:
+            break
+        hit |= written(one) & set(ARGUMENTS)
+    if not hit or not found or operation(found[-1]) not in SAVES:
+        return False
+    return any(homed(one, register)
+               for one in leading(rom, after, mode, limit=2)[0]
+               for register in hit)
+
+
+def entry_of(rom, address, mode):
+    at = address
+    for _step in range(6):
+        one = decoded(rom, at, mode)
+        if one is None:
+            return None
+        if operation(one) in SAVES and (mode != "thumb" or "lr" in one.op_str):
+            return at if at > address else None
+        if operation(one) in TERMINALS:
+            return None
+        at += one.size
+    return None
+
+
+def terminator(rom, address, mode):
+    found = decoded(rom, address, mode)
+    if found is None or found.address != address:
+        return False
+    if operation(found) in ("bx", "b"):
+        return True
+    return operation(found) == "pop" and "pc" in found.op_str
+
+
+def gap(rom, address, mode, entry):
+    if entry is None or mode != "thumb":
+        return False
+    at = address - 2
+    while at >= address - 32:
+        found = decoded(rom, at, mode)
+        if found is not None:
+            if operation(found) in SAVES:
+                return False
+            if terminator(rom, at, mode):
+                return True
+        at -= 2
+    return False
+
+
+def flag_rows(rom, found):
+    rows = []
+    for address in sorted(found["starts"]):
+        mode = found["modes"].get(address) or "thumb"
+        entry = entry_of(rom, address, mode)
+        fired = []
+        if gap(rom, address, mode, entry):
+            fired.append("data")
+        found_leading, after = leading(rom, address, mode)
+        if undecodable(rom, found_leading, mode):
+            fired.append("undecodable")
+        if clobbered(found_leading, after, rom, mode):
+            fired.append("clobber")
+        if not fired:
+            continue
+        kind = "unreferenced" if address in found["unreferenced"] else "start"
+        rows.append((address, kind, "+".join(found["starts"][address]), "+".join(fired), entry))
+    return rows
+
+
+def flags_text(rows):
+    lines = [FLAG_HEADER]
+    for address, kind, limb, flags, entry in rows:
+        lines.append("0x%08x,%s,%s,%s,%s,%s"
+                     % (address, kind, limb, flags,
+                        "0x%08x" % entry if entry is not None else "-",
+                        "prefix" if entry is not None else "row-start"))
+    return "\n".join(lines) + "\n"
+
+
+def uncarried(current, derived):
+    have = {line.split(",")[0] for line in current.splitlines()[1:] if line}
+    for line in derived.splitlines()[1:]:
+        if line and line.split(",")[0] not in have:
+            return line.split(",")[0]
+    return None
 
 
 def classify(rom, entries, modes, rows, calls, table, vectors, spans=()):
@@ -120,7 +287,8 @@ def classify(rom, entries, modes, rows, calls, table, vectors, spans=()):
         if earlier:
             blocks[address] = max(earlier)
     return {"entries": sorted(entries), "starts": starts, "bodies": bodies, "ends": ends,
-            "blocks": blocks, "unreferenced": unreferenced, "contained": contained}
+            "blocks": blocks, "unreferenced": unreferenced, "contained": contained,
+            "modes": modes}
 
 
 def describe(rom, root=ROOT):
@@ -214,16 +382,31 @@ def main(argv=None):
             print(line)
         return 0
     text = rows_text(found)
+    flags = flags_text(flag_rows(rom, found))
+    print("flagged=%d" % (len(flags.splitlines()) - 1))
     if arguments.write:
         with open(BOUNDS, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
+        with open(ALLOW, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(flags)
         print("wrote %s" % os.path.relpath(BOUNDS, ROOT).replace("\\", "/"))
+        print("wrote %s" % os.path.relpath(ALLOW, ROOT).replace("\\", "/"))
         return 0
     if arguments.check:
         current = open(BOUNDS, encoding="utf-8").read() if os.path.exists(BOUNDS) else None
         if current != text:
             print("BOUNDS FAIL: %s is not what the image gives"
                   % os.path.relpath(BOUNDS, ROOT).replace("\\", "/"))
+            return 1
+        carried = open(ALLOW, encoding="utf-8").read() if os.path.exists(ALLOW) else ""
+        missing = uncarried(carried, flags)
+        if missing is not None:
+            print("BOUNDS FAIL: %s is flagged and not carried in %s"
+                  % (missing, os.path.relpath(ALLOW, ROOT).replace("\\", "/")))
+            return 1
+        if carried != flags:
+            print("BOUNDS FAIL: %s is not what the image gives"
+                  % os.path.relpath(ALLOW, ROOT).replace("\\", "/"))
             return 1
         print("BOUNDS PASS")
     return 0

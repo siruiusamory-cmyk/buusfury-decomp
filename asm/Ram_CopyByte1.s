@@ -1,5 +1,5 @@
 	CODE16
-|sub_0803E574|
+|Ram_CopyByte1|
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
 	BL       |loc_0803E4E4|

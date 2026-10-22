@@ -38,7 +38,7 @@ CHECKS = ("P-148-repo-module-path", "P-159-bare-interpreter", "P-167-pool-guard"
           "NAMING-address-ratchet", "NAMING-behaviour-test", "ROM-tracked-image",
           "README-numbers", "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block",
           "ASM-hardware-literal", "ASM-ram-ratchet", "ASM-layout", "DOC-newcomer-path",
-          "NAMING-ledger-label")
+          "NAMING-ledger-label", "BOUNDS-entry-allow")
 STALE_CALL = re.compile(r"incbin\.bat\s+baserom\.gba\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
 TEST_FILE = re.compile(r"^test_[^/\\]*\.py$")
 DUP_MINIMUM = 8
@@ -75,6 +75,10 @@ LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
 RETIRED_NAMES = "docs/NAMING_RETIRED.csv"
 LABELS = "docs/research/BF_LABELS.toml"
 CENSUS = "docs/research/FUNCTION_BOUNDS.csv"
+ENTRY_ALLOW = "docs/research/FUNCTION_ENTRY_ALLOW.csv"
+ENTRY_FLAGS = ("data", "undecodable", "clobber")
+ENTRY_REASONS = ("prefix", "row-start")
+ADDRESS_HEX = re.compile(r"^0x[0-9A-Fa-f]{8}$")
 BATCH = (".cmd", ".bat")
 SOURCES = (".py", ".cmd", ".bat")
 
@@ -985,6 +989,50 @@ def ledger_label_findings(ledger_text, index_text, documents):
     return findings
 
 
+def entry_allow_findings(census_text, allow_text):
+    findings = []
+    if not allow_text.strip():
+        return [("BOUNDS-entry-allow", "%s: the tree carries no entry allow-list, so a flagged "
+                 "start has no reason recorded" % ENTRY_ALLOW)]
+    starts = {}
+    for row in csv.DictReader(io.StringIO(census_text)):
+        if row.get("kind") in ("start", "unreferenced"):
+            starts[int(row["address"], 16)] = (row["kind"], row.get("limb") or "")
+    seen = set()
+    for row in csv.DictReader(io.StringIO(allow_text)):
+        address = int(row["address"], 16)
+        if address in seen:
+            findings.append(("BOUNDS-entry-allow", "%s: 0x%08X is carried twice"
+                             % (ENTRY_ALLOW, address)))
+        seen.add(address)
+        if starts.get(address) != (row["kind"], row["limb"]):
+            findings.append(("BOUNDS-entry-allow",
+                             "%s: 0x%08X carries kind %s and limb %s, and %s reads %s and %s"
+                             % (ENTRY_ALLOW, address, row["kind"], row["limb"], CENSUS,
+                                starts.get(address, ("-", "-"))[0],
+                                starts.get(address, ("-", "-"))[1])))
+        if not row["flags"] or any(flag not in ENTRY_FLAGS for flag in row["flags"].split("+")):
+            findings.append(("BOUNDS-entry-allow", "%s: 0x%08X carries flags %s, and only %s name"
+                             " a byte-level test" % (ENTRY_ALLOW, address, row["flags"],
+                                                     ", ".join(ENTRY_FLAGS))))
+        if row["reason"] not in ENTRY_REASONS:
+            findings.append(("BOUNDS-entry-allow",
+                             "%s: 0x%08X is kept with reason %s, and only %s name one"
+                             % (ENTRY_ALLOW, address, row["reason"] or "none",
+                                ", ".join(ENTRY_REASONS))))
+        entry = row["entry"]
+        if row["reason"] == "prefix":
+            if not ADDRESS_HEX.match(entry or "") or int(entry, 16) <= address:
+                findings.append(("BOUNDS-entry-allow",
+                                 "%s: 0x%08X is kept as a prefix and carries entry %s, which is "
+                                 "not an address after it" % (ENTRY_ALLOW, address, entry or "-")))
+        elif entry != "-":
+            findings.append(("BOUNDS-entry-allow",
+                             "%s: 0x%08X carries entry %s with no prologue to name"
+                             % (ENTRY_ALLOW, address, entry)))
+    return findings
+
+
 def doc_path_findings(text):
     findings = []
     lowered = text.lower()
@@ -1046,6 +1094,7 @@ def asm_readability_findings():
     findings = hardware_literal_findings(documents, read_source(HARDWARE_BASELINE) or "")
     findings += ram_ratchet_findings(documents, read_source(RAM_BASELINE) or "")
     findings += layout_findings(documents, read_source(CENSUS) or "", read_source(ASM_INDEX) or "")
+    findings += entry_allow_findings(read_source(CENSUS) or "", read_source(ENTRY_ALLOW) or "")
     findings += ledger_label_findings(read_source(LEDGER_NAMES) or "", read_source(ASM_INDEX) or "",
                                       documents)
     findings += doc_path_findings(read_source(NEWCOMER) or "")

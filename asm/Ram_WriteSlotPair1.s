@@ -1,5 +1,5 @@
 	CODE16
-|sub_0800058E|
+|Ram_WriteSlotPair1|
 	LDR      r1, [pc, #0xd8]
 	PUSH     {r4}
 	LDR      r1, [r1, #0x14]

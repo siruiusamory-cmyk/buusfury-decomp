@@ -1,5 +1,5 @@
 	CODE16
-|sub_08042ADA|
+|Ram_InitRecords1|
 	LDR      r3, [pc, #0xd4]
 	MOV      r2, #0
 	STRB     r2, [r3, #5]
@@ -27,7 +27,7 @@
 	BX       lr
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |sub_08042ADA|
+	BL       |Ram_InitRecords1|
 	LDR      r0, [pc, #0x9c]
 	MOV      r2, #1
 	STRB     r2, [r0, #4]

@@ -205,6 +205,59 @@ def test_the_tracked_census_is_what_the_image_gives():
         assert handle.read() == function_bounds.rows_text(found)
 
 
+def test_a_start_in_the_gap_before_the_next_prologue_is_flagged_as_data():
+    data = image()
+    put_half(data, BASE + 0x10, 0xBD10)
+    put_half(data, BASE + 0x14, 0x0804)
+    put_half(data, BASE + 0x16, 0xB510)
+    put_half(data, BASE + 0x18, 0xBD10)
+    found = classify(data, [BASE + 0x14], [(0x14, 0x1A)], spans=[0x14])
+    rows = function_bounds.flag_rows(bytes(data), found)
+    assert rows == [(BASE + 0x14, "unreferenced", "", "data", BASE + 0x16)]
+    assert function_bounds.flags_text(rows).splitlines()[1] == \
+        "0x08000014,unreferenced,,data,0x08000016,prefix"
+
+
+def test_a_start_whose_leading_halfword_the_cpu_cannot_execute_is_flagged():
+    data = image()
+    put_half(data, BASE + 0x20, 0xBE00)
+    put_half(data, BASE + 0x22, 0xBD10)
+    found = classify(data, [BASE + 0x20], [(0x20, 0x24)], spans=[0x20])
+    rows = function_bounds.flag_rows(bytes(data), found)
+    assert rows[0][3] == "undecodable"
+    assert rows[0][4] is None
+
+
+def test_a_prologue_at_the_start_is_not_a_flag():
+    data = image()
+    put_half(data, BASE + 0x10, 0xBD10)
+    put_half(data, BASE + 0x14, 0xB510)
+    put_half(data, BASE + 0x16, 0xBD10)
+    found = classify(data, [BASE + 0x14], [(0x14, 0x18)], spans=[0x14])
+    assert function_bounds.flag_rows(bytes(data), found) == []
+
+
+def test_a_flagged_start_the_allow_list_does_not_carry_is_named():
+    carried = "address,kind,limb,flags,entry,reason\n0x08000010,unreferenced,,data,0x08000012,prefix\n"
+    derived = carried + "0x08000020,unreferenced,,data,0x08000022,prefix\n"
+    assert function_bounds.uncarried(carried, derived) == "0x08000020"
+    assert function_bounds.uncarried(derived, derived) is None
+
+
+def test_the_tracked_entry_allow_list_is_what_the_image_gives():
+    root = os.path.dirname(os.path.dirname(HERE))
+    rom = os.path.join(root, "baserom.gba")
+    if not os.path.exists(rom):
+        pytest.skip("the retail image is absent, so the flagged starts cannot be re-derived")
+    found = function_bounds.census(open(rom, "rb").read())
+    derived = function_bounds.flags_text(function_bounds.flag_rows(open(rom, "rb").read(), found))
+    with open(function_bounds.ALLOW, encoding="utf-8") as handle:
+        assert handle.read() == derived
+    carried = {line.split(",")[0]: line.split(",") for line in derived.splitlines()[1:]}
+    for address in ("0x080335b6", "0x0801906e", "0x08050566"):
+        assert carried[address][5] == "prefix", address
+
+
 if __name__ == "__main__":
     test_a_push_that_saves_lr_is_the_prologue_limb()
     test_a_push_that_does_not_save_lr_is_no_prologue_limb()

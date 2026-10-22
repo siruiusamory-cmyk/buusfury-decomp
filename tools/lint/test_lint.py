@@ -559,6 +559,36 @@ def test_a_ledger_row_without_its_label_at_its_address_is_caught():
     assert any("is labelled unk_0800536A" in finding[1] for finding in wrong)
 
 
+def test_an_entry_allow_row_the_census_does_not_carry_is_caught():
+    census = "address,kind,limb,parent\n0x08000158,unreferenced,,\n"
+    allow = ("address,kind,limb,flags,entry,reason\n"
+             "0x08000158,unreferenced,,data,0x0800015a,prefix\n")
+    assert not lints.entry_allow_findings(census, allow)
+    stale = lints.entry_allow_findings("address,kind,limb,parent\n", allow)
+    assert [finding[0] for finding in stale] == ["BOUNDS-entry-allow"]
+    assert "carries kind" in stale[0][1]
+    missing = lints.entry_allow_findings(census, "")
+    assert missing and "no entry allow-list" in missing[0][1]
+
+
+def test_an_entry_allow_row_without_a_flag_or_a_reason_is_caught():
+    census = "address,kind,limb,parent\n0x08000158,unreferenced,,\n"
+    head = "address,kind,limb,flags,entry,reason\n"
+    bare = head + "0x08000158,unreferenced,,,0x0800015a,\n"
+    caught = [finding[1] for finding in lints.entry_allow_findings(census, bare)]
+    assert any("carries flags" in detail for detail in caught)
+    assert any("kept with reason none" in detail for detail in caught)
+    wrong = head + "0x08000158,unreferenced,,data,-,prefix\n"
+    assert any("not an address after it" in finding[1]
+               for finding in lints.entry_allow_findings(census, wrong))
+    carried = head + "0x08000158,unreferenced,,shape,0x0800015a,row-start\n"
+    assert any("no prologue to name" in finding[1]
+               for finding in lints.entry_allow_findings(census, carried))
+    twice = head + "0x08000158,unreferenced,,data,0x0800015a,prefix\n" * 2
+    assert any("carried twice" in finding[1]
+               for finding in lints.entry_allow_findings(census, twice))
+
+
 def test_a_newcomer_page_without_the_gate_step_is_caught():
     findings = lints.doc_path_findings("git clone x\n")
     assert [finding[0] for finding in findings] == ["DOC-newcomer-path"] * len(findings)
@@ -620,4 +650,6 @@ if __name__ == "__main__":
     test_a_char_literal_holding_a_slash_is_not_a_comment()
     test_a_behaviour_test_row_must_cite_a_test_the_tree_has()
     test_a_row_of_another_class_cites_no_test()
+    test_an_entry_allow_row_the_census_does_not_carry_is_caught()
+    test_an_entry_allow_row_without_a_flag_or_a_reason_is_caught()
     print("PASS test_lint")

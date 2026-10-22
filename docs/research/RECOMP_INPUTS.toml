@@ -82,7 +82,7 @@ name = "sub_08000568"
 addr = 0x0800058e
 mode = "thumb"
 size = 210
-name = "sub_0800058E"
+name = "Ram_WriteSlotPair1"
 
 [[code]]
 addr = 0x08000662
@@ -3424,7 +3424,7 @@ name = "sub_0801248E"
 addr = 0x080124d2
 mode = "thumb"
 size = 128
-name = "sub_080124D2"
+name = "Ram_DecrementCount1"
 
 [[code]]
 addr = 0x08012552
@@ -9462,7 +9462,7 @@ name = "sub_08036E1E"
 addr = 0x08036e2a
 mode = "thumb"
 size = 76
-name = "sub_08036E2A"
+name = "Ram_ShiftWords1"
 
 [[code]]
 addr = 0x08036e7a
@@ -10422,7 +10422,7 @@ name = "sub_0803B238"
 addr = 0x0803b240
 mode = "thumb"
 size = 100
-name = "sub_0803B240"
+name = "List_AppendBounds1"
 
 [[code]]
 addr = 0x0803b2a4
@@ -11318,7 +11318,7 @@ name = "sub_0803E514"
 addr = 0x0803e574
 mode = "thumb"
 size = 724
-name = "sub_0803E574"
+name = "Ram_CopyByte1"
 
 [[code]]
 addr = 0x0803e89a
@@ -12041,7 +12041,7 @@ name = "Bios_CpuSet2"
 addr = 0x08042ada
 mode = "thumb"
 size = 142
-name = "sub_08042ADA"
+name = "Ram_InitRecords1"
 
 [[code]]
 addr = 0x08042b68

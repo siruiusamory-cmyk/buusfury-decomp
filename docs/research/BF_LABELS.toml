@@ -638,7 +638,7 @@ address = 0x0800057c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800058E"
+name = "Ram_WriteSlotPair1"
 address = 0x0800058e
 end = 0x08000660
 mode = "thumb"
@@ -6585,7 +6585,7 @@ address = 0x08009172
 mode = "thumb"
 
 [[functions]]
-name = "sub_08009196"
+name = "Ram_CopyFiveWords1"
 address = 0x08009196
 mode = "thumb"
 
@@ -12613,7 +12613,7 @@ end = 0x080124d2
 mode = "thumb"
 
 [[functions]]
-name = "sub_080124D2"
+name = "Ram_DecrementCount1"
 address = 0x080124d2
 end = 0x08012552
 mode = "thumb"
@@ -21815,7 +21815,7 @@ end = 0x0802ae98
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802AEDA"
+name = "Ram_SetOne1"
 address = 0x0802aeda
 end = 0x0802aef8
 mode = "thumb"
@@ -25427,7 +25427,7 @@ end = 0x08036e2a
 mode = "thumb"
 
 [[functions]]
-name = "sub_08036E2A"
+name = "Ram_ShiftWords1"
 address = 0x08036e2a
 end = 0x08036e76
 mode = "thumb"
@@ -27557,7 +27557,7 @@ address = 0x0803b23c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803B240"
+name = "List_AppendBounds1"
 address = 0x0803b240
 end = 0x0803b2a4
 mode = "thumb"
@@ -29478,7 +29478,7 @@ address = 0x0803e55c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803E574"
+name = "Ram_CopyByte1"
 address = 0x0803e574
 end = 0x0803e848
 mode = "thumb"
@@ -30944,7 +30944,7 @@ address = 0x080400e8
 mode = "thumb"
 
 [[functions]]
-name = "sub_080400EE"
+name = "Ram_ClearLimits1"
 address = 0x080400ee
 mode = "thumb"
 
@@ -31349,7 +31349,7 @@ address = 0x08040d1e
 mode = "thumb"
 
 [[functions]]
-name = "sub_08040D4E"
+name = "Ram_ClearMask1"
 address = 0x08040d4e
 mode = "thumb"
 
@@ -32104,7 +32104,7 @@ end = 0x08042ada
 mode = "thumb"
 
 [[functions]]
-name = "sub_08042ADA"
+name = "Ram_InitRecords1"
 address = 0x08042ada
 end = 0x08042b68
 mode = "thumb"

@@ -4,6 +4,7 @@ Every name the ledger promotes, with the address the label sits at.
 
 | address | name | class |
 | --- | --- | --- |
+| 0x0800058e | Ram_WriteSlotPair1 | behaviour-test |
 | 0x0800432c | Object_SubtractDelta1 | behaviour-test |
 | 0x08004448 | Object_AppendEntry1 | behaviour-test |
 | 0x0800536a | Blend_WriteControl1 | hardware-register |
@@ -14,6 +15,7 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x080081e4 | Dma_Start3First | hardware-register |
 | 0x08008306 | Dma_Start3Second | hardware-register |
 | 0x080084a6 | Dma_Start3Third | hardware-register |
+| 0x08009196 | Ram_CopyFiveWords1 | behaviour-test |
 | 0x080091b8 | State_CopyBlock1 | behaviour-test |
 | 0x08009220 | Object_RebuildSlots1 | behaviour-test |
 | 0x0800a9d0 | List_ReleaseAll1 | behaviour-test |
@@ -45,6 +47,7 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08011c70 | List_CallMethod1 | behaviour-test |
 | 0x08011db4 | Object_Construct8 | behaviour-test |
 | 0x08011e94 | List_PopAll1 | behaviour-test |
+| 0x080124d2 | Ram_DecrementCount1 | behaviour-test |
 | 0x08012628 | List_ReleaseAll3 | behaviour-test |
 | 0x0801268a | List_Remove1 | behaviour-test |
 | 0x08013a90 | List_AppendByte1 | behaviour-test |
@@ -74,6 +77,7 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08028cca | Object_Destroy18 | behaviour-test |
 | 0x0802a3a8 | Object_Destroy19 | behaviour-test |
 | 0x0802a8aa | Object_ClearFields5 | behaviour-test |
+| 0x0802aeda | Ram_SetOne1 | behaviour-test |
 | 0x0802c976 | Mosaic_WriteSize1 | hardware-register |
 | 0x0802ca2e | Mosaic_WriteSize2 | hardware-register |
 | 0x0802ca42 | Bg_WriteControl0AndMosaic2 | hardware-register |
@@ -84,29 +88,35 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08033664 | Gfx_InitBlock2 | behaviour-test |
 | 0x080337ec | Blend_WriteAlpha4 | hardware-register |
 | 0x080356b2 | Object_Destroy20 | behaviour-test |
+| 0x08036e2a | Ram_ShiftWords1 | behaviour-test |
 | 0x080370cc | Object_Destroy21 | behaviour-test |
 | 0x08037f8a | Object_Destroy22 | behaviour-test |
 | 0x08038498 | Object_Destroy23 | behaviour-test |
 | 0x08038bb2 | Object_Destroy24 | behaviour-test |
 | 0x08039182 | Object_Destroy25 | behaviour-test |
+| 0x0803b240 | List_AppendBounds1 | behaviour-test |
 | 0x0803b410 | Object_ClearFields4 | behaviour-test |
 | 0x0803d7be | Irq_WriteEnable3 | hardware-register |
 | 0x0803df14 | Irq_WriteMaster1 | hardware-register |
 | 0x0803e18e | Math_Divide6 | hardware-register |
 | 0x0803e3e4 | Object_ClearStrideField1 | behaviour-test |
 | 0x0803e42a | Object_SetStrideFields1 | behaviour-test |
+| 0x0803e574 | Ram_CopyByte1 | behaviour-test |
 | 0x0803e5ac | Object_AdvanceTimer1 | behaviour-test |
 | 0x0803e5da | Object_AdvanceTimer2 | behaviour-test |
 | 0x0803e8bc | Math_ScaleByTable1 | behaviour-test |
 | 0x0803f0e6 | Object_InitStrideLinks1 | behaviour-test |
 | 0x0803f18c | Object_SetStrideField1 | behaviour-test |
 | 0x0803fb7c | Irq_WriteMaster2 | hardware-register |
+| 0x080400ee | Ram_ClearLimits1 | behaviour-test |
 | 0x080402d6 | Struct_ZeroFields | behaviour-test |
+| 0x08040d4e | Ram_ClearMask1 | behaviour-test |
 | 0x08040dda | Irq_WriteEnableAndTimer3 | hardware-register |
 | 0x08040f5e | Irq_WriteMaster3 | hardware-register |
 | 0x080417ac | Timer_Write2Reload1 | hardware-register |
 | 0x08042880 | Bios_CpuSet1 | hardware-register |
 | 0x08042ab8 | Bios_CpuSet2 | hardware-register |
+| 0x08042ada | Ram_InitRecords1 | behaviour-test |
 | 0x08046aa4 | Thunk_JumpRegister1 | callee-role |
 | 0x08046b28 | __16_ll_cmpu | toolchain-library |
 | 0x08046b38 | __16_ll_mul | toolchain-library |

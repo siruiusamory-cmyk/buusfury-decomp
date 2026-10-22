@@ -62,7 +62,7 @@
 	CMP      r2, #0
 	STRB     r1, [r4, #7]
 	BEQ      |sub_08042D00|
-	BL       |sub_08042ADA|
+	BL       |Ram_InitRecords1|
 	MOV      r0, #0x17
 	STRB     r0, [r4, #4]
 |loc_08042CFE|

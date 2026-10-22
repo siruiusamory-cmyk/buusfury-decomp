@@ -207,12 +207,14 @@ ROWS = {
     0x0800D9F0: ({0: OBJECT, 1: 1}, {},
         [
         (0x02000000, 4, 0x804A85C),
+        (0x03001AFC, 4, 0xFFFFFFFF),
         (0x02000000, 4, 0x8049680),
         (0x02000000, 4, 0x804E454),
     ], [0x0801142A, 0x0803D63C]),
     0x0800E6F8: ({0: OBJECT, 1: 1}, {},
         [
         (0x02000000, 4, 0x804D0F8),
+        (0x03001B90, 4, 0xFFFFFFFF),
     ], [0x0800E85E, 0x0803D63C]),
     0x0800E85E: ({0: OBJECT, 1: 1}, {},
         [
@@ -253,6 +255,7 @@ ROWS = {
     0x08024768: ({0: OBJECT, 1: 1}, {},
         [
         (0x02000000, 4, 0x804BFCC),
+        (0x03002FB8, 1, 0xFF),
         (0x02000000, 4, 0x8049680),
         (0x02000000, 4, 0x804E454),
     ], [0x0801142A, 0x0803D63C]),
@@ -564,6 +567,74 @@ ROWS = {
         (0x0200058C, 1, 0x0),
         (0x02000568, 1, 0x10),
     ], []),
+    0x0800058E: ({0: 0x1234}, {},
+        [
+        (0x0300157A, 2, 0x1234),
+        (0x0300157C, 2, 0x1234),
+    ], []),
+    0x08009196: ({0: OBJECT}, {OBJECT: bytes(range(0x14))},
+        [
+        (0x03001968, 4, 0x03020100),
+        (0x0300196C, 4, 0x07060504),
+        (0x03001970, 4, 0x0B0A0908),
+        (0x03001974, 4, 0x0F0E0D0C),
+        (0x03001978, 4, 0x13121110),
+    ], [0x080210D6, 0x080099B6, 0x08011DB4]),
+    0x080124D2: ({0: OBJECT, 1: 0}, {},
+        [
+        (0x03002A5C, 4, 0xFFFFFFFF),
+    ], [0x08011C0C]),
+    0x0802AEDA: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x0300302C, 4, 1),
+    ], [0x0800ECDA, 0x0800ED18]),
+    0x08036E2A: ({0: OBJECT}, {OBJECT + 8: struct.pack("<III", 1, 2, 3)},
+        [
+        (0x030019A4, 4, 0x400),
+        (0x030019A8, 4, 0x800),
+        (0x030019AC, 4, 0xC00),
+    ], [0x080210B6, 0x0802ED98]),
+    0x0803B240: ({0: OBJECT, 1: 1}, {},
+        [
+        (0x030032E4, 1, 0),
+    ], [0x0800FE78, 0x0803AEA8, 0x0801191A]),
+    0x0803E574: ({0: OBJECT}, {OBJECT + 0x5E: bytes([0x2A])},
+        [
+        (0x030038A7, 1, 0x2A),
+    ], [0x0803E4E4]),
+    0x080400EE: ({}, {},
+        [
+        (0x03004A78, 2, 0),
+        (0x03004A84, 2, 0xFFFF),
+        (0x03004A88, 2, 0xFFFF),
+        (0x03004A7A, 2, 0),
+        (0x03004A86, 2, 0xFFFF),
+        (0x03004A8A, 2, 0xFFFF),
+    ], []),
+    0x08040D4E: ({0: OBJECT}, {},
+        [
+        (0x03004A9F, 1, 0),
+        (0x03004A9E, 1, 0),
+    ], [0x080491C0]),
+    0x08042ADA: ({}, {},
+        [
+        (0x03004CCD, 1, 0),
+        (0x03004CCC, 1, 0),
+        (0x03004CCE, 1, 0xFF),
+        (0x03004CCF, 1, 0),
+        (0x03004CD8, 1, 0),
+        (0x03004CD4, 1, 0),
+        (0x03004CEC, 1, 0),
+        (0x03004CF8, 1, 0),
+        (0x03004CF0, 2, 0),
+        (0x03004CFC, 2, 0),
+        (0x03004CF2, 2, 0),
+        (0x03004CFE, 2, 0),
+        (0x03004CF4, 2, 0),
+        (0x03004D00, 2, 0),
+        (0x03004CF6, 2, 0),
+        (0x03004D02, 2, 0),
+    ], []),
 }
 
 
@@ -581,7 +652,9 @@ def result(address):
         CACHE[("body", address)] = harness.body(retail, address)
     found = harness.run(retail, address, CACHE[("body", address)],
                         {int(key): value for key, value in registers.items()}, memory)
-    writes = [item for item in found.writes if 0x02000000 <= item[0] <= 0x0203FFFF]
+    writes = [item for item in found.writes
+              if 0x02000000 <= item[0] <= 0x0203FFFF
+              or harness.IWRAM[0] <= item[0] < harness.STACK - harness.BUDGET * 4]
     return writes, [target for _site, target in found.calls]
 
 
@@ -789,4 +862,34 @@ def test_object_init_stride_links1_clears_the_fields_and_points_each_record_at_i
 
 def test_object_set_stride_field1_sets_the_byte_at_0x28_and_clears_the_byte_at_0x4c_of_fifteen_records():
     assert result(0x0803F18C) == ROWS[0x0803F18C][2:]
+
+def test_ram_write_slot_pair1_writes_the_argument_at_the_slot_and_the_next_halfword():
+    assert result(0x0800058E) == ROWS[0x0800058E][2:]
+
+def test_ram_copy_five_words1_copies_twenty_bytes_into_the_first_globals():
+    assert result(0x08009196) == ROWS[0x08009196][2:]
+
+def test_ram_decrement_count1_decrements_the_word_after_its_base():
+    assert result(0x080124D2) == ROWS[0x080124D2][2:]
+
+def test_ram_set_one1_stores_one_after_the_two_table_calls():
+    assert result(0x0802AEDA) == ROWS[0x0802AEDA][2:]
+
+def test_ram_shift_words1_stores_the_three_arguments_shifted_left_by_ten():
+    assert result(0x08036E2A) == ROWS[0x08036E2A][2:]
+
+def test_list_append_bounds1_clears_the_flag_and_appends_the_record():
+    assert result(0x0803B240) == ROWS[0x0803B240][2:]
+
+def test_ram_copy_byte1_copies_the_actors_byte_into_the_word_the_literal_names():
+    assert result(0x0803E574) == ROWS[0x0803E574][2:]
+
+def test_ram_clear_limits1_clears_two_halfwords_and_writes_four_ffff_halfwords():
+    assert result(0x080400EE) == ROWS[0x080400EE][2:]
+
+def test_ram_clear_mask1_clears_the_mask_byte_and_rewrites_the_two_low_bytes():
+    assert result(0x08040D4E) == ROWS[0x08040D4E][2:]
+
+def test_ram_init_records1_initialises_the_four_halfword_records():
+    assert result(0x08042ADA) == ROWS[0x08042ADA][2:]
 

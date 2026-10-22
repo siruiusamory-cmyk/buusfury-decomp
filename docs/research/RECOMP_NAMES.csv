@@ -1,4 +1,5 @@
 address,name,evidence_doc
+0x0800058e,Ram_WriteSlotPair1,docs/research/NAME_CENSUS.md
 0x0800432c,Object_SubtractDelta1,docs/research/NAME_CENSUS.md
 0x08004448,Object_AppendEntry1,docs/research/NAME_CENSUS.md
 0x0800536a,Blend_WriteControl1,docs/research/NAME_CENSUS.md
@@ -12,6 +13,7 @@ address,name,evidence_doc
 0x08008306,Dma_Start3Second,docs/research/NAME_CENSUS.md
 0x080084a6,Dma_Start3Third,docs/research/NAME_CENSUS.md
 0x080089cc,MapEntry_Root,docs/research/PLAY_CHECKLIST.md
+0x08009196,Ram_CopyFiveWords1,docs/research/NAME_CENSUS.md
 0x080091b8,State_CopyBlock1,docs/research/NAME_CENSUS.md
 0x08009220,Object_RebuildSlots1,docs/research/NAME_CENSUS.md
 0x0800938c,BgControl_Write,docs/research/TEXT_TABLES.md
@@ -49,6 +51,7 @@ address,name,evidence_doc
 0x08011c70,List_CallMethod1,docs/research/NAME_CENSUS.md
 0x08011db4,Object_Construct8,docs/research/NAME_CENSUS.md
 0x08011e94,List_PopAll1,docs/research/NAME_CENSUS.md
+0x080124d2,Ram_DecrementCount1,docs/research/NAME_CENSUS.md
 0x08012628,List_ReleaseAll3,docs/research/NAME_CENSUS.md
 0x08012664,MapRoot_PointerRecords,docs/research/ROUTE_TO_100.md
 0x0801268a,List_Remove1,docs/research/NAME_CENSUS.md
@@ -81,6 +84,7 @@ address,name,evidence_doc
 0x0802a3a8,Object_Destroy19,docs/research/NAME_CENSUS.md
 0x0802a81c,Piece_Construct,docs/research/ENDROM_RECON_001.md
 0x0802a8aa,Object_ClearFields5,docs/research/NAME_CENSUS.md
+0x0802aeda,Ram_SetOne1,docs/research/NAME_CENSUS.md
 0x0802c976,Mosaic_WriteSize1,docs/research/NAME_CENSUS.md
 0x0802ca2e,Mosaic_WriteSize2,docs/research/NAME_CENSUS.md
 0x0802ca42,Bg_WriteControl0AndMosaic2,docs/research/NAME_CENSUS.md
@@ -91,6 +95,7 @@ address,name,evidence_doc
 0x08033664,Gfx_InitBlock2,docs/research/NAME_CENSUS.md
 0x080337ec,Blend_WriteAlpha4,docs/research/NAME_CENSUS.md
 0x080356b2,Object_Destroy20,docs/research/NAME_CENSUS.md
+0x08036e2a,Ram_ShiftWords1,docs/research/NAME_CENSUS.md
 0x08036fc0,Endrom_Read76174C,docs/research/ENDROM_BOUND_CENSUS.md
 0x080370cc,Object_Destroy21,docs/research/NAME_CENSUS.md
 0x08037f8a,Object_Destroy22,docs/research/NAME_CENSUS.md
@@ -98,6 +103,7 @@ address,name,evidence_doc
 0x08038498,Object_Destroy23,docs/research/NAME_CENSUS.md
 0x08038bb2,Object_Destroy24,docs/research/NAME_CENSUS.md
 0x08039182,Object_Destroy25,docs/research/NAME_CENSUS.md
+0x0803b240,List_AppendBounds1,docs/research/NAME_CENSUS.md
 0x0803b410,Object_ClearFields4,docs/research/NAME_CENSUS.md
 0x0803d7be,Irq_WriteEnable3,docs/research/NAME_CENSUS.md
 0x0803df14,Irq_WriteMaster1,docs/research/NAME_CENSUS.md
@@ -105,6 +111,7 @@ address,name,evidence_doc
 0x0803e3e4,Object_ClearStrideField1,docs/research/NAME_CENSUS.md
 0x0803e42a,Object_SetStrideFields1,docs/research/NAME_CENSUS.md
 0x0803e4e4,AudioSlot_Note,docs/research/ASSETDIR_SAMPLES.md
+0x0803e574,Ram_CopyByte1,docs/research/NAME_CENSUS.md
 0x0803e5ac,Object_AdvanceTimer1,docs/research/NAME_CENSUS.md
 0x0803e5da,Object_AdvanceTimer2,docs/research/NAME_CENSUS.md
 0x0803e8bc,Math_ScaleByTable1,docs/research/NAME_CENSUS.md
@@ -112,12 +119,15 @@ address,name,evidence_doc
 0x0803f110,AudioMusic_Attach,docs/research/ASSETDIR_SAMPLES.md
 0x0803f18c,Object_SetStrideField1,docs/research/NAME_CENSUS.md
 0x0803fb7c,Irq_WriteMaster2,docs/research/NAME_CENSUS.md
+0x080400ee,Ram_ClearLimits1,docs/research/NAME_CENSUS.md
 0x080402d6,Struct_ZeroFields,docs/research/NAME_CENSUS.md
+0x08040d4e,Ram_ClearMask1,docs/research/NAME_CENSUS.md
 0x08040dda,Irq_WriteEnableAndTimer3,docs/research/NAME_CENSUS.md
 0x08040f5e,Irq_WriteMaster3,docs/research/NAME_CENSUS.md
 0x080417ac,Timer_Write2Reload1,docs/research/NAME_CENSUS.md
 0x08042880,Bios_CpuSet1,docs/research/NAME_CENSUS.md
 0x08042ab8,Bios_CpuSet2,docs/research/NAME_CENSUS.md
+0x08042ada,Ram_InitRecords1,docs/research/NAME_CENSUS.md
 0x08046aa4,Thunk_JumpRegister1,docs/research/NAME_CENSUS.md
 0x08046b28,__16_ll_cmpu,docs/research/NAME_CENSUS.md
 0x08046b38,__16_ll_mul,docs/research/NAME_CENSUS.md

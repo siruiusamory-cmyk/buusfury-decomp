@@ -3,7 +3,7 @@
 	MOV      r1, #2
 	STRB     r1, [r4, #1]
 |loc_08040E3E|
-	BL       |loc_08040D4E|
+	BL       |Ram_ClearMask1|
 |loc_08040E42|
 	LDRB     r0, [r4, #0xb]
 	ADD      r1, r5, #0

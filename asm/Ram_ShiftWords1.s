@@ -1,5 +1,5 @@
 	CODE16
-|sub_08036E2A|
+|Ram_ShiftWords1|
 	PUSH     {r3, r4, r5, lr}
 	LDR      r5, [pc, #0x24]
 	ADD      r4, r0, #0

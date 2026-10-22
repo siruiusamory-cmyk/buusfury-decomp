@@ -28,6 +28,8 @@ STACK = 0x03007F00
 EWRAM = (0x02000000, 0x40000)
 IWRAM = (0x03000000, 0x8000)
 BOUNDS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")
+ALLOW = os.path.join("docs", "research", "FUNCTION_ENTRY_ALLOW.csv")
+CACHE = {}
 ARM = capstone.arm
 ENGINE = capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_THUMB)
 ENGINE.detail = True
@@ -50,7 +52,24 @@ def census(root=ROOT):
         return {int(row["address"], 16): row["kind"] for row in csv.DictReader(handle)}
 
 
+def flagged(root=ROOT):
+    path = os.path.join(root, *ALLOW.split("/"))
+    if path not in CACHE:
+        with open(path, newline="", encoding="utf-8") as handle:
+            CACHE[path] = {int(row["address"], 16): row["flags"]
+                           for row in csv.DictReader(handle)}
+    return CACHE[path]
+
+
+def refuse(start, root=ROOT):
+    flags = flagged(root).get(start)
+    if flags is not None:
+        raise ValueError("0x%08X is a flagged start (%s), so the harness does not run a body "
+                         "entered at data" % (start, flags))
+
+
 def body(image, start, root=ROOT):
+    refuse(start, root)
     row = next((row for row in code_rows(root)
                 if ROM_BASE + row[0] <= start < ROM_BASE + row[0] + row[1]), None)
     if row is None:

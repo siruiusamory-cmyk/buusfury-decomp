@@ -1,5 +1,5 @@
 	CODE16
-|loc_080400EE|
+|Ram_ClearLimits1|
 	PUSH     {r4, r5, r6, r7}
 	LDR      r6, [pc, #0x12c]
 	LDR      r5, [pc, #0x12c]

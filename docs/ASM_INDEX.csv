@@ -7,7 +7,7 @@ address,kind,symbol,file
 0x080004F8,unreferenced,sub_080004F8,asm/sub_080004F8.s
 0x0800051A,start,sub_0800051A,asm/sub_0800051A.s
 0x08000568,unreferenced,sub_08000568,asm/sub_08000568.s
-0x0800058E,start,sub_0800058E,asm/sub_0800058E.s
+0x0800058E,start,Ram_WriteSlotPair1,asm/Ram_WriteSlotPair1.s
 0x08000662,unreferenced,sub_08000662,asm/sub_08000662.s
 0x08000B40,unreferenced,sub_08000B40,asm/sub_08000B40.s
 0x08000C80,unreferenced,sub_08000C80,asm/sub_08000C80.s
@@ -280,7 +280,7 @@ address,kind,symbol,file
 0x080090E6,start,loc_080090E6,asm/loc_080090E6.s
 0x08009108,start,loc_08009108,asm/loc_08009108.s
 0x08009172,start,loc_08009172,asm/loc_08009172.s
-0x08009196,start,loc_08009196,asm/loc_08009196.s
+0x08009196,start,Ram_CopyFiveWords1,asm/Ram_CopyFiveWords1.s
 0x080091B8,start,State_CopyBlock1,asm/State_CopyBlock1.s
 0x080091FE,unreferenced,sub_080091FE,asm/sub_080091FE.s
 0x08009220,start,Object_RebuildSlots1,asm/Object_RebuildSlots1.s
@@ -730,7 +730,7 @@ address,kind,symbol,file
 0x080123DE,unreferenced,sub_080123DE,asm/sub_080123DE.s
 0x0801246E,start,loc_0801246E,asm/loc_0801246E.s
 0x0801248E,unreferenced,sub_0801248E,asm/sub_0801248E.s
-0x080124D2,start,sub_080124D2,asm/sub_080124D2.s
+0x080124D2,start,Ram_DecrementCount1,asm/Ram_DecrementCount1.s
 0x080124F8,start,loc_080124F8,asm/loc_080124F8.s
 0x08012552,unreferenced,sub_08012552,asm/sub_08012552.s
 0x08012588,start,sub_08012588,asm/sub_08012588.s
@@ -1551,7 +1551,7 @@ address,kind,symbol,file
 0x0802ADE8,unreferenced,dat_0802ADE8,asm/buu.s
 0x0802ADF0,start,sub_0802ADF0,asm/buu.s
 0x0802AE76,start,sub_0802AE76,asm/buu.s
-0x0802AEDA,start,sub_0802AEDA,asm/buu.s
+0x0802AEDA,start,Ram_SetOne1,asm/buu.s
 0x0802B19C,start,sub_0802B19C,asm/buu.s
 0x0802B332,start,sub_0802B332,asm/buu.s
 0x0802B3D0,start,sub_0802B3D0,asm/buu.s
@@ -1903,7 +1903,7 @@ address,kind,symbol,file
 0x08036D62,unreferenced,,asm/loc_08036D44.s
 0x08036D86,unreferenced,,asm/loc_08036D44.s
 0x08036E1E,unreferenced,sub_08036E1E,asm/sub_08036E1E.s
-0x08036E2A,start,sub_08036E2A,asm/sub_08036E2A.s
+0x08036E2A,start,Ram_ShiftWords1,asm/Ram_ShiftWords1.s
 0x08036E7A,start,sub_08036E7A,asm/sub_08036E7A.s
 0x08036E8E,start,unk_08036E8E,asm/unk_08036E8E.s
 0x08036EB8,unreferenced,sub_08036EB8,asm/sub_08036EB8.s
@@ -2077,7 +2077,7 @@ address,kind,symbol,file
 0x0803B1C6,unreferenced,,asm/sub_0803B16A.s
 0x0803B1D4,unreferenced,,asm/sub_0803B16A.s
 0x0803B238,unreferenced,sub_0803B238,asm/sub_0803B238.s
-0x0803B240,start,sub_0803B240,asm/sub_0803B240.s
+0x0803B240,start,List_AppendBounds1,asm/List_AppendBounds1.s
 0x0803B2A4,unreferenced,sub_0803B2A4,asm/sub_0803B2A4.s
 0x0803B2A8,start,sub_0803B2A8,asm/sub_0803B2A8.s
 0x0803B304,unreferenced,sub_0803B304,asm/sub_0803B304.s
@@ -2243,7 +2243,7 @@ address,kind,symbol,file
 0x0803E4A0,start,,asm/Object_SetStrideFields1.s
 0x0803E4E4,start,loc_0803E4E4,asm/loc_0803E4E4.s
 0x0803E514,unreferenced,sub_0803E514,asm/sub_0803E514.s
-0x0803E574,start,sub_0803E574,asm/sub_0803E574.s
+0x0803E574,start,Ram_CopyByte1,asm/Ram_CopyByte1.s
 0x0803E5AC,start,Object_AdvanceTimer1,asm/Object_AdvanceTimer1.s
 0x0803E5DA,start,Object_AdvanceTimer2,asm/Object_AdvanceTimer2.s
 0x0803E89A,unreferenced,sub_0803E89A,asm/sub_0803E89A.s
@@ -2314,7 +2314,7 @@ address,kind,symbol,file
 0x0803FFE8,start,sub_0803FFE8,asm/sub_0803FFE8.s
 0x0804001A,start,loc_0804001A,asm/loc_0804001A.s
 0x08040048,start,loc_08040048,asm/loc_08040048.s
-0x080400EE,start,loc_080400EE,asm/loc_080400EE.s
+0x080400EE,start,Ram_ClearLimits1,asm/Ram_ClearLimits1.s
 0x0804014E,start,loc_0804014E,asm/loc_0804014E.s
 0x080401DA,start,loc_080401DA,asm/loc_080401DA.s
 0x080401F4,start,loc_080401F4,asm/loc_080401F4.s
@@ -2341,7 +2341,7 @@ address,kind,symbol,file
 0x08040B9C,start,sub_08040B9C,asm/sub_08040B9C.s
 0x08040C78,start,loc_08040C78,asm/loc_08040C78.s
 0x08040D1E,start,loc_08040D1E,asm/loc_08040D1E.s
-0x08040D4E,start,loc_08040D4E,asm/loc_08040D4E.s
+0x08040D4E,start,Ram_ClearMask1,asm/Ram_ClearMask1.s
 0x08040DDA,unreferenced,Irq_WriteEnableAndTimer3,asm/Irq_WriteEnableAndTimer3.s
 0x08040E3A,unreferenced,sub_08040E3A,asm/sub_08040E3A.s
 0x08040F5E,unreferenced,Irq_WriteMaster3,asm/Irq_WriteMaster3.s
@@ -2408,7 +2408,7 @@ address,kind,symbol,file
 0x08042A4E,start,sub_08042A4E,asm/sub_08042A4E.s
 0x08042AAA,start,loc_08042AAA,asm/loc_08042AAA.s
 0x08042AB8,unreferenced,Bios_CpuSet2,asm/Bios_CpuSet2.s
-0x08042ADA,start,sub_08042ADA,asm/sub_08042ADA.s
+0x08042ADA,start,Ram_InitRecords1,asm/Ram_InitRecords1.s
 0x08042B68,unreferenced,sub_08042B68,asm/sub_08042B68.s
 0x08042BF8,start,sub_08042BF8,asm/sub_08042BF8.s
 0x08042C36,unreferenced,sub_08042C36,asm/sub_08042C36.s

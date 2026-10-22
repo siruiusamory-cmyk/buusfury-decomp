@@ -24,7 +24,7 @@
 	BL       |inc_0x03d784_0x041118| + 0x11c
 	MOV      r1, #0
 	ADD      r0, r4, #0
-	BL       |sub_080124D2|
+	BL       |Ram_DecrementCount1|
 	ADD      sp, #0x30
 	POP      {r4, pc}
 	PUSH     {r3, r4, r5, lr}

@@ -47,7 +47,7 @@
 	CMP      r0, #0
 	BEQ      |loc_08002142|
 	LDR      r0, [r7, #0xc]
-	BL       |loc_08009196|
+	BL       |Ram_CopyFiveWords1|
 	LDR      r1, [pc, #0x40]
 	MOV      r0, #0
 	STR      r0, [r1, #8]
@@ -115,7 +115,7 @@
 	BEQ      |loc_080021DA|
 	LDR      r0, [pc, #0x254]
 	LDR      r0, [r0, #0xc]
-	BL       |loc_08009196|
+	BL       |Ram_CopyFiveWords1|
 	LDR      r0, [pc, #0x248]
 	STR      r7, [r0, #8]
 |loc_080021DA|
@@ -191,7 +191,7 @@
 	BEQ      |loc_0800227E|
 	LDR      r0, [pc, #0x1b0]
 	LDR      r0, [r0, #0xc]
-	BL       |loc_08009196|
+	BL       |Ram_CopyFiveWords1|
 	LDR      r0, [pc, #0x1a4]
 	STR      r7, [r0, #8]
 |loc_0800227E|

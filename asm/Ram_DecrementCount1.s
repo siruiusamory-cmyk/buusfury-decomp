@@ -1,5 +1,5 @@
 	CODE16
-|sub_080124D2|
+|Ram_DecrementCount1|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r1, #0
 	LDR      r1, [pc, #0xfc]

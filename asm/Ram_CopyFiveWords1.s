@@ -1,5 +1,5 @@
 	CODE16
-|loc_08009196|
+|Ram_CopyFiveWords1|
 	PUSH     {r4, lr}
 	LDR      r4, [pc, #0x64]
 	LDMIA    r0!, {r1, r2, r3}

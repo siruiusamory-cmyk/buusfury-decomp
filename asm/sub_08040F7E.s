@@ -24,7 +24,7 @@
 	STRB     r1, [r2]
 	MOV      r1, #0xa
 	STR      r1, [r0, #4]
-	BL       |loc_080400EE|
+	BL       |Ram_ClearLimits1|
 	BL       |loc_08040C78|
 	POP      {r3, pc}
 	LDR      r1, [pc, #0x150]
@@ -32,7 +32,7 @@
 	MOV      r0, #0
 	STR      r0, [r1]
 	BL       |loc_08040D1E|
-	BL       |loc_080400EE|
+	BL       |Ram_ClearLimits1|
 	POP      {r3, pc}
 	LDR      r0, [pc, #0x148]
 	LDRH     r0, [r0, #8]

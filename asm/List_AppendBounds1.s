@@ -1,5 +1,5 @@
 	CODE16
-|sub_0803B240|
+|List_AppendBounds1|
 	PUSH     {r4, lr}
 	ADD      r4, r1, #0
 	LDR      r1, [pc, #0x90]

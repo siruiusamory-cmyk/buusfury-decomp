@@ -197,3 +197,19 @@ def test_the_body_of_a_retail_start_is_reachable_code_inside_its_own_row():
     row = next(row for row in harness.code_rows()
                if BASE + row[0] <= start < BASE + row[0] + row[1])
     assert all(BASE + row[0] <= address < BASE + row[0] + row[1] for address in allowed)
+
+
+def test_a_flagged_start_is_refused_and_names_the_flag_it_carries():
+    with pytest.raises(ValueError, match="0x080335B6 is a flagged start \\(data\\+clobber\\)"):
+        harness.refuse(0x080335B6)
+
+
+def test_a_start_the_allow_list_does_not_carry_is_not_refused():
+    assert harness.refuse(0x0801191A) is None
+
+
+def test_the_refusal_comes_before_the_body_is_walked():
+    image = testkit.rom_bytes(os.path.join(harness.ROOT, "baserom.gba"),
+                              digest=harness.ROM_SHA256, size=0x800000)
+    with pytest.raises(ValueError, match="entered at data"):
+        harness.body(image, 0x0801906E)

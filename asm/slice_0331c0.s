@@ -48,7 +48,7 @@
 	EXPORT |loc_08033BAA|
 	EXPORT |sub_08033BB2|
 	EXPORT |sub_08033BB6|
-	EXPORT |sub_08033BC0|
+	EXPORT |loc_08033BC0|
 	EXPORT |sub_08033BC4|
 	EXPORT |loc_08033C3C|
 	EXPORT |loc_08033C44|
@@ -77,8 +77,8 @@
 	EXPORT |sub_08033F48|
 	EXPORT |loc_080340A8|
 	EXPORT |sub_080340C8|
-	EXPORT |sub_080340E8|
-	EXPORT |sub_080340F4|
+	EXPORT |loc_080340E8|
+	EXPORT |loc_080340F4|
 	EXPORT |sub_08034120|
 |sub_080331C0|
 	BEQ      |loc_080331CC|
@@ -1323,7 +1323,7 @@
 	LSL      r0, r0, #0xc
 	LDR      r0, [pc, #0]
 	BX       lr
-|sub_08033BC0|
+|loc_08033BC0|
 	DCW      0x320c
 	DCW      0x0300
 |sub_08033BC4|
@@ -1988,10 +1988,10 @@
 	BL       |inc_0x0158_0x143f2| + 0x117ec
 	ADD      sp, #0x44
 	POP      {r4, r5, r6, r7, pc}
-|sub_080340E8|
+|loc_080340E8|
 	DCW      0xce50
 	DCW      0x0804,0x05d3,0x0000,0x45a0,0xffff
-|sub_080340F4|
+|loc_080340F4|
 	STR      r3, [sp, #0x360]
 	LSR      r5, r6, #1
 	STRH     r0, [r2, #4]

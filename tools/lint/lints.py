@@ -56,7 +56,7 @@ README_BYTES = re.compile(r"([\d,]+)\s+of\s+([\d,]+)\s+bytes")
 README_ROWS = re.compile(r"([\d,]+)\s+ledger rows")
 README_IDENTIFIED = re.compile(r"([\d.]+)\s*%\s+is identified binary\s+\(([\d,]+)\s+B\b")
 README_COMMAND = re.compile(r"python tools\\gate\\gate\.py")
-README_SYMBOLS = re.compile(r"([\d,]+)\s+of\s+the\s+([\d,]+)\s+symbols")
+README_SYMBOLS = re.compile(r"([\d,]+)\s+of\s+the\s+([\d,]+)\s+functions")
 EXPORT_SYMBOL = re.compile(r"^\s*EXPORT\s+(\S+)\s*$")
 CONSTANT_DEFINITION = re.compile(r"^\s*\|?([A-Za-z0-9_]+)\|?\s+EQU\b", re.I)
 ADDRESS_SYMBOL = re.compile(r"^(?:sub|loc|dat|unk|g)_[0-9A-Fa-f]{8}$")
@@ -70,6 +70,7 @@ BASELINE = "docs/NAMING_BASELINE.txt"
 LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
 RETIRED_NAMES = "docs/NAMING_RETIRED.csv"
 LABELS = "docs/research/BF_LABELS.toml"
+CENSUS = "docs/research/FUNCTION_BOUNDS.csv"
 BATCH = (".cmd", ".bat")
 SOURCES = (".py", ".cmd", ".bat")
 
@@ -290,8 +291,42 @@ def asm_symbol_findings(symbols, addresses, library=None):
     return findings
 
 
-def symbol_counts(symbols, constants):
+def census_kinds(text=None):
+    if text is None:
+        text = read_source(CENSUS)
+    if text is None:
+        return None
+    starts, blocks = set(), set()
+    for row in csv.DictReader(io.StringIO(text)):
+        if row.get("kind") == "start":
+            starts.add(int(row["address"], 16))
+        elif row.get("kind") == "block":
+            blocks.add(int(row["address"], 16))
+    return starts, blocks
+
+
+def symbol_address(name, addresses):
+    digits = ADDRESS_DIGITS.match(name)
+    return int(digits.group(1), 16) if digits is not None else addresses.get(name)
+
+
+def block_findings(symbols, addresses, blocks):
+    findings = []
+    for name, path, line in symbols:
+        if symbol_address(name, addresses) not in blocks:
+            continue
+        if FUNCTION_NAME.match(name) or name.startswith("sub_"):
+            findings.append(("NAMING-asm-symbol",
+                             "%s:%d: %s names an interior block, and only a function start takes "
+                             "sub_ or a Module_Verb name" % (path, line, name)))
+    return findings
+
+
+def symbol_counts(symbols, constants, starts=None, addresses=None):
     kept = [name for name, _path, _line in symbols if name not in constants]
+    if starts is not None:
+        kept = [name for name in kept
+                if symbol_address(name, addresses or {}) in starts]
     return sum(1 for name in kept if ADDRESS_SYMBOL.match(name)), len(kept)
 
 
@@ -361,8 +396,18 @@ def naming_findings():
         return [("lint-enumeration",
                  "git ls-files failed, the asm symbol checks cannot see the tree")], None
     exports, constants = symbols
-    findings = asm_symbol_findings(exports, label_addresses())
-    counts = symbol_counts(exports, constants)
+    addresses = label_addresses()
+    findings = asm_symbol_findings(exports, addresses)
+    census = census_kinds()
+    if census is None:
+        findings.append(("NAMING-asm-symbol",
+                         "%s: no census, so an interior block cannot be told from a function start"
+                         % CENSUS))
+        starts, blocks = set(), set()
+    else:
+        starts, blocks = census
+        findings += block_findings(exports, addresses, blocks)
+    counts = symbol_counts(exports, constants, starts, addresses)
     retired = retired_rows()
     findings += retired_findings(retired, exports, [
         (int(row["address"], 16), row.get("new") or "")
@@ -493,12 +538,12 @@ def readme_numbers_findings(text, built, total, percent, rows, identified=None, 
     if symbols is not None:
         if len(symbol_figures) != 1:
             findings.append(("README-numbers",
-                             "README.md: one '<a> of the <b> symbols' figure expected, found %d"
+                             "README.md: one '<a> of the <b> functions' figure expected, found %d"
                              % len(symbol_figures)))
         for first, second in symbol_figures:
             if (uncomma(first), uncomma(second)) != symbols:
                 findings.append(("README-numbers",
-                                 "README.md: %s of the %s symbols is not the %d of the %d symbols "
+                                 "README.md: %s of the %s functions is not the %d of the %d functions "
                                  "asm/ exports" % (first, second, symbols[0], symbols[1])))
     return findings
 

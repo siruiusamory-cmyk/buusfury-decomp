@@ -28,6 +28,7 @@ CODE = ("thumb", "arm")
 LABEL = re.compile(r"^EXPORT\s+\|(sub_[0-9a-fA-F]{8})\|$")
 NAMED = re.compile(r"^EXPORT\s+\|([^|]+)\|$")
 NAMES = os.path.join("docs", "NAMING_LEDGER.csv")
+CENSUS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")
 DCD = re.compile(r"^(\w+)\s+DCD\s+0x([0-9a-fA-F]+)$")
 SPACE = re.compile(r"^SPACE\s+0x([0-9a-fA-F]+)$")
 COUNT_SHIFT = re.compile(r"^movs\s+r1,\s*r1,\s+lsr\s+#2$", re.I)
@@ -106,6 +107,15 @@ def entries(rows, names):
     order = [row[0] for row in rows]
     return [(off, mode_of(off, rows, order, names)) for off in sorted(names)
             if off not in starts]
+
+
+def census_entries(root=ROOT):
+    path = os.path.join(root, *CENSUS.split("/"))
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="", encoding="utf-8") as handle:
+        return sorted((int(row["address"], 16) - ENTRY_PC, row["kind"])
+                      for row in csv.DictReader(handle))
 
 
 def runtime_labels(root=ROOT):
@@ -538,7 +548,11 @@ def render(root=ROOT, rom=ROM):
     tables = jump_tables(image)
     bounds, starts = walk(image, rows + veneer_rows(image))
     row_starts = {ENTRY_PC + off for off, _length, _mode in rows}
+    order = [row[0] for row in rows]
     found = [(ENTRY_PC + off, mode) for off, mode in entries(rows, names)]
+    found += [(ENTRY_PC + off, mode_of(off, rows, order, names))
+              for off, _kind in census_entries(root) if off not in names]
+    found = [row for row in found if row[1] in CODE]
     found += extra_entries(image, rows, tables, copy_rows, starts)
     _words, _raw, accepted = address_taken(image, bounds, rows, tables, copy_rows)
     found += [(ENTRY_PC + target, mode) for target, mode in accepted.items()]

@@ -34,8 +34,8 @@
 	EXPORT |sub_08000662|
 	EXPORT |loc_080008D2|
 	EXPORT |loc_080008D6|
-	EXPORT |sub_080008D8|
-	EXPORT |sub_080008FA|
+	EXPORT |loc_080008D8|
+	EXPORT |loc_080008FA|
 	EXPORT |sub_08000B1C|
 	EXPORT |sub_08000B40|
 	EXPORT |loc_08000B5A|
@@ -53,8 +53,8 @@
 	EXPORT |loc_08000DA4|
 	EXPORT |loc_08000DE2|
 	EXPORT |loc_08000DF4|
-	EXPORT |sub_08000E02|
-	EXPORT |sub_08000E1A|
+	EXPORT |loc_08000E02|
+	EXPORT |loc_08000E1A|
 	EXPORT |loc_08000E54|
 	EXPORT |loc_08000E66|
 	EXPORT |loc_08000EA0|
@@ -121,8 +121,8 @@
 	EXPORT |loc_080018C4|
 	EXPORT |loc_080018FE|
 	EXPORT |loc_08001910|
-	EXPORT |sub_0800191E|
-	EXPORT |sub_08001936|
+	EXPORT |loc_0800191E|
+	EXPORT |loc_08001936|
 	EXPORT |loc_08001978|
 	EXPORT |loc_0800198A|
 	EXPORT |loc_080019C8|
@@ -139,8 +139,8 @@
 	EXPORT |loc_08001BBA|
 	EXPORT |loc_08001BF0|
 	EXPORT |loc_08001BFA|
-	EXPORT |sub_08001C02|
-	EXPORT |sub_08001C1A|
+	EXPORT |loc_08001C02|
+	EXPORT |loc_08001C1A|
 	EXPORT |loc_08001C4C|
 	EXPORT |loc_08001C56|
 	EXPORT |loc_08001C9E|
@@ -155,8 +155,8 @@
 	EXPORT |loc_08001DF8|
 	EXPORT |loc_08001E60|
 	EXPORT |loc_08001E68|
-	EXPORT |sub_08001EB0|
-	EXPORT |sub_08001EB6|
+	EXPORT |loc_08001EB0|
+	EXPORT |loc_08001EB6|
 	EXPORT |loc_08001ED4|
 	EXPORT |loc_08001EF2|
 	EXPORT |loc_08001F22|
@@ -167,8 +167,8 @@
 	EXPORT |sub_080020BE|
 	EXPORT |sub_080020D8|
 	EXPORT |loc_08002142|
-	EXPORT |sub_0800215E|
-	EXPORT |sub_0800217A|
+	EXPORT |loc_0800215E|
+	EXPORT |loc_0800217A|
 	EXPORT |loc_08002180|
 	EXPORT |loc_080021DA|
 	EXPORT |loc_08002214|
@@ -215,8 +215,8 @@
 	EXPORT |loc_08002F7C|
 	EXPORT |loc_08002F96|
 	EXPORT |loc_08003090|
-	EXPORT |sub_080031B2|
-	EXPORT |sub_080031C2|
+	EXPORT |loc_080031B2|
+	EXPORT |loc_080031C2|
 	EXPORT |loc_080032E6|
 	EXPORT |loc_080032FC|
 	EXPORT |loc_08003302|
@@ -399,8 +399,8 @@
 	EXPORT |sub_08004ED6|
 	EXPORT |sub_08004EDA|
 	EXPORT |loc_08004EF6|
-	EXPORT |sub_08004EF8|
-	EXPORT |sub_08004F06|
+	EXPORT |loc_08004EF8|
+	EXPORT |loc_08004F06|
 	EXPORT |loc_08004F1C|
 	EXPORT |loc_08004F34|
 	EXPORT |loc_08004F4C|
@@ -423,8 +423,8 @@
 	EXPORT |Blend_WriteControl1|
 	EXPORT |loc_0800540E|
 	EXPORT |loc_08005412|
-	EXPORT |sub_08005414|
-	EXPORT |sub_0800545E|
+	EXPORT |loc_08005414|
+	EXPORT |loc_0800545E|
 	EXPORT |loc_08005460|
 	EXPORT |sub_0800547E|
 	EXPORT |sub_080054BA|
@@ -574,7 +574,7 @@
 	EXPORT |sub_08006FFA|
 	EXPORT |loc_08007054|
 	EXPORT |loc_08007064|
-	EXPORT |sub_08007070|
+	EXPORT |loc_08007070|
 	EXPORT |sub_08007074|
 	EXPORT |loc_08007084|
 	EXPORT |loc_0800708A|
@@ -691,8 +691,8 @@
 	EXPORT |loc_08007E3A|
 	EXPORT |loc_08007E4C|
 	EXPORT |loc_08007E60|
-	EXPORT |sub_08007E64|
-	EXPORT |sub_08007E82|
+	EXPORT |loc_08007E64|
+	EXPORT |loc_08007E82|
 	EXPORT |loc_08007F9A|
 	EXPORT |loc_08007FA2|
 	EXPORT |loc_0800803A|
@@ -743,8 +743,8 @@
 	EXPORT |loc_080088DC|
 	EXPORT |loc_080088E4|
 	EXPORT |loc_08008992|
-	EXPORT |sub_08008994|
-	EXPORT |sub_0800899E|
+	EXPORT |loc_08008994|
+	EXPORT |loc_0800899E|
 	EXPORT |loc_080089A0|
 	EXPORT |sub_080089AE|
 	EXPORT |sub_080089CC|
@@ -787,8 +787,8 @@
 	EXPORT |loc_08008CD8|
 	EXPORT |loc_08008CEC|
 	EXPORT |loc_08008D02|
-	EXPORT |sub_08008D06|
-	EXPORT |sub_08008D12|
+	EXPORT |loc_08008D06|
+	EXPORT |loc_08008D12|
 	EXPORT |loc_08008D44|
 	EXPORT |loc_08008DD4|
 	EXPORT |sub_08008DE6|
@@ -935,7 +935,7 @@
 	EXPORT |loc_08009CF8|
 	EXPORT |loc_08009D0C|
 	EXPORT |loc_08009D14|
-	EXPORT |sub_08009D16|
+	EXPORT |loc_08009D16|
 	EXPORT |sub_08009D24|
 	EXPORT |sub_08009D6C|
 	EXPORT |sub_08009D70|
@@ -1072,8 +1072,8 @@
 	EXPORT |loc_0800B2E6|
 	EXPORT |loc_0800B2F4|
 	EXPORT |loc_0800B30C|
-	EXPORT |sub_0800B30E|
-	EXPORT |sub_0800B31A|
+	EXPORT |loc_0800B30E|
+	EXPORT |loc_0800B31A|
 	EXPORT |loc_0800B32C|
 	EXPORT |loc_0800B34C|
 	EXPORT |sub_0800B386|
@@ -1090,8 +1090,8 @@
 	EXPORT |loc_0800B692|
 	EXPORT |sub_0800B69E|
 	EXPORT |sub_0800B7B0|
-	EXPORT |sub_0800B7F6|
-	EXPORT |sub_0800B812|
+	EXPORT |loc_0800B7F6|
+	EXPORT |loc_0800B812|
 	EXPORT |sub_0800B828|
 	EXPORT |sub_0800B82C|
 	EXPORT |sub_0800B84A|
@@ -1201,8 +1201,8 @@
 	EXPORT |loc_0800C800|
 	EXPORT |loc_0800C810|
 	EXPORT |loc_0800C814|
-	EXPORT |sub_0800C82E|
-	EXPORT |sub_0800C856|
+	EXPORT |loc_0800C82E|
+	EXPORT |loc_0800C856|
 	EXPORT |loc_0800C874|
 	EXPORT |sub_0800C878|
 	EXPORT |sub_0800C8C2|
@@ -1293,8 +1293,8 @@
 	EXPORT |sub_0800D892|
 	EXPORT |loc_0800D8D0|
 	EXPORT |loc_0800D904|
-	EXPORT |sub_0800D90C|
-	EXPORT |sub_0800D916|
+	EXPORT |loc_0800D90C|
+	EXPORT |loc_0800D916|
 	EXPORT |loc_0800D918|
 	EXPORT |loc_0800D960|
 	EXPORT |sub_0800D97C|
@@ -1318,8 +1318,8 @@
 	EXPORT |loc_0800DC76|
 	EXPORT |loc_0800DC84|
 	EXPORT |loc_0800DC92|
-	EXPORT |sub_0800DCB2|
-	EXPORT |sub_0800DCD2|
+	EXPORT |loc_0800DCB2|
+	EXPORT |loc_0800DCD2|
 	EXPORT |loc_0800DCDC|
 	EXPORT |sub_0800DCF8|
 	EXPORT |sub_0800DD10|
@@ -1346,7 +1346,7 @@
 	EXPORT |sub_0800E02A|
 	EXPORT |loc_0800E030|
 	EXPORT |sub_0800E044|
-	EXPORT |sub_0800E062|
+	EXPORT |loc_0800E062|
 	EXPORT |sub_0800E074|
 	EXPORT |loc_0800E0C0|
 	EXPORT |loc_0800E0C2|
@@ -1370,7 +1370,7 @@
 	EXPORT |loc_0800E2D8|
 	EXPORT |loc_0800E2E2|
 	EXPORT |loc_0800E2F0|
-	EXPORT |sub_0800E396|
+	EXPORT |loc_0800E396|
 	EXPORT |sub_0800E3B2|
 	EXPORT |loc_0800E3E6|
 	EXPORT |loc_0800E444|
@@ -1446,8 +1446,8 @@
 	EXPORT |loc_0800EDA6|
 	EXPORT |loc_0800EDBA|
 	EXPORT |loc_0800EDC0|
-	EXPORT |sub_0800EDDC|
-	EXPORT |sub_0800EDF2|
+	EXPORT |loc_0800EDDC|
+	EXPORT |loc_0800EDF2|
 	EXPORT |loc_0800EDF8|
 	EXPORT |loc_0800EE0E|
 	EXPORT |loc_0800EE20|
@@ -1709,8 +1709,8 @@
 	EXPORT |loc_08011A6E|
 	EXPORT |loc_08011A76|
 	EXPORT |loc_08011A8A|
-	EXPORT |sub_08011A8C|
-	EXPORT |sub_08011A92|
+	EXPORT |loc_08011A8C|
+	EXPORT |loc_08011A92|
 	EXPORT |loc_08011AA0|
 	EXPORT |loc_08011AAE|
 	EXPORT |loc_08011AE6|
@@ -2945,11 +2945,11 @@
 	BL       |inc_0x03d784_0x041118| + 0x198c
 |loc_080008D6|
 	POP      {r3, pc}
-|sub_080008D8|
+|loc_080008D8|
 	DCW      0x4fbc
 	DCW      0x0805,0x82ec,0x086b,0xbce8,0x0806,0x2a60,0x0300,0x8f5d
 	DCW      0x0002,0x6eec,0x087b,0x92a8,0x0831,0x05c4,0x0000,0xb78c
-|sub_080008FA|
+|loc_080008FA|
 	LSR      r3, r7, #0x20
 	LDR      r0, [pc, #0x274]
 	LDR      r1, [r0, #8]
@@ -3561,11 +3561,11 @@
 	LDR      r0, [r0, #0x1c]
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	POP      {r4, r5, r6, pc}
-|sub_08000E02|
+|loc_08000E02|
 	DCW      0x0000
 	DCW      0x4fbc,0x0805,0x1004,0x0300,0xdeec,0x0804,0xc7d8,0x0804
 	DCW      0xd818,0x0804,0xe0e8
-|sub_08000E1A|
+|loc_08000E1A|
 	LSR      r4, r0, #0x20
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	LDR      r1, [r0]
@@ -4908,11 +4908,11 @@
 	LDR      r0, [r0, #0x1c]
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	POP      {r4, r5, r6, pc}
-|sub_0800191E|
+|loc_0800191E|
 	DCW      0x0000
 	DCW      0xbf14,0x0804,0x4fbc,0x0805,0xdd30,0x0804,0xc828,0x0804
 	DCW      0xc83c,0x0804,0xe268
-|sub_08001936|
+|loc_08001936|
 	LSR      r4, r0, #0x20
 	LDMIA    r0!, {r4, r6}
 	LSR      r4, r0, #0x20
@@ -5253,11 +5253,11 @@
 	LDR      r0, [r5, #0x1c]
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	POP      {r3, r4, r5, pc}
-|sub_08001C02|
+|loc_08001C02|
 	DCW      0x0000
 	DCW      0xdd58,0x0804,0x4fbc,0x0805,0xb940,0x0804,0xc864,0x0804
 	DCW      0xe0fc,0x0804,0xdeb4
-|sub_08001C1A|
+|loc_08001C1A|
 	LSR      r4, r0, #0x20
 	PUSH     {r3, r4, r5, lr}
 	LDR      r1, [r0]
@@ -5579,10 +5579,10 @@
 	BL       |inc_0x153f2_0x1a3f2| + 0x3f78
 	ADD      sp, #0xc
 	POP      {pc}
-|sub_08001EB0|
+|loc_08001EB0|
 	DCW      0x4fbc
 	DCW      0x0805,0xdeb4
-|sub_08001EB6|
+|loc_08001EB6|
 	LSR      r4, r0, #0x20
 	STMIA    r4!, {r2, r3, r4, r5}
 	LSR      r4, r0, #0x20
@@ -5912,11 +5912,11 @@
 	BL       |loc_08009030|
 	ADD      sp, #0x14
 	POP      {r4, r5, r6, r7, pc}
-|sub_0800215E|
+|loc_0800215E|
 	DCW      0x0000
 	DCW      0xb2a0,0x0804,0x4fbc,0x0805,0xc7ec,0x0804,0xe0d4,0x0804
 	DCW      0xd480,0x0804,0xd494,0x0804,0xe324
-|sub_0800217A|
+|loc_0800217A|
 	LSR      r4, r0, #0x20
 	BCC      |loc_08002180|
 	LSR      r4, r0, #0x20
@@ -7845,10 +7845,10 @@
 	LDR      r1, [r2]
 	BL       |sub_08012588|
 	POP      {r3, pc}
-|sub_080031B2|
+|loc_080031B2|
 	DCW      0x0000
 	DCW      0x4fbc,0x0805,0x1004,0x0300,0x9978,0x0804,0xb704
-|sub_080031C2|
+|loc_080031C2|
 	LSR      r1, r7, #1
 	ASR      r0, r6, #0x20
 	LSL      r0, r0, #0xc
@@ -11420,10 +11420,10 @@
 	BL       |inc_0x046118_0x049114| + 0x98c
 |loc_08004EF6|
 	POP      {r3, pc}
-|sub_08004EF8|
+|loc_08004EF8|
 	DCW      0x9354
 	DCW      0x0804,0x5620,0x0805,0x0040,0x0600,0xf800
-|sub_08004F06|
+|loc_08004F06|
 	LSL      r0, r0, #0x18
 	SUB      r3, r0, #6
 	LSL      r0, r0, #0
@@ -12046,14 +12046,14 @@
 	BL       |inc_0x03d784_0x041118| + 0x198c
 |loc_08005412|
 	POP      {r4, pc}
-|sub_08005414|
+|loc_08005414|
 	DCW      0xe3d4
 	DCW      0x083b,0x6a2c,0x0805,0x61cc,0x0805,0x0040,0x0600,0xd82c
 	DCW      0x0804,0x05c4,0x0000,0x9488,0x0831,0x920c,0x0804,0xbf28
 	DCW      0x0804,0xa430,0x0804,0x1914,0x0300,0x9b00,0x0804,0x0200
 	DCW      0x0500,0x0040,0x0400,0x1e83,0x0000,0x9640,0x0000,0xf000
 	DCW      0x0600,0x652c,0x0805,0xb78c
-|sub_0800545E|
+|loc_0800545E|
 	LSR      r3, r7, #0x20
 |loc_08005460|
 	PUSH     {r0, r1, r2, r3, r4, r5, r6, r7, lr}
@@ -15253,7 +15253,7 @@
 	LDR      r0, [r0, #4]
 	BL       |loc_0801157E|
 	POP      {r3, pc}
-|sub_08007070|
+|loc_08007070|
 	DCW      0x01a0
 	DCW      0x0807
 |sub_08007074|
@@ -17093,11 +17093,11 @@
 |loc_08007E60|
 	ADD      sp, #0x24
 	POP      {r4, r5, r6, r7, pc}
-|sub_08007E64|
+|loc_08007E64|
 	DCW      0x204c
 	DCW      0x0000,0x9410,0x0804,0x0808,0x0807,0xf7e4,0xffff,0x1008
 	DCW      0x0807,0x0804,0x0000,0x0824,0x0000,0xe000
-|sub_08007E82|
+|loc_08007E82|
 	LSL      r0, r0, #0x18
 	PUSH     {r4, r5, lr}
 	ADD      r4, r0, #0
@@ -18554,10 +18554,10 @@
 	STR      r5, [r0, #8]
 |loc_08008992|
 	POP      {r3, r4, r5, pc}
-|sub_08008994|
+|loc_08008994|
 	DCW      0x98b0
 	DCW      0x0804,0xf800,0xffff,0xe000
-|sub_0800899E|
+|loc_0800899E|
 	LSL      r0, r0, #0x18
 |loc_080089A0|
 	PUSH     {lr}
@@ -18976,10 +18976,10 @@
 |loc_08008D02|
 	ADD      sp, #0xec
 	POP      {r4, r5, r6, r7, pc}
-|sub_08008D06|
+|loc_08008D06|
 	DCW      0x0000
 	DCW      0x16a0,0x0807,0x1004,0x0300,0xb78c
-|sub_08008D12|
+|loc_08008D12|
 	LSR      r3, r7, #0x20
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r4, r0, #0
@@ -21032,7 +21032,7 @@
 	BGT      |loc_08009CD2|
 |loc_08009D14|
 	POP      {r3, r4, r5, r6, r7, pc}
-|sub_08009D16|
+|loc_08009D16|
 	DCW      0x0000
 	DCW      0xe444,0x0804,0xeffc,0xffff,0x1004,0x0000
 |sub_08009D24|
@@ -23884,10 +23884,10 @@
 	BL       |GBARam_Free|
 |loc_0800B30C|
 	POP      {r3, r4, r5, r6, r7, pc}
-|sub_0800B30E|
+|loc_0800B30E|
 	DCW      0x0000
 	DCW      0x1720,0x0807,0xb0a9,0x0800,0xe454
-|sub_0800B31A|
+|loc_0800B31A|
 	LSR      r4, r0, #0x20
 	STR      r6, [sp, #0x2d0]
 	LSR      r4, r0, #0x20
@@ -24519,11 +24519,11 @@
 	ADD      sp, #0xc
 	MOV      r0, #0
 	POP      {r4, r5, r6, r7, pc}
-|sub_0800B7F6|
+|loc_0800B7F6|
 	DCW      0x0000
 	DCW      0x1c90,0x0807,0x0000,0x0601,0x44d8,0x0871,0x2000,0x405c
 	DCW      0x9680,0x0804,0xb4d8,0x0804,0xf70d
-|sub_0800B812|
+|loc_0800B812|
 	LSR      r3, r0, #0x20
 	STRH     r4, [r5, #0x16]
 	LSR      r3, r5, #1
@@ -26621,12 +26621,12 @@
 	BL       |loc_080119BC|
 	ADD      r0, r5, #0
 	POP      {r4, r5, r6, pc}
-|sub_0800C82E|
+|loc_0800C82E|
 	DCW      0x0000
 	DCW      0x2550,0x0807,0x268c,0x0807,0x1010,0x0300,0x1018,0x0300
 	DCW      0xefec,0xffff,0x1014,0x0000,0xce00,0x0804,0x1008,0x0000
 	DCW      0x0000,0x0601,0xe454
-|sub_0800C856|
+|loc_0800C856|
 	LSR      r4, r0, #0x20
 	PUSH     {r4, r5, r6, lr}
 	ADD      r4, r0, #0
@@ -28747,10 +28747,10 @@
 	ADD      r0, r5, #0
 	BL       |sub_08011568|
 	POP      {r3, r4, r5, pc}
-|sub_0800D90C|
+|loc_0800D90C|
 	DCW      0x2588
 	DCW      0x0807,0x0000,0x0601,0xffff
-|sub_0800D916|
+|loc_0800D916|
 	LSL      r0, r0, #0
 |loc_0800D918|
 	PUSH     {r4, r5, lr}
@@ -29225,11 +29225,11 @@
 	LDR      r3, [pc, #0x28]
 	ADD      sp, r3
 	POP      {r4, r5, r6, r7, pc}
-|sub_0800DCB2|
+|loc_0800DCB2|
 	DCW      0x0000
 	DCW      0x0000,0x0601,0x9680,0x0804,0x259c,0x0807,0xa85c,0x0804
 	DCW      0x1afc,0x0300,0xffff,0x0000,0xe454,0x0804,0xffff
-|sub_0800DCD2|
+|loc_0800DCD2|
 	DCW      0xfe00
 	DCW      0xefd4,0xffff,0x1034
 	LSL      r0, r0, #0
@@ -29690,7 +29690,7 @@
 	MOV      r1, #0
 	BL       |inc_0x046118_0x049114| + 0x98c
 	POP      {r3, pc}
-|sub_0800E062|
+|loc_0800E062|
 	DCW      0x0000
 	DCW      0x1b00,0x0300,0x25b8,0x0807,0x92a8,0x0831,0x05c4,0x0000
 |sub_0800E074|
@@ -30106,7 +30106,7 @@
 	ADD      r1, #0x80
 	STR      r1, [r0, #0x3c]
 	POP      {r3, r4, r5, pc}
-|sub_0800E396|
+|loc_0800E396|
 	DCW      0x0000
 	DCW      0x2b44,0x0300,0xd028,0x0877,0x82ec,0x086b,0x25e0,0x0807
 	DCW      0x07ae,0x0000,0x0ccd,0x0000,0xe70e
@@ -31405,11 +31405,11 @@
 	ADD      r1, r4, #0
 	BL       |inc_0x046118_0x049114| + 0x98c
 	POP      {r4, pc}
-|sub_0800EDDC|
+|loc_0800EDDC|
 	DCW      0x9680
 	DCW      0x0804,0x25e8,0x0807,0xac20,0x0804,0x1ba8,0x0300,0xffff
 	DCW      0x0000,0xe454
-|sub_0800EDF2|
+|loc_0800EDF2|
 	LSR      r4, r0, #0x20
 	SUB      r0, r0, r4
 	LSL      r0, r0, #0xc
@@ -37242,10 +37242,10 @@
 	BPL      |loc_08011A76|
 |loc_08011A8A|
 	POP      {r3, r4, r5, r6, r7, pc}
-|sub_08011A8C|
+|loc_08011A8C|
 	DCW      0x2824
 	DCW      0x0807,0xffff
-|sub_08011A92|
+|loc_08011A92|
 	LSL      r0, r0, #0
 	ADD      r3, sp, #0x280
 	LSR      r4, r0, #0x20

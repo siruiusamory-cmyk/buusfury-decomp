@@ -59,6 +59,13 @@ def a_root(root, iwram=IWRAM, ledger="", asm="", header=HEADER):
             handle.write(text)
 
 
+def a_census(root, text):
+    path = os.path.join(root, *export_inputs.CENSUS.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="ascii", newline="\n") as handle:
+        handle.write(text)
+
+
 def test_the_copy_length_is_the_crt0_count_word_and_the_iwram_block(tmp_path):
     a_root(str(tmp_path))
     found, blocks = export_inputs.copies(str(tmp_path))
@@ -85,13 +92,42 @@ def test_a_label_at_a_code_row_is_a_function_and_the_others_are_entries(tmp_path
            "\tEXPORT |sub_08000104|\n"
            "\tCODE32\n"
            "\tEXPORT |sub_0800010c|\n")
+    census = ("address,kind,limb,parent\n"
+              "0x08000100,start,block,\n"
+              "0x08000102,block,,0x08000100\n"
+              "0x08000104,start,prologue,\n")
     a_root(str(tmp_path), ledger=ledger, asm=asm)
+    a_census(str(tmp_path), census)
     rows = export_inputs.code_rows(str(tmp_path))
     names = export_inputs.labels(str(tmp_path))
     assert export_inputs.functions(rows, names) == [
         (0x100, 4, "thumb", "sub_08000100"),
         (0x104, 8, "thumb", "sub_08000104")]
     assert export_inputs.entries(rows, names) == [(0x102, "thumb"), (0x10C, "arm")]
+
+
+def test_a_crafted_relabel_moves_no_address_out_of_the_export(tmp_path):
+    ledger = ("0x100,4,thumb,code_a,b,t,p,4\n"
+              "0x104,8,thumb,code_b,b,t,p,8\n")
+    census = ("address,kind,limb,parent\n"
+              "0x08000100,start,block,\n"
+              "0x08000104,start,prologue,\n"
+              "0x08000106,block,,0x08000104\n")
+    spelled = ("\tCODE16\n"
+               "\tEXPORT |sub_08000100|\n"
+               "|sub_08000100|\n"
+               "\tEXPORT |sub_08000104|\n"
+               "\tEXPORT |%s_08000106|\n")
+    a_root(str(tmp_path), ledger=ledger, asm=spelled % "sub")
+    a_census(str(tmp_path), census)
+    before = export_inputs.census_entries(str(tmp_path))
+    names = export_inputs.labels(str(tmp_path))
+    assert 0x106 in [off for off, _name in names.items()]
+    a_root(str(tmp_path), ledger=ledger, asm=spelled % "loc")
+    after = export_inputs.census_entries(str(tmp_path))
+    assert 0x106 not in export_inputs.labels(str(tmp_path))
+    assert before == after
+    assert 0x106 in [off for off, _kind in after]
 
 
 def test_a_promoted_name_is_a_label_at_the_address_the_ledger_gives_it(tmp_path):

@@ -5,8 +5,8 @@
 	INCBIN	baserom.gba_0x153f2_0x15470.extracted
 	CODE16
 	EXPORT |sub_08015472|
-	EXPORT |sub_080154AC|
-	EXPORT |sub_080154B4|
+	EXPORT |loc_080154AC|
+	EXPORT |loc_080154B4|
 	EXPORT |loc_080154C8|
 	EXPORT |sub_08015596|
 	EXPORT |loc_080155C0|
@@ -218,7 +218,7 @@
 	EXPORT |sub_08018340|
 	EXPORT |sub_08018346|
 	EXPORT |loc_08018384|
-	EXPORT |sub_08018386|
+	EXPORT |loc_08018386|
 	EXPORT |sub_08018392|
 	EXPORT |loc_080183AC|
 	EXPORT |loc_080183B4|
@@ -322,8 +322,8 @@
 	EXPORT |loc_080191E4|
 	EXPORT |loc_0801920A|
 	EXPORT |loc_08019230|
-	EXPORT |sub_08019234|
-	EXPORT |sub_0801923A|
+	EXPORT |loc_08019234|
+	EXPORT |loc_0801923A|
 	EXPORT |loc_08019264|
 	EXPORT |sub_08019268|
 	EXPORT |sub_0801926C|
@@ -436,8 +436,8 @@
 	EXPORT |sub_08019F5A|
 	EXPORT |Bios_Diff16Unfilter|
 	EXPORT |loc_08019FAC|
-	EXPORT |sub_08019FC0|
-	EXPORT |sub_08019FE6|
+	EXPORT |loc_08019FC0|
+	EXPORT |loc_08019FE6|
 	EXPORT |sub_08019FFC|
 	EXPORT |sub_0801A014|
 	EXPORT |loc_0801A050|
@@ -497,10 +497,10 @@
 	LDR      r3, [pc, #0x28]
 	ADD      sp, r3
 	POP      {r4, r5, r6, r7, pc}
-|sub_080154AC|
+|loc_080154AC|
 	DCW      0x8048
 	DCW      0x086b,0xeffc,0xffff
-|sub_080154B4|
+|loc_080154B4|
 	DCW      0xf5a5
 	DCW      0x0803
 	STRH     r4, [r5, #0x16]
@@ -6286,7 +6286,7 @@
 	BL       |inc_0x0158_0x143f2| + 0x117c2
 |loc_08018384|
 	POP      {r3, r4, r5, r6, r7, pc}
-|sub_08018386|
+|loc_08018386|
 	DCW      0x0000
 	DCW      0x0000,0x0601,0xc23c,0x086f,0xffff
 |sub_08018392|
@@ -8175,10 +8175,10 @@
 |loc_08019230|
 	ADD      r0, r4, #0
 	POP      {r4, r5, r6, pc}
-|sub_08019234|
+|loc_08019234|
 	DCW      0xbda8
 	DCW      0x0804,0xb6d0
-|sub_0801923A|
+|loc_0801923A|
 	LSR      r4, r0, #0x20
 	ADD      r7, pc, #0x40
 	LSR      r4, r0, #0x20
@@ -9977,12 +9977,12 @@
 	ADD      r0, r5, #0
 	BL       |inc_0x0158_0x143f2| + 0xebc0
 	POP      {r3, r4, r5, pc}
-|sub_08019FC0|
+|loc_08019FC0|
 	DCW      0xda98
 	DCW      0x0871,0xde7c,0x0804,0x3284,0x0300,0xd05c,0x0804,0xe244
 	DCW      0x0804,0xdf18,0x0804,0xd9b0,0x0804,0xe2d8,0x0804,0x0ccd
 	DCW      0x0000,0xffff
-|sub_08019FE6|
+|loc_08019FE6|
 	LSL      r0, r0, #0
 	BGT      |sub_0801A014|
 	LSR      r4, r0, #0x20

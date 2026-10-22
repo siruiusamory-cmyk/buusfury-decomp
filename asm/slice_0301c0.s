@@ -41,8 +41,8 @@
 	EXPORT |sub_08030950|
 	EXPORT |loc_08030992|
 	EXPORT |loc_080309CE|
-	EXPORT |sub_080309D6|
-	EXPORT |sub_080309E6|
+	EXPORT |loc_080309D6|
+	EXPORT |loc_080309E6|
 	EXPORT |sub_08030A0C|
 	EXPORT |sub_08030A42|
 	EXPORT |loc_08030A64|
@@ -71,8 +71,8 @@
 	EXPORT |loc_08030FB2|
 	EXPORT |sub_08030FB4|
 	EXPORT |sub_08030FB8|
-	EXPORT |sub_08030FE6|
-	EXPORT |sub_08030FFA|
+	EXPORT |loc_08030FE6|
+	EXPORT |loc_08030FFA|
 	EXPORT |sub_0803101A|
 |sub_080301C0|
 	MOV      r3, #0xf3
@@ -1108,10 +1108,10 @@
 	POP      {r4, r5, r6, r7}
 	MOV      r0, #0
 	BX       lr
-|sub_080309D6|
+|loc_080309D6|
 	DCW      0x0000
 	DCW      0x9680,0x0804,0x81e4,0x0875,0xaf78,0x0804,0xf70d
-|sub_080309E6|
+|loc_080309E6|
 	LSR      r3, r0, #0x20
 	LSL      r0, r0, #0
 	LSL      r1, r0, #0x18
@@ -1892,11 +1892,11 @@
 	ADD      sp, #8
 	POP      {r4}
 	BX       lr
-|sub_08030FE6|
+|loc_08030FE6|
 	DCW      0x0000
 	DCW      0x0b6d,0x0803,0x9154,0x0875,0xabd8,0x0804,0x0040,0x0400
 	DCW      0xe454
-|sub_08030FFA|
+|loc_08030FFA|
 	LSR      r4, r0, #0x20
 	CMP      r2, #0x60
 	LSL      r0, r0, #0xc

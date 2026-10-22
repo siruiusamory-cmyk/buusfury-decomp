@@ -547,6 +547,15 @@ def rebuild(quiet=False):
     return 0
 
 
+def census_check():
+    proc = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "research",
+                                                       "function_bounds.py"), "--check"],
+                          cwd=ROOT, capture_output=True, text=True)
+    for line in proc.stdout.strip().splitlines() or ["BOUNDS FAIL: no output"]:
+        print(line)
+    return proc.returncode
+
+
 def main():
     if len(sys.argv) == 4 and sys.argv[1] == "--compare":
         a = open(sys.argv[2], "rb").read()
@@ -568,6 +577,10 @@ def main():
         print("GATE FAIL: %d lint finding(s)" % len(findings))
         return 1
     print("LINT PASS %s" % ",".join(lints.CHECKS))
+
+    if census_check() != 0:
+        print("GATE FAIL: the function-bounds census is not what the image gives")
+        return 1
 
     if cold and cold_start() != 0:
         return 1

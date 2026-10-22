@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import os
+import re
 import sys
 
 import written
@@ -13,8 +15,10 @@ ENTRY_PC = 0x08000000
 INPUTS = os.path.join("docs", "research", "RECOMP_INPUTS.toml")
 NAMES = os.path.join("docs", "research", "RECOMP_NAMES.csv")
 OUT = os.path.join("docs", "research", "BF_LABELS.toml")
+CENSUS = os.path.join("docs", "research", "FUNCTION_BOUNDS.csv")
 ROM = os.path.join(ROOT, "baserom.gba")
 NAME_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_")
+ADDRESS_FORM = re.compile(r"^(?:sub|loc|dat|unk|g)_[0-9A-F]{8}$")
 
 
 def blocks(text, kind):
@@ -45,8 +49,17 @@ def roots(root=ROOT):
     return out
 
 
-def house(addr):
-    return "sub_%08X" % addr
+def interior_blocks(root=ROOT):
+    path = os.path.join(root, *CENSUS.split("/"))
+    if not os.path.exists(path):
+        return frozenset()
+    with open(path, newline="", encoding="utf-8") as handle:
+        return frozenset(int(row["address"], 16) for row in csv.DictReader(handle)
+                         if row["kind"] == "block")
+
+
+def house(addr, interior=frozenset()):
+    return "%s_%08X" % ("loc" if addr in interior else "sub", addr)
 
 
 def names(root=ROOT):
@@ -80,11 +93,12 @@ def names(root=ROOT):
 def label_set(root=ROOT):
     table = roots(root)
     named = names(root)
+    interior = interior_blocks(root)
     for addr in named:
         if addr not in table:
             raise SystemExit("%s names 0x%08X, which no export entry carries"
                              % (NAMES, addr))
-    return [(addr, table[addr][0], table[addr][1], named.get(addr) or house(addr))
+    return [(addr, table[addr][0], table[addr][1], named.get(addr) or house(addr, interior))
             for addr in sorted(table)]
 
 
@@ -114,10 +128,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     text = render()
     table = label_set()
-    named = sum(1 for row in table if not row[3].startswith("sub_"))
+    named = sum(1 for row in table if not ADDRESS_FORM.match(row[3]))
     print("functions = %d" % len(table))
     print("named = %d" % named)
     print("house named = %d" % (len(table) - named))
+    print("interior blocks = %d" % sum(1 for row in table if row[3].startswith("loc_")))
     return written.emit(args, text, os.path.join(ROOT, OUT),
                         "the label file is the one the export and the harvest derive")
 

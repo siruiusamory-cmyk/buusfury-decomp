@@ -2,7 +2,7 @@
 	CODE16
 	EXPORT |sub_0802BB4C|
 	EXPORT |loc_0802BB7C|
-	EXPORT |sub_0802BBFA|
+	EXPORT |loc_0802BBFA|
 	EXPORT |sub_0802BC1A|
 	EXPORT |sub_0802BC40|
 	EXPORT |loc_0802BC64|
@@ -197,7 +197,7 @@
 	ADD      sp, #0xc
 	MOV      r0, #0
 	POP      {r4, r5, r6, r7, pc}
-|sub_0802BBFA|
+|loc_0802BBFA|
 	DCW      0x0000
 	DCW      0x0000,0x0601,0x3008,0x0875,0x9680,0x0804,0xb400,0x0804
 	DCW      0xffff,0x7fff,0x0271,0x0000,0xf424,0x0000,0xffff

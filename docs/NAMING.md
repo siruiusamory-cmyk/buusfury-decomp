@@ -10,17 +10,23 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
 - Names are unique across the link, because the symbol text is emitted verbatim into the image.
 - `asm/` exports follow the same two forms, and `tools\lint\lints.py` enforces them
   (`NAMING-asm-symbol`): every export is `Module_Verb` or `sub_`/`loc_`/`dat_`/`unk_`/`g_` and eight
-  hex digits equal to the symbol's own address. `inc_0x<file start>_0x<file end>` is the one other
-  admitted form: it names a raw slice by its extent, and nothing renames it. The third form is the
-  library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
+  hex digits equal to the symbol's own address. A `loc_` on a function start and a `sub_` on an
+  interior block are both wrong: `docs/research/FUNCTION_BOUNDS.csv` carries the kind of every
+  exported code address, and the same check reads it. `inc_0x<file start>_0x<file end>` is the one
+  other admitted form: it names a raw slice by its extent, and nothing renames it. The third form is
+  the library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
   `toolchain-library` row of the ledger carries.
-- The count of address-named exports is held in `docs/NAMING_BASELINE.txt` and may only fall
-  (`NAMING-address-ratchet`): the count may exceed the baseline only by exactly one address-named
-  symbol per retired name (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other
-  difference fails until the baseline is lowered to the measured figure in the same tree. A name
-  is retired when its quoted evidence lies outside the function it was bound to: the export
-  returns to its address form and the ledger row leaves. README's "<a> of the <b> symbols"
-  sentence is the same two figures (`README-numbers`).
+- The count of address-named function symbols is held in `docs/NAMING_BASELINE.txt` and may only
+  fall (`NAMING-address-ratchet`): a function symbol is an `asm/` export whose address
+  `docs/research/FUNCTION_BOUNDS.csv` records as a start, so a block and a data address are outside
+  the count. It may exceed the baseline only by exactly one address-named symbol per retired name
+  (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference fails until the
+  baseline is lowered to the measured figure in the same tree. A name is retired when its quoted
+  evidence lies outside the function it was bound to: the export returns to its address form and the
+  ledger row leaves. README's "<a> of the <b> functions" sentence is the same two figures
+  (`README-numbers`).
+- `NAMING-asm-symbol` refuses `sub_` and `Module_Verb` on an interior block: a name of either form
+  claims a function, and the census proved that address is inside one.
 
 ## Evidence for a name
 

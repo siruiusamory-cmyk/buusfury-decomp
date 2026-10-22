@@ -1503,18 +1503,18 @@
 	EXPORT |sub_0804822A|
 	EXPORT |sub_08048238|
 	EXPORT |sub_0804823A|
-	EXPORT |sub_08048248|
-	EXPORT |sub_0804824E|
+	EXPORT |loc_08048248|
+	EXPORT |loc_0804824E|
 	EXPORT |sub_080482A0|
 	EXPORT |sub_080482A2|
 	EXPORT |sub_080482AC|
 	EXPORT |sub_080482AE|
 	EXPORT |sub_080482BC|
 	EXPORT |sub_080482BE|
-	EXPORT |sub_08048346|
-	EXPORT |sub_0804835E|
-	EXPORT |sub_080483C4|
-	EXPORT |sub_080483F6|
+	EXPORT |loc_08048346|
+	EXPORT |loc_0804835E|
+	EXPORT |loc_080483C4|
+	EXPORT |loc_080483F6|
 	EXPORT |sub_08048400|
 	EXPORT |sub_08048402|
 	EXPORT |sub_0804840C|
@@ -1526,8 +1526,8 @@
 	EXPORT |loc_0804848C|
 	EXPORT |sub_08048490|
 	EXPORT |sub_08048492|
-	EXPORT |sub_080484C0|
-	EXPORT |sub_080484DA|
+	EXPORT |loc_080484C0|
+	EXPORT |loc_080484DA|
 	EXPORT |loc_080484E0|
 	EXPORT |sub_080484E4|
 	EXPORT |sub_080484E6|
@@ -1565,8 +1565,8 @@
 	EXPORT |loc_080486A4|
 	EXPORT |loc_080486AC|
 	EXPORT |loc_080486B8|
-	EXPORT |sub_080486DE|
-	EXPORT |sub_080486E6|
+	EXPORT |loc_080486DE|
+	EXPORT |loc_080486E6|
 	EXPORT |sub_08048716|
 	EXPORT |sub_0804871A|
 	EXPORT |sub_08048732|
@@ -1601,8 +1601,8 @@
 	EXPORT |sub_08048906|
 	EXPORT |loc_08048928|
 	EXPORT |loc_08048930|
-	EXPORT |sub_0804893A|
-	EXPORT |sub_08048942|
+	EXPORT |loc_0804893A|
+	EXPORT |loc_08048942|
 	EXPORT |sub_08048950|
 	EXPORT |sub_08048952|
 	EXPORT |sub_08048960|
@@ -1613,8 +1613,8 @@
 	EXPORT |sub_0804898E|
 	EXPORT |sub_080489A0|
 	EXPORT |sub_080489A2|
-	EXPORT |sub_080489B4|
-	EXPORT |sub_080489BA|
+	EXPORT |loc_080489B4|
+	EXPORT |loc_080489BA|
 	EXPORT |sub_08048A02|
 	EXPORT |sub_08048A06|
 	EXPORT |sub_08048A18|
@@ -1628,23 +1628,23 @@
 	EXPORT |sub_08048A56|
 	EXPORT |loc_08048A58|
 	EXPORT |loc_08048A68|
-	EXPORT |sub_08048A72|
-	EXPORT |sub_08048A7A|
+	EXPORT |loc_08048A72|
+	EXPORT |loc_08048A7A|
 	EXPORT |loc_08048A84|
 	EXPORT |sub_08048A88|
 	EXPORT |sub_08048A8A|
 	EXPORT |loc_08048A94|
 	EXPORT |sub_08048A98|
 	EXPORT |sub_08048A9A|
-	EXPORT |sub_08048AA4|
-	EXPORT |sub_08048AAA|
+	EXPORT |loc_08048AA4|
+	EXPORT |loc_08048AAA|
 	EXPORT |sub_08048AB4|
 	EXPORT |sub_08048AB6|
 	EXPORT |loc_08048AC0|
 	EXPORT |sub_08048AC4|
 	EXPORT |sub_08048AC6|
-	EXPORT |sub_08048AD4|
-	EXPORT |sub_08048ADA|
+	EXPORT |loc_08048AD4|
+	EXPORT |loc_08048ADA|
 	EXPORT |sub_08048AE4|
 	EXPORT |sub_08048AE6|
 	EXPORT |sub_08048AF4|
@@ -1660,8 +1660,8 @@
 	EXPORT |sub_08048B7A|
 	EXPORT |loc_08048B80|
 	EXPORT |loc_08048B98|
-	EXPORT |sub_08048BA8|
-	EXPORT |sub_08048BAE|
+	EXPORT |loc_08048BA8|
+	EXPORT |loc_08048BAE|
 	EXPORT |sub_08048BBE|
 	EXPORT |sub_08048BC2|
 	EXPORT |sub_08048BD4|
@@ -1681,14 +1681,14 @@
 	EXPORT |sub_08048C86|
 	EXPORT |loc_08048C88|
 	EXPORT |loc_08048CA4|
-	EXPORT |sub_08048CBA|
-	EXPORT |sub_08048CC6|
-	EXPORT |sub_08048CD6|
-	EXPORT |sub_08048CE2|
-	EXPORT |sub_08048CEC|
-	EXPORT |sub_08048CF2|
-	EXPORT |sub_08048CFC|
-	EXPORT |sub_08048D02|
+	EXPORT |loc_08048CBA|
+	EXPORT |loc_08048CC6|
+	EXPORT |loc_08048CD6|
+	EXPORT |loc_08048CE2|
+	EXPORT |loc_08048CEC|
+	EXPORT |loc_08048CF2|
+	EXPORT |loc_08048CFC|
+	EXPORT |loc_08048D02|
 	EXPORT |sub_08048D0C|
 	EXPORT |sub_08048D0E|
 	EXPORT |sub_08048D1C|
@@ -1703,12 +1703,12 @@
 	EXPORT |sub_08048D62|
 	EXPORT |sub_08048D70|
 	EXPORT |sub_08048D72|
-	EXPORT |sub_08048D80|
-	EXPORT |sub_08048D86|
+	EXPORT |loc_08048D80|
+	EXPORT |loc_08048D86|
 	EXPORT |sub_08048D90|
 	EXPORT |sub_08048D92|
-	EXPORT |sub_08048DA0|
-	EXPORT |sub_08048DA6|
+	EXPORT |loc_08048DA0|
+	EXPORT |loc_08048DA6|
 	EXPORT |sub_08048DB0|
 	EXPORT |sub_08048DB2|
 	EXPORT |loc_08048DB4|
@@ -1725,8 +1725,8 @@
 	EXPORT |sub_08048E46|
 	EXPORT |sub_08048E54|
 	EXPORT |sub_08048E56|
-	EXPORT |sub_08048E6A|
-	EXPORT |sub_08048E76|
+	EXPORT |loc_08048E6A|
+	EXPORT |loc_08048E76|
 	EXPORT |sub_08048E84|
 	EXPORT |sub_08048E86|
 	EXPORT |loc_08048EA2|
@@ -2019,10 +2019,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048248|
+|loc_08048248|
 	DCW      0x1964
 	DCW      0x0300,0xbe08
-|sub_0804824E|
+|loc_0804824E|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #0xc]
 	MOV      r0, #0
@@ -2154,11 +2154,11 @@
 	STR      r0, [r1]
 	POP      {r4}
 	BX       lr
-|sub_08048346|
+|loc_08048346|
 	DCW      0x0000
 	DCW      0x985c,0x0804,0x1b00,0x0300,0xa188,0x0804,0xd784,0x0804
 	DCW      0xc720,0x0804,0xe0ac
-|sub_0804835E|
+|loc_0804835E|
 	LSR      r4, r0, #0x20
 	ADR      r7, |loc_08048424|
 	LSR      r4, r0, #0x20
@@ -2210,12 +2210,12 @@
 	ADD      r1, #4
 	STR      r0, [r1]
 	BX       lr
-|sub_080483C4|
+|loc_080483C4|
 	DCW      0xc464
 	DCW      0x0804,0x1b60,0x0300,0xda40,0x0804,0xdf3c,0x0804,0xe110
 	DCW      0x0804,0xda50,0x0804,0xe194,0x0804,0xc474,0x0804,0xcd8c
 	DCW      0x0804,0xd868,0x0804,0xe054,0x0804,0xe40c,0x0804,0xe374
-|sub_080483F6|
+|loc_080483F6|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	MOV      r0, #0
@@ -2333,11 +2333,11 @@
 	LDR      r0, [pc, #0x18]
 	STR      r0, [r1]
 	BX       lr
-|sub_080484C0|
+|loc_080484C0|
 	DCW      0xc384
 	DCW      0x0804,0x2b38,0x0300,0xbef0,0x0804,0xc790,0x0804,0xc3a8
 	DCW      0x0804,0xe00c,0x0804,0x4770
-|sub_080484DA|
+|loc_080484DA|
 	LSL      r0, r0, #0
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -2648,10 +2648,10 @@
 	SUB      r1, #4
 	STR      r0, [r1]
 	BX       lr
-|sub_080486DE|
+|loc_080486DE|
 	DCW      0x0000
 	DCW      0x3014,0x0300,0xb740
-|sub_080486E6|
+|loc_080486E6|
 	LSR      r4, r0, #0x20
 	ADR      r0, |loc_08048A2C|
 	LSR      r4, r0, #0x20
@@ -2999,10 +2999,10 @@
 	SUB      r1, #4
 	STR      r0, [r1]
 	BX       lr
-|sub_0804893A|
+|loc_0804893A|
 	DCW      0x0000
 	DCW      0x30ec,0x0300,0xb7d0
-|sub_08048942|
+|loc_08048942|
 	LSR      r4, r0, #0x20
 	ADR      r1, |loc_08048A68|
 	LSR      r4, r0, #0x20
@@ -3074,10 +3074,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_080489B4|
+|loc_080489B4|
 	DCW      0x3118
 	DCW      0x0300,0xb840
-|sub_080489BA|
+|loc_080489BA|
 	LSR      r4, r0, #0x20
 	LDR      r0, [pc, #0xc]
 	LDR      r1, [pc, #0x10]
@@ -3187,10 +3187,10 @@
 	SUB      r1, #4
 	STR      r0, [r1]
 	BX       lr
-|sub_08048A72|
+|loc_08048A72|
 	DCW      0x0000
 	DCW      0x3158,0x0300,0xb788
-|sub_08048A7A|
+|loc_08048A7A|
 	LSR      r4, r0, #0x20
 	ADR      r1, |loc_08048AC0|
 	LSR      r4, r0, #0x20
@@ -3220,10 +3220,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048AA4|
+|loc_08048AA4|
 	DCW      0x31f8
 	DCW      0x0300,0xbd78
-|sub_08048AAA|
+|loc_08048AAA|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -3253,10 +3253,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048AD4|
+|loc_08048AD4|
 	DCW      0x3204
 	DCW      0x0300,0xb710
-|sub_08048ADA|
+|loc_08048ADA|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -3381,10 +3381,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048BA8|
+|loc_08048BA8|
 	DCW      0x3244
 	DCW      0x0300,0xbd68
-|sub_08048BAE|
+|loc_08048BAE|
 	LSR      r4, r0, #0x20
 	LDR      r0, [pc, #0xc]
 	LDR      r1, [pc, #0x10]
@@ -3544,10 +3544,10 @@
 	ADD      r1, #8
 	STR      r0, [r1]
 	BX       lr
-|sub_08048CBA|
+|loc_08048CBA|
 	DCW      0x0000
 	DCW      0xcff0,0x0804,0x3294,0x0300,0xb630
-|sub_08048CC6|
+|loc_08048CC6|
 	LSR      r4, r0, #0x20
 	LDR      r0, [pc, #0xc]
 	LDR      r1, [pc, #0x10]
@@ -3556,28 +3556,28 @@
 	ADD      r1, #4
 	STR      r0, [r1]
 	BX       lr
-|sub_08048CD6|
+|loc_08048CD6|
 	DCW      0x0000
 	DCW      0xd014,0x0804,0x32a0,0x0300,0xb668
-|sub_08048CE2|
+|loc_08048CE2|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048CEC|
+|loc_08048CEC|
 	DCW      0x32a8
 	DCW      0x0300,0xb688
-|sub_08048CF2|
+|loc_08048CF2|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048CFC|
+|loc_08048CFC|
 	DCW      0x32ac
 	DCW      0x0300,0xcb00
-|sub_08048D02|
+|loc_08048D02|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -3662,10 +3662,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048D80|
+|loc_08048D80|
 	DCW      0x32d0
 	DCW      0x0300,0xb81c
-|sub_08048D86|
+|loc_08048D86|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -3682,10 +3682,10 @@
 	LDR      r0, [pc, #8]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048DA0|
+|loc_08048DA0|
 	DCW      0x32d8
 	DCW      0x0300,0xde24
-|sub_08048DA6|
+|loc_08048DA6|
 	LSR      r4, r0, #0x20
 	LDR      r1, [pc, #4]
 	LDR      r0, [pc, #8]
@@ -3807,10 +3807,10 @@
 	LDR      r0, [pc, #0xc]
 	STR      r0, [r1]
 	BX       lr
-|sub_08048E6A|
+|loc_08048E6A|
 	DCW      0x0000
 	DCW      0x9af0,0x0804,0x1c44,0x0300,0xe454
-|sub_08048E76|
+|loc_08048E76|
 	LSR      r4, r0, #0x20
 	CMP      r2, #0x4c
 	LSL      r0, r0, #0xc

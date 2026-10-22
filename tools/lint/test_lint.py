@@ -120,7 +120,7 @@ CRAFTED_LEDGER = ("address,old,new,evidence_class,evidence\n"
                   "0x08046B28,sub_08046B28,strlen,toolchain-library,armlib/c_t__un.l\n"
                   "0x08046B84,sub_08046B84,memcpy,caller-role,page\n")
 ASM_CONSTANT = "unk_03003014    EQU     0x03003014\n\tEXPORT  unk_03003014\n"
-README_SYMBOL_LINE = MEASURED_PROGRESS + " 6,739 of the 6,740 symbols"
+README_SYMBOL_LINE = MEASURED_PROGRESS + " 6,739 of the 6,740 functions"
 
 
 def refused(text, name, check):
@@ -328,6 +328,30 @@ def test_an_address_form_whose_digits_are_not_its_own_address_is_caught():
 def test_a_library_symbol_is_caught_without_its_toolchain_library_row():
     assert lints.asm_symbol_findings(exported(ASM_LIBRARY), {}, library=())
     assert not lints.asm_symbol_findings(exported(ASM_LIBRARY), {}, library={"strlen"})
+
+
+def test_a_sub_name_on_an_interior_block_is_caught():
+    assert lints.block_findings(exported("\tEXPORT |sub_08001000|\n"), {}, {0x08001000})
+    assert not lints.block_findings(exported("\tEXPORT |sub_08001000|\n"), {}, {0x08001002})
+
+
+def test_a_module_verb_name_on_an_interior_block_is_caught():
+    assert lints.block_findings(exported("\tEXPORT |Unit_DoIt|\n"),
+                                {"Unit_DoIt": 0x08001000}, {0x08001000})
+
+
+def test_a_loc_name_on_an_interior_block_is_not_caught():
+    assert not lints.block_findings(exported("\tEXPORT |loc_08001000|\n"), {}, {0x08001000})
+
+
+def test_a_sub_name_on_a_function_start_is_not_caught():
+    assert not lints.block_findings(exported("\tEXPORT |sub_08001000|\n"), {}, set())
+
+
+def test_the_ratchet_counts_functions_rather_than_every_export():
+    assert lints.symbol_counts(exported(ASM_GOOD), set(), {0x08000158}, {}) == (1, 1)
+    assert lints.symbol_counts(exported(ASM_GOOD), set(), set(), {}) == (0, 0)
+    assert lints.symbol_counts(exported(ASM_GOOD), set()) == (3, 5)
 
 
 def test_only_a_toolchain_library_row_admits_a_library_symbol():

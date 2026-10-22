@@ -1,0 +1,12 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Dragon Ball Z: Buu's Fury",
+  "system": "GBA",
+  "type": "decomp",
+  "original": { "region": "USA", "sha1": "f1c4b07554d2a3b1ad2f325307051e775ce68087" },
+  "project": "Dragon Ball Z: Buu's Fury disassembly",
+  "status": "in-progress",
+  "toolchain": "ARM Developer Suite 1.2",
+  "approach": "Disassembly rebuilt byte for byte with ADS 1.2; code is not yet decompiled to C, and assets are rebuilt from the user's own ROM",
+  "maintainers": [{ "name": "siruiusamory-cmyk", "link": "https://github.com/siruiusamory-cmyk" }]
+}

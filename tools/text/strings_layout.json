@@ -1,0 +1,13 @@
+{
+  "rom": "baserom.gba",
+  "base": "0x0805792C",
+  "size": 89012,
+  "count": 1534,
+  "unit": "uint16",
+  "byte_order": "little",
+  "terminator": 0,
+  "class": "codec",
+  "prefix": "u_",
+  "table": "myStringArray",
+  "output": "build/strings.cpp"
+}

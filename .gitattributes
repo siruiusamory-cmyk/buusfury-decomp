@@ -1,0 +1,18 @@
+# The repository form is LF; see the byte-sensitive exceptions below.
+* text=auto eol=lf
+
+*.gba -text
+*.bin -text
+*.store -text
+*.s -text
+*.bmp -text
+*.png -text
+*.exe -text
+
+# These four tracked files carry CRLF, or a CRLF final line, in the repository
+# today. Declaring them text would rewrite their bytes, so they stay binary
+# until a ticket changes them deliberately.
+.gitignore -text
+tools/tilebank/tilebank_manifest.csv -text
+tools/mapcontainer/test_mapcontainer.py -text
+tools/webfoot/webfoot_lz.py -text

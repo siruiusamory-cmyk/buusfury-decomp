@@ -1,0 +1,9 @@
+; PATH-100-012 / R-RAW-001: the census run 0x086ff940..0x086ff974 as LABELED RAW DATA.
+; citation channel: an explicit citation set (--citations), not the loader channel
+
+	EXPORT	|unk_086FF940|
+|unk_086FF940|
+; cited by runtime read, session rt001, RUNTIME_CITED.csv sha256 CCF19E3469778F3DA12B68A94EC4BCB9F96A819BCE9A574C4A5892CA9E0FC6CF; (pc, first_address_read): 080188AE=086FF95C, 080188B0=086FF960, 080188B2=086FF940, 08018910=086FF94C, 08029BBC=086FF970, 08029BBE=086FF950, 0803985E=086FF964
+
+
+	INCBIN	baserom.gba_0x6ff940_0x6ff974.extracted

@@ -1,0 +1,28 @@
+# .clang-format for buusfury-decomp-src. Every choice and its reason is recorded
+# in the commit that added this file.
+Language: Cpp
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 0
+LineEnding: LF
+
+InsertBraces: true
+
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+AlignTrailingComments:
+  Kind: Leave
+  OverEmptyLines: 0
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"global\.h"$'
+    Priority: 1
+  - Regex: '^"'
+    Priority: 2
+  - Regex: '^<'
+    Priority: 3

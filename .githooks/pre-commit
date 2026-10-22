@@ -1,0 +1,15 @@
+#!/bin/sh
+cf=${CLANG_FORMAT:-clang-format}
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.c' '*.h' '*.cpp' '*.hpp')
+if [ -n "$files" ]; then
+    if ! command -v "$cf" >/dev/null 2>&1; then
+        echo "pre-commit: clang-format not found; set CLANG_FORMAT to its full path" >&2
+        exit 1
+    fi
+    "$cf" --dry-run --Werror $files || {
+        echo "pre-commit: staged C/C++ is not clang-format clean; run format.cmd" >&2
+        exit 1
+    }
+fi
+python tools/lint/lints.py || exit 1
+python tools/check_links.py || exit 1

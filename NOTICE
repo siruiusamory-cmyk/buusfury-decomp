@@ -1,0 +1,18 @@
+Upstream sources this tree derives from, cited rather than vendored.
+
+- https://github.com/2genkidev/buusfury, a disassembly of Dragon Ball Z: Buu's
+  Fury. The revision cc53d0cd2d1c167e749419187e2d92017ac07468 is the base of
+  asm/, assets/, build.bat, scatter.ld, src/ and tools/incbin.bat.
+- jcalg1 by Jeremy Collake, https://github.com/jeremycollake/jcalg1. Upstream
+  carries it as a git submodule; this tree carries only the compiled
+  tools/compress/compress.exe built from it, which an in-process compressor is
+  scheduled to replace.
+- grit by Dylan Graham, https://github.com/DylanGraham/grit, used by build.bat
+  and not distributed here.
+- tools/webfoot/webfoot_lz.py is this project's Webfoot container codec, carried
+  over from the reconstruction tree (tools/webfoot/formats/webfoot_lz.py). Its
+  bit grammar is promoted from spicybung/DragonByteZ (MIT) and was verified
+  against the canonical image.
+
+No game image is distributed in this repository. The builder supplies the retail
+ROM. This project is not affiliated with the rights holders of the game.

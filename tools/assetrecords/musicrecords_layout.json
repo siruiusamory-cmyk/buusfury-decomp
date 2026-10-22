@@ -1,0 +1,23 @@
+{
+  "base": "0x083BB78C",
+  "count": 53,
+  "stride": 20,
+  "class": "codec",
+  "output": "build/musicrecords.s",
+  "fields": [
+    {"name": "entries", "offset": 0, "type": "u32",
+     "pointer": {"label": "|unk_0836D540|", "base": "0x0836D540", "limit": "0x083BB78C"},
+     "meaning": "array_base; the stream machine's +0 word, read at pc 0x0803EF0E"},
+    {"name": "ramp", "offset": 4, "type": "u32",
+     "pointer": {"label": "|unk_0836D540|", "base": "0x0836D540", "limit": "0x083BB78C"},
+     "meaning": "ramp_base; the +4 word, read at pc 0x0803EF00"},
+    {"name": "samples", "offset": 8, "type": "u32", "domain": [137810316],
+     "meaning": "0x0836D18C in 53/53 records: directory 2, read at pc 0x0803E542"},
+    {"name": "block", "offset": 12, "type": "u32", "domain": [137811264],
+     "meaning": "0x0836D540 in 53/53 records: the payload's first block"},
+    {"name": "count", "offset": 16, "type": "u16",
+     "meaning": "the record's count word (0x341..0x880), read at pc 0x0803F14A"},
+    {"name": "pad", "offset": 18, "type": "u16", "domain": [0],
+     "meaning": "zero in 53/53 records; no instruction reads it"}
+  ]
+}

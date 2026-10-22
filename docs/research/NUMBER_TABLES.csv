@@ -1,0 +1,8 @@
+start,end,file,line,bytes,words,bases,resolved,named,residue,layout,consumer
+0x049B4A,0x049DB0,slice_049120.s,1338,614,153,693,153,48,2,self-relative method offset,0x080188FC
+0x04A5AA,0x04A678,slice_049120.s,1414,206,51,693,51,22,2,self-relative method offset,0x080188FC
+0x04A67E,0x04AA82,slice_049120.s,1423,1028,256,693,256,74,4,self-relative method offset,0x080188FC
+0x04AA94,0x04AA9C,slice_049120.s,1437,8,2,693,2,0,0,self-relative method offset,0x080188FC
+0x04AAA2,0x04AABA,slice_049120.s,1445,24,5,693,5,1,4,self-relative method offset,0x080188FC
+0x04AAC2,0x04AACE,slice_049120.s,1452,12,2,693,2,0,4,self-relative method offset,0x080188FC
+0x04BA82,0x04E488,slice_049120.s,1486,10758,2689,693,2689,711,2,self-relative method offset,0x080188FC

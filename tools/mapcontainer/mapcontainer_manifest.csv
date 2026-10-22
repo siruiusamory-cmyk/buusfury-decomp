@@ -1,0 +1,2 @@
+container_file_offset,stored_size,declared_size,disposition,reason
+0x29b308,24,2048,carve-out,identical payload and different valid oracle tokenization

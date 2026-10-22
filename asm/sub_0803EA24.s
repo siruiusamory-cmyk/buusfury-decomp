@@ -6,7 +6,7 @@
 	AND      r0, r1
 	STRB     r0, [r4, #0xb]
 	ADD      r0, r5, #0
-	BL       |loc_0803E5AC|
+	BL       |Object_AdvanceTimer1|
 	STR      r6, [r5, #0x54]
 |loc_0803EA36|
 	LDRB     r0, [r4, #0xa]

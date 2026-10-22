@@ -96,7 +96,7 @@ def names(root=ROOT):
         addr, name, doc = int(parts[0], 16), parts[1], parts[2]
         if addr in out:
             raise SystemExit("%s:%d names 0x%08X twice" % (path, number, addr))
-        if not name or set(name) - NAME_CHARS or not name[0].isalpha():
+        if not name or set(name) - NAME_CHARS or not (name[0].isalpha() or name[0] == "_"):
             raise SystemExit("%s:%d has the name %r, which is not an identifier"
                              % (path, number, name))
         if name == house(addr):

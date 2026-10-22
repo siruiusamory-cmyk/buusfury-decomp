@@ -1,5 +1,5 @@
 	CODE16
-|loc_08009220|
+|Object_RebuildSlots1|
 	PUSH     {r4, r5, r6, lr}
 	ADD      r5, r0, #0
 	MOV      r4, #0

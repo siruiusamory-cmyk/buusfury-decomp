@@ -267,7 +267,7 @@
 |loc_08002988|
 	LDR      r0, [r5, #0x14]
 	ADD      r1, r4, #0
-	BL       |loc_08004448|
+	BL       |Object_AppendEntry1|
 |unk_08002990|
 	INCBIN	baserom.gba_0x2990_0x2992.extracted
 	MOV      r0, #0x14

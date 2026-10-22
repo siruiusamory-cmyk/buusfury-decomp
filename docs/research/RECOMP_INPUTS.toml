@@ -2878,7 +2878,7 @@ name = "sub_0800FA12"
 addr = 0x0800fa16
 mode = "thumb"
 size = 44
-name = "sub_0800FA16"
+name = "Object_WriteTablePointer1"
 
 [[code]]
 addr = 0x0800fa42
@@ -2941,7 +2941,7 @@ name = "sub_0800FD96"
 addr = 0x0800fdfa
 mode = "thumb"
 size = 312
-name = "sub_0800FDFA"
+name = "Object_WriteBounds1"
 
 [[code]]
 addr = 0x0800ff32
@@ -4030,7 +4030,7 @@ name = "sub_08015FF2"
 addr = 0x08015ffc
 mode = "thumb"
 size = 124
-name = "sub_08015FFC"
+name = "Object_AppendRecord1"
 
 [[code]]
 addr = 0x08016078
@@ -12393,7 +12393,7 @@ size = 20
 addr = 0x08046e58
 mode = "thumb"
 size = 4
-name = "sub_08046E58"
+name = "Thunk_SignedDivide"
 
 [[code]]
 addr = 0x08046e5c
@@ -13978,7 +13978,7 @@ name = "sub_0804F8C8"
 addr = 0x0804f944
 mode = "thumb"
 size = 32
-name = "sub_0804F944"
+name = "Object_ReadPosition1"
 
 [[code]]
 addr = 0x0804f968

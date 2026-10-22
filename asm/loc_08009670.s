@@ -13,5 +13,5 @@
 	STR      r1, [r0, #0x10]
 	LDR      r0, [pc, #0x26c]
 	LDR      r0, [r0]
-	BL       |loc_08009220|
+	BL       |Object_RebuildSlots1|
 	POP      {r3, pc}

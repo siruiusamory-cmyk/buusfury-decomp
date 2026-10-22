@@ -3,7 +3,7 @@
 |unk_0801F5E4|
 		LDRB r1, [r0, #5]
 		LDR r0, [r7, #0xc]
-		BL       |loc_08004448|
+		BL       |Object_AppendEntry1|
 		B        |loc_0801F614|
 |loc_0801F5EE|
 |unk_0801F5EE|

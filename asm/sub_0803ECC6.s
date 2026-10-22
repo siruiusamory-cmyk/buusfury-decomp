@@ -29,7 +29,7 @@
 	STRB     r2, [r1, #0xa]
 	LDR      r1, [pc, #0x9c]
 	STR      r1, [r0, #0x54]
-	BL       |loc_0803E5DA|
+	BL       |Object_AdvanceTimer2|
 	POP      {r4, r5, pc}
 |loc_0803ED06|
 	LDRB     r3, [r1, #8]
@@ -80,7 +80,7 @@
 	STRB     r2, [r1, #0xa]
 	LDR      r1, [pc, #0x38]
 	STR      r1, [r0, #0x54]
-	BL       |loc_0803E5DA|
+	BL       |Object_AdvanceTimer2|
 	POP      {r4, r5, pc}
 |loc_0803ED6A|
 	LDRB     r3, [r1, #8]
@@ -140,7 +140,7 @@
 	STRB     r2, [r1, #0xa]
 	LDR      r1, [pc, #0x254]
 	STR      r1, [r0, #0x54]
-	BL       |loc_0803E5AC|
+	BL       |Object_AdvanceTimer1|
 	POP      {r4, r5, pc}
 |loc_0803EDFC|
 	LDRB     r3, [r1, #8]
@@ -191,7 +191,7 @@
 	STRB     r2, [r1, #0xa]
 	LDR      r1, [pc, #0x1f0]
 	STR      r1, [r0, #0x54]
-	BL       |loc_0803E5AC|
+	BL       |Object_AdvanceTimer1|
 	POP      {r4, r5, pc}
 |loc_0803EE60|
 	LDRB     r3, [r1, #8]

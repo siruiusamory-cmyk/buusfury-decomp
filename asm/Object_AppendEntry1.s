@@ -1,5 +1,5 @@
 	CODE16
-|loc_08004448|
+|Object_AppendEntry1|
 	ADD      r0, #0xe4
 	LDR      r2, [r0]
 	CMP      r2, #0xfa

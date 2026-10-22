@@ -1,5 +1,5 @@
 	CODE16
-|sub_0804F944|
+|Object_ReadPosition1|
 	ADD      r2, r0, #0
 	ADD      r0, r1, #0
 	ADD      r0, #0xff

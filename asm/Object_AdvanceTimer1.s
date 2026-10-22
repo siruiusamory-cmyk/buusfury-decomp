@@ -1,5 +1,5 @@
 	CODE16
-|loc_0803E5AC|
+|Object_AdvanceTimer1|
 	ADD      r1, r0, #0
 	ADD      r1, #0x40
 	LDRB     r2, [r1, #8]

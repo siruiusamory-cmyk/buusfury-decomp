@@ -3260,7 +3260,7 @@ address = 0x08004444
 mode = "thumb"
 
 [[functions]]
-name = "sub_08004448"
+name = "Object_AppendEntry1"
 address = 0x08004448
 mode = "thumb"
 
@@ -3904,7 +3904,7 @@ address = 0x08005366
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800536A"
+name = "Blend_WriteControl1"
 address = 0x0800536a
 end = 0x0800547e
 mode = "thumb"
@@ -4137,7 +4137,7 @@ end = 0x080059ae
 mode = "thumb"
 
 [[functions]]
-name = "sub_080059AE"
+name = "Blend_WriteControl2"
 address = 0x080059ae
 end = 0x08005abe
 mode = "thumb"
@@ -5915,13 +5915,13 @@ address = 0x080080c0
 mode = "thumb"
 
 [[functions]]
-name = "sub_080080D8"
+name = "Irq_WriteEnable1"
 address = 0x080080d8
 end = 0x08008174
 mode = "thumb"
 
 [[functions]]
-name = "sub_08008174"
+name = "Irq_WriteEnable2"
 address = 0x08008174
 end = 0x080081e2
 mode = "thumb"
@@ -5948,7 +5948,7 @@ end = 0x080081e4
 mode = "thumb"
 
 [[functions]]
-name = "sub_080081E4"
+name = "Dma_Start3First"
 address = 0x080081e4
 end = 0x08008306
 mode = "thumb"
@@ -5989,7 +5989,7 @@ address = 0x080082fe
 mode = "thumb"
 
 [[functions]]
-name = "sub_08008306"
+name = "Dma_Start3Second"
 address = 0x08008306
 end = 0x08008486
 mode = "thumb"
@@ -6005,7 +6005,7 @@ address = 0x08008468
 mode = "thumb"
 
 [[functions]]
-name = "sub_080084A6"
+name = "Dma_Start3Third"
 address = 0x080084a6
 end = 0x080085bc
 mode = "thumb"
@@ -6621,7 +6621,7 @@ address = 0x0800921e
 mode = "thumb"
 
 [[functions]]
-name = "sub_08009220"
+name = "Object_RebuildSlots1"
 address = 0x08009220
 mode = "thumb"
 
@@ -8271,7 +8271,7 @@ end = 0x0800b928
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800B928"
+name = "Math_Divide1"
 address = 0x0800b928
 end = 0x0800bafc
 mode = "thumb"
@@ -9016,7 +9016,7 @@ address = 0x0800cba8
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800CBB8"
+name = "Math_Divide2"
 address = 0x0800cbb8
 end = 0x0800cc6c
 mode = "thumb"
@@ -9755,7 +9755,7 @@ end = 0x0800de90
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800DE60"
+name = "Record_InitFields"
 address = 0x0800de60
 mode = "thumb"
 
@@ -10435,7 +10435,7 @@ address = 0x0800ecd8
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800ECDA"
+name = "Record_SelectIndexed"
 address = 0x0800ecda
 mode = "thumb"
 
@@ -10591,7 +10591,7 @@ address = 0x0800ef94
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800EFD0"
+name = "Math_Divide3"
 address = 0x0800efd0
 end = 0x0800f1e8
 mode = "thumb"
@@ -10910,7 +10910,7 @@ end = 0x0800fa16
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800FA16"
+name = "Object_WriteTablePointer1"
 address = 0x0800fa16
 end = 0x0800fa42
 mode = "thumb"
@@ -11021,7 +11021,7 @@ end = 0x0800fdfa
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800FDFA"
+name = "Object_WriteBounds1"
 address = 0x0800fdfa
 end = 0x0800ff32
 mode = "thumb"
@@ -12025,7 +12025,7 @@ end = 0x0801191a
 mode = "thumb"
 
 [[functions]]
-name = "sub_0801191A"
+name = "List_Append"
 address = 0x0801191a
 end = 0x0801197e
 mode = "thumb"
@@ -12245,7 +12245,7 @@ address = 0x08011c6a
 mode = "thumb"
 
 [[functions]]
-name = "sub_08011C70"
+name = "List_CallMethod1"
 address = 0x08011c70
 mode = "thumb"
 
@@ -13910,7 +13910,7 @@ end = 0x08014180
 mode = "thumb"
 
 [[functions]]
-name = "sub_08014124"
+name = "Object_Construct1"
 address = 0x08014124
 mode = "thumb"
 
@@ -14340,7 +14340,7 @@ end = 0x08015882
 mode = "thumb"
 
 [[functions]]
-name = "sub_08015882"
+name = "Blend_WriteControl3"
 address = 0x08015882
 end = 0x08015966
 mode = "thumb"
@@ -14664,7 +14664,7 @@ end = 0x08015ffc
 mode = "thumb"
 
 [[functions]]
-name = "sub_08015FFC"
+name = "Object_AppendRecord1"
 address = 0x08015ffc
 end = 0x08016078
 mode = "thumb"
@@ -15467,7 +15467,7 @@ address = 0x08017ae6
 mode = "thumb"
 
 [[functions]]
-name = "sub_08017AFC"
+name = "Blend_WriteAlpha2"
 address = 0x08017afc
 end = 0x08017bda
 mode = "thumb"
@@ -17060,7 +17060,7 @@ end = 0x08019f72
 mode = "thumb"
 
 [[functions]]
-name = "sub_08019F72"
+name = "Bios_Diff16Unfilter"
 address = 0x08019f72
 end = 0x08019ffc
 mode = "thumb"
@@ -17716,7 +17716,7 @@ end = 0x0801c4f4
 mode = "thumb"
 
 [[functions]]
-name = "sub_0801C4F4"
+name = "Math_Divide5"
 address = 0x0801c4f4
 end = 0x0801c540
 mode = "thumb"
@@ -19982,7 +19982,7 @@ address = 0x08024c54
 mode = "thumb"
 
 [[functions]]
-name = "sub_08024C98"
+name = "Blend_WriteControlAndAlpha3"
 address = 0x08024c98
 end = 0x08024d44
 mode = "thumb"
@@ -20087,7 +20087,7 @@ end = 0x080253e2
 mode = "thumb"
 
 [[functions]]
-name = "sub_080253EA"
+name = "Blend_WriteControl4"
 address = 0x080253ea
 end = 0x080253fe
 mode = "thumb"
@@ -20099,7 +20099,7 @@ end = 0x08025404
 mode = "thumb"
 
 [[functions]]
-name = "sub_08025404"
+name = "Blend_WriteControl5"
 address = 0x08025404
 end = 0x08025510
 mode = "thumb"
@@ -20122,7 +20122,7 @@ end = 0x080255c4
 mode = "thumb"
 
 [[functions]]
-name = "sub_080255C4"
+name = "Blend_WriteControlAndAlpha4"
 address = 0x080255c4
 end = 0x080257da
 mode = "thumb"
@@ -20185,7 +20185,7 @@ address = 0x08025cda
 mode = "thumb"
 
 [[functions]]
-name = "sub_08025D2E"
+name = "Bg_WriteScroll2And3"
 address = 0x08025d2e
 end = 0x08025df0
 mode = "thumb"
@@ -22364,7 +22364,7 @@ address = 0x0802c964
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802C976"
+name = "Mosaic_WriteSize1"
 address = 0x0802c976
 end = 0x0802c98e
 mode = "thumb"
@@ -22386,13 +22386,13 @@ address = 0x0802ca1c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802CA2E"
+name = "Mosaic_WriteSize2"
 address = 0x0802ca2e
 end = 0x0802ca42
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802CA42"
+name = "Bg_WriteControl0AndMosaic2"
 address = 0x0802ca42
 end = 0x0802caf8
 mode = "thumb"
@@ -22837,7 +22837,7 @@ end = 0x0802e97a
 mode = "thumb"
 
 [[functions]]
-name = "sub_0802E97A"
+name = "Bg_WriteScroll3"
 address = 0x0802e97a
 end = 0x0802ec58
 mode = "thumb"
@@ -23555,13 +23555,13 @@ address = 0x08030c16
 mode = "thumb"
 
 [[functions]]
-name = "sub_08030C2E"
+name = "Bg_WriteScroll0AndBlendAlpha"
 address = 0x08030c2e
 end = 0x08030ef4
 mode = "thumb"
 
 [[functions]]
-name = "sub_08030F78"
+name = "Blend_WriteControlAndAlpha5"
 address = 0x08030f78
 end = 0x08030fb4
 mode = "thumb"
@@ -24040,7 +24040,7 @@ address = 0x080337d2
 mode = "thumb"
 
 [[functions]]
-name = "sub_080337EC"
+name = "Blend_WriteAlpha4"
 address = 0x080337ec
 end = 0x08033808
 mode = "thumb"
@@ -28804,7 +28804,7 @@ address = 0x0803d7aa
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803D7BE"
+name = "Irq_WriteEnable3"
 address = 0x0803d7be
 end = 0x0803d7fa
 mode = "thumb"
@@ -29197,7 +29197,7 @@ end = 0x0803df12
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803DF14"
+name = "Irq_WriteMaster1"
 address = 0x0803df14
 end = 0x0803dfde
 mode = "thumb"
@@ -29314,7 +29314,7 @@ address = 0x0803e18c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803E18E"
+name = "Math_Divide6"
 address = 0x0803e18e
 end = 0x0803e28c
 mode = "thumb"
@@ -29489,7 +29489,7 @@ address = 0x0803e58a
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803E5AC"
+name = "Object_AdvanceTimer1"
 address = 0x0803e5ac
 mode = "thumb"
 
@@ -29499,7 +29499,7 @@ address = 0x0803e5cc
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803E5DA"
+name = "Object_AdvanceTimer2"
 address = 0x0803e5da
 mode = "thumb"
 
@@ -30668,7 +30668,7 @@ address = 0x0803fb6e
 mode = "thumb"
 
 [[functions]]
-name = "sub_0803FB7C"
+name = "Irq_WriteMaster2"
 address = 0x0803fb7c
 mode = "thumb"
 
@@ -31020,7 +31020,7 @@ end = 0x080402d6
 mode = "thumb"
 
 [[functions]]
-name = "sub_080402D6"
+name = "Struct_ZeroFields"
 address = 0x080402d6
 end = 0x080402f0
 mode = "thumb"
@@ -31379,7 +31379,7 @@ address = 0x08040dbc
 mode = "thumb"
 
 [[functions]]
-name = "sub_08040DDA"
+name = "Irq_WriteEnableAndTimer3"
 address = 0x08040dda
 end = 0x08040e3a
 mode = "thumb"
@@ -31441,7 +31441,7 @@ address = 0x08040f5a
 mode = "thumb"
 
 [[functions]]
-name = "sub_08040F5E"
+name = "Irq_WriteMaster3"
 address = 0x08040f5e
 end = 0x08040f7c
 mode = "thumb"
@@ -31594,7 +31594,7 @@ end = 0x08041786
 mode = "thumb"
 
 [[functions]]
-name = "sub_080417AC"
+name = "Timer_Write2Reload1"
 address = 0x080417ac
 end = 0x0804180c
 mode = "thumb"
@@ -31995,7 +31995,7 @@ end = 0x08042880
 mode = "thumb"
 
 [[functions]]
-name = "sub_08042880"
+name = "Bios_CpuSet1"
 address = 0x08042880
 end = 0x08042904
 mode = "thumb"
@@ -32098,7 +32098,7 @@ address = 0x08042aaa
 mode = "thumb"
 
 [[functions]]
-name = "sub_08042AB8"
+name = "Bios_CpuSet2"
 address = 0x08042ab8
 end = 0x08042ada
 mode = "thumb"
@@ -32734,7 +32734,7 @@ address = 0x08046aa0
 mode = "thumb"
 
 [[functions]]
-name = "sub_08046AA4"
+name = "Thunk_JumpRegister1"
 address = 0x08046aa4
 mode = "thumb"
 
@@ -32786,7 +32786,7 @@ end = 0x08046b28
 mode = "arm"
 
 [[functions]]
-name = "sub_08046B28"
+name = "__16_ll_cmpu"
 address = 0x08046b28
 end = 0x08046b2c
 mode = "thumb"
@@ -32798,7 +32798,7 @@ end = 0x08046b38
 mode = "arm"
 
 [[functions]]
-name = "sub_08046B38"
+name = "__16_ll_mul"
 address = 0x08046b38
 end = 0x08046b3c
 mode = "thumb"
@@ -32846,7 +32846,7 @@ end = 0x08046b84
 mode = "arm"
 
 [[functions]]
-name = "sub_08046B84"
+name = "__16_ll_neg"
 address = 0x08046b84
 end = 0x08046b88
 mode = "thumb"
@@ -32858,7 +32858,7 @@ end = 0x08046b94
 mode = "arm"
 
 [[functions]]
-name = "sub_08046B94"
+name = "__16_ll_rsb"
 address = 0x08046b94
 end = 0x08046b98
 mode = "thumb"
@@ -32882,7 +32882,7 @@ end = 0x08046bfc
 mode = "arm"
 
 [[functions]]
-name = "sub_08046BFC"
+name = "__16_ll_shift_l"
 address = 0x08046bfc
 end = 0x08046c00
 mode = "thumb"
@@ -32894,7 +32894,7 @@ end = 0x08046c28
 mode = "arm"
 
 [[functions]]
-name = "sub_08046C28"
+name = "__16_ll_sshift_r"
 address = 0x08046c28
 end = 0x08046c2c
 mode = "thumb"
@@ -32992,7 +32992,7 @@ end = 0x08046e58
 mode = "arm"
 
 [[functions]]
-name = "sub_08046E58"
+name = "Thunk_SignedDivide"
 address = 0x08046e58
 end = 0x08046e5c
 mode = "thumb"
@@ -33016,7 +33016,7 @@ end = 0x08046ff4
 mode = "arm"
 
 [[functions]]
-name = "sub_08046FF4"
+name = "__vecmap1c__FPvT1iPFPv_v"
 address = 0x08046ff4
 end = 0x08047040
 mode = "thumb"
@@ -33163,7 +33163,7 @@ end = 0x08047fae
 mode = "thumb"
 
 [[functions]]
-name = "sub_08047FB0"
+name = "__16__user_libspace"
 address = 0x08047fb0
 end = 0x08047fb4
 mode = "thumb"
@@ -33204,7 +33204,7 @@ end = 0x08047ff4
 mode = "arm"
 
 [[functions]]
-name = "sub_08047FF4"
+name = "__raise"
 address = 0x08047ff4
 end = 0x0804801a
 mode = "thumb"
@@ -33221,7 +33221,7 @@ end = 0x0804802e
 mode = "thumb"
 
 [[functions]]
-name = "sub_08048038"
+name = "__16_sys_exit"
 address = 0x08048038
 end = 0x0804803c
 mode = "thumb"
@@ -33233,7 +33233,7 @@ end = 0x08048054
 mode = "arm"
 
 [[functions]]
-name = "sub_08048054"
+name = "__default_signal_handler"
 address = 0x08048054
 end = 0x08048076
 mode = "thumb"
@@ -37306,7 +37306,7 @@ end = 0x0804f870
 mode = "thumb"
 
 [[functions]]
-name = "sub_0804F872"
+name = "Math_Divide7"
 address = 0x0804f872
 end = 0x0804f8c4
 mode = "thumb"
@@ -37323,7 +37323,7 @@ end = 0x0804f92c
 mode = "thumb"
 
 [[functions]]
-name = "sub_0804F944"
+name = "Object_ReadPosition1"
 address = 0x0804f944
 end = 0x0804f964
 mode = "thumb"

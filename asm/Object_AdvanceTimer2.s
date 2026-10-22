@@ -1,5 +1,5 @@
 	CODE16
-|loc_0803E5DA|
+|Object_AdvanceTimer2|
 	ADD      r1, r0, #0
 	ADD      r1, #0x40
 	LDRB     r2, [r1, #8]
@@ -52,7 +52,7 @@
 	CMP      r0, #0xf
 	BNE      |loc_0803E644|
 	ADD      r0, r4, #0
-	BL       |loc_0803E5DA|
+	BL       |Object_AdvanceTimer2|
 |loc_0803E644|
 	POP      {r4, r5, pc}
 |loc_0803E646|
@@ -70,7 +70,7 @@
 	CMP      r0, #0xf
 	BNE      |loc_0803E644|
 	ADD      r0, r4, #0
-	BL       |loc_0803E5AC|
+	BL       |Object_AdvanceTimer1|
 	POP      {r4, r5, pc}
 |loc_0803E668|
 	MOV      r3, #0xf
@@ -79,7 +79,7 @@
 	LSR      r1, r1, #4
 	STRB     r1, [r0, #0xb]
 	ADD      r0, r4, #0
-	BL       |loc_0803E5DA|
+	BL       |Object_AdvanceTimer2|
 |loc_0803E678|
 	POP      {r4, r5, pc}
 |loc_0803E67A|
@@ -89,7 +89,7 @@
 	AND      r1, r2
 	STRB     r1, [r0, #0xb]
 	ADD      r0, r4, #0
-	BL       |loc_0803E5AC|
+	BL       |Object_AdvanceTimer1|
 	POP      {r4, r5, pc}
 	MOV      r1, #0x4d
 	LDRB     r1, [r1, r0]

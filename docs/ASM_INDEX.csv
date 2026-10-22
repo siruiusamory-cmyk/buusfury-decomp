@@ -60,7 +60,7 @@ address,kind,symbol,file
 0x080043C2,start,loc_080043C2,asm/loc_080043C2.s
 0x080043D8,start,loc_080043D8,asm/loc_080043D8.s
 0x0800441E,start,loc_0800441E,asm/loc_0800441E.s
-0x08004448,start,loc_08004448,asm/loc_08004448.s
+0x08004448,start,Object_AppendEntry1,asm/Object_AppendEntry1.s
 0x08004468,start,loc_08004468,asm/loc_08004468.s
 0x08004544,start,loc_08004544,asm/loc_08004544.s
 0x080045B0,unreferenced,sub_080045B0,asm/sub_080045B0.s
@@ -283,7 +283,7 @@ address,kind,symbol,file
 0x08009196,start,loc_08009196,asm/loc_08009196.s
 0x080091B8,start,loc_080091B8,asm/loc_080091B8.s
 0x080091FE,unreferenced,sub_080091FE,asm/sub_080091FE.s
-0x08009220,start,loc_08009220,asm/loc_08009220.s
+0x08009220,start,Object_RebuildSlots1,asm/Object_RebuildSlots1.s
 0x0800924C,start,loc_0800924C,asm/loc_0800924C.s
 0x0800927E,start,loc_0800927E,asm/loc_0800927E.s
 0x0800929C,start,loc_0800929C,asm/loc_0800929C.s
@@ -605,7 +605,7 @@ address,kind,symbol,file
 0x0800F9EA,unreferenced,sub_0800F9EA,asm/sub_0800F9EA.s
 0x0800F9EE,unreferenced,sub_0800F9EE,asm/sub_0800F9EE.s
 0x0800FA12,unreferenced,sub_0800FA12,asm/sub_0800FA12.s
-0x0800FA16,start,sub_0800FA16,asm/sub_0800FA16.s
+0x0800FA16,start,Object_WriteTablePointer1,asm/Object_WriteTablePointer1.s
 0x0800FA42,unreferenced,sub_0800FA42,asm/sub_0800FA42.s
 0x0800FA80,start,sub_0800FA80,asm/sub_0800FA80.s
 0x0800FAE2,unreferenced,sub_0800FAE2,asm/sub_0800FAE2.s
@@ -818,7 +818,7 @@ address,kind,symbol,file
 0x080140B2,unreferenced,sub_080140B2,asm/sub_080140B2.s
 0x080140F6,unreferenced,sub_080140F6,asm/sub_080140F6.s
 0x0801411E,unreferenced,,asm/sub_080140F6.s
-0x08014124,start,loc_08014124,asm/loc_08014124.s
+0x08014124,start,Object_Construct1,asm/Object_Construct1.s
 0x08014182,unreferenced,sub_08014182,asm/sub_08014182.s
 0x080141A0,unreferenced,sub_080141A0,asm/sub_080141A0.s
 0x080143F2,unreferenced,sub_080143F2,asm/buu.s
@@ -860,7 +860,7 @@ address,kind,symbol,file
 0x08015E16,unreferenced,sub_08015E16,asm/sub_08015E16.s
 0x08015E94,start,sub_08015E94,asm/sub_08015E94.s
 0x08015FF2,unreferenced,sub_08015FF2,asm/sub_08015FF2.s
-0x08015FFC,start,sub_08015FFC,asm/sub_08015FFC.s
+0x08015FFC,start,Object_AppendRecord1,asm/Object_AppendRecord1.s
 0x08016078,unreferenced,sub_08016078,asm/sub_08016078.s
 0x08016080,unreferenced,sub_08016080,asm/sub_08016080.s
 0x08016096,unreferenced,sub_08016096,asm/sub_08016096.s
@@ -2244,8 +2244,8 @@ address,kind,symbol,file
 0x0803E4E4,start,loc_0803E4E4,asm/loc_0803E4E4.s
 0x0803E514,unreferenced,sub_0803E514,asm/sub_0803E514.s
 0x0803E574,start,sub_0803E574,asm/sub_0803E574.s
-0x0803E5AC,start,loc_0803E5AC,asm/loc_0803E5AC.s
-0x0803E5DA,start,loc_0803E5DA,asm/loc_0803E5DA.s
+0x0803E5AC,start,Object_AdvanceTimer1,asm/Object_AdvanceTimer1.s
+0x0803E5DA,start,Object_AdvanceTimer2,asm/Object_AdvanceTimer2.s
 0x0803E89A,unreferenced,sub_0803E89A,asm/sub_0803E89A.s
 0x0803E8BC,start,loc_0803E8BC,asm/loc_0803E8BC.s
 0x0803E954,start,sub_0803E954,asm/sub_0803E954.s
@@ -2761,7 +2761,7 @@ address,kind,symbol,file
 0x0804F856,unreferenced,sub_0804F856,asm/sub_0804F856.s
 0x0804F872,unreferenced,Math_Divide7,asm/Math_Divide7.s
 0x0804F8C8,unreferenced,sub_0804F8C8,asm/sub_0804F8C8.s
-0x0804F944,start,sub_0804F944,asm/sub_0804F944.s
+0x0804F944,start,Object_ReadPosition1,asm/Object_ReadPosition1.s
 0x0804F968,unreferenced,sub_0804F968,asm/sub_0804F968.s
 0x0804F998,unreferenced,sub_0804F998,asm/sub_0804F998.s
 0x0804F99E,unreferenced,sub_0804F99E,asm/sub_0804F99E.s

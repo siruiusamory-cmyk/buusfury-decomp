@@ -10,7 +10,7 @@
 		ADD r1, r4, #0
 		ADD r5, sp, #4
 		ADD r0, r5, #0
-		BL       |sub_0804F944|
+		BL       |Object_ReadPosition1|
 		LDRB r0, [r4, #0x10]
 		LDR r1, [pc, #0x48]
 		LSL r0, r0, #3

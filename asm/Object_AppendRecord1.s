@@ -1,5 +1,5 @@
 	CODE16
-|sub_08015FFC|
+|Object_AppendRecord1|
 	PUSH     {r4, r5, r6, lr}
 	ADD      r5, r0, #0
 	ADD      r0, #0x4c

@@ -128,7 +128,7 @@
 		MOV r3, #0x90
 		ADD r1, r4, #0
 		MOV r0, #0
-		BL       |loc_08014124|
+		BL       |Object_Construct1|
 		ADD r1, r0, #0
 		ADD r0, r4, #0
 		BL       |loc_0800664E|
@@ -179,7 +179,7 @@
 		STR r0, [sp, #4]
 		ADD r1, r4, #0
 		MOV r0, #0
-		BL       |loc_08014124|
+		BL       |Object_Construct1|
 		ADD r1, r0, #0
 		ADD r0, r4, #0
 		BL       |loc_0800664E|
@@ -196,7 +196,7 @@
 		MOV r2, #0xce
 		ADD r1, r4, #0
 		MOV r0, #0
-		BL       |loc_08014124|
+		BL       |Object_Construct1|
 		ADD r1, r0, #0
 		ADD r0, r4, #0
 		BL       |loc_0800664E|

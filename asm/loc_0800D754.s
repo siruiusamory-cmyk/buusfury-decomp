@@ -3,7 +3,7 @@
 |unk_0800D754|
 		NEG r1, r4
 	LDR      r0, [r5, #8]
-	BL       |loc_08004448|
+	BL       |Object_AppendEntry1|
 	MOV      r0, #0x14
 	BL       |GBARam_Malloc|
 	MOV      r2, #0

@@ -95,7 +95,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_080043C2.s
 	INCLUDE loc_080043D8.s
 	INCLUDE loc_0800441E.s
-	INCLUDE loc_08004448.s
+	INCLUDE Object_AppendEntry1.s
 	INCLUDE loc_08004468.s
 	INCLUDE loc_08004544.s
 	INCLUDE sub_080045B0.s
@@ -306,7 +306,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_08009196.s
 	INCLUDE loc_080091B8.s
 	INCLUDE sub_080091FE.s
-	INCLUDE loc_08009220.s
+	INCLUDE Object_RebuildSlots1.s
 	INCLUDE loc_0800924C.s
 	INCLUDE loc_0800927E.s
 	INCLUDE loc_0800929C.s
@@ -608,7 +608,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0800F9EA.s
 	INCLUDE sub_0800F9EE.s
 	INCLUDE sub_0800FA12.s
-	INCLUDE sub_0800FA16.s
+	INCLUDE Object_WriteTablePointer1.s
 	INCLUDE sub_0800FA42.s
 	INCLUDE sub_0800FA80.s
 	INCLUDE sub_0800FAE2.s
@@ -809,7 +809,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08014046.s
 	INCLUDE sub_080140B2.s
 	INCLUDE sub_080140F6.s
-	INCLUDE loc_08014124.s
+	INCLUDE Object_Construct1.s
 	INCLUDE sub_08014182.s
 	INCLUDE sub_080141A0.s
 |sub_080143f2|
@@ -2230,7 +2230,7 @@ unk_03003124 EQU     0x03003124
         	LDR r1, [r6, r0]
         	LDR r0, [r5, #0x2c]
         	MOV r2, #6
-        	BL       |sub_08015FFC|
+        	BL       |Object_AppendRecord1|
 |loc_080150b6|
 |unk_080150B6|
         	MOV r0, #0x5b
@@ -2248,7 +2248,7 @@ unk_03003124 EQU     0x03003124
         	LDR r1, [r6, r0]
         	LDR r0, [r5, #0x2c]
         	MOV r2, #7
-        	BL       |sub_08015FFC|
+        	BL       |Object_AppendRecord1|
 |loc_080150D8|
         	ADD r0, r4, #0
         	LDR r1, [r5, #0x2c]
@@ -2666,7 +2666,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08015E16.s
 	INCLUDE sub_08015E94.s
 	INCLUDE sub_08015FF2.s
-	INCLUDE sub_08015FFC.s
+	INCLUDE Object_AppendRecord1.s
 	INCLUDE sub_08016078.s
 	INCLUDE sub_08016080.s
 	INCLUDE sub_08016096.s
@@ -3787,7 +3787,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	ADD r7, sp, #0x10
         	ADD r0, r7, #0
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0xc0]
         	LSL r0, r0, #3
@@ -4302,7 +4302,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	MOV r0, sp
         	LDR r6, [r5, #0xc]
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDR r1, [sp]
         	LDR r2, [sp, #4]
         	LSL r1, r1, #8
@@ -4479,7 +4479,7 @@ unk_03003124 EQU     0x03003124
         	STR r0, [r5, #8]
         	ADD r1, r4, #0
         	ADD r0, r6, #0
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x1d0]
         	LSL r0, r0, #3
@@ -4554,7 +4554,7 @@ unk_03003124 EQU     0x03003124
         	ADD r6, r1, #0
         	ADD r1, r4, #0
         	ADD r0, sp, #0x20
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	ADD r2, sp, #0x20
         	ADD r1, r6, #0
         	MOV r0, sp
@@ -4640,7 +4640,7 @@ unk_03003124 EQU     0x03003124
         	ADD r6, sp, #0x10
         	ADD r0, r6, #0
         	LDR r5, [r5, #0xc]
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x84]
         	LSL r0, r0, #3
@@ -4762,7 +4762,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	MOV r6, sp
         	MOV r0, sp
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x298]
         	LSL r0, r0, #3
@@ -4991,7 +4991,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	ADD r7, sp, #0xc
         	ADD r0, r7, #0
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0xb4]
         	ADD r1, #0x5c
@@ -5347,7 +5347,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	ADD r7, sp, #0xc
         	ADD r0, r7, #0
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	LDR r1, [pc, #0x58]
         	ADD r1, #0x60
@@ -5430,7 +5430,7 @@ unk_03003124 EQU     0x03003124
         	ADD r5, r0, #0
         	ADD r4, r1, #0
         	ADD r0, #0x3c
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	LDRB r0, [r4, #0x10]
         	MOV r1, #0xff
         	ADD r1, #0xcd
@@ -5726,7 +5726,7 @@ unk_03003124 EQU     0x03003124
         	ADD r7, r0, r1
         	ADD r1, r5, #0
         	ADD r0, sp, #0x24
-        	BL       |sub_0804F944|
+        	BL       |Object_ReadPosition1|
         	ADD r2, sp, #0x24
         	ADD r1, r7, #0
         	MOV r0, sp
@@ -9173,7 +9173,7 @@ unk_03003124 EQU     0x03003124
         	BL       |loc_0800EDF8|
         	MOV r1, #0x8e
         	ADD r0, r4, #0
-        	BL       |sub_0800FA16|
+        	BL       |Object_WriteTablePointer1|
         	LDR r1, [r4]
         	ADD r0, r4, #0
         	LDR r2, [r1, #0x28]
@@ -15954,7 +15954,7 @@ unk_03003124 EQU     0x03003124
         	LDR r0, [pc, #0x180]
         	LDRH r1, [r5, #2]
         	LDR r0, [r0, #0xc]
-        	BL       |loc_08004448|
+        	BL       |Object_AppendEntry1|
         	LDR r0, [r4, #0x1c]
         	ADD r6, #1
         	CMP r0, r6
@@ -21068,8 +21068,8 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_0803E4E4.s
 	INCLUDE sub_0803E514.s
 	INCLUDE sub_0803E574.s
-	INCLUDE loc_0803E5AC.s
-	INCLUDE loc_0803E5DA.s
+	INCLUDE Object_AdvanceTimer1.s
+	INCLUDE Object_AdvanceTimer2.s
 	INCLUDE sub_0803E89A.s
 	INCLUDE loc_0803E8BC.s
 	INCLUDE sub_0803E954.s
@@ -29828,7 +29828,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0804F856.s
 	INCLUDE Math_Divide7.s
 	INCLUDE sub_0804F8C8.s
-	INCLUDE sub_0804F944.s
+	INCLUDE Object_ReadPosition1.s
 	INCLUDE sub_0804F968.s
 	INCLUDE sub_0804F998.s
 	INCLUDE sub_0804F99E.s

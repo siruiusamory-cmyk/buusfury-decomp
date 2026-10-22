@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import os
 import re
@@ -25,6 +26,8 @@ HEADER = os.path.join("asm", "rom_header.s")
 ENTRY_PC = 0x08000000
 CODE = ("thumb", "arm")
 LABEL = re.compile(r"^EXPORT\s+\|(sub_[0-9a-fA-F]{8})\|$")
+NAMED = re.compile(r"^EXPORT\s+\|([A-Z][A-Za-z0-9]*(?:_[A-Z][A-Za-z0-9]*)+)\|$")
+NAMES = os.path.join("docs", "NAMING_LEDGER.csv")
 DCD = re.compile(r"^(\w+)\s+DCD\s+0x([0-9a-fA-F]+)$")
 SPACE = re.compile(r"^SPACE\s+0x([0-9a-fA-F]+)$")
 COUNT_SHIFT = re.compile(r"^movs\s+r1,\s*r1,\s+lsr\s+#2$", re.I)
@@ -49,9 +52,19 @@ def code_rows(root=ROOT):
     return rows
 
 
+def promoted(root=ROOT):
+    path = os.path.join(root, *NAMES.split("/"))
+    if not os.path.exists(path):
+        return {}
+    with open(path, newline="", encoding="utf-8") as handle:
+        return {(row["new"]): int(row["address"], 16) - ENTRY_PC
+                for row in csv.DictReader(handle) if row.get("new") and row.get("address")}
+
+
 def labels(root=ROOT):
     out = {}
     folder = os.path.join(root, "asm")
+    named = promoted(root)
     for name in sorted(os.listdir(folder)):
         if not name.endswith(".s"):
             continue
@@ -67,6 +80,10 @@ def labels(root=ROOT):
             found = LABEL.match(text)
             if found:
                 out[int(found.group(1)[-8:], 16) - ENTRY_PC] = (found.group(1), state)
+                continue
+            found = NAMED.match(text)
+            if found and found.group(1) in named:
+                out[named[found.group(1)]] = (found.group(1), state)
     return out
 
 

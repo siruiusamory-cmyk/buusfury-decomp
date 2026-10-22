@@ -2,8 +2,8 @@
 	IMPORT |GBARam_Malloc|
 	IMPORT |inc_0x071c90_0x3715c0|
 	CODE16
-	EXPORT |sub_08049120|
-|sub_08049120|
+	EXPORT |Thunk_Jcalg1|
+|Thunk_Jcalg1|
 	BX       pc
 	MOV      r8, r8
 |unk_08049124|
@@ -18,16 +18,16 @@
 ; cited by 0x08049130 (a pc-relative load targets 0x08049134)
 	INCBIN	baserom.gba_0x49130_0x49138.extracted
 	CODE16
-	EXPORT |sub_08049138|
-|sub_08049138|
+	EXPORT |Thunk_VramCopy|
+|Thunk_VramCopy|
 	BX       pc
 	MOV      r8, r8
 |unk_0804913C|
 ; cited by 0x0804913C (a pc-relative load targets 0x08049140)
 	INCBIN	baserom.gba_0x4913c_0x49144.extracted
 	CODE16
-	EXPORT |sub_08049144|
-|sub_08049144|
+	EXPORT |Thunk_PaletteCopy|
+|Thunk_PaletteCopy|
 	BX       pc
 	MOV      r8, r8
 |unk_08049148|
@@ -175,7 +175,7 @@
 	EXPORT |sub_0804EC02|
 	EXPORT |sub_0804EC0A|
 	EXPORT |sub_0804EC18|
-	EXPORT |sub_0804EC22|
+	EXPORT |Blend_WriteAlpha5|
 	EXPORT |sub_0804EC9A|
 	EXPORT |sub_0804EC9E|
 	EXPORT |sub_0804ECBE|
@@ -369,7 +369,7 @@
 	EXPORT |sub_0804F854|
 	EXPORT |sub_0804F856|
 	EXPORT |sub_0804F870|
-	EXPORT |sub_0804F872|
+	EXPORT |Math_Divide5|
 	EXPORT |sub_0804F8C4|
 	EXPORT |sub_0804F8C8|
 	EXPORT |sub_0804F92C|
@@ -4671,7 +4671,7 @@
 	ADD      r0, r0, r1
 	ADD      r2, r5, #0
 	ADD      r1, r6, #0
-	BL       |sub_08049138|
+	BL       |Thunk_VramCopy|
 |loc_0804E4C0|
 	POP      {r4, r5, r6, pc}
 	LSL      r0, r0, #0
@@ -5558,7 +5558,7 @@
 		BX       lr
 	INCBIN  baserom.gba_0x4ec1e_0x4ec20.extracted
 		BX       lr
-|sub_0804EC22|
+|Blend_WriteAlpha5|
 	LSL      r0, r0, #0
 	MOV      r1, #0
 	STR      r1, [r0, #8]
@@ -7263,7 +7263,7 @@
 |sub_0804F870|
 |unk_0804F870|
 	INCBIN	baserom.gba_0x4f870_0x4f872.extracted
-|sub_0804F872|
+|Math_Divide5|
 	LSR      r5, r0, #0x20
 	MOV      r2, #0xa3
 	LSL      r2, r2, #2
@@ -8115,7 +8115,7 @@
 	ADD      r1, #8
 	LSL      r2, r2, #2
 	ADD      r0, #4
-	BL       |sub_08049138|
+	BL       |Thunk_VramCopy|
 |loc_0804FE70|
 	POP      {r3, pc}
 |sub_0804FE72|
@@ -9272,7 +9272,7 @@
 		LDR r1, [r6, #8]
 		LSL r0, r0, #5
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x049120_0x055620| + 0x7588
 |sub_08050704|
@@ -9407,7 +9407,7 @@
 		ADD r2, r3, #0
 		LDR r3, [pc, #0x24]
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [pc, #0x20]
 		STR r0, [r4]
 		LDR r1, [sp, #0xc]

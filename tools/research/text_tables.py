@@ -98,6 +98,12 @@ def labels(root=ROOT):
             digits = re.search(r"([0-9A-Fa-f]{8})", match.group(1)) if match else None
             if digits:
                 found[int(digits.group(1), 16)] = match.group(1)
+    ledger = os.path.join(root, "docs", "NAMING_LEDGER.csv")
+    if os.path.exists(ledger):
+        with open(ledger, newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                if row.get("new") and row.get("address"):
+                    found[int(row["address"], 16)] = row["new"]
     return found
 
 

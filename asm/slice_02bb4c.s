@@ -71,12 +71,12 @@
 	EXPORT |sub_0802C8AE|
 	EXPORT |sub_0802C8BE|
 	EXPORT |loc_0802C8F4|
-	EXPORT |sub_0802C8FE|
-	EXPORT |sub_0802C976|
-	EXPORT |sub_0802C98E|
+	EXPORT |Bg_WriteControl0AndMosaic1|
+	EXPORT |Mosaic_WriteSize1|
+	EXPORT |Bg_WriteControl0And1AndMosaic|
 	EXPORT |loc_0802CA1A|
-	EXPORT |sub_0802CA2E|
-	EXPORT |sub_0802CA42|
+	EXPORT |Mosaic_WriteSize2|
+	EXPORT |Bg_WriteControl0AndMosaic2|
 	EXPORT |loc_0802CAA0|
 	EXPORT |sub_0802CAF8|
 	EXPORT |sub_0802CAFA|
@@ -238,7 +238,7 @@
 		ADD r0, r0, r1
 		LDR r1, [pc, #0x10]
 		LSL r2, r2, #0xa
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0xf2
 |loc_0802BC64|
@@ -1852,7 +1852,7 @@
 		BL       |inc_0x153f2_0x1a3f2| + 0x48d2
 		B        |inc_0x2bb4c_0x2d1c0| + 0xd70
 	INCBIN  baserom.gba_0x2c8fa_0x2c8fe.extracted
-|sub_0802C8FE|
+|Bg_WriteControl0AndMosaic1|
 	LSR      r4, r0, #0x20
 	LDR      r2, [pc, #0x70]
 	LSR      r5, r6, #1
@@ -1910,10 +1910,10 @@
 	STR      r1, [r0, #4]
 	LDR      r0, [r0, #8]
 	CMP      r1, r0
-	BLT      |sub_0802C976|
+	BLT      |Mosaic_WriteSize1|
 	MOV      r0, #1
 	POP      {r3, pc}
-|sub_0802C976|
+|Mosaic_WriteSize1|
 |unk_0802C976|
 		LSL r1, r1, #4
 		BL       |sub_08046E58|
@@ -1926,7 +1926,7 @@
 		STRB r0, [r1, #0xd]
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0xe28
-|sub_0802C98E|
+|Bg_WriteControl0And1AndMosaic|
 	LDR      r1, [pc, #0x114]
 	PUSH     {r3, lr}
 	MOV      r0, #0xff
@@ -2002,10 +2002,10 @@
 	STR      r1, [r0, #4]
 	LDR      r0, [r0, #8]
 	CMP      r1, r0
-	BLT      |sub_0802CA2E|
+	BLT      |Mosaic_WriteSize2|
 	MOV      r0, #1
 	POP      {r3, pc}
-|sub_0802CA2E|
+|Mosaic_WriteSize2|
 |unk_0802CA2E|
 		LSL r1, r1, #4
 		BL       |sub_08046E58|
@@ -2016,7 +2016,7 @@
 		STRB r0, [r1, #0xd]
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0xee0
-|sub_0802CA42|
+|Bg_WriteControl0AndMosaic2|
 	LDR      r1, [pc, #0x60]
 	MOV      r0, #0
 	STRB     r0, [r1, #0xc]

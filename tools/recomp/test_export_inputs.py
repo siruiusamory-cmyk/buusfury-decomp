@@ -94,6 +94,24 @@ def test_a_label_at_a_code_row_is_a_function_and_the_others_are_entries(tmp_path
     assert export_inputs.entries(rows, names) == [(0x102, "thumb"), (0x10C, "arm")]
 
 
+def test_a_promoted_name_is_a_label_at_the_address_the_ledger_gives_it(tmp_path):
+    ledger = ("0x100,4,thumb,code_a,b,t,p,4\n"
+              "0x104,8,thumb,code_b,b,t,p,8\n")
+    asm = ("\tCODE16\n"
+           "\tEXPORT |sub_08000100|\n"
+           "|sub_08000100|\n"
+           "\tEXPORT |KeyInput_Read|\n"
+           "\tEXPORT |Unknown_Thing|\n")
+    a_root(str(tmp_path), ledger=ledger, asm=asm)
+    path = os.path.join(str(tmp_path), "docs", "NAMING_LEDGER.csv")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write("address,old,new,evidence_class,evidence\n"
+                     "0x08000104,sub_08000104,KeyInput_Read,hardware-register,none\n")
+    assert export_inputs.labels(str(tmp_path)) == {0x100: ("sub_08000100", "thumb"),
+                                                   0x104: ("KeyInput_Read", "thumb")}
+
+
 def test_the_tracked_export_is_the_one_the_tree_derives():
     testkit.require(os.path.join(export_inputs.ROOT, "baserom.gba"),
                     "no image, so the identity block cannot be re-derived")

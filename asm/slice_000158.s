@@ -390,7 +390,7 @@
 	EXPORT |loc_08004DC2|
 	EXPORT |loc_08004DCE|
 	EXPORT |sub_08004DEC|
-	EXPORT |sub_08004DEE|
+	EXPORT |Blend_WriteAlpha1|
 	EXPORT |loc_08004E1C|
 	EXPORT |loc_08004E24|
 	EXPORT |loc_08004EB8|
@@ -420,7 +420,7 @@
 	EXPORT |loc_0800531E|
 	EXPORT |sub_08005332|
 	EXPORT |loc_08005362|
-	EXPORT |sub_0800536A|
+	EXPORT |Blend_WriteControl1|
 	EXPORT |loc_0800540E|
 	EXPORT |loc_08005412|
 	EXPORT |sub_08005414|
@@ -450,7 +450,7 @@
 	EXPORT |loc_0800599A|
 	EXPORT |loc_0800599C|
 	EXPORT |sub_080059A0|
-	EXPORT |sub_080059AE|
+	EXPORT |Blend_WriteControl2|
 	EXPORT |sub_08005ABE|
 	EXPORT |sub_08005C40|
 	EXPORT |loc_08005C5C|
@@ -702,12 +702,12 @@
 	EXPORT |sub_08008096|
 	EXPORT |loc_080080BC|
 	EXPORT |loc_080080C0|
-	EXPORT |sub_080080D8|
-	EXPORT |sub_08008174|
+	EXPORT |Irq_WriteEnable1|
+	EXPORT |Irq_WriteEnable2|
 	EXPORT |loc_08008190|
 	EXPORT |loc_08008192|
 	EXPORT |sub_080081E2|
-	EXPORT |sub_080081E4|
+	EXPORT |Dma_Start3First|
 	EXPORT |loc_080081F6|
 	EXPORT |loc_08008208|
 	EXPORT |loc_0800821A|
@@ -715,10 +715,10 @@
 	EXPORT |loc_08008292|
 	EXPORT |loc_080082DA|
 	EXPORT |loc_080082FE|
-	EXPORT |sub_08008306|
+	EXPORT |Dma_Start3Second|
 	EXPORT |loc_08008308|
 	EXPORT |loc_08008468|
-	EXPORT |sub_080084A6|
+	EXPORT |Dma_Start3Third|
 	EXPORT |loc_080084F8|
 	EXPORT |loc_08008516|
 	EXPORT |loc_08008540|
@@ -824,7 +824,7 @@
 	EXPORT |loc_080091C6|
 	EXPORT |loc_080091E4|
 	EXPORT |sub_080091FC|
-	EXPORT |sub_080091FE|
+	EXPORT |Blend_WriteControlAndAlpha1|
 	EXPORT |loc_08009214|
 	EXPORT |loc_0800921E|
 	EXPORT |loc_08009220|
@@ -879,7 +879,7 @@
 	EXPORT |loc_080096C4|
 	EXPORT |loc_080096EA|
 	EXPORT |sub_08009700|
-	EXPORT |sub_08009704|
+	EXPORT |Blend_WriteControlAndAlpha2|
 	EXPORT |loc_0800971A|
 	EXPORT |loc_0800971E|
 	EXPORT |loc_08009728|
@@ -1105,7 +1105,7 @@
 	EXPORT |loc_0800B8FA|
 	EXPORT |loc_0800B8FC|
 	EXPORT |sub_0800B91A|
-	EXPORT |sub_0800B928|
+	EXPORT |Math_Divide1|
 	EXPORT |loc_0800B970|
 	EXPORT |loc_0800B994|
 	EXPORT |loc_0800B99C|
@@ -1220,7 +1220,7 @@
 	EXPORT |loc_0800CB7C|
 	EXPORT |loc_0800CBA2|
 	EXPORT |loc_0800CBA4|
-	EXPORT |sub_0800CBB8|
+	EXPORT |Math_Divide2|
 	EXPORT |sub_0800CC6C|
 	EXPORT |sub_0800CC7A|
 	EXPORT |sub_0800CD00|
@@ -1463,7 +1463,7 @@
 	EXPORT |sub_0800EEFE|
 	EXPORT |loc_0800EF00|
 	EXPORT |loc_0800EF08|
-	EXPORT |sub_0800EFD0|
+	EXPORT |Math_Divide3|
 	EXPORT |loc_0800F02C|
 	EXPORT |sub_0800F3F8|
 	EXPORT |loc_0800F40E|
@@ -9638,7 +9638,7 @@
 		MOV r2, #0x3c
 		ADR      r1, |inc_0x0158_0x143f2| + 0x4008
 		LDR r0, [pc, #0x9c]
-		BL       |sub_0803DF14|
+		BL       |Irq_WriteMaster1|
 |loc_080040FE|
 		ADD r0, r4, #0
 		B        |inc_0x0158_0x143f2| + 0x3f58
@@ -11287,7 +11287,7 @@
 |sub_08004DEC|
 |unk_08004DEC|
 	INCBIN	baserom.gba_0x4dec_0x4dee.extracted
-|sub_08004DEE|
+|Blend_WriteAlpha1|
 	LSR      r5, r0, #0x20
 	LDMIA    r4!, {r2, r5, r7}
 	LSR      r7, r6, #1
@@ -11967,7 +11967,7 @@
 		B        |inc_0x0158_0x143f2| + 0x51d8
 		MOV r0, #0
 		BX       lr
-|sub_0800536A|
+|Blend_WriteControl1|
 	PUSH     {r4, r5, r6, lr}
 	MOV      r6, #1
 	LSL      r6, r6, #9
@@ -12015,7 +12015,7 @@
 	POP      {r4, r5, r6, pc}
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |sub_0800536A|
+	BL       |Blend_WriteControl1|
 	ADD      r0, r4, #0
 	BL       |loc_08005228|
 	MOV      r2, #1
@@ -12712,7 +12712,7 @@
 |loc_080059AA|
 		STR r4, [r0, #0x10]
 		B        |loc_0800599C|
-|sub_080059AE|
+|Blend_WriteControl2|
 	LSL      r0, r0, #0
 	STR      r4, [r3, #0x1c]
 	LSR      r5, r0, #0x20
@@ -13842,7 +13842,7 @@
 	MOV      r0, #0
 	BL       |inc_0x331c0_0x341c0| + 0x3fc
 	BL       |inc_0x03d784_0x041118| + 0x11c
-	BL       |sub_0800536A|
+	BL       |Blend_WriteControl1|
 	MOV      r2, #1
 	LSL      r2, r2, #9
 	MOV      r0, #5
@@ -17395,15 +17395,15 @@
 	PUSH     {r0, r1, r4, r5, r6, r7, lr}
 	SUB      sp, #4
 	ADD      r4, r0, #0
-	BNE      |sub_080080D8|
+	BNE      |Irq_WriteEnable1|
 	LDR      r0, [pc, #0x3c4]
 	BL       |GBARam_Malloc|
 	ADD      r4, r0, #0
-	BNE      |sub_080080D8|
+	BNE      |Irq_WriteEnable1|
 	ADD      r0, r4, #0
 	ADD      sp, #0xc
 	POP      {r4, r5, r6, r7, pc}
-|sub_080080D8|
+|Irq_WriteEnable1|
 |unk_080080D8|
 		LDR r0, [pc, #0x3b8]
 		MOV r2, #4
@@ -17484,7 +17484,7 @@
 		STRH r0, [r1, #6]
 		ADD r0, r4, #0
 		B        |inc_0x0158_0x143f2| + 0x7f7c
-|sub_08008174|
+|Irq_WriteEnable2|
 	PUSH     {r4, lr}
 	LDR      r2, [pc, #0x31c]
 	LDR      r4, [pc, #0x324]
@@ -17540,11 +17540,11 @@
 	CMP      r1, #0
 	BLE      |sub_080081E2|
 	ADD      r1, r2, #0
-	B        |sub_080081E4|
+	B        |Dma_Start3First|
 |sub_080081E2|
 |unk_080081E2|
 		ADD r1, sp, #0x10
-|sub_080081E4|
+|Dma_Start3First|
 	LDR      r6, [r1]
 	MOV      r3, #0
 	STR      r3, [sp, #0x10]
@@ -17578,7 +17578,7 @@
 	LDR      r3, [r2]
 	LDR      r2, [sp, #0x1c]
 	CMP      r2, #0
-	BGE      |sub_08008306|
+	BGE      |Dma_Start3Second|
 	LDR      r2, [sp, #0x18]
 	CMP      r2, #0
 	BGE      |loc_08008292|
@@ -17695,9 +17695,9 @@
 |loc_080082FE|
 	LDR      r2, [sp, #0x20]
 	CMP      r2, #0x10
-	BLE      |sub_08008306|
+	BLE      |Dma_Start3Second|
 	B        |loc_08008308|
-|sub_08008306|
+|Dma_Start3Second|
 |unk_08008306|
 		B        |loc_08008364|
 |loc_08008308|
@@ -17903,7 +17903,7 @@
 		MOV ip, r6
 		B        |inc_0x0158_0x143f2| + 0x8358
 	INCBIN  baserom.gba_0x8486_0x84a6.extracted
-|sub_080084A6|
+|Dma_Start3Third|
 	LSR      r4, r0, #0x20
 	DCW      0xf000,0x0600
 	LSL      r4, r2, #3
@@ -18640,7 +18640,7 @@
 		MOV r2, #0x3a
 		ADR      r1, |inc_0x0158_0x143f2| + 0x8904
 		ADR      r0, |inc_0x0158_0x143f2| + 0x891c
-		BL       |sub_0803DF14|
+		BL       |Irq_WriteMaster1|
 		MOV r0, #0
 		B        |inc_0x0158_0x143f2| + 0x88c4
 |sub_08008A36|
@@ -19584,7 +19584,7 @@
 |sub_080091FC|
 |unk_080091FC|
 	INCBIN	baserom.gba_0x91fc_0x91fe.extracted
-|sub_080091FE|
+|Blend_WriteControlAndAlpha1|
 	LSR      r7, r0, #0x20
 	ADD      r0, r5, r5
 	LSL      r0, r0, #0xc
@@ -20242,12 +20242,12 @@
 	BGE      |sub_08009700|
 	ORR      r3, r5
 	STRH     r3, [r0, #4]
-	B        |sub_08009704|
+	B        |Blend_WriteControlAndAlpha2|
 |sub_08009700|
 |unk_08009700|
 		BIC r5, r3
 		STRH r5, [r0, #4]
-|sub_08009704|
+|Blend_WriteControlAndAlpha2|
 	ADD      r3, r1, #0
 	MOV      r1, #0xff
 	ADD      r1, #1
@@ -20443,7 +20443,7 @@
 		ADD r4, r6, #0
 		ADD r6, #1
 		ADD r0, r4, #0
-		BL       |sub_0803FAF6|
+		BL       |Irq_WriteMaster2|
 		LSL r1, r0, #0x1f
 		BPL      |loc_08009898|
 		ADD r3, r0, #0
@@ -23746,7 +23746,7 @@
 		STRB r1, [r5, #1]
 		LDR r1, [sp, #0x18]
 		SUB r0, r5, r2
-		BL       |sub_08049144|
+		BL       |Thunk_PaletteCopy|
 		STR r6, [r4, #0x24]
 		CMP r7, #0
 		BEQ      |loc_0800B27C|
@@ -24670,7 +24670,7 @@
 		MOV r1, #0
 		STR r1, [r0, #0x14]
 		B        |inc_0x0158_0x143f2| + 0xb7c0
-|sub_0800B928|
+|Math_Divide1|
 	PUSH     {r3, r4, r5, lr}
 	LDR      r5, [pc, #0x320]
 	ADD      r4, r0, #0
@@ -26438,7 +26438,7 @@
 		LSL r0, r0, #5
 		ADD r1, r0, r1
 		ADD r0, r6, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r1, [r4, #0x2c]
 		MOV r3, #1
 		LDR r0, [r1, #0x20]
@@ -27058,10 +27058,10 @@
 	LDR      r0, [r0, #0x1c]
 	SUB      sp, #0x20
 	CMP      r0, #0
-	BNE      |sub_0800CBB8|
+	BNE      |Math_Divide2|
 	ADD      sp, #0x20
 	POP      {r4, pc}
-|sub_0800CBB8|
+|Math_Divide2|
 |unk_0800CBB8|
 		LDR r0, [pc, #0x218]
 		LDR r2, [r4, #0x44]
@@ -28138,7 +28138,7 @@
 		ADD r0, r0, r1
 		LDR r1, [sp, #0x24]
 		ADD r2, r6, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_0800D432|
 		MOV r0, #0x38
 		STRB r0, [r4, #8]
@@ -28611,7 +28611,7 @@
 		ADD r0, r0, r1
 		ADD r2, sp, #4
 		LDMIA r2!, {r1, r2}
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_0800D7EA|
 		ADD r2, r5, #0
 		ADD r1, r6, #0
@@ -31651,12 +31651,12 @@
 	BEQ      |loc_0800F02C|
 	LDR      r1, [r5, #8]
 	CMP      r1, #0x10
-	BLT      |sub_0800EFD0|
+	BLT      |Math_Divide3|
 	MOV      r0, #0
 	LDR      r3, [pc, #0x228]
 	ADD      sp, r3
 	POP      {r4, r5, r6, r7, pc}
-|sub_0800EFD0|
+|Math_Divide3|
 |unk_0800EFD0|
 		MOV r2, #1
 		STR r2, [sp, #0x24]
@@ -32187,7 +32187,7 @@
 		MUL r7, r0
 		ADD r2, r7, #0
 		ADD r0, r6, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [r4, #0x54]
 		ADD r6, r6, r7
 		LDR r0, [r0]

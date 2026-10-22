@@ -692,7 +692,7 @@
 	EXPORT |sub_0803D360|
 	EXPORT |sub_0803D362|
 	EXPORT |sub_0803D388|
-	EXPORT |sub_0803D478|
+	EXPORT |KeyInput_Read|
 	EXPORT |loc_0803D494|
 	EXPORT |loc_0803D4C8|
 	EXPORT |sub_0803D4CA|
@@ -1337,7 +1337,7 @@
 		LSL r0, r0, #5
 		ADD r0, r0, r5
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x3c]
 		LSL r0, r0, #5
@@ -1345,7 +1345,7 @@
 		ADD r0, #0x40
 		MOV r2, #0x40
 		LDR r1, [r1, #0x14]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x446
 |sub_080356B2|
@@ -3168,7 +3168,7 @@
 		ADD r0, r0, r1
 		LDR r1, [pc, #0x264]
 		ADD r1, #0x14
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0
 		MVN r1, r0
 |loc_080364B2|
@@ -3956,7 +3956,7 @@
 		LDR r1, [r1, #8]
 		LSL r0, r0, #5
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r1, r6, #0
 		LDR r0, [r4, #0x38]
 		ADD r1, #0x18
@@ -4205,7 +4205,7 @@
 		ADD r2, r3, #0
 		LDR r3, [pc, #0xb0]
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x1af2
 |loc_08036CD2|
@@ -6595,7 +6595,7 @@
 		ADD r2, r6, #0
 		LDR r1, [r0, #8]
 		ADD r0, r7, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ASR r0, r6, #0x1f
 		LSR r0, r0, #0x1b
 		ADD r0, r0, r6
@@ -7269,7 +7269,7 @@
 		LDR r1, [r4, #0x44]
 		MOV r2, #0xc0
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x322c
 |sub_08038498|
@@ -7670,7 +7670,7 @@
 		LDR r1, [r2, #0x44]
 		MOV r2, #0xc0
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x35ea
 |loc_080387C2|
@@ -7738,7 +7738,7 @@
 		ADD r0, r0, r7
 		ADD r2, r6, #0
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x30]
 		MOV r2, #1
@@ -7747,7 +7747,7 @@
 		ADD r0, r0, r6
 		LSL r2, r2, #9
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_0803884E|
 |unk_0803884E|
 		LDR r0, [sp, #0x38]
@@ -7856,7 +7856,7 @@
 		ADD r0, r0, r5
 		ADD r2, r6, #0
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x2c]
 		LSL r0, r0, #5
@@ -7864,7 +7864,7 @@
 		ADD r0, r0, r6
 		LSR r2, r6, #1
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x36dc
 |sub_0803893E|
@@ -8446,7 +8446,7 @@
 		LDR r1, [r1, #8]
 		LSL r0, r0, #5
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |inc_0x351c0_0x3d4d0| + 0x3b18
 	DCB	0x00,0x00
 	DCD	0x0804D1B8
@@ -9082,7 +9082,7 @@
 		SUB r1, #0x20
 		MOV r0, sp
 		MOV r6, sp
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0xff
 		ADD r0, #0xa1
 		LDR r0, [r0, r4]
@@ -10716,7 +10716,7 @@
 		ADD r1, r5, #0
 		MUL r1, r5
 		ADD r0, r0, r1
-		BL       |sub_0803FAF6|
+		BL       |Irq_WriteMaster2|
 		STR r0, [sp, #0xc]
 		LDR r0, [r6, #0xc]
 		ADD r1, r4, #0
@@ -11959,7 +11959,7 @@
 		ADD r0, r0, r1
 		ADD r1, r4, #0
 		ADD r1, #0x30
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |loc_0803A902|
 |loc_0803A940|
 		MOV r0, #1
@@ -12106,7 +12106,7 @@
 		ADD r0, r0, r1
 		ADD r1, sp, #0x1c
 		LSL r2, r2, #0xb
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |loc_0803A902|
 		PUSH {r0, r1, r4, r5, r6, r7, lr}
 		SUB sp, #0x1fc
@@ -12197,7 +12197,7 @@
 		LSL r2, r2, #9
 		ADD r1, r6, #0
 		ADD r0, sp, #0x58
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_0803AB0C|
 		LDR r0, [pc, #0x158]
 		LDR r1, [pc, #0x154]
@@ -12388,7 +12388,7 @@
 		ADD r0, r0, r1
 		MOV r1, sp
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [sp, #0x54]
 		MOV r3, #3
 		LSL r3, r3, #9
@@ -14758,7 +14758,7 @@
 		ADD r2, r1, #0
 		MUL r1, r2
 		ADD r0, r0, r1
-		BL       |sub_0803FAF6|
+		BL       |Irq_WriteMaster2|
 		ADD r6, r0, #0
 		LDR r1, [sp, #0x10]
 		BL       |sub_08046E58|
@@ -17617,7 +17617,7 @@
 |loc_0803D474|
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x81c4
-|sub_0803D478|
+|KeyInput_Read|
 	PUSH     {r4, lr}
 	LDR      r0, [r0, #0xc]
 	LDR      r2, [r0]

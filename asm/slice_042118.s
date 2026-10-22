@@ -52,7 +52,7 @@
 		STRB r3, [r2]
 		B        |loc_080420E6|
 	CODE16
-	EXPORT |sub_08042188|
+	EXPORT |Timer_Write2Reload2|
 	EXPORT |sub_08042220|
 	EXPORT |loc_0804222A|
 	EXPORT |sub_0804222C|
@@ -97,7 +97,7 @@
 	EXPORT |sub_080425B0|
 	EXPORT |sub_080425B2|
 	EXPORT |loc_0804269C|
-	EXPORT |sub_08042880|
+	EXPORT |Bios_CpuSet1|
 	EXPORT |loc_08042898|
 	EXPORT |loc_080428D0|
 	EXPORT |loc_080428E0|
@@ -112,7 +112,7 @@
 	EXPORT |loc_08042A8E|
 	EXPORT |loc_08042AA4|
 	EXPORT |loc_08042AAA|
-	EXPORT |sub_08042AB8|
+	EXPORT |Bios_CpuSet2|
 	EXPORT |sub_08042ADA|
 	EXPORT |loc_08042AF6|
 	EXPORT |loc_08042B32|
@@ -134,7 +134,7 @@
 	EXPORT |loc_08042CE4|
 	EXPORT |loc_08042CFE|
 	EXPORT |sub_08042D00|
-	EXPORT |sub_08042D72|
+	EXPORT |Irq_ReadAndWriteMaster|
 	EXPORT |loc_08042D9A|
 	EXPORT |loc_08042DB2|
 	EXPORT |loc_08042DC2|
@@ -172,7 +172,7 @@
 	EXPORT |sub_080430E2|
 	EXPORT |sub_080430E8|
 	EXPORT |sub_08043114|
-|sub_08042188|
+|Timer_Write2Reload2|
 	MOV      r1, #4
 	STRB     r1, [r0, #4]
 	MOV      r1, #0x20
@@ -694,7 +694,7 @@
 	INCBIN  baserom.gba_0x4256c_0x42592.extracted
 |loc_08042592|
 |unk_08042592|
-		B        |sub_08042880|
+		B        |Bios_CpuSet1|
 	INCBIN  baserom.gba_0x42594_0x425b0.extracted
 |sub_080425B0|
 	B        |loc_0804269C|
@@ -938,7 +938,7 @@
 		MOV r7, #1
 		STRB r7, [r5, #0xe]
 		B        |loc_080428D0|
-|sub_08042880|
+|Bios_CpuSet1|
 	CMP      r4, #3
 	BNE      |loc_080428D0|
 	LDR      r5, [pc, #0x328]
@@ -1230,10 +1230,10 @@
 	ADD      r5, r1, #0
 	ADD      r4, r0, #0
 	CMP      r0, #0
-	BNE      |sub_08042AB8|
+	BNE      |Bios_CpuSet2|
 	MOV      r0, #4
 	POP      {r3, r4, r5, pc}
-|sub_08042AB8|
+|Bios_CpuSet2|
 |unk_08042AB8|
 		MOV r0, #0
 		ADD r3, sp, #0
@@ -1547,7 +1547,7 @@
 		MOV r2, #8
 		SUB r5, #5
 		CMP r5, #0xe
-		BHS      |sub_08042D72|
+		BHS      |Irq_ReadAndWriteMaster|
 		ADR      r3, |loc_08042D14|
 		LDRB r3, [r3, r5]
 		LSL r3, r3, #1
@@ -1566,7 +1566,7 @@
 		MOV r0, #0x13
 		B        |inc_0x042118_0x049114| + 0xc60
 	INCBIN  baserom.gba_0x42d2a_0x42d72.extracted
-|sub_08042D72|
+|Irq_ReadAndWriteMaster|
 	STRB     r1, [r4, #5]
 	STRB     r1, [r4, #4]
 	MOV      r0, #0x43

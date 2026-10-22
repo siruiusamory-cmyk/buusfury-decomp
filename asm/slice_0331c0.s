@@ -18,7 +18,7 @@
 	EXPORT |loc_08033442|
 	EXPORT |loc_080334EC|
 	EXPORT |sub_080335B4|
-	EXPORT |sub_080335B6|
+	EXPORT |Bg_WriteScroll1AndBlendControl|
 	EXPORT |loc_080335D4|
 	EXPORT |loc_08033628|
 	EXPORT |loc_0803362A|
@@ -26,7 +26,7 @@
 	EXPORT |loc_08033664|
 	EXPORT |loc_08033694|
 	EXPORT |sub_0803377A|
-	EXPORT |sub_080337EC|
+	EXPORT |Blend_WriteAlpha4|
 	EXPORT |sub_08033808|
 	EXPORT |loc_08033826|
 	EXPORT |loc_08033836|
@@ -587,7 +587,7 @@
 |sub_080335B4|
 |unk_080335B4|
 	INCBIN	baserom.gba_0x335b4_0x335b6.extracted
-|sub_080335B6|
+|Bg_WriteScroll1AndBlendControl|
 	LSR      r5, r6, #1
 	ASR      r4, r6, #9
 	LSR      r1, r6, #1
@@ -849,7 +849,7 @@
 		B        |loc_08033836|
 |loc_080337D2|
 		CMP r0, #0x80
-		BNE      |sub_080337EC|
+		BNE      |Blend_WriteAlpha4|
 		LDR r0, [r4, #0x10]
 		LDR r1, [pc, #0xa8]
 		ADD r0, #2
@@ -861,7 +861,7 @@
 		LDR r0, [pc, #0x58]
 		STR r0, [r4, #0x10]
 		B        |loc_08033836|
-|sub_080337EC|
+|Blend_WriteAlpha4|
 	LDR      r1, [pc, #0x98]
 	CMP      r0, #0x90
 	BGT      |loc_08033826|

@@ -811,18 +811,18 @@ unk_03003124 EQU     0x03003124
         	MOV r0, #0
         	BL       |inc_0x331c0_0x341c0| + 0x3fc
         	BL       |inc_0x03d784_0x041118| + 0x11c
-        	BL       |sub_08015882|
+        	BL       |Blend_WriteControl3|
         	MOV r2, #1
         	LSL r2, r2, #9
         	MOV r0, #5
         	LSL r0, r0, #0x18
         	LDR r1, [pc, #0xec]
-        	BL       |sub_08049144|
+        	BL       |Thunk_PaletteCopy|
         	MOV r2, #1
         	LSL r2, r2, #9
         	LDR r1, [pc, #0xe4]
         	LDR r0, [pc, #0xe4]
-        	BL       |sub_08049144|
+        	BL       |Thunk_PaletteCopy|
         	B        |loc_08014B40|
 |loc_08014b70|
 |unk_08014B70|
@@ -7298,7 +7298,7 @@ unk_03003124 EQU     0x03003124
         	ADD r0, r0, r1
         	LDR r1, [pc, #0x260]
         	LSL r2, r2, #0xa
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
         	POP {r3, pc}
 |sub_0802b9a8|
         PUSH     {r4,r5,r6,lr}
@@ -7353,7 +7353,7 @@ unk_03003124 EQU     0x03003124
         	ADD r0, r0, r1
         	LDR r1, [pc, #0x1f0]
         	LSL r2, r2, #0xa
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
         	ADD r0, r4, #0
         	POP {r4, r5, r6, pc}
 |sub_0802ba18|
@@ -11654,7 +11654,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, #8
         	MOV r5, sp
         	MOV r0, sp
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
         	LDR r0, [sp, #0x20]
         	ADD r3, sp, #0
         	ASR r0, r0, #8
@@ -14549,7 +14549,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r0, #0
         	ADD r1, #0xc
         	ADD r0, #4
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
 |loc_08031D30|
         	LDR r0, [r5]
         	LDR r1, [r4, #0x14]
@@ -15726,7 +15726,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, #0xc
         	LSL r2, r2, #3
         	ADD r0, #4
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
 |loc_0803269E|
         	LDR r1, [sp, #4]
         	LDR r0, [r1]
@@ -16548,7 +16548,7 @@ unk_03003124 EQU     0x03003124
         	MOV r2, #0x20
         	ADD r1, #8
         	ADD r0, r4, #0
-        	BL       |sub_08049138|
+        	BL       |Thunk_VramCopy|
         	LDR r1, [r5]
         	ADD r0, r5, #0
         	LDR r2, [r1, #0x78]
@@ -20086,7 +20086,7 @@ unk_03003124 EQU     0x03003124
         	STRB r0, [r4]
         	POP {r4, r5, r6, pc}
         INCBIN  baserom.gba_0x41786_0x417ac.extracted
-|sub_080417ac|
+|Timer_Write2Reload1|
         PUSH     {r3,r4,r5,lr}
         LDR      r4,[pc,#0x80]
         MOV      r1,#0
@@ -20136,7 +20136,7 @@ unk_03003124 EQU     0x03003124
         POP      {r4,pc}
 |dat_0804180c|
 |unk_0804180C|
-        	BL       |sub_080417ac|
+        	BL       |Timer_Write2Reload1|
         	MOV r0, #1
         	STRB r0, [r4, #5]
         	B        |loc_08041824|

@@ -18,7 +18,7 @@
 	EXPORT |loc_08015618|
 	EXPORT |sub_08015792|
 	EXPORT |sub_080157D4|
-	EXPORT |sub_08015882|
+	EXPORT |Blend_WriteControl3|
 	EXPORT |sub_08015966|
 	EXPORT |sub_08015978|
 	EXPORT |loc_0801598E|
@@ -183,7 +183,7 @@
 	EXPORT |sub_080179CC|
 	EXPORT |sub_080179E6|
 	EXPORT |loc_080179FC|
-	EXPORT |sub_08017AFC|
+	EXPORT |Blend_WriteAlpha2|
 	EXPORT |sub_08017BF2|
 	EXPORT |loc_08017C1C|
 	EXPORT |sub_08017C3E|
@@ -434,7 +434,7 @@
 	EXPORT |sub_08019F14|
 	EXPORT |loc_08019F36|
 	EXPORT |sub_08019F5A|
-	EXPORT |sub_08019F72|
+	EXPORT |Bios_Diff16Unfilter|
 	EXPORT |loc_08019FAC|
 	EXPORT |sub_08019FC0|
 	EXPORT |sub_08019FE6|
@@ -980,7 +980,7 @@
 |loc_0801587E|
 		MOV r0, #0
 		B        |inc_0x153f2_0x1a3f2| + 0x3de
-|sub_08015882|
+|Blend_WriteControl3|
 	MOV      r2, #1
 	LSL      r2, r2, #9
 	PUSH     {r4, lr}
@@ -1035,7 +1035,7 @@
 	POP      {r4, pc}
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |sub_08015882|
+	BL       |Blend_WriteControl3|
 	ADD      r0, r4, #0
 	BL       |sub_08014dc2|
 	MOV      r2, #1
@@ -5203,11 +5203,11 @@
 	ADD      r0, #1
 	STR      r0, [r4, #4]
 	CMP      r0, #0xa0
-	BGT      |sub_08017AFC|
+	BGT      |Blend_WriteAlpha2|
 	MOV      r0, #0
 	ADD      sp, #0x10
 	POP      {r4, r5, r6, pc}
-|sub_08017AFC|
+|Blend_WriteAlpha2|
 |unk_08017AFC|
 ; cited by 0x080179FC (a pc-relative load targets 0x08017BDC)
 		LDR r1, [pc, #0x110]
@@ -9940,7 +9940,7 @@
 		ASR r1, r1, #0x10
 		BL       |inc_0x0158_0x143f2| + 0x13360
 		B        |inc_0x153f2_0x1a3f2| + 0x4b66
-|sub_08019F72|
+|Bios_Diff16Unfilter|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r5, r1, #0
 	ADD      r4, r0, #0

@@ -34,7 +34,8 @@ SIZE_LIMIT = 1024 * 1024
 ASSETS = "assets/"
 
 CHECKS = ("P-148-repo-module-path", "P-159-bare-interpreter", "P-167-pool-guard",
-          "NAMING-function-name", "NAMING-c-status", "ROM-tracked-image", "README-numbers",
+          "NAMING-function-name", "NAMING-c-status", "NAMING-asm-symbol",
+          "NAMING-address-ratchet", "ROM-tracked-image", "README-numbers",
           "TEST-silent-return", "P-518-stale-incbin-call", "DUP-block")
 STALE_CALL = re.compile(r"incbin\.bat\s+baserom\.gba\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")
 TEST_FILE = re.compile(r"^test_[^/\\]*\.py$")
@@ -55,6 +56,18 @@ README_BYTES = re.compile(r"([\d,]+)\s+of\s+([\d,]+)\s+bytes")
 README_ROWS = re.compile(r"([\d,]+)\s+ledger rows")
 README_IDENTIFIED = re.compile(r"([\d.]+)\s*%\s+is identified binary\s+\(([\d,]+)\s+B\b")
 README_COMMAND = re.compile(r"python tools\\gate\\gate\.py")
+README_SYMBOLS = re.compile(r"([\d,]+)\s+of\s+the\s+([\d,]+)\s+symbols")
+EXPORT_SYMBOL = re.compile(r"^\s*EXPORT\s+(\S+)\s*$")
+CONSTANT_DEFINITION = re.compile(r"^\s*\|?([A-Za-z0-9_]+)\|?\s+EQU\b", re.I)
+ADDRESS_SYMBOL = re.compile(r"^(?:sub|loc|dat|unk|g)_[0-9A-Fa-f]{8}$")
+ADDRESS_DIGITS = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})$")
+SLICE_SYMBOL = re.compile(r"^inc_0x[0-9A-Fa-f]{6}_0x[0-9A-Fa-f]{6}$")
+LABEL_ROW = re.compile(r'\[\[functions\]\]\nname = "([^"]+)"\naddress = 0x([0-9a-f]+)')
+ASM_SUFFIX = ".s"
+ASM_ROOT = "asm/"
+BASELINE = "docs/NAMING_BASELINE.txt"
+LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
+LABELS = "docs/research/BF_LABELS.toml"
 BATCH = (".cmd", ".bat")
 SOURCES = (".py", ".cmd", ".bat")
 
@@ -187,6 +200,116 @@ def header_text(text):
     return "\n".join(lines)
 
 
+def asm_files():
+    proc = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                          cwd=ROOT, capture_output=True)
+    if proc.returncode != 0:
+        return None
+    return sorted(name for name in proc.stdout.decode("utf-8", "replace").split("\0")
+                  if name.startswith(ASM_ROOT) and name.endswith(ASM_SUFFIX))
+
+
+def asm_exports(text):
+    exports = []
+    constants = set()
+    for number, line in enumerate(text.splitlines(), 1):
+        found = EXPORT_SYMBOL.match(line)
+        if found:
+            exports.append((number, found.group(1).strip("|")))
+            continue
+        found = CONSTANT_DEFINITION.match(line)
+        if found:
+            constants.add(found.group(1))
+    return exports, constants
+
+
+def export_symbols():
+    names = asm_files()
+    if names is None:
+        return None
+    symbols = []
+    constants = set()
+    for name in names:
+        text = read_source(name)
+        if text is None:
+            return None
+        exports, defined = asm_exports(text)
+        symbols += [(symbol, name, number) for number, symbol in exports]
+        constants |= defined
+    return symbols, constants
+
+
+def label_addresses():
+    out = {}
+    for name, address in LABEL_ROW.findall(read_source(LABELS) or ""):
+        out[name] = int(address, 16)
+    for row in csv.DictReader(io.StringIO(read_source(LEDGER_NAMES) or "")):
+        if row.get("new") and row.get("address"):
+            out[row["new"]] = int(row["address"], 16)
+    return out
+
+
+def asm_symbol_findings(symbols, addresses):
+    findings = []
+    for name, path, line in symbols:
+        if FUNCTION_NAME.match(name) or SLICE_SYMBOL.match(name):
+            continue
+        digits = ADDRESS_DIGITS.match(name)
+        if digits is None:
+            findings.append(("NAMING-asm-symbol",
+                             "%s:%d: %s is not Module_Verb or sub_/loc_/dat_/unk_/g_ and its "
+                             "own address" % (path, line, name)))
+            continue
+        if name in addresses and int(digits.group(1), 16) != addresses[name]:
+            findings.append(("NAMING-asm-symbol",
+                             "%s:%d: %s names 0x%08X, which is not its own address"
+                             % (path, line, name, addresses[name])))
+    return findings
+
+
+def symbol_counts(symbols, constants):
+    kept = [name for name, _path, _line in symbols if name not in constants]
+    return sum(1 for name in kept if ADDRESS_SYMBOL.match(name)), len(kept)
+
+
+def ratchet_findings(live, baseline):
+    if live > baseline:
+        return [("NAMING-address-ratchet",
+                 "%s: %d address-named symbols is above the baseline %d"
+                 % (BASELINE, live, baseline))]
+    if live < baseline:
+        return [("NAMING-address-ratchet",
+                 "%s: %d address-named symbols is below the baseline %d, so the baseline must "
+                 "be lowered to %d in this tree" % (BASELINE, live, baseline, live))]
+    return []
+
+
+def read_baseline():
+    text = read_source(BASELINE)
+    if text is None:
+        return None
+    try:
+        return int(text.split()[0])
+    except (IndexError, ValueError):
+        return None
+
+
+def naming_findings():
+    symbols = export_symbols()
+    if symbols is None:
+        return [("lint-enumeration",
+                 "git ls-files failed, the asm symbol checks cannot see the tree")], None
+    exports, constants = symbols
+    findings = asm_symbol_findings(exports, label_addresses())
+    counts = symbol_counts(exports, constants)
+    baseline = read_baseline()
+    if baseline is None:
+        findings.append(("NAMING-address-ratchet", "%s: no count can be read" % BASELINE))
+    else:
+        findings += ratchet_findings(counts[0], baseline)
+    return findings, counts
+
+
 def tracked_image_name(name):
     if TRACKED_IMAGE.search(name):
         return [("ROM-tracked-image", "%s: a tracked *.gba path" % name)]
@@ -250,12 +373,13 @@ def identified_share():
     return "%.4f" % (100.0 * identified / gate.ROM_SIZE), identified
 
 
-def readme_numbers_findings(text, built, total, percent, rows, identified=None):
+def readme_numbers_findings(text, built, total, percent, rows, identified=None, symbols=None):
     findings = []
     percents = README_PERCENT.findall(text)
     allowed = [percent] + ([identified[0]] if identified is not None else [])
     spans = README_BYTES.findall(text)
     counts = README_ROWS.findall(text)
+    symbol_figures = README_SYMBOLS.findall(text)
     for value, wanted in [(percent, 1)] + ([(identified[0], 1)] if identified is not None else []):
         found = percents.count(value)
         if found != wanted:
@@ -300,10 +424,20 @@ def readme_numbers_findings(text, built, total, percent, rows, identified=None):
         if uncomma(listed) != rows:
             findings.append(("README-numbers",
                              "README.md: %s ledger rows is not work/ledger.csv's %d" % (listed, rows)))
+    if symbols is not None:
+        if len(symbol_figures) != 1:
+            findings.append(("README-numbers",
+                             "README.md: one '<a> of the <b> symbols' figure expected, found %d"
+                             % len(symbol_figures)))
+        for first, second in symbol_figures:
+            if (uncomma(first), uncomma(second)) != symbols:
+                findings.append(("README-numbers",
+                                 "README.md: %s of the %s symbols is not the %d of the %d symbols "
+                                 "asm/ exports" % (first, second, symbols[0], symbols[1])))
     return findings
 
 
-def readme_findings():
+def readme_findings(symbols=None):
     text = read_source("README.md")
     if text is None:
         return [("README-numbers", "README.md: cannot be read")]
@@ -312,7 +446,7 @@ def readme_findings():
     built = gate.source_bytes()
     return readme_numbers_findings(text, built, gate.ROM_SIZE,
                                    "%.4f" % (100.0 * built / gate.ROM_SIZE),
-                                   len(gate.ledger_rows()), identified_share())
+                                   len(gate.ledger_rows()), identified_share(), symbols)
 
 
 def stale_call_findings(text, named):
@@ -547,7 +681,9 @@ def run(files=None):
     if whole_tree:
         findings += c_source_findings()
         findings += tracked_rom_findings()
-        findings += readme_findings()
+        naming, counts = naming_findings()
+        findings += naming
+        findings += readme_findings(counts)
         findings += stale_call_tree_findings()
         findings += dup_block_findings()
     else:

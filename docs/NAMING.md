@@ -8,6 +8,33 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
 - Unknown purpose: `sub_0800XXXX`, the literal `sub_` and the retail address as eight uppercase hex digits (`sub_080143F2`); file offset 0x143F2 is address 0x080143F2.
 - Not yet known to be a function: keep the generator form (`loc_0801444C`, `dat_0801440C`). Only evidence promotes a name, never repetition or a match in another project.
 - Names are unique across the link, because the symbol text is emitted verbatim into the image.
+- `asm/` exports follow the same two forms, and `tools\lint\lints.py` enforces them
+  (`NAMING-asm-symbol`): every export is `Module_Verb` or `sub_`/`loc_`/`dat_`/`unk_`/`g_` and eight
+  hex digits equal to the symbol's own address. `inc_0x<file start>_0x<file end>` is the one other
+  admitted form: it names a raw slice by its extent, and nothing renames it.
+- The count of address-named exports is held in `docs/NAMING_BASELINE.txt` and may only fall
+  (`NAMING-address-ratchet`): a count above it fails, and a count below it fails until the baseline
+  is lowered to the measured figure in the same tree. README's "<a> of the <b> symbols" sentence is
+  the same two figures (`README-numbers`).
+
+## Evidence for a name
+
+`sub_` becomes `Module_Verb` only on evidence, and one class of it at a time. A promotion names the
+register, call, string or format it proves, never the story around it:
+
+| class | what the evidence is | where to look |
+|---|---|---|
+| a hardware register or BIOS call it drives | the instruction that writes or reads the register, or the `svc` number, quoted with its address; `python tools\research\name_evidence.py --mode function --function 0x…` prints every hardware access in the function and the literal it resolved from | GBATEK for the register or SWI name |
+| a proven caller/callee role | the call sites and the registers they pass, or a tracked page that measured the role and quotes the bytes | `docs/research/`, the ledger's evidence cell |
+| a retail string it alone references | the string's address, its index in the string table, and the fact that no other transcribed function loads it | `tools/text/strings_layout.json` |
+| a data format a generator in `tools/` already decodes | the pointer or header the function reads into a region one of the generators emits | the generator's own record table |
+
+Every promotion adds one row to `docs/NAMING_LEDGER.csv` (`address,old,new,evidence_class,evidence`)
+in the same commit as the rename, and the row's evidence cell must be checkable by itself: the
+address, the instruction or page, and the command or file that reprints it. When several functions
+drive one register set and nothing further separates them, the name carries the set and a 1-based
+ordinal in ascending address order (`Blend_WriteControl1`, `Blend_WriteControl2`); the ordinal is a
+disambiguator, not a claim. A name that would claim more than its evidence is left `sub_`.
 
 ## Structs, fields and units
 

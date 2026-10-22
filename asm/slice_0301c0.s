@@ -60,13 +60,13 @@
 	EXPORT |loc_08030BA4|
 	EXPORT |loc_08030BC2|
 	EXPORT |sub_08030BCC|
-	EXPORT |sub_08030BCE|
+	EXPORT |Blend_WriteAlpha3|
 	EXPORT |loc_08030BE4|
 	EXPORT |loc_08030BEE|
 	EXPORT |loc_08030BF0|
 	EXPORT |loc_08030C12|
-	EXPORT |sub_08030C2E|
-	EXPORT |sub_08030F78|
+	EXPORT |Bg_WriteScroll0AndBlendAlpha|
+	EXPORT |Blend_WriteControlAndAlpha4|
 	EXPORT |loc_08030FA4|
 	EXPORT |loc_08030FB2|
 	EXPORT |sub_08030FB4|
@@ -164,7 +164,7 @@
 		LDR r1, [pc, #0x108]
 		MOV r2, #0x80
 		ADD r1, #4
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x301c0_0x311c0| + 0x4e
 |sub_08030274|
@@ -452,7 +452,7 @@
 		ADD r7, sp, #4
 		ADD r1, #8
 		ADD r0, r7, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [r5]
 		ADD r3, sp, #0
 		ASR r0, r0, #8
@@ -1357,7 +1357,7 @@
 	LSR      r1, r1, #0x1f
 	LDR      r6, [pc, #0x350]
 	LDR      r7, [pc, #0x354]
-	BEQ      |sub_08030BCE|
+	BEQ      |Blend_WriteAlpha3|
 	MOV      r1, #0
 	MVN      r1, r1
 	STR      r1, [r0]
@@ -1372,11 +1372,11 @@
 	CMP      r0, #0
 	BEQ      |sub_08030BCC|
 	STR      r6, [r4, #0x60]
-	B        |sub_08030BCE|
+	B        |Blend_WriteAlpha3|
 |sub_08030BCC|
 |unk_08030BCC|
 		STR r7, [r4, #0x60]
-|sub_08030BCE|
+|Blend_WriteAlpha3|
 	LDR      r0, [r5]
 	LDRH     r0, [r0, #4]
 	LSL      r0, r0, #0x1f
@@ -1419,15 +1419,15 @@
 	PUSH     {r0, r1, r4, r5, r6, r7, lr}
 	SUB      sp, #0x64
 	ADD      r6, r0, #0
-	BNE      |sub_08030C2E|
+	BNE      |Bg_WriteScroll0AndBlendAlpha|
 	MOV      r0, #0x64
 	BL       |GBARam_Malloc|
 	ADD      r6, r0, #0
-	BNE      |sub_08030C2E|
+	BNE      |Bg_WriteScroll0AndBlendAlpha|
 	ADD      r0, r6, #0
 	ADD      sp, #0x6c
 	POP      {r4, r5, r6, r7, pc}
-|sub_08030C2E|
+|Bg_WriteScroll0AndBlendAlpha|
 |unk_08030C2E|
 ; cited by 0x08030B2E (a pc-relative load targets 0x08030EF4)
 		LDR r0, [pc, #0x2dc]
@@ -1833,7 +1833,7 @@
 		BL       |sub_0803F58C|
 		ADD r0, r6, #0
 		B        |inc_0x301c0_0x311c0| + 0xa6a
-|sub_08030F78|
+|Blend_WriteControlAndAlpha4|
 	PUSH     {r3, r4, r5, lr}
 	ADD      r4, r0, #0
 	LDR      r0, [pc, #0x70]

@@ -111,6 +111,12 @@ C_COMMENTED_DUPLICATE = ("/* the header\n"
 
 
 CALL = "call tools\\incbin.bat baserom.gba 0x158 0x143f2\n"
+ASM_GOOD = "\tEXPORT |sub_08000158|\n\tEXPORT |Module_DoIt|\n\tEXPORT |loc_0800016A|\n" \
+           "\tEXPORT |inc_0x071c90_0x3715c0|\n\tEXPORT |unk_03003014|\n"
+ASM_BAD_NAME = "\tEXPORT |lowercase_verb|\n"
+ASM_BAD_DIGITS = "\tEXPORT |sub_08001|\n"
+ASM_CONSTANT = "unk_03003014    EQU     0x03003014\n\tEXPORT  unk_03003014\n"
+README_SYMBOL_LINE = MEASURED_PROGRESS + " 6,739 of the 6,740 symbols"
 
 
 def refused(text, name, check):
@@ -297,6 +303,48 @@ def test_the_repository_has_no_lint_finding():
     assert lints.run() == []
 
 
+def exported(text):
+    return [(name, "asm/unit.s", line) for line, name in lints.asm_exports(text)[0]]
+
+
+def test_an_asm_export_outside_the_convention_is_caught():
+    for text in (ASM_BAD_NAME, ASM_BAD_DIGITS):
+        assert lints.asm_symbol_findings(exported(text), {})
+
+
+def test_module_verb_address_and_slice_exports_are_not_caught():
+    assert not lints.asm_symbol_findings(exported(ASM_GOOD), {})
+
+
+def test_an_address_form_whose_digits_are_not_its_own_address_is_caught():
+    assert lints.asm_symbol_findings(exported(ASM_GOOD), {"sub_08000158": 0x0800015A})
+    assert not lints.asm_symbol_findings(exported(ASM_GOOD), {"sub_08000158": 0x08000158})
+
+
+def test_the_ratchet_refuses_a_count_above_the_baseline():
+    assert lints.ratchet_findings(10, 9)
+
+
+def test_the_ratchet_refuses_a_count_below_an_unlowered_baseline():
+    assert lints.ratchet_findings(8, 9)
+
+
+def test_the_ratchet_accepts_the_count_the_baseline_holds():
+    assert not lints.ratchet_findings(9, 9)
+
+
+def test_an_exported_ram_constant_is_not_counted_as_a_symbol():
+    assert lints.symbol_counts(exported(ASM_CONSTANT), {"unk_03003014"}) == (0, 0)
+
+
+def test_the_readme_symbol_figure_that_disagrees_is_caught():
+    assert lints.readme_numbers_findings(README_SYMBOL_LINE, *MEASURED, symbols=(6738, 6740))
+
+
+def test_the_readme_symbol_figure_that_agrees_is_not_caught():
+    assert not lints.readme_numbers_findings(README_SYMBOL_LINE, *MEASURED, symbols=(6739, 6740))
+
+
 def test_a_pair_named_in_the_allowlist_is_cleared():
     scratch = tempfile.mkdtemp(prefix="lint-test-")
     try:
@@ -369,6 +417,15 @@ if __name__ == "__main__":
     test_an_incbin_call_naming_a_slice_no_source_incbins_is_caught()
     test_an_incbin_call_naming_a_slice_the_source_incbins_is_not_caught()
     test_the_repository_has_no_lint_finding()
+    test_an_asm_export_outside_the_convention_is_caught()
+    test_module_verb_address_and_slice_exports_are_not_caught()
+    test_an_address_form_whose_digits_are_not_its_own_address_is_caught()
+    test_the_ratchet_refuses_a_count_above_the_baseline()
+    test_the_ratchet_refuses_a_count_below_an_unlowered_baseline()
+    test_the_ratchet_accepts_the_count_the_baseline_holds()
+    test_an_exported_ram_constant_is_not_counted_as_a_symbol()
+    test_the_readme_symbol_figure_that_disagrees_is_caught()
+    test_the_readme_symbol_figure_that_agrees_is_not_caught()
     test_a_pair_named_in_the_allowlist_is_cleared()
     test_a_multiline_c_comment_keeps_the_reported_line_numbers()
     test_a_line_comment_marker_inside_a_string_is_not_a_comment()

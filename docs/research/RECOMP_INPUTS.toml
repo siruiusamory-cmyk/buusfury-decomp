@@ -493,7 +493,7 @@ name = "sub_08004DC0"
 addr = 0x08004dee
 mode = "thumb"
 size = 232
-name = "sub_08004DEE"
+name = "Blend_WriteAlpha1"
 
 [[code]]
 addr = 0x08004ed6
@@ -516,7 +516,7 @@ size = 226
 addr = 0x0800536a
 mode = "thumb"
 size = 276
-name = "sub_0800536A"
+name = "Blend_WriteControl1"
 
 [[code]]
 addr = 0x0800547e
@@ -564,7 +564,7 @@ name = "sub_080059A0"
 addr = 0x080059ae
 mode = "thumb"
 size = 272
-name = "sub_080059AE"
+name = "Blend_WriteControl2"
 
 [[code]]
 addr = 0x08005abe
@@ -1257,13 +1257,13 @@ name = "sub_08008096"
 addr = 0x080080d8
 mode = "thumb"
 size = 156
-name = "sub_080080D8"
+name = "Irq_WriteEnable1"
 
 [[code]]
 addr = 0x08008174
 mode = "thumb"
 size = 110
-name = "sub_08008174"
+name = "Irq_WriteEnable2"
 
 [[code]]
 addr = 0x080081e2
@@ -1275,19 +1275,19 @@ name = "sub_080081E2"
 addr = 0x080081e4
 mode = "thumb"
 size = 290
-name = "sub_080081E4"
+name = "Dma_Start3First"
 
 [[code]]
 addr = 0x08008306
 mode = "thumb"
 size = 384
-name = "sub_08008306"
+name = "Dma_Start3Second"
 
 [[code]]
 addr = 0x080084a6
 mode = "thumb"
 size = 278
-name = "sub_080084A6"
+name = "Dma_Start3Third"
 
 [[code]]
 addr = 0x080085bc
@@ -1406,7 +1406,7 @@ name = "sub_08009022"
 addr = 0x080091fe
 mode = "thumb"
 size = 634
-name = "sub_080091FE"
+name = "Blend_WriteControlAndAlpha1"
 
 [[code]]
 addr = 0x08009478
@@ -1448,7 +1448,7 @@ name = "sub_08009700"
 addr = 0x08009704
 mode = "thumb"
 size = 158
-name = "sub_08009704"
+name = "Blend_WriteControlAndAlpha2"
 
 [[code]]
 addr = 0x080097a2
@@ -2000,7 +2000,7 @@ name = "sub_0800B91A"
 addr = 0x0800b928
 mode = "thumb"
 size = 468
-name = "sub_0800B928"
+name = "Math_Divide1"
 
 [[code]]
 addr = 0x0800bafc
@@ -2266,7 +2266,7 @@ size = 178
 addr = 0x0800cbb8
 mode = "thumb"
 size = 180
-name = "sub_0800CBB8"
+name = "Math_Divide2"
 
 [[code]]
 addr = 0x0800cc6c
@@ -2767,7 +2767,7 @@ name = "sub_0800EEFE"
 addr = 0x0800efd0
 mode = "thumb"
 size = 536
-name = "sub_0800EFD0"
+name = "Math_Divide3"
 
 [[code]]
 addr = 0x0800f3f8
@@ -3918,7 +3918,7 @@ name = "sub_080157D4"
 addr = 0x08015882
 mode = "thumb"
 size = 228
-name = "sub_08015882"
+name = "Blend_WriteControl3"
 
 [[code]]
 addr = 0x08015966
@@ -4339,7 +4339,7 @@ size = 274
 addr = 0x08017afc
 mode = "thumb"
 size = 222
-name = "sub_08017AFC"
+name = "Blend_WriteAlpha2"
 
 [[code]]
 addr = 0x08017bf2
@@ -4920,7 +4920,7 @@ name = "sub_08019F5A"
 addr = 0x08019f72
 mode = "thumb"
 size = 138
-name = "sub_08019F72"
+name = "Bios_Diff16Unfilter"
 
 [[code]]
 addr = 0x08019ffc
@@ -7888,31 +7888,31 @@ name = "sub_0802C8BE"
 addr = 0x0802c8fe
 mode = "thumb"
 size = 120
-name = "sub_0802C8FE"
+name = "Bg_WriteControl0AndMosaic1"
 
 [[code]]
 addr = 0x0802c976
 mode = "thumb"
 size = 24
-name = "sub_0802C976"
+name = "Mosaic_WriteSize1"
 
 [[code]]
 addr = 0x0802c98e
 mode = "thumb"
 size = 160
-name = "sub_0802C98E"
+name = "Bg_WriteControl0And1AndMosaic"
 
 [[code]]
 addr = 0x0802ca2e
 mode = "thumb"
 size = 20
-name = "sub_0802CA2E"
+name = "Mosaic_WriteSize2"
 
 [[code]]
 addr = 0x0802ca42
 mode = "thumb"
 size = 182
-name = "sub_0802CA42"
+name = "Bg_WriteControl0AndMosaic2"
 
 [[code]]
 addr = 0x0802cafa
@@ -8481,19 +8481,19 @@ name = "sub_08030BCC"
 addr = 0x08030bce
 mode = "thumb"
 size = 96
-name = "sub_08030BCE"
+name = "Blend_WriteAlpha3"
 
 [[code]]
 addr = 0x08030c2e
 mode = "thumb"
 size = 710
-name = "sub_08030C2E"
+name = "Bg_WriteScroll0AndBlendAlpha"
 
 [[code]]
 addr = 0x08030f78
 mode = "thumb"
 size = 60
-name = "sub_08030F78"
+name = "Blend_WriteControlAndAlpha4"
 
 [[code]]
 addr = 0x08030fb8
@@ -8744,13 +8744,13 @@ name = "sub_080333A6"
 addr = 0x080335b6
 mode = "thumb"
 size = 452
-name = "sub_080335B6"
+name = "Bg_WriteScroll1AndBlendControl"
 
 [[code]]
 addr = 0x080337ec
 mode = "thumb"
 size = 28
-name = "sub_080337EC"
+name = "Blend_WriteAlpha4"
 
 [[code]]
 addr = 0x08033808
@@ -11008,7 +11008,7 @@ name = "sub_0803D388"
 addr = 0x0803d478
 mode = "thumb"
 size = 88
-name = "sub_0803D478"
+name = "KeyInput_Read"
 
 [[code]]
 addr = 0x0803d5b8
@@ -11035,7 +11035,7 @@ name = "sub_0803D784"
 addr = 0x0803d7be
 mode = "thumb"
 size = 60
-name = "sub_0803D7BE"
+name = "Irq_WriteEnable3"
 
 [[code]]
 addr = 0x0803d7fa
@@ -11196,7 +11196,7 @@ name = "sub_0803DEFA"
 addr = 0x0803df14
 mode = "thumb"
 size = 202
-name = "sub_0803DF14"
+name = "Irq_WriteMaster1"
 
 [[code]]
 addr = 0x0803dfde
@@ -11237,7 +11237,7 @@ size = 74
 addr = 0x0803e18e
 mode = "thumb"
 size = 254
-name = "sub_0803E18E"
+name = "Math_Divide4"
 
 [[code]]
 addr = 0x0803e2d6
@@ -11431,7 +11431,7 @@ name = "sub_0803F0E6"
 addr = 0x0803f1b6
 mode = "thumb"
 size = 364
-name = "sub_0803F1B6"
+name = "Sound_WriteControlAndDma"
 
 [[code]]
 addr = 0x0803f322
@@ -11534,7 +11534,7 @@ size = 64
 addr = 0x0803f876
 mode = "thumb"
 size = 636
-name = "sub_0803F876"
+name = "Sys_ResetAndStop"
 
 [[code]]
 addr = 0x0803faf2
@@ -11546,7 +11546,7 @@ name = "sub_0803FAF2"
 addr = 0x0803faf6
 mode = "thumb"
 size = 430
-name = "sub_0803FAF6"
+name = "Irq_WriteMaster2"
 
 [[code]]
 addr = 0x0803fca6
@@ -11643,7 +11643,7 @@ size = 12
 addr = 0x080407c8
 mode = "thumb"
 size = 184
-name = "sub_080407C8"
+name = "Dma_Write3AndWaitControl"
 
 [[code]]
 addr = 0x08040882
@@ -11689,31 +11689,31 @@ name = "sub_08040B24"
 addr = 0x08040b9c
 mode = "thumb"
 size = 574
-name = "sub_08040B9C"
+name = "Serial_WriteSetup"
 
 [[code]]
 addr = 0x08040dda
 mode = "thumb"
 size = 96
-name = "sub_08040DDA"
+name = "Irq_WriteEnableAndTimer3"
 
 [[code]]
 addr = 0x08040e3a
 mode = "thumb"
 size = 292
-name = "sub_08040E3A"
+name = "Bios_CpuSetAndSerial"
 
 [[code]]
 addr = 0x08040f5e
 mode = "thumb"
 size = 30
-name = "sub_08040F5E"
+name = "Irq_WriteMaster3"
 
 [[code]]
 addr = 0x08040f7e
 mode = "thumb"
 size = 88
-name = "sub_08040F7E"
+name = "Serial_ReadControl"
 
 [[code]]
 addr = 0x08040fd6
@@ -11878,7 +11878,7 @@ size = 104
 addr = 0x08042188
 mode = "thumb"
 size = 152
-name = "sub_08042188"
+name = "Timer_Write2Reload2"
 
 [[code]]
 addr = 0x08042220
@@ -11992,7 +11992,7 @@ size = 6
 addr = 0x08042880
 mode = "thumb"
 size = 132
-name = "sub_08042880"
+name = "Bios_CpuSet1"
 
 [[code]]
 addr = 0x08042904
@@ -12035,7 +12035,7 @@ name = "sub_08042A4E"
 addr = 0x08042ab8
 mode = "thumb"
 size = 34
-name = "sub_08042AB8"
+name = "Bios_CpuSet2"
 
 [[code]]
 addr = 0x08042ada
@@ -12089,7 +12089,7 @@ name = "sub_08042D00"
 addr = 0x08042d72
 mode = "thumb"
 size = 474
-name = "sub_08042D72"
+name = "Irq_ReadAndWriteMaster"
 
 [[code]]
 addr = 0x08042f4c
@@ -13169,7 +13169,7 @@ name = "sub_08048EB6"
 addr = 0x08049120
 mode = "thumb"
 size = 4
-name = "sub_08049120"
+name = "Thunk_Jcalg1"
 
 [[code]]
 addr = 0x0804912c
@@ -13181,13 +13181,13 @@ name = "sub_0804912C"
 addr = 0x08049138
 mode = "thumb"
 size = 4
-name = "sub_08049138"
+name = "Thunk_VramCopy"
 
 [[code]]
 addr = 0x08049144
 mode = "thumb"
 size = 4
-name = "sub_08049144"
+name = "Thunk_PaletteCopy"
 
 [[code]]
 addr = 0x08049150
@@ -13423,7 +13423,7 @@ name = "sub_0804EC0A"
 addr = 0x0804ec22
 mode = "thumb"
 size = 120
-name = "sub_0804EC22"
+name = "Blend_WriteAlpha5"
 
 [[code]]
 addr = 0x0804ec9e
@@ -13966,7 +13966,7 @@ name = "sub_0804F856"
 addr = 0x0804f872
 mode = "thumb"
 size = 82
-name = "sub_0804F872"
+name = "Math_Divide5"
 
 [[code]]
 addr = 0x0804f8c8

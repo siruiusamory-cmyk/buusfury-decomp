@@ -8176,7 +8176,7 @@
 		LSL r0, r0, #5
 		ADD r0, r0, r2
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r3, r5, #0
 		LDR r5, [pc, #0x338]
 		LDR r0, [r6]
@@ -8363,7 +8363,7 @@
 		LDR r1, [r1, #8]
 		LSL r0, r0, #5
 		ADD r0, r0, r5
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE7E1
 |loc_080208CE|
 |unk_080208CE|
@@ -8720,7 +8720,7 @@
 		ADD r1, r1, r2
 		STR r2, [sp, #0x50]
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRB r0, [r4, #0x11]
 		CMP r0, #0
 		LDRH r0, [r4, #0xc]
@@ -8740,7 +8740,7 @@
 		ADD r1, #0x80
 		LDR r1, [r1]
 		MOV r2, #0x80
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |loc_08020C26|
 |loc_08020BD0|
 		LDRB r0, [r4, #0x10]
@@ -8764,7 +8764,7 @@
 		LDR r1, [r1, #8]
 		LSL r0, r0, #5
 		ADD r0, r0, r5
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRB r1, [r4, #0x11]
 		MOV r0, #0xa
 		CMP r1, #0
@@ -8785,7 +8785,7 @@
 		ADD r0, r0, r2
 		LSR r2, r2, #1
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08020C26|
 		B        |loc_08020C40|
 |loc_08020C28|
@@ -8799,7 +8799,7 @@
 		LDR r2, [sp, #0x50]
 		ADD r1, r1, r2
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08020C40|
 		LDR r0, [r4, #0x40]
 		LDRB r0, [r0, #5]
@@ -8826,7 +8826,7 @@
 		MOV r2, #0xff
 		ADD r0, #1
 		ADD r2, #1
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE60D
 |loc_08020C76|
 		LSL r2, r6, #0x1f
@@ -8844,7 +8844,7 @@
 		MOV r2, #0xff
 		ADD r2, #1
 		LDR r1, [r1, #0x44]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE5FB
 |loc_08020C9A|
 		LDRH r0, [r4, #0xc]
@@ -8859,7 +8859,7 @@
 		ADD r0, #1
 		MOV r2, #0xff
 		ADD r2, #1
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE5EC
 |sub_08020CB8|
 	PUSH     {r3, lr}
@@ -10044,7 +10044,7 @@
 		MUL r2, r3
 		LDR r3, [pc, #0x134]
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [pc, #0x130]
 		STR r0, [r4]
 		LDR r0, [pc, #0x130]
@@ -11665,7 +11665,7 @@
 		DCW     0xE00B
 |loc_0802227E|
 		ADD r0, #4
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08022284|
 		LDR r1, [r4, #8]
 		LDR r0, [r7, #4]
@@ -11764,7 +11764,7 @@
 		MUL r2, r3
 		LDR r3, [pc, #0x2cc]
 		ADD r0, r0, r3
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDR r0, [pc, #0x2c8]
 		STR r0, [r4]
 		LDR r1, [sp, #8]
@@ -15855,7 +15855,7 @@
 		MOV r2, #0x20
 		ADD r1, r4, #4
 		LDR r0, [r5, #0x34]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08024532|
 |unk_08024532|
 		LDR r1, [pc, #0x38]
@@ -16070,7 +16070,7 @@
 		MOV r2, #0x13
 		LSL r2, r2, #8
 		LDR r1, [pc, #0x244]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08024710|
 		LDR r1, [r5]
 		LDR r2, [r5, #4]
@@ -16719,7 +16719,7 @@
 	BL       |inc_0x046118_0x049114| + 0x98a
 	LDR      r0, [r4, #8]
 	CMP      r0, #0
-	BEQ      |sub_08024C98|
+	BEQ      |Blend_WriteControlAndAlpha3|
 	LDRB     r0, [r4, #5]
 	LDR      r1, [pc, #0x114]
 	ADD      r0, #0xff
@@ -16736,7 +16736,7 @@
 	ADD      sp, #0x1fc
 	ADD      sp, #8
 	POP      {r4, r5, r6, r7, pc}
-|sub_08024C98|
+|Blend_WriteControlAndAlpha3|
 |unk_08024C98|
 		LDR r7, [pc, #0xac]
 		MOV r6, #1
@@ -16766,7 +16766,7 @@
 		LSL r2, r6, #8
 		ADD r1, r7, r2
 		LDR r0, [pc, #0x94]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08024CD8|
 		LDR r7, [pc, #0x6c]
 		LDR r0, [r7]
@@ -16795,7 +16795,7 @@
 		ADD r2, #1
 		ADD r1, r5, r2
 		LDR r0, [pc, #0x5c]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08024D16|
 		LDR r0, [r7]
 		LDRH r0, [r0, #4]
@@ -17662,7 +17662,7 @@
 |unk_080253FE|
 		BL       |inc_0x1c3f2_0x2ab4c| + 0x8800
 		DCW     0xE7FB
-|sub_08025404|
+|Blend_WriteControl4|
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r5, r0, #0
 	LDR      r0, [pc, #0x2b0]
@@ -17888,7 +17888,7 @@
 |sub_080255BC|
 |unk_080255BC|
 		ADD r0, r5, #0
-		BL       |sub_08025404|
+		BL       |Blend_WriteControl4|
 		DCW     0xE7FA
 |sub_080255C4|
 	PUSH     {r4, r5, r6, r7, lr}
@@ -18391,7 +18391,7 @@
 		LDR r2, [r0, #4]
 		MOV r0, #3
 		LSL r0, r0, #0x19
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r5, #0
 		DCD     0xFE36F017
 		LDR r0, [sp, #0xe8]
@@ -18424,7 +18424,7 @@
 		LDR r1, [r1, #0x10]
 		LDR r2, [r1, #4]
 		ADD r1, r5, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r5, #0
 		DCD     0xFE10F017
 		LDR r0, [sp, #0xe8]
@@ -18639,7 +18639,7 @@
 		ADD r0, r0, r4
 		ADD r0, r0, r2
 		LDR r2, [sp, #0x34]
-		BL       |sub_08049144|
+		BL       |Thunk_PaletteCopy|
 		ADD r7, #1
 		CMP r7, #0x20
 		BLT      |loc_08025BD0|
@@ -18763,7 +18763,7 @@
 		ADD r0, r0, r4
 		ADD r0, r0, r2
 		LDR r2, [sp, #0x1c]
-		BL       |sub_08049144|
+		BL       |Thunk_PaletteCopy|
 		ADD r7, #1
 		CMP r7, r5
 		BLT      |loc_08025CB8|
@@ -18809,7 +18809,7 @@
 		LSL r0, r7, #6
 		ADD r0, r0, r4
 		ADD r2, r6, #0
-		BL       |sub_08049144|
+		BL       |Thunk_PaletteCopy|
 		ADD r7, #1
 		CMP r7, r5
 		BLT      |loc_08025D16|
@@ -20649,7 +20649,7 @@
 		STR r1, [r4, #0x14]
 		LDR r1, [r1, #4]
 		MOV r2, #0x80
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		DCW     0xE7D3
 		PUSH {r3, lr}
@@ -20999,14 +20999,14 @@
 		LSL r0, r0, #5
 		ADD r0, r0, r2
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |loc_08026E66|
 |loc_08026E5A|
 		LSL r0, r0, #5
 		ADD r0, r0, r2
 		MOV r2, #0x40
 		ADD r1, #0x80
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 |loc_08026E66|
 		ADD r0, r4, #0
 		DCW     0xE7C8
@@ -21226,7 +21226,7 @@
 		LSL r0, r0, #5
 		ADD r0, r0, r1
 		ADD r1, r7, #0
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0x10
 		STRB r0, [r4, #8]
 		MOV r0, #3
@@ -21279,7 +21279,7 @@
 		ADD r0, r3, r0
 		ADD r1, r1, r5
 		ADD r1, #0x10
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		B        |loc_08027096|
 |sub_08027078|
 	CMP      r1, #0
@@ -22579,7 +22579,7 @@
 		LDR r1, [pc, #0xd4]
 		MOV r2, #0x40
 		ADD r1, #8
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		DCW     0xE7C0
 |sub_08027A74|
@@ -23515,7 +23515,7 @@
 		LDR r0, [r4, #0x58]
 		LDR r1, [r7, #0xc]
 		LDR r2, [r2, #4]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		BL       |loc_08027E48|
 		MOV r7, #0
@@ -24493,7 +24493,7 @@
 		ADD r1, r1, r6
 		LDR r1, [r1, #8]
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x48]
 		LSL r0, r0, #5
@@ -24501,7 +24501,7 @@
 		ADD r0, #0x40
 		MOV r2, #0x40
 		LDR r1, [r1, #0x20]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x48]
 		LSL r0, r0, #5
@@ -24510,7 +24510,7 @@
 		ADD r1, r1, r6
 		LDR r1, [r1, #0x2c]
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE717
 	INCBIN  baserom.gba_0x289ba_0x289de.extracted
 |sub_080289DE|
@@ -24887,7 +24887,7 @@
 		LSL r0, r0, #5
 		ADD r0, r0, r5
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x3c]
 		LSL r0, r0, #5
@@ -24895,7 +24895,7 @@
 		ADD r0, #0x40
 		MOV r2, #0x80
 		LDR r1, [r1, #0x14]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		DCW     0xE7A9
 |sub_08028CCA|
@@ -25287,7 +25287,7 @@
 		ADD r0, r0, r5
 		MOV r2, #0x40
 		LDR r1, [r1, #8]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x3c]
 		LSL r0, r0, #5
@@ -25295,7 +25295,7 @@
 		ADD r0, #0x40
 		MOV r2, #0x80
 		LDR r1, [r1, #0x14]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		MOV r0, #0
 		DCW     0xE7B4
 |loc_08028FE8|
@@ -28082,7 +28082,7 @@
 		ADD r1, r1, r2
 		LDR r1, [r1, #8]
 		MOV r2, #0x40
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		LDRH r0, [r4, #0xc]
 		LDR r1, [r4, #0x48]
 		LSL r0, r0, #5
@@ -28090,7 +28090,7 @@
 		ADD r0, #0x40
 		MOV r2, #0x40
 		LDR r1, [r1, #0x20]
-		BL       |sub_08049138|
+		BL       |Thunk_VramCopy|
 		DCW     0xE746
 	INCBIN  baserom.gba_0x2a580_0x2a5a2.extracted
 |sub_0802A5A2|

@@ -30,3 +30,5 @@
 		MOV r0, #0
 		BX       lr
 		BX       lr
+|sub_080391C0|
+	DCW      0x4a13

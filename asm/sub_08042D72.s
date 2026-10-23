@@ -106,3 +106,5 @@
 	BCC      |loc_08042E1A|
 |loc_08042E3C|
 	POP      {r3, r4, r5, r6, r7, pc}
+|loc_08042E3E|
+	DCW      0x495b

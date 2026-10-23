@@ -15,3 +15,9 @@
 |sub_0803A62C|
 |unk_0803A62C|
 	INCBIN	baserom.gba_0x3a62c_0x3a62e.extracted
+|sub_0803A62E|
+	DCW      0x0300
+	DCW      0x32d0
+	DCW      0x0300
+	DCW      0xa168
+	DCW      0x0804

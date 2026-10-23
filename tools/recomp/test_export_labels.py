@@ -182,7 +182,7 @@ def test_the_file_pins_the_image_and_every_function_has_a_mode_and_its_export_en
     runtime = runtime_addresses()
     rows = re.findall(r'\[\[functions\]\]\nname = "([^"]*)"\naddress = 0x([0-9a-f]+)\n'
                       r'(?:end = 0x([0-9a-f]+)\n)?mode = "(\w+)"\n', text)
-    assert len(rows) == len(ends) + len(runtime)
+    assert len(rows) == len(set(ends) | set(runtime))
     for name, addr, end, mode in rows:
         assert mode in ("arm", "thumb")
         assert name

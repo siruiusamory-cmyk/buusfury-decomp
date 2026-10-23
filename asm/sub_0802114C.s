@@ -16,3 +16,7 @@
 		BL       |loc_08021094|
 		DCW     0xE7F1
 	INCBIN  baserom.gba_0x21166_0x2116e.extracted
+|sub_0802116E|
+	DCW      0x0804
+	DCW      0xd300
+	DCW      0x0804

@@ -8,3 +8,7 @@
 		STR r0, [r4]
 		ADD r0, r4, #0
 		DCW     0xE7F6
+|sub_08024A76|
+	DCW      0x0000
+	DCW      0x99d4
+	DCW      0x0804

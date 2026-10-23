@@ -30,3 +30,9 @@
 		BL       |inc_0x153f2_0x1a3f2| + 0x48d2
 		DCW     0xE7E4
 	INCBIN  baserom.gba_0x27692_0x2769e.extracted
+|sub_0802769E|
+	DCW      0x0874
+	DCW      0x2fdc
+	DCW      0x0871
+	DCW      0x8090
+	DCW      0x086b

@@ -79,3 +79,7 @@
 |sub_0800F584|
 |unk_0800F584|
 	INCBIN	baserom.gba_0xf584_0xf586.extracted
+|sub_0800F586|
+	DCW      0x0807
+	DCW      0x1ba8
+	DCW      0x0300

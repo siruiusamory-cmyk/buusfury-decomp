@@ -17,3 +17,5 @@
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x4d28
 	INCBIN  baserom.gba_0x39f08_0x39f16.extracted
+|sub_08039F16|
+	DCW      0x3e22

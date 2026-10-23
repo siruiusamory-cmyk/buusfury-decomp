@@ -93,3 +93,9 @@
 |loc_08033AF2|
 		MOV r0, #0
 		B        |inc_0x331c0_0x341c0| + 0x87c
+|sub_08033AF6|
+	DCW      0x1c08
+	DCW      0x2205
+	DCW      0x01d2
+	DCW      0x1882
+	DCW      0x2100

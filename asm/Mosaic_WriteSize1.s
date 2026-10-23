@@ -12,3 +12,5 @@
 		STRB r0, [r1, #0xd]
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0xe28
+|sub_0802C98E|
+	DCW      0x4945

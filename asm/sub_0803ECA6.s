@@ -16,3 +16,6 @@
 |sub_0803ECC2|
 |unk_0803ECC2|
 	INCBIN	baserom.gba_0x3ecc2_0x3ecc6.extracted
+|sub_0803ECC6|
+	DCW      0x1c01
+	DCW      0x3140

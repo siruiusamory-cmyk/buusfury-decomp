@@ -14,7 +14,6 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08008174 | Irq_WriteEnable2 | hardware-register |
 | 0x080081e4 | Dma_Start3First | hardware-register |
 | 0x08008306 | Dma_Start3Second | hardware-register |
-| 0x080084a6 | Dma_Start3Third | hardware-register |
 | 0x08009196 | Ram_CopyFiveWords1 | behaviour-test |
 | 0x080091b8 | State_CopyBlock1 | behaviour-test |
 | 0x08009220 | Object_RebuildSlots1 | behaviour-test |
@@ -53,7 +52,7 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08013a90 | List_AppendByte1 | behaviour-test |
 | 0x08013eec | Object_Destroy7 | behaviour-test |
 | 0x08014124 | Object_Construct1 | behaviour-test |
-| 0x08015882 | Blend_WriteControl3 | hardware-register |
+| 0x08015886 | Blend_WriteControl3 | hardware-register |
 | 0x08015ffc | Object_AppendRecord1 | behaviour-test |
 | 0x08016240 | Object_Destroy8 | behaviour-test |
 | 0x08016384 | Object_Destroy9 | behaviour-test |
@@ -134,7 +133,7 @@ Every name the ledger promotes, with the address the label sits at.
 | 0x08049138 | Thunk_VramCopy | caller-role |
 | 0x08049144 | Thunk_PaletteCopy | caller-role |
 | 0x0804e490 | Gfx_BeginTileLoad1 | behaviour-test |
-| 0x0804f872 | Math_Divide7 | hardware-register |
+| 0x0804f87a | Math_Divide7 | hardware-register |
 | 0x0804f944 | Object_ReadPosition1 | behaviour-test |
 | 0x08050544 | Object_Create1 | behaviour-test |
 | 0x08050d30 | Object_InstallHandlerTable1 | behaviour-test |

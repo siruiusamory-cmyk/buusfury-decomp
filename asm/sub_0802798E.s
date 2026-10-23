@@ -41,3 +41,9 @@
 		MOV r0, #0
 		MVN r0, r0
 		DCW     0xE7DA
+|sub_080279D6|
+	DCW      0x0000
+	DCW      0xd380
+	DCW      0x0874
+	DCW      0x1274
+	DCW      0x0871

@@ -26,3 +26,6 @@
 		BL       |loc_0800EDF8|
 		B        |loc_0802CDA4|
 	INCBIN  baserom.gba_0x2cde0_0x2cde4.extracted
+|sub_0802CDE4|
+	DCW      0x30a4
+	DCW      0x0300

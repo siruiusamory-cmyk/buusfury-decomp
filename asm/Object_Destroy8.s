@@ -94,3 +94,5 @@
 |sub_08016300|
 |unk_08016300|
 	INCBIN	baserom.gba_0x16300_0x16302.extracted
+|sub_08016302|
+	DCW      0x086b

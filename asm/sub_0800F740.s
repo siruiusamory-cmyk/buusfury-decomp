@@ -101,3 +101,7 @@
 |loc_0800F808|
 	ADD      sp, #0x10
 	POP      {r4, r5, r6, pc}
+|loc_0800F80C|
+	DCW      0x2101
+	DCW      0x0249
+	DCW      0x1840

@@ -74,3 +74,8 @@
 		BL       |inc_0x046118_0x049114| + 0x98a
 		MOV r0, #1
 		B        |inc_0x0158_0x143f2| + 0x10aba
+|sub_08010C9C|
+	DCW      0x1c01
+	DCW      0x2001
+	DCW      0x0240
+	DCW      0x1808

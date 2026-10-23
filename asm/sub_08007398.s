@@ -19,3 +19,5 @@
 	INCBIN  baserom.gba_0x73b6_0x73b8.extracted
 		DCD     0x08049784
 	INCBIN  baserom.gba_0x73bc_0x73be.extracted
+|sub_080073BE|
+	DCW      0x0804

@@ -17,3 +17,8 @@
 |sub_08035F00|
 |unk_08035F00|
 	INCBIN	baserom.gba_0x35f00_0x35f02.extracted
+|sub_08035F02|
+	DCW      0x0875
+|unk_08035F04|
+	INCBIN	baserom.gba_0x35f04_0x35f06.extracted
+	DCW      0x0804

@@ -215,3 +215,5 @@
 |sub_0803AE60|
 |unk_0803AE60|
 	INCBIN	baserom.gba_0x3ae60_0x3ae62.extracted
+|sub_0803AE62|
+	DCW      0x0300

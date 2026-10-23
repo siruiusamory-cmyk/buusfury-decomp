@@ -7,3 +7,5 @@
 	STRH     r0, [r1, #6]
 	STRH     r0, [r1, #0x12]
 	BX       lr
+|loc_0803F278|
+	DCW      0x484f

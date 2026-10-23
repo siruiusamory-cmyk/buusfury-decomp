@@ -39,3 +39,7 @@
 |sub_08027E40|
 |unk_08027E40|
 	INCBIN	baserom.gba_0x27e40_0x27e42.extracted
+|sub_08027E42|
+	DCW      0x0804
+	DCW      0xea50
+	DCW      0x0874

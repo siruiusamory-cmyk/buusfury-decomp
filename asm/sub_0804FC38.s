@@ -18,3 +18,5 @@
 		MOV r0, #1
 		BX       lr
 		BX       lr
+|sub_0804FC5A|
+	DCW      0x0000

@@ -227,3 +227,9 @@
 |sub_08013908|
 |unk_08013908|
 	INCBIN	baserom.gba_0x13908_0x1390a.extracted
+|sub_0801390A|
+	DCW      0x086b
+	DCW      0x82ec
+	DCW      0x086b
+	DCW      0x72e0
+	DCW      0x086b

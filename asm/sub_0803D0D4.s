@@ -24,3 +24,6 @@
 |unk_0803D0FA|
 ; cited by 0x0803CEA4 (a pc-relative load targets 0x0803D100)
 	INCBIN	baserom.gba_0x3d0fa_0x3d10c.extracted
+|sub_0803D10C|
+	DCW      0x32fc
+	DCW      0x0300

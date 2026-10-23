@@ -2,3 +2,5 @@
 |loc_08023C1C|
 		MOV r0, #0
 		DCW     0xE760
+|sub_08023C20|
+	DCW      0x4923

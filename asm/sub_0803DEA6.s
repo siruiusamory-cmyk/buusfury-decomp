@@ -49,3 +49,5 @@
 		STR r1, [r3, #4]
 		STR r4, [r3, #8]
 		B        |inc_0x03d784_0x041118| + 0x712
+|sub_0803DEFA|
+	DCW      0xb40f

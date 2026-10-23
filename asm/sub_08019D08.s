@@ -14,3 +14,5 @@
 |sub_08019D28|
 |unk_08019D28|
 	INCBIN	baserom.gba_0x19d28_0x19d2a.extracted
+|sub_08019D2A|
+	DCW      0x49a5

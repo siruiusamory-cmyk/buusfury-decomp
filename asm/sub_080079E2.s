@@ -31,21 +31,9 @@
 |sub_08007A1A|
 |unk_08007A1A|
 	INCBIN	baserom.gba_0x7a1a_0x7a1e.extracted
-	LSL      r0, r0, #0
-	ADR      r7, |loc_08007AA4|
-	LSR      r4, r0, #0x20
-	LSL      r4, r6, #0x1f
-	LSR      r7, r0, #0x20
-	PUSH     {r3, lr}
-	LDRB     r0, [r0, #4]
-	LDR      r1, [pc, #0x28]
-	MOV      r2, #1
-	LSL      r0, r0, #0xb
-	ADD      r0, r0, r1
-	LSL      r2, r2, #0xb
-	MOV      r1, #0
-	BL       |inc_0x049120_0x055620| + 0xc
-	POP      {r3, pc}
-|sub_08007A3E|
-|unk_08007A3E|
-		BX       lr
+|dat_08007A1E|
+	DCW      0x0000
+	DCW      0xa720
+	DCW      0x0804
+	DCW      0x07f4
+	DCW      0x0807

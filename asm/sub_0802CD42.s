@@ -32,3 +32,5 @@
 |sub_0802CD80|
 |unk_0802CD80|
 	INCBIN	baserom.gba_0x2cd80_0x2cd82.extracted
+|sub_0802CD82|
+	DCW      0x0300

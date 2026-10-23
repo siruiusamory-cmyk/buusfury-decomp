@@ -48,3 +48,5 @@
 	ADD      r1, r1, r3
 	BL       |inc_0x046118_0x049114| + 0x98c
 	POP      {r3, pc}
+|loc_0804014E|
+	DCW      0x4835

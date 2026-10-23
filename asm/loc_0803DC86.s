@@ -9,3 +9,5 @@
 		MOV r0, #0
 		STRH r0, [r4]
 		B        |inc_0x03d784_0x041118| + 0x46a
+|sub_0803DC96|
+	DCW      0xb40f

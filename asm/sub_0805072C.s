@@ -13,3 +13,10 @@
 		STMIA r0!, {r1, r5}
 		ADD r0, r4, #0
 		B        |inc_0x049120_0x055620| + 0x760a
+|sub_08050746|
+	DCW      0x0000
+	DCW      0x040c
+	DCW      0x0000
+|unk_0805074C|
+	INCBIN	baserom.gba_0x5074c_0x5074e.extracted
+	DCW      0x0804

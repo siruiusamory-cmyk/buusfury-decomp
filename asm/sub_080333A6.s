@@ -246,3 +246,7 @@
 |sub_080335B4|
 |unk_080335B4|
 	INCBIN	baserom.gba_0x335b4_0x335b6.extracted
+|sub_080335B6|
+	DCW      0x0875
+	DCW      0x1274
+	DCW      0x0871

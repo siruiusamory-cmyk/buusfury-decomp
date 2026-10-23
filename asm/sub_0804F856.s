@@ -16,3 +16,8 @@
 |sub_0804F870|
 |unk_0804F870|
 	INCBIN	baserom.gba_0x4f870_0x4f872.extracted
+|dat_0804F872|
+	DCW      0x0805
+	DCW      0x22a3
+	DCW      0x0092
+	DCW      0x1882

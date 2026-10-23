@@ -44,3 +44,9 @@
 |sub_080077DE|
 |unk_080077DE|
 	INCBIN	baserom.gba_0x77de_0x77e2.extracted
+|sub_080077E2|
+	DCW      0x0000
+	DCW      0x07e4
+	DCW      0x0807
+	DCW      0x1960
+	DCW      0x0300

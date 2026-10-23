@@ -16,3 +16,9 @@
 		STRB r0, [r4, #0x11]
 		ADD r0, r4, #0
 		B        |inc_0x0158_0x143f2| + 0x7184
+|sub_080072FA|
+	DCW      0x0000
+	DCW      0x9bc4
+	DCW      0x0804
+	DCW      0x07bc
+	DCW      0x0807

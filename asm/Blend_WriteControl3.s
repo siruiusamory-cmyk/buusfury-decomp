@@ -1,7 +1,5 @@
 	CODE16
 |Blend_WriteControl3|
-	MOV      r2, #1
-	LSL      r2, r2, #9
 	PUSH     {r4, lr}
 	SUB      sp, #0x10
 	MOV      r1, #0
@@ -54,7 +52,7 @@
 	POP      {r4, pc}
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |Blend_WriteControl3|
+	BL       |dat_08015882|
 	ADD      r0, r4, #0
 	BL       |sub_08014dc2|
 	MOV      r2, #1

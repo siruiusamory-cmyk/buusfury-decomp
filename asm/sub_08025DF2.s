@@ -45,3 +45,5 @@
 |sub_08025E4C|
 |unk_08025E4C|
 	INCBIN	baserom.gba_0x25e4c_0x25e4e.extracted
+|sub_08025E4E|
+	DCW      0x0804

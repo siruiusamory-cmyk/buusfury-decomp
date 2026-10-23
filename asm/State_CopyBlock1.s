@@ -35,3 +35,7 @@
 |sub_080091FC|
 |unk_080091FC|
 	INCBIN	baserom.gba_0x91fc_0x91fe.extracted
+|sub_080091FE|
+	DCW      0x0807
+	DCW      0x1968
+	DCW      0x0300

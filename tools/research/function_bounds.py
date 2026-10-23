@@ -198,9 +198,20 @@ def gap(rom, address, mode, entry):
     return False
 
 
-def flag_rows(rom, found):
+def proven(root=ROOT):
+    path = os.path.join(root, *export_inputs.RUNTIME.split("/"))
+    if not os.path.exists(path):
+        return set()
+    return {address for address, _mode in export_inputs.runtime_labels(root)}
+
+
+def flag_rows(rom, found, proven_addresses=None):
     rows = []
+    if proven_addresses is None:
+        proven_addresses = proven()
     for address in sorted(found["starts"]):
+        if address in proven_addresses:
+            continue
         mode = found["modes"].get(address) or "thumb"
         entry = entry_of(rom, address, mode)
         fired = []
@@ -357,6 +368,17 @@ def sample_text(rom, found, count=10):
         lines.append("0x%08x,0x%08x,%s" % (address, parent,
                                            "+".join(found["starts"][parent])))
     return lines
+
+
+def save(rom, root=ROOT):
+    found = census(rom, root)
+    text = rows_text(found)
+    flags = flags_text(flag_rows(rom, found))
+    for name, body in (("FUNCTION_BOUNDS.csv", text), ("FUNCTION_ENTRY_ALLOW.csv", flags)):
+        path = os.path.join(root, "docs", "research", name)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(body)
+    return found, len(flags.splitlines()) - 1
 
 
 def main(argv=None):

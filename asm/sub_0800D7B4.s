@@ -102,3 +102,5 @@
 		BL       |inc_0x0158_0x143f2| + 0xd9fa
 		B        |loc_0800D7B0|
 	INCBIN  baserom.gba_0xd876_0xd892.extracted
+|sub_0800D892|
+	DCW      0x0000

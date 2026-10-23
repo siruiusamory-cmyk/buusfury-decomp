@@ -10,3 +10,9 @@
 		STR r0, [r4, #0x10]
 		ADD r0, r4, #0
 		B        |inc_0x0158_0x143f2| + 0x757c
+|sub_080076EA|
+	DCW      0x0000
+	DCW      0x07dc
+	DCW      0x0807
+	DCW      0xb070
+	DCW      0x0804

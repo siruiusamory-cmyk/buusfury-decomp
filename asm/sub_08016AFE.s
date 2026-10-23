@@ -57,3 +57,5 @@
 |loc_08016C58|
 		MOV r0, #0
 		B        |inc_0x153f2_0x1a3f2| + 0x170a
+|sub_08016C5C|
+	DCW      0x4b1b

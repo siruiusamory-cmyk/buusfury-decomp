@@ -94,3 +94,5 @@
 |sub_080502F8|
 |unk_080502F8|
 	INCBIN	baserom.gba_0x502f8_0x502fa.extracted
+|sub_080502FA|
+	DCW      0x0805

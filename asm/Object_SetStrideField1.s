@@ -24,3 +24,5 @@
 |sub_0803F1B4|
 |unk_0803F1B4|
 	INCBIN	baserom.gba_0x3f1b4_0x3f1b6.extracted
+|sub_0803F1B6|
+	DCW      0x0000

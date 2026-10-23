@@ -12,3 +12,7 @@
 |sub_08039440|
 |unk_08039440|
 	INCBIN	baserom.gba_0x39440_0x39442.extracted
+|sub_08039442|
+	DCW      0x0300
+	DCW      0x31ff
+	DCW      0x31c1

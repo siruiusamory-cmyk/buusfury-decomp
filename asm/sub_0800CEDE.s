@@ -5,3 +5,5 @@
 		BL       |inc_0x0158_0x143f2| + 0xce88
 		B        |inc_0x0158_0x143f2| + 0xcd84
 	INCBIN  baserom.gba_0xcee4_0xcef2.extracted
+|sub_0800CEF2|
+	DCW      0x0804

@@ -50,3 +50,6 @@
 |sub_0803EBF4|
 |unk_0803EBF4|
 	INCBIN	baserom.gba_0x3ebf4_0x3ebf8.extracted
+|sub_0803EBF8|
+	DCW      0x1c01
+	DCW      0x3150

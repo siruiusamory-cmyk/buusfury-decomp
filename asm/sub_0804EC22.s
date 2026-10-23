@@ -59,3 +59,7 @@
 |unk_0804EC9A|
 	INCBIN  baserom.gba_0x4ec9a_0x4ec9c.extracted
 		BX       lr
+|sub_0804EC9E|
+	DCW      0x0000
+	DCW      0x2245
+	DCW      0x00d2

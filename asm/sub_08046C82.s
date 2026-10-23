@@ -24,3 +24,5 @@
 |loc_08046CA6|
 		SUB r0, r3, r4
 		DCW     0xE7E9
+|sub_08046CAA|
+	DCW      0x0000

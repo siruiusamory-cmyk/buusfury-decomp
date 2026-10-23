@@ -90,3 +90,5 @@
 |unk_08007B62|
 ; cited by 0x08007A6C (a pc-relative load targets 0x08007B6C)
 	INCBIN	baserom.gba_0x7b62_0x7b76.extracted
+|sub_08007B76|
+	DCW      0x0600

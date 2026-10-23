@@ -11,7 +11,6 @@ address,name,evidence_doc
 0x08008174,Irq_WriteEnable2,docs/research/NAME_CENSUS.md
 0x080081e4,Dma_Start3First,docs/research/NAME_CENSUS.md
 0x08008306,Dma_Start3Second,docs/research/NAME_CENSUS.md
-0x080084a6,Dma_Start3Third,docs/research/NAME_CENSUS.md
 0x080089cc,MapEntry_Root,docs/research/PLAY_CHECKLIST.md
 0x08009196,Ram_CopyFiveWords1,docs/research/NAME_CENSUS.md
 0x080091b8,State_CopyBlock1,docs/research/NAME_CENSUS.md
@@ -58,7 +57,7 @@ address,name,evidence_doc
 0x08013a90,List_AppendByte1,docs/research/NAME_CENSUS.md
 0x08013eec,Object_Destroy7,docs/research/NAME_CENSUS.md
 0x08014124,Object_Construct1,docs/research/NAME_CENSUS.md
-0x08015882,Blend_WriteControl3,docs/research/NAME_CENSUS.md
+0x08015886,Blend_WriteControl3,docs/research/NAME_CENSUS.md
 0x08015ffc,Object_AppendRecord1,docs/research/NAME_CENSUS.md
 0x08016240,Object_Destroy8,docs/research/NAME_CENSUS.md
 0x08016384,Object_Destroy9,docs/research/NAME_CENSUS.md
@@ -145,7 +144,7 @@ address,name,evidence_doc
 0x08049138,Thunk_VramCopy,docs/research/MAP_BLOCK_LAYOUTS.md
 0x08049144,Thunk_PaletteCopy,docs/research/MAP_BLOCK_LAYOUTS.md
 0x0804e490,Gfx_BeginTileLoad1,docs/research/NAME_CENSUS.md
-0x0804f872,Math_Divide7,docs/research/NAME_CENSUS.md
+0x0804f87a,Math_Divide7,docs/research/NAME_CENSUS.md
 0x0804f944,Object_ReadPosition1,docs/research/NAME_CENSUS.md
 0x08050544,Object_Create1,docs/research/NAME_CENSUS.md
 0x08050d30,Object_InstallHandlerTable1,docs/research/NAME_CENSUS.md

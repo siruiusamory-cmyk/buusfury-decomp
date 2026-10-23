@@ -14,3 +14,7 @@
 |sub_08007A56|
 |unk_08007A56|
 	INCBIN	baserom.gba_0x7a56_0x7a5a.extracted
+|sub_08007A5A|
+	DCW      0x0600
+	DCW      0x9548
+	DCW      0x0804

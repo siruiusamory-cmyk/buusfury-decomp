@@ -338,3 +338,6 @@
 		BL       |Thunk_JumpRegister1|
 		MOV r0, #0
 		B        |inc_0x2bb4c_0x2d1c0| + 0x12b0
+|sub_0802D08C|
+	DCW      0x1b94
+	DCW      0x0300

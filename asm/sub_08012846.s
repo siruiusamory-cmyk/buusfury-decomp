@@ -92,3 +92,9 @@
 |sub_080128F4|
 |unk_080128F4|
 	INCBIN	baserom.gba_0x128f4_0x128f6.extracted
+|sub_080128F6|
+	DCW      0x0804
+	DCW      0x8000
+|unk_080128FA|
+	INCBIN	baserom.gba_0x128fa_0x128fe.extracted
+	DCW      0x082b

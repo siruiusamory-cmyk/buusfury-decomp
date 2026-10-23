@@ -20,7 +20,7 @@
 	EXPORT |sub_0803043A|
 	EXPORT |sub_0803043E|
 	EXPORT |sub_0803046E|
-	EXPORT |sub_080304DE|
+	EXPORT |sub_080304E4|
 	EXPORT |loc_0803054E|
 	EXPORT |loc_08030582|
 	EXPORT |loc_080305A8|
@@ -107,15 +107,5 @@
 	LSR      r5, r6, #1
 |unk_080301F4|
 	INCBIN	baserom.gba_0x301f4_0x301f6.extracted
-	LSR      r4, r0, #0x20
-	PUSH     {r3, r4, r5, r6, r7, lr}
-	ADD      r7, r1, #0
-	ADD      r4, r0, #0
-	CMP      r0, #0
-	BNE      |sub_08030210|
-	MOV      r0, #0x24
-	BL       |GBARam_Malloc|
-	ADD      r4, r0, #0
-	BNE      |sub_08030210|
-	ADD      r0, r4, #0
-	POP      {r3, r4, r5, r6, r7, pc}
+|dat_080301F6|
+	DCW      0x0804

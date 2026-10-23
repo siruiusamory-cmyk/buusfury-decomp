@@ -44,3 +44,8 @@
 		MOV r1, #0xff
 		STRB r1, [r0, #2]
 		DCW     0xE7D2
+|sub_0801E1E0|
+	DCW      0xc83c
+	DCW      0x0804
+	DCW      0x07e4
+	DCW      0x0872

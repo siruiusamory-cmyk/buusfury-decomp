@@ -7,3 +7,5 @@
 	MOV      r1, #0
 	BL       |inc_0x046118_0x049114| + 0x98c
 	POP      {r3, pc}
+|loc_08010DAA|
+	DCW      0x4860

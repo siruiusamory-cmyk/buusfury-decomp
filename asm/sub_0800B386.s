@@ -210,3 +210,5 @@
 		DCD     0x0800AE65
 		DCD     0xC0002100
 		DCD     0xC000A100
+|sub_0800B530|
+	DCW      0x4ab1

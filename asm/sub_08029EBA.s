@@ -16,3 +16,5 @@
 |sub_08029ED4|
 |unk_08029ED4|
 	INCBIN	baserom.gba_0x29ed4_0x29ed6.extracted
+|sub_08029ED6|
+	DCW      0x0300

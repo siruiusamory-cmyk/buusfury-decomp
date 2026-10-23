@@ -11,3 +11,7 @@
 		B        |loc_080065FC|
 		MOV r0, #8
 		BX       lr
+|sub_08006612|
+	DCW      0x0000
+	DCW      0x014c
+	DCW      0x0807

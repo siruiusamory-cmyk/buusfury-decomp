@@ -8,3 +8,5 @@
 |unk_080501DE|
 	INCBIN  baserom.gba_0x501de_0x501e0.extracted
 		BX       lr
+|sub_080501E2|
+	DCW      0x0000

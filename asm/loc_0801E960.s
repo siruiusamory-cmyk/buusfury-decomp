@@ -8,3 +8,5 @@
 |loc_0801E96C|
 		MOV r0, #0
 		DCW     0xE7B3
+|sub_0801E970|
+	DCW      0x481d

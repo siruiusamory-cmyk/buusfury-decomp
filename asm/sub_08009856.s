@@ -87,3 +87,9 @@
 		STMIA r0!, {r1, r2, r3, r4}
 		B        |inc_0x0158_0x143f2| + 0x96fa
 	INCBIN  baserom.gba_0x98f8_0x98fa.extracted
+|sub_080098FA|
+	DCW      0x0807
+	DCW      0x0040
+	DCW      0x0400
+	DCW      0x0050
+	DCW      0x0400

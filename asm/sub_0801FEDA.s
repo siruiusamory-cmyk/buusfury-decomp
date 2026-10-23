@@ -20,3 +20,5 @@
 		STRB r0, [r4, #4]
 		STR r6, [r5, #0x10]
 		B        |loc_0801FED6|
+|sub_0801FF02|
+	DCW      0x4919

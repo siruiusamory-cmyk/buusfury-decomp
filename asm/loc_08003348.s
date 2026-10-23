@@ -455,3 +455,9 @@
 |sub_08003718|
 |unk_08003718|
 	INCBIN	baserom.gba_0x3718_0x371a.extracted
+|sub_0800371A|
+	DCW      0x0805
+	DCW      0x82ec
+	DCW      0x086b
+	DCW      0x1c34
+	DCW      0x0300

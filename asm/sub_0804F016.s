@@ -13,3 +13,5 @@
 		ADD r0, r4, #0
 		B        |inc_0x049120_0x055620| + 0x5ef4
 	INCBIN  baserom.gba_0x4f02e_0x4f032.extracted
+|sub_0804F032|
+	DCW      0x0804

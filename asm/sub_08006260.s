@@ -20,3 +20,5 @@
 		DCD     0x0803F5A5
 		DCD     0x08070140
 	INCBIN  baserom.gba_0x628c_0x628e.extracted
+|sub_0800628E|
+	DCW      0x0803

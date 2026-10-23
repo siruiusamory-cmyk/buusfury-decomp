@@ -48,3 +48,7 @@
 |sub_0800E74C|
 |unk_0800E74C|
 	INCBIN	baserom.gba_0xe74c_0xe74e.extracted
+|sub_0800E74E|
+	DCW      0x0804
+	DCW      0x1b90
+	DCW      0x0300

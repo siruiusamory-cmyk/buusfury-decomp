@@ -43,3 +43,9 @@
 		BL       |Thunk_VramCopy|
 		DCW     0xE717
 	INCBIN  baserom.gba_0x289ba_0x289de.extracted
+|sub_080289DE|
+	DCW      0x0804
+	DCW      0x2fe4
+	DCW      0x0300
+	DCW      0x0000
+	DCW      0x0601

@@ -282,3 +282,7 @@
 |sub_08003F40|
 |unk_08003F40|
 	INCBIN	baserom.gba_0x3f40_0x3f42.extracted
+|sub_08003F42|
+	DCW      0x0805
+	DCW      0x5478
+	DCW      0x0805

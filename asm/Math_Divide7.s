@@ -1,9 +1,5 @@
 	CODE16
 |Math_Divide7|
-	LSR      r5, r0, #0x20
-	MOV      r2, #0xa3
-	LSL      r2, r2, #2
-	ADD      r2, r0, r2
 	PUSH     {r3, lr}
 	LDR      r2, [r2]
 	ASR      r2, r2, #0xa

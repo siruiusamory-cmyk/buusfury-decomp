@@ -34,3 +34,7 @@
 |sub_080299A2|
 |unk_080299A2|
 	INCBIN	baserom.gba_0x299a2_0x299a6.extracted
+|sub_080299A6|
+	DCW      0x0000
+	DCW      0x2fec
+	DCW      0x0300

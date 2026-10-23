@@ -109,3 +109,5 @@
 |sub_0804EAF0|
 |unk_0804EAF0|
 	INCBIN	baserom.gba_0x4eaf0_0x4eaf2.extracted
+|sub_0804EAF2|
+	DCW      0x0300

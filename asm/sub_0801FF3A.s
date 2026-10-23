@@ -5,3 +5,7 @@
 		BL       |loc_080067F4|
 		POP {r4, pc}
 	INCBIN  baserom.gba_0x1ff40_0x1ff4e.extracted
+|sub_0801FF4E|
+	DCW      0x0804
+	DCW      0x9b5c
+	DCW      0x0804

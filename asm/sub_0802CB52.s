@@ -46,3 +46,7 @@
 |sub_0802CBAA|
 |unk_0802CBAA|
 	INCBIN	baserom.gba_0x2cbaa_0x2cbae.extracted
+|sub_0802CBAE|
+	DCW      0x0804
+	DCW      0x2670
+	DCW      0x0807

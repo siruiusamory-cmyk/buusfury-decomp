@@ -17,3 +17,6 @@
 	STR      r1, [r0]
 |loc_08004466|
 	BX       lr
+|loc_08004468|
+	DCW      0x1c02
+	DCW      0x32e4

@@ -8,3 +8,5 @@
 |sub_08048194|
 |unk_08048194|
 	INCBIN	baserom.gba_0x48194_0x48196.extracted
+|sub_08048196|
+	DCW      0x0300

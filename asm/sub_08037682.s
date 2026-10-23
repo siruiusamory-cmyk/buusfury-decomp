@@ -258,3 +258,7 @@
 		DCD     0x08049680
 		DCD     0x0000FFFF
 	INCBIN  baserom.gba_0x37898_0x3789a.extracted
+|sub_0803789A|
+	DCW      0x0804
+	DCW      0x80f0
+	DCW      0x086b

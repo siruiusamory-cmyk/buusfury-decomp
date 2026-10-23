@@ -34,10 +34,5 @@
 |sub_080187A2|
 |unk_080187A2|
 	INCBIN	baserom.gba_0x187a2_0x187a6.extracted
-	ADD      r1, r2, #0
-	PUSH     {r3, lr}
-	LDR      r2, [r2, #4]
-	CMP      r2, #0
-	BNE      |sub_080187B4|
-	MOV      r0, #0
-	POP      {r3, pc}
+|dat_080187A6|
+	DCW      0x1c11

@@ -32,3 +32,9 @@
 		ADD r2, r0, #0
 		ADD r2, #0x1c
 		B        |sub_08027B4C|
+|sub_08027C26|
+	DCW      0x0000
+	DCW      0x1b10
+	DCW      0x0300
+	DCW      0xea40
+	DCW      0x0874

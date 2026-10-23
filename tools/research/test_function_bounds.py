@@ -237,6 +237,17 @@ def test_a_prologue_at_the_start_is_not_a_flag():
     assert function_bounds.flag_rows(bytes(data), found) == []
 
 
+def test_a_start_the_runtime_proves_is_not_flagged():
+    data = image()
+    put_half(data, BASE + 0x10, 0xBD10)
+    put_half(data, BASE + 0x14, 0x0804)
+    put_half(data, BASE + 0x16, 0xB510)
+    found = classify(data, [BASE + 0x14], [(0x14, 0x1A)], spans=[0x14])
+    assert function_bounds.flag_rows(bytes(data), found) == [
+        (BASE + 0x14, "unreferenced", "", "data", BASE + 0x16)]
+    assert function_bounds.flag_rows(bytes(data), found, {BASE + 0x14}) == []
+
+
 def test_a_flagged_start_the_allow_list_does_not_carry_is_named():
     carried = "address,kind,limb,flags,entry,reason\n0x08000010,unreferenced,,data,0x08000012,prefix\n"
     derived = carried + "0x08000020,unreferenced,,data,0x08000022,prefix\n"
@@ -254,8 +265,12 @@ def test_the_tracked_entry_allow_list_is_what_the_image_gives():
     with open(function_bounds.ALLOW, encoding="utf-8") as handle:
         assert handle.read() == derived
     carried = {line.split(",")[0]: line.split(",") for line in derived.splitlines()[1:]}
-    for address in ("0x080335b6", "0x0801906e", "0x08050566"):
-        assert carried[address][5] == "prefix", address
+    starts = set(found["starts"])
+    for address, entry in ((0x080335B6, 0x080335BC), (0x0801906E, 0x08019074),
+                           (0x08050566, 0x08050568)):
+        assert "0x%08x" % address not in carried
+        assert entry in starts
+        assert address not in starts
 
 
 if __name__ == "__main__":

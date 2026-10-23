@@ -104,3 +104,6 @@
 	LSL      r0, r0, #0
 	BX       pc
 	LSL      r0, r0, #0
+|unk_08048170|
+	DCW      0xff1e
+	DCW      0xe12f

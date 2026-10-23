@@ -28,3 +28,9 @@
 |sub_08006B94|
 |unk_08006B94|
 	INCBIN	baserom.gba_0x6b94_0x6b96.extracted
+|sub_08006B96|
+	DCW      0x0807
+	DCW      0x05c4
+	DCW      0x0000
+	DCW      0x5678
+	DCW      0x1234

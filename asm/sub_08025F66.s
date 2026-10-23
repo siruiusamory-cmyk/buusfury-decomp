@@ -649,3 +649,5 @@
 |sub_080264D0|
 |unk_080264D0|
 	INCBIN	baserom.gba_0x264d0_0x264d2.extracted
+|sub_080264D2|
+	DCW      0x0300

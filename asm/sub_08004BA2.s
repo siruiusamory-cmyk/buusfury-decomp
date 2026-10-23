@@ -17,3 +17,9 @@
 |unk_08004BB2|
 		MOV r0, #0
 		B        |inc_0x0158_0x143f2| + 0x4a46
+|sub_08004BB6|
+	DCW      0x0000
+	DCW      0x55a4
+	DCW      0x0805
+	DCW      0xca24
+	DCW      0x0874

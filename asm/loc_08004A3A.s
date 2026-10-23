@@ -27,3 +27,7 @@
 	LDR      r3, [pc, #0x84]
 	ADD      sp, r3
 	POP      {r4, r5, pc}
+|loc_08004A76|
+	DCW      0x2145
+	DCW      0x0149
+	DCW      0x1840

@@ -24,3 +24,5 @@
 		BX       lr
 	INCBIN  baserom.gba_0x4fde2_0x4fde4.extracted
 		BX       lr
+|sub_0804FDE6|
+	DCW      0x0000

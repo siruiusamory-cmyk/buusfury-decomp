@@ -56,3 +56,7 @@
 		MOV r0, #0
 		BX       lr
 	INCBIN  baserom.gba_0xa26e_0xa272.extracted
+|sub_0800A272|
+	DCW      0x0000
+	DCW      0x1af0
+	DCW      0x0300

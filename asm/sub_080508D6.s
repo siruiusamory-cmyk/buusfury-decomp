@@ -18,3 +18,6 @@
 |sub_080508F4|
 |unk_080508F4|
 	INCBIN	baserom.gba_0x508f4_0x508f6.extracted
+|sub_080508F6|
+	DCW      0x0804
+	DCW      0x4a03

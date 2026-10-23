@@ -30,3 +30,5 @@
 		DCW     0xE7DF
 		DCD     0x0871DD38
 	INCBIN  baserom.gba_0x1c6a4_0x1c6c6.extracted
+|sub_0801C6C6|
+	DCW      0x0871

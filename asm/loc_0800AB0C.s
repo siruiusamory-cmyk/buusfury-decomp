@@ -33,3 +33,5 @@
 |sub_0800AB50|
 |unk_0800AB50|
 	INCBIN	baserom.gba_0xab50_0xab52.extracted
+|sub_0800AB52|
+	DCW      0x0870

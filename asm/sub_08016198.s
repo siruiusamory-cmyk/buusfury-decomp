@@ -53,3 +53,7 @@
 |loc_080161FE|
 		MOV r0, #0
 		B        |inc_0x153f2_0x1a3f2| + 0xda4
+|sub_08016202|
+	DCW      0x0000
+	DCW      0x8078
+	DCW      0x086b

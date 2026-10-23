@@ -104,3 +104,5 @@
 |sub_0803DA74|
 |unk_0803DA74|
 	INCBIN	baserom.gba_0x3da74_0x3da76.extracted
+|sub_0803DA76|
+	DCW      0x0600

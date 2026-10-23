@@ -53,3 +53,7 @@
 		MOV r0, #1
 		B        |inc_0x301c0_0x311c0| + 0x2aa
 	INCBIN  baserom.gba_0x304dc_0x304de.extracted
+|sub_080304DE|
+	DCW      0x0875
+	DCW      0x13fc
+	DCW      0x0871

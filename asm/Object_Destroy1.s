@@ -54,3 +54,5 @@
 |unk_0800B328|
 	INCBIN	baserom.gba_0xb328_0xb32a.extracted
 	LSR      r0, r0, #0x20
+|loc_0800B32C|
+	DCW      0x497b

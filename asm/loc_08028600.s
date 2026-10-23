@@ -99,3 +99,5 @@
 	INCBIN  baserom.gba_0x286b6_0x286b8.extracted
 		DCD     0x03002FE4
 	INCBIN  baserom.gba_0x286bc_0x286d2.extracted
+|sub_080286D2|
+	DCW      0x0804

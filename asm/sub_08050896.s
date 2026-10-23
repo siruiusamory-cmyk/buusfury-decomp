@@ -21,3 +21,7 @@
 		STR r0, [r4]
 		ADD r0, r4, #0
 		B        |inc_0x049120_0x055620| + 0x7772
+|sub_080508C0|
+	DCW      0xd82c
+	DCW      0x0804
+	DCW      0x4a03

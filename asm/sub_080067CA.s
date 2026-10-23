@@ -9,3 +9,7 @@
 |unk_080067D2|
 		MOV r0, #0
 		B        |inc_0x0158_0x143f2| + 0x6670
+|sub_080067D6|
+	DCW      0x1c01
+	DCW      0x31ff
+	DCW      0x3101

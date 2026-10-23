@@ -26,3 +26,10 @@
 	DCD	0x0804CDAC
 		DCD     0x08072580
 	INCBIN  baserom.gba_0xd1a8_0xd1b2.extracted
+|sub_0800D1B2|
+	DCW      0x0000
+|unk_0800D1B4|
+	INCBIN	baserom.gba_0xd1b4_0xd1b6.extracted
+	DCW      0x0804
+	DCW      0xd1e4
+	DCW      0x0804

@@ -65,3 +65,8 @@
 ; cited by 0x080103A8 (a pc-relative load targets 0x08010578)
 		BX       lr
 	INCBIN  baserom.gba_0x10576_0x10582.extracted
+|sub_08010582|
+	DCW      0x0804
+	DCW      0xd038
+	DCW      0x0804
+	DCW      0x4896

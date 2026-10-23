@@ -13,3 +13,5 @@
 		STR r2, [r4]
 		STR r0, [r1, #4]
 		B        |inc_0x0158_0x143f2| + 0xb26
+|sub_08000C9A|
+	DCW      0x485a

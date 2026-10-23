@@ -61,3 +61,5 @@
 		BX       lr
 	INCBIN  baserom.gba_0x4e506_0x4e508.extracted
 		BX       lr
+|sub_0804E50A|
+	DCW      0x0000

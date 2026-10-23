@@ -219,3 +219,105 @@ def test_a_retired_row_keeps_the_start_after_it_a_code_row(tmp_path):
     assert rows[0] == "0x0,8,t,code_a,b,t,p,4"
     assert rows[1] == "0x8,4,t,code_b,b,t,p,4"
 
+
+def call_tree(tmp_path, isa, caller):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": caller},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,4,%s,code_b,b,t,p,4\n" % isa])
+
+
+def test_a_retirement_refuses_the_only_call_evidence_of_a_thumb_start(tmp_path):
+    call_tree(tmp_path, "t", "\tCODE16\n|sub_08000004|\n\tBL       |sub_08000008|\n")
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB510, 0xBD10, 0xF000, 0xF800]),
+                              BASE + 4, "split", {BASE: ["prologue"], BASE + 8: ["call"]})
+    assert str(caught.value) == "0x08000008 is a start only through a call inside these bytes"
+
+
+def test_a_retirement_refuses_the_only_call_evidence_of_an_arm_start(tmp_path):
+    call_tree(tmp_path, "a", "\tCODE32\n|sub_08000004|\n\tBL       |sub_08000010|\n")
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB510, 0xBD10, 0x0001, 0xEB00]),
+                              BASE + 4, "split", {BASE: ["prologue"], BASE + 16: ["call"]})
+    assert str(caught.value) == "0x08000010 is a start only through a call inside these bytes"
+
+
+def test_a_retirement_refuses_a_recorded_runtime_entry(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n"])
+    (tmp_path / "docs" / "research" / "RUNTIME_LABELS.csv").write_text(
+        "address,mode\n0x08000004,thumb\n")
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                              BASE + 4, "data", {BASE: ["prologue"]})
+    assert str(caught.value) == "0x08000004 is a recorded runtime entry inside these bytes"
+
+
+def test_a_retirement_refuses_a_symbol_that_src_names(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n"])
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Ram_ClearLimits.c").write_text("void sub_08000004(void);\n")
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                              BASE + 4, "data", {BASE: ["prologue"]})
+    assert str(caught.value) == "sub_08000004 names 0x08000004 from src/ or include/"
+
+
+def test_a_retirement_refuses_a_file_that_begins_a_section(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n",
+                 "sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n"])
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                              BASE + 4, "data", {BASE: ["prologue"]})
+    assert str(caught.value) == "sub_08000004.s begins a section, so its bytes cannot join another file"
+
+
+def test_a_retirement_refuses_an_index_address_that_matches_twice(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n",
+                 "0x08000004,start,,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n"])
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                              BASE + 4, "data", {BASE: ["prologue"]})
+    assert "carries no single row for 0x08000004" in str(caught.value)
+
+
+def test_a_retirement_refuses_a_ledger_address_that_matches_twice(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n",
+                 "0x4,2,t,code_b,b,t,p,2\n"])
+    with pytest.raises(SystemExit) as caught:
+        move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                              BASE + 4, "data", {BASE: ["prologue"]})
+    assert "carries no single row at 0x08000004" in str(caught.value)
+

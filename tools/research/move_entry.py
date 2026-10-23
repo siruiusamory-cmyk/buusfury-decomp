@@ -511,21 +511,6 @@ def pointer_here(rom, address):
     return word
 
 
-def body_lines(lines, symbol, replacement=None):
-    out = []
-    for line in lines:
-        state = line.strip()
-        if state == "|%s|" % symbol:
-            if replacement is not None:
-                out.append("|%s|" % replacement)
-            continue
-        found = EXPORT_LINE.match(line)
-        if found is not None and found.group(2) == symbol:
-            continue
-        out.append(line)
-    return out
-
-
 def lone_halfword(line):
     found = re.match(r"^\s*DCW\s+0x([0-9a-fA-F]{1,4})$", line)
     return int(found.group(1), 16) if found is not None else None
@@ -534,13 +519,6 @@ def lone_halfword(line):
 def last_statement(lines):
     hits = [number for number, line in enumerate(lines) if line.split(";")[0].strip()]
     return hits[-1] if hits else None
-
-
-def first_statement(lines):
-    for number, line in enumerate(lines):
-        if line.split(";")[0].strip():
-            return number
-    return None
 
 
 def predecessor(root, leaf):
@@ -574,9 +552,8 @@ def call_sources(rom, rows):
         while at < offset + length:
             if mode != "thumb":
                 word = word_at(rom, ROM_BASE + at)
-                if word is not None and word >> 28 == 0x0B:
-                    target = at + 8 + export_inputs.signed(word & 0xFFFFFF, 24) * 4
-                    sites.setdefault(target, []).append(at)
+                if word is not None and word & 0x0F000000 == 0x0B000000:
+                    sites.setdefault(export_inputs.arm_branch(at, word), []).append(at)
                 at += 4
                 continue
             size = export_inputs.thumb_size(rom, at)

@@ -24,4 +24,3 @@
 |sub_080508C0|
 	DCW      0xd82c
 	DCW      0x0804
-	DCW      0x4a03

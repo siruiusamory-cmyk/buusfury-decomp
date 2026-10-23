@@ -213,7 +213,7 @@ def test_a_start_in_the_gap_before_the_next_prologue_is_flagged_as_data():
     put_half(data, BASE + 0x18, 0xBD10)
     found = classify(data, [BASE + 0x14], [(0x14, 0x1A)], spans=[0x14])
     rows = function_bounds.flag_rows(bytes(data), found)
-    assert rows == [(BASE + 0x14, "unreferenced", "", "data", BASE + 0x16)]
+    assert rows == [(BASE + 0x14, "unreferenced", "", "data", BASE + 0x16, "prefix")]
     assert function_bounds.flags_text(rows).splitlines()[1] == \
         "0x08000014,unreferenced,,data,0x08000016,prefix"
 
@@ -244,7 +244,7 @@ def test_a_start_the_runtime_proves_is_not_flagged():
     put_half(data, BASE + 0x16, 0xB510)
     found = classify(data, [BASE + 0x14], [(0x14, 0x1A)], spans=[0x14])
     assert function_bounds.flag_rows(bytes(data), found) == [
-        (BASE + 0x14, "unreferenced", "", "data", BASE + 0x16)]
+        (BASE + 0x14, "unreferenced", "", "data", BASE + 0x16, "prefix")]
     assert function_bounds.flag_rows(bytes(data), found, {BASE + 0x14}) == []
 
 
@@ -253,6 +253,49 @@ def test_a_flagged_start_the_allow_list_does_not_carry_is_named():
     derived = carried + "0x08000020,unreferenced,,data,0x08000022,prefix\n"
     assert function_bounds.uncarried(carried, derived) == "0x08000020"
     assert function_bounds.uncarried(derived, derived) is None
+
+
+def test_a_stub_record_starting_a_row_is_its_entry_and_is_not_flagged():
+    data = image()
+    for at, value in enumerate((0x4A03, 0xB508, 0x6002, 0x2900,
+                                0xD001, 0xF000, 0xF800, 0xBD08)):
+        put_half(data, BASE + 0x40 + 2 * at, value)
+    put_word(data, BASE + 0x50, BASE + 0x60)
+    put_half(data, BASE + 0x3E, 0xE000)
+    assert function_bounds.stub_entry(bytes(data), BASE + 0x40, "thumb") is True
+    assert function_bounds.stub_entry(bytes(data), BASE + 0x42, "thumb") is False
+    found = classify(data, [BASE + 0x40], [(0x3E, 0x54)], spans=[0x40])
+    assert function_bounds.flag_rows(bytes(data), found, set()) == []
+
+
+def test_a_start_in_an_arm_row_is_tested_by_the_arm_bytes():
+    data = image()
+    put_word(data, BASE + 0x60, 0xE92D4010)
+    found = function_bounds.classify(bytes(data), [BASE + 0x60], {},
+                                     [(BASE + 0x60, BASE + 0x64, "arm")],
+                                     set(), set(), set(), spans={BASE + 0x60})
+    assert found["row_modes"][BASE + 0x60] == "arm"
+    assert function_bounds.flag_rows(bytes(data), found, set()) == []
+
+
+def test_a_row_start_is_classed_by_the_bytes_that_open_and_precede_it():
+    data = image()
+    put_half(data, BASE + 0x10, 0x4A00)
+    put_half(data, BASE + 0x12, 0xB510)
+    put_half(data, BASE + 0x14, 0xBD10)
+    assert function_bounds.reason_of(bytes(data), BASE + 0x10, "thumb",
+                                     (BASE + 0x10, BASE + 0x18)) == "entry"
+    put_word(data, BASE + 0x20, 0x03001234)
+    assert function_bounds.reason_of(bytes(data), BASE + 0x20, "thumb",
+                                     (BASE + 0x20, BASE + 0x22)) == "data"
+    put_half(data, BASE + 0x2E, 0x1C08)
+    put_half(data, BASE + 0x30, 0x0804)
+    put_half(data, BASE + 0x32, 0xDE00)
+    assert function_bounds.reason_of(bytes(data), BASE + 0x30, "thumb",
+                                     (BASE + 0x30, BASE + 0x34)) == "split"
+    put_half(data, BASE + 0x2E, 0xBD10)
+    assert function_bounds.reason_of(bytes(data), BASE + 0x30, "thumb",
+                                     (BASE + 0x30, BASE + 0x34)) == "data"
 
 
 def test_the_tracked_entry_allow_list_is_what_the_image_gives():
@@ -286,4 +329,5 @@ if __name__ == "__main__":
     test_a_body_stops_at_the_end_of_its_run()
     test_an_entry_outside_every_code_run_is_classified_by_nothing()
     test_the_sample_names_ten_blocks_with_their_parent()
+    test_a_stub_record_starting_a_row_is_its_entry_and_is_not_flagged()
     print("PASS test_function_bounds")

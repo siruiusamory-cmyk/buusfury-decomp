@@ -28,7 +28,7 @@ HEADER = "address,kind,limb,parent"
 FLAG_HEADER = "address,kind,limb,flags,entry,reason"
 LIMBS = ("call", "vector", "table", "prologue", "unreferenced")
 FLAGS = ("data", "undecodable", "clobber")
-REASONS = ("prefix", "row-start")
+REASONS = ("prefix", "entry", "split", "data")
 EXPORT = re.compile(r"^\s*EXPORT\s+\|([^|]+)\|\s*$")
 ADDRESS_FORM = re.compile(r"^(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})$")
 SEED = 716
@@ -205,14 +205,98 @@ def proven(root=ROOT):
     return {address for address, _mode in export_inputs.runtime_labels(root)}
 
 
+STUB_LITERAL = 0x10
+
+
+def stub_entry(rom, address, mode):
+    if mode != "thumb" or address % 2:
+        return False
+    offset = address - ROM_BASE
+    if offset < 0 or offset + STUB_LITERAL + 4 > len(rom):
+        return False
+    load = int.from_bytes(rom[offset:offset + 2], "little")
+    if (load & 0xF803) != 0x4803:
+        return False
+    store = int.from_bytes(rom[offset + 4:offset + 6], "little")
+    if (store & 0xFFF8) != 0x6000 or (store & 7) != ((load >> 8) & 7):
+        return False
+    wanted = {2: 0xB508, 6: 0x2900, 14: 0xBD08}
+    for at, value in wanted.items():
+        if int.from_bytes(rom[offset + at:offset + at + 2], "little") != value:
+            return False
+    if (int.from_bytes(rom[offset + 8:offset + 10], "little") & 0xF000) != 0xD000:
+        return False
+    if (int.from_bytes(rom[offset + 10:offset + 12], "little") & 0xF800) != 0xF000:
+        return False
+    if (int.from_bytes(rom[offset + 12:offset + 14], "little") & 0xF800) != 0xF800:
+        return False
+    literal = int.from_bytes(rom[offset + STUB_LITERAL:offset + STUB_LITERAL + 4], "little")
+    return ROM_BASE <= literal < ROM_BASE + len(rom)
+
+
+POINTERS = ((0x08000000, 0x08800000), (0x03000000, 0x03008000))
+
+
+def pointer_word(rom, address):
+    for at in (address - 2, address):
+        offset = at - ROM_BASE
+        if offset % 4 or offset < 0 or offset + 4 > len(rom):
+            continue
+        word = int.from_bytes(rom[offset:offset + 4], "little")
+        if any(low <= word < high for low, high in POINTERS):
+            return at
+    return None
+
+
+def closed(found):
+    if found is None:
+        return False
+    name = found.mnemonic
+    if name.startswith("b") and name not in ("bl", "blx"):
+        return True
+    if name == "bx":
+        return True
+    return name == "pop" and "pc" in found.op_str
+
+
+def terminal(found):
+    if found is None:
+        return False
+    return operation(found) in ("bx", "b") or found.mnemonic == "pop" and "pc" in found.op_str
+
+
+def flow(rom, address, mode, stop):
+    at = address
+    while at < stop:
+        found = decoded(rom, at, mode)
+        if found is None or undecodable(rom, [found], mode):
+            return False
+        if closed(found):
+            return True
+        at += found.size
+    return False
+
+
+def reason_of(rom, address, mode, row):
+    if mode != "thumb":
+        return "entry"
+    if row is not None and row[1] - row[0] == 2 and pointer_word(rom, address) is not None:
+        return "data"
+    if flow(rom, address, mode, row[1] if row is not None else address + 0x10):
+        return "entry"
+    return "data" if terminal(decoded(rom, address - 2, mode)) else "split"
+
+
 def flag_rows(rom, found, proven_addresses=None):
     rows = []
     if proven_addresses is None:
         proven_addresses = proven()
+    census_rows = found.get("rows") or []
     for address in sorted(found["starts"]):
-        if address in proven_addresses:
+        mode = (found["modes"].get(address) or found.get("row_modes", {}).get(address)
+                or "thumb")
+        if address in proven_addresses or stub_entry(rom, address, mode):
             continue
-        mode = found["modes"].get(address) or "thumb"
         entry = entry_of(rom, address, mode)
         fired = []
         if gap(rom, address, mode, entry):
@@ -225,17 +309,19 @@ def flag_rows(rom, found, proven_addresses=None):
         if not fired:
             continue
         kind = "unreferenced" if address in found["unreferenced"] else "start"
-        rows.append((address, kind, "+".join(found["starts"][address]), "+".join(fired), entry))
+        reason = "prefix" if entry is not None else reason_of(
+            rom, address, mode, row_of(address, census_rows) if census_rows else None)
+        rows.append((address, kind, "+".join(found["starts"][address]), "+".join(fired),
+                     entry, reason))
     return rows
 
 
 def flags_text(rows):
     lines = [FLAG_HEADER]
-    for address, kind, limb, flags, entry in rows:
+    for address, kind, limb, flags, entry, reason in rows:
         lines.append("0x%08x,%s,%s,%s,%s,%s"
                      % (address, kind, limb, flags,
-                        "0x%08x" % entry if entry is not None else "-",
-                        "prefix" if entry is not None else "row-start"))
+                        "0x%08x" % entry if entry is not None else "-", reason))
     return "\n".join(lines) + "\n"
 
 
@@ -254,12 +340,14 @@ def classify(rom, entries, modes, rows, calls, table, vectors, spans=()):
     if entries and not any(ROM_BASE <= address < ROM_BASE + len(rom) for address in entries):
         raise SystemExit("no candidate lies inside the image, so the address space is wrong")
     limbs_of, bodies, ends, unreferenced = {}, {}, {}, set()
+    row_modes = {}
     for address in sorted(entries):
         row = row_of(address, rows)
         if row is None:
             continue
         begin, end, row_mode = row
         mode = modes.get(address) or row_mode
+        row_modes[address] = mode
         limbs = []
         if address in calls:
             limbs.append("call")
@@ -299,7 +387,7 @@ def classify(rom, entries, modes, rows, calls, table, vectors, spans=()):
             blocks[address] = max(earlier)
     return {"entries": sorted(entries), "starts": starts, "bodies": bodies, "ends": ends,
             "blocks": blocks, "unreferenced": unreferenced, "contained": contained,
-            "modes": modes}
+            "modes": modes, "row_modes": row_modes, "rows": rows}
 
 
 def describe(rom, root=ROOT):

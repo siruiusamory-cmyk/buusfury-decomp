@@ -13,4 +13,3 @@
 	INCBIN	baserom.gba_0x50b20_0x50b22.extracted
 |sub_08050B22|
 	DCW      0x0804
-	DCW      0x4a03

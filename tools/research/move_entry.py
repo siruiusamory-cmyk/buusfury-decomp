@@ -530,8 +530,11 @@ def statement_at(root, rom, path, address):
 def reclaim_one(root, rom, start, entry, proven):
     if entry >= start:
         raise SystemExit("0x%08X does not stand before 0x%08X" % (entry, start))
-    if entry not in proven:
-        raise SystemExit("0x%08X is not a runtime-proven entry" % entry)
+    proof = "runtime" if entry in proven else None
+    if proof is None and function_bounds.stub_entry(rom, entry, "thumb"):
+        proof = "shape"
+    if proof is None:
+        raise SystemExit("0x%08X is no runtime-proven entry and begins no stub record" % entry)
     rows = index_rows(root)
     found = [row for row in rows if int(row["address"], 16) == start]
     if len(found) != 1 or found[0]["symbol"] != "sub_%08X" % start:
@@ -599,7 +602,7 @@ def reclaim_one(root, rom, start, entry, proven):
     ledger[hit[0]][7] += start - entry
     gate.write_ledger([tuple(item) for item in ledger], inside(root, LEDGER))
     removed_from_index(root, removed)
-    return target
+    return target, proof
 
 
 def reclaim(root, rom, pairs):
@@ -636,13 +639,13 @@ def main(argv=None):
     reclaimed = [tuple(int(part, 16) for part in item.split(":")) for item in args.reclaim]
     if reclaimed:
         done = reclaim(ROOT, rom, reclaimed)
-        for target, start, entry in done:
+        for (target, _proof), start, _entry in done:
             place_export(ROOT, start, os.path.basename(target)[: -len(".s")])
         tally, flagged, live, total, retired = regenerate(rom)
         print("reclaimed=%d starts=%d flagged=%d live=%d total=%d retired=%d"
               % (len(done), tally["starts"], flagged, live, total, retired))
-        for target, start, entry in done:
-            print("0x%08X -> 0x%08X %s" % (start, entry, target))
+        for (target, proof), start, entry in done:
+            print("0x%08X -> 0x%08X %s %s" % (start, entry, target, proof))
         return 0
     pairs = [tuple(int(part, 16) for part in item.split(":")) for item in args.pair] \
         or pairs_from_allow()

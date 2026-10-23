@@ -4,6 +4,8 @@ import os
 import struct
 import sys
 
+import pytest
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
@@ -121,8 +123,10 @@ def test_a_reclaim_takes_the_halfword_back_out_of_the_data_run(tmp_path):
          ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
           "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
          ["0x0,2,t,code_a,b,t,p,2\n", "0x4,4,t,code_b,b,t,p,4\n"])
-    target = move_entry.reclaim_one(str(tmp_path), image([0xB510, 0x4A00, 0xB510, 0xBD10]),
-                                    BASE + 4, BASE + 2, {BASE + 2})
+    target, proof = move_entry.reclaim_one(str(tmp_path),
+                                           image([0xB510, 0x4A00, 0xB510, 0xBD10]),
+                                           BASE + 4, BASE + 2, {BASE + 2})
+    assert proof == "runtime"
     assert target == "asm/sub_08000002.s"
     assert head(tmp_path, "sub_08000002.s", 3)[:2] == ["\tCODE16", "|sub_08000002|"]
     assert head(tmp_path, "sub_08000002.s", 3)[2].startswith("\tLDR")
@@ -133,3 +137,37 @@ def test_a_reclaim_takes_the_halfword_back_out_of_the_data_run(tmp_path):
     assert "0x08000002,start,sub_08000002,asm/sub_08000002.s" in (
         tmp_path / "docs" / "ASM_INDEX.csv").read_text().split("\n")
     assert (tmp_path / "work" / "ledger.csv").read_text().split("\n")[1] == "0x2,6,t,code_b,b,t,p,6"
+
+
+STUB = [0xB510, 0x4A03, 0xB508, 0x6002, 0x2900, 0xD001, 0xF000, 0xF800, 0xBD08, 0x0000, 0x0800]
+
+
+def stub_tree(tmp_path):
+    tree(tmp_path,
+         {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                            "|sub_08000002|\n\tDCW      0x4a03\n",
+          "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tPUSH     {r3, lr}\n"
+                            "\tSTR      r2, [r0]\n\tCMP      r1, #0\n"
+                            "\tBEQ      |loc_08000010|\n\tBL       |loc_08000000|\n"
+                            "|loc_08000010|\n\tPOP      {r3, pc}\n"},
+         ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+          "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+         ["0x0,2,t,code_a,b,t,p,2\n", "0x4,14,t,code_b,b,t,p,14\n"])
+
+
+def test_a_reclaim_accepts_a_stub_record_the_bytes_prove(tmp_path):
+    stub_tree(tmp_path)
+    target, proof = move_entry.reclaim_one(str(tmp_path), image(STUB),
+                                           BASE + 4, BASE + 2, set())
+    assert proof == "shape"
+    assert target == "asm/sub_08000002.s"
+    assert head(tmp_path, "sub_08000002.s", 3)[:2] == ["\tCODE16", "|sub_08000002|"]
+    assert head(tmp_path, "sub_08000002.s", 3)[2].startswith("\tLDR")
+    assert not (tmp_path / "asm" / "sub_08000004.s").exists()
+    assert "0x2,16,t,code_b,b,t,p,16" in (tmp_path / "work" / "ledger.csv").read_text().split("\n")
+
+
+def test_a_reclaim_refuses_an_entry_neither_the_runtime_nor_a_stub_proves(tmp_path):
+    stub_tree(tmp_path)
+    with pytest.raises(SystemExit):
+        move_entry.reclaim_one(str(tmp_path), image(STUB), BASE + 4, BASE, set())

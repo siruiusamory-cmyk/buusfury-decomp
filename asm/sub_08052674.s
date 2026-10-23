@@ -43,4 +43,3 @@
 	INCBIN	baserom.gba_0x526c4_0x526c6.extracted
 |sub_080526C6|
 	DCW      0x0804
-	DCW      0x4a03

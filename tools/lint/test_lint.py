@@ -581,7 +581,7 @@ def test_an_entry_allow_row_without_a_flag_or_a_reason_is_caught():
     wrong = head + "0x08000158,unreferenced,,data,-,prefix\n"
     assert any("not an address after it" in finding[1]
                for finding in lints.entry_allow_findings(census, wrong))
-    carried = head + "0x08000158,unreferenced,,shape,0x0800015a,row-start\n"
+    carried = head + "0x08000158,unreferenced,,shape,0x0800015a,split\n"
     assert any("no prologue to name" in finding[1]
                for finding in lints.entry_allow_findings(census, carried))
     twice = head + "0x08000158,unreferenced,,data,0x0800015a,prefix\n" * 2

@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tools/recomp/export_inputs.py` bounds a proven entry whose flow returns by that extent, and starts a`n  row at the byte after a row's return or padding when no row starts there, so the recompiler's inputs
+  reach code that had no block before.
+- `tools/research/coverage_gap.py` classifies the addresses a play trace reaches that no translated
+  block covers.
+
 ### Changed
 
 - The eight images under `assets/` are no longer tracked: `extract.cmd` decodes each one from the

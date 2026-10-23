@@ -241,15 +241,6 @@ def arm_branch(at, word):
     return at + 8 + signed(word & 0xFFFFFF, 24) * 4
 
 
-def opens_with_prologue(rom, at, mode):
-    if mode == "thumb":
-        half = half_word(rom, at)
-        return (half & 0xFE00) == 0xB400 and (half & 0x0100) != 0
-    if at + 4 > len(rom):
-        return False
-    return word_at(rom, at) & 0xFFFF4000 == 0xE92D4000
-
-
 def flow(rom, at, mode, bounds=None):
     queue = [(at, mode)]
     seen = set()
@@ -338,7 +329,7 @@ def covering(rom, entries, rows, copy_rows):
             continue
         off = addr - ENTRY_PC
         end = extent(rom, off, mode)
-        if end is None or not opens_with_prologue(rom, off, mode):
+        if end is None:
             continue
         ahead = [start for start, _length, _mode in funcs if start > off]
         stop = min(end, min(ahead)) if ahead else end
@@ -354,6 +345,7 @@ def walk(rom, rows):
                "arm": capstone.Cs(capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM)}
     bounds = {}
     starts = []
+    held = {off for off, _length, _mode in rows}
     for off, length, mode in rows:
         pending = [(off, mode)]
         while pending:
@@ -382,6 +374,9 @@ def walk(rom, rows):
                     bounds[position] = mode
                     previous = "padding" if rom[position:position + 2] == b"\x00\x00" else ""
                     position += step
+            if position == off + length and position not in held \
+                    and previous in ("return", "padding"):
+                starts.append((position, mode))
     return bounds, starts
 
 

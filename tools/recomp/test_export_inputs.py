@@ -148,6 +148,29 @@ def test_a_promoted_name_is_a_label_at_the_address_the_ledger_gives_it(tmp_path)
                                                    0x104: ("KeyInput_Read", "thumb")}
 
 
+def test_a_row_that_ends_in_a_return_starts_the_next_block():
+    image = a_thumb_image(((0x100, 0xBD00), (0x102, 0x4770)), ())
+    bounds, starts = export_inputs.walk(image, [(0x100, 2, "thumb")])
+    assert bounds[0x100] == "thumb"
+    assert starts == [(0x102, "thumb")]
+
+
+def test_a_row_that_ends_inside_an_instruction_starts_nothing():
+    image = a_thumb_image(((0x100, 0xF000), (0x102, 0xF800), (0x104, 0x4770)), ())
+    _bounds, starts = export_inputs.walk(image, [(0x100, 2, "thumb")])
+    assert starts == []
+
+
+def test_a_proven_entry_whose_flow_returns_is_bounded_without_a_prologue():
+    image = a_thumb_image(((0x100, 0x2001), (0x102, 0x4770)), ())
+    assert export_inputs.covering(image, [(0x08000100, "thumb")], [], []) == [(0x100, 4, "thumb")]
+
+
+def test_a_proven_entry_whose_flow_never_returns_stays_unbounded():
+    image = a_thumb_image(((0x100, 0x2001), (0x102, 0xE7FE)), ())
+    assert export_inputs.covering(image, [(0x08000100, "thumb")], [], []) == []
+
+
 def test_the_tracked_export_is_the_one_the_tree_derives():
     testkit.require(os.path.join(export_inputs.ROOT, "baserom.gba"),
                     "no image, so the identity block cannot be re-derived")

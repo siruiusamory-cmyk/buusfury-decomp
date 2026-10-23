@@ -232,3 +232,30 @@
 		BL       |Thunk_JumpRegister1|
 		MOV r0, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x238
+	CODE16
+|dat_080355C2|
+	DCW      0x0000
+	DCW      0x6eec
+	DCW      0x087b
+	DCW      0x1c34
+	DCW      0x0300
+	DCW      0xfe80
+	DCW      0xffff
+	DCW      0xb210
+	DCW      0x0804
+	DCW      0xb508
+	DCW      0x200c
+	DCW      0xf007
+	DCW      0xffee
+	DCW      0x2800
+	DCW      0xd001
+	DCW      0x4901
+	DCW      0x6001
+|loc_080355E4|
+	DCW      0xbd08
+|sub_080355E6|
+|unk_080355E6|
+	INCBIN	baserom.gba_0x355e6_0x355ea.extracted
+|sub_080355EA|
+	DCW      0x0804
+

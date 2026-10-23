@@ -10,3 +10,9 @@
 |sub_080479FC|
 |unk_080479FC|
 	INCBIN	baserom.gba_0x479fc_0x47a00.extracted
+	CODE16
+|dat_08047A00|
+	DCW      0x4070
+|unk_08047A02|
+	INCBIN	baserom.gba_0x47a02_0x47a08.extracted
+

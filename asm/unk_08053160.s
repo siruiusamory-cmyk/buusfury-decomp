@@ -9,6 +9,13 @@
 	BX       lr
 	CODE16
 	CODE16
-	EXPORT |sub_0805317A|
 |unk_08053178|
 	INCBIN	baserom.gba_0x53178_0x5317a.extracted
+	CODE16
+|dat_0805317A|
+	DCW      0x0576
+	DCW      0xe890
+	DCW      0xffff
+	DCW      0x4778
+	DCW      0x0000
+

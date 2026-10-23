@@ -180,4 +180,18 @@
 	LDR      ip, [pc, #0xc]
 	CODE16
 	CODE16
-	EXPORT |sub_0805393C|
+	CODE16
+|dat_0805393C|
+	DCW      0x03c3
+	DCW      0xea00
+	DCW      0x0000
+	DCW      0xffe0
+	DCW      0x0011
+	DCW      0x1000
+	DCW      0x0011
+	DCW      0x0400
+	DCW      0x0012
+	DCW      0x0400
+	DCW      0x4778
+	DCW      0x0000
+

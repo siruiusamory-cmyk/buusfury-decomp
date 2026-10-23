@@ -171,3 +171,51 @@ def test_a_reclaim_refuses_an_entry_neither_the_runtime_nor_a_stub_proves(tmp_pa
     stub_tree(tmp_path)
     with pytest.raises(SystemExit):
         move_entry.reclaim_one(str(tmp_path), image(STUB), BASE + 4, BASE, set())
+
+
+def retire_tree(tmp_path, files, index_rows, ledger_rows):
+    tree(tmp_path, files, index_rows, ledger_rows)
+    (tmp_path / "docs" / "research" / "BF_LABELS.toml").write_text("format = \"gba-labels\"\n")
+
+
+def test_a_retired_data_start_becomes_a_data_label_in_the_file_before_it(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000004.s": "\tCODE16\n|sub_08000004|\n\tDCW      0x1234\n"},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,sub_08000004,asm/sub_08000004.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,2,t,code_b,b,t,p,2\n"])
+    action = move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1234]),
+                                   BASE + 4, "data", {BASE: ["prologue"], BASE + 4: []})
+    assert action.startswith("data:")
+    assert not (tmp_path / "asm" / "sub_08000004.s").exists()
+    assert tail(tmp_path, "sub_08000000.s") == ["|dat_08000004|", "\tDCW      0x1234"]
+    assert "INCLUDE sub_08000004.s" not in (tmp_path / "asm" / "buu.s").read_text()
+    assert "0x08000004" not in (tmp_path / "docs" / "ASM_INDEX.csv").read_text()
+    assert (tmp_path / "work" / "ledger.csv").read_text().split("\n")[0] == \
+        "0x0,6,t,code_a,b,t,p,4"
+
+
+def test_a_retired_row_keeps_the_start_after_it_a_code_row(tmp_path):
+    retire_tree(tmp_path,
+                {"sub_08000000.s": "\tCODE16\n|sub_08000000|\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n\tDCW      0x1111\n"
+                                   "\tDCW      0x2222\n\tPUSH     {r4, lr}\n"
+                                   "\tPOP      {r4, pc}\n",
+                 "sub_08000008.s": ""},
+                ["0x08000000,start,sub_08000000,asm/sub_08000000.s\n",
+                 "0x08000004,start,,asm/sub_08000000.s\n",
+                 "0x08000008,start,sub_08000008,asm/sub_08000008.s\n"],
+                ["0x0,4,t,code_a,b,t,p,4\n", "0x4,8,t,code_b,b,t,p,8\n"])
+    move_entry.retire_one(str(tmp_path), image([0xB514, 0xBD14, 0x1111, 0x2222, 0xB514, 0xBD14]),
+                          BASE + 4, "split", {BASE: ["prologue"], BASE + 8: ["prologue"]})
+    body = (tmp_path / "asm" / "sub_08000000.s").read_text().split("\n")
+    assert "|dat_08000004|" in body
+    assert body[body.index("|dat_08000004|") + 1:][:2] == ["\tDCW      0x1111",
+                                                          "\tDCW      0x2222"]
+    assert "\tPUSH     {r4, lr}" in body[body.index("|dat_08000004|"):]
+    rows = (tmp_path / "work" / "ledger.csv").read_text().split("\n")
+    assert rows[0] == "0x0,8,t,code_a,b,t,p,4"
+    assert rows[1] == "0x8,4,t,code_b,b,t,p,4"
+

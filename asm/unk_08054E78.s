@@ -39,4 +39,20 @@
 	TST      ip, #0x10
 	CODE16
 	CODE16
-	EXPORT |sub_08054EF8|
+	CODE16
+|dat_08054EF8|
+	DCW      0x0008
+	DCW      0x059f
+	DCW      0x1008
+	DCW      0x159f
+	DCW      0x0000
+	DCW      0x13a0
+|unk_08054F04|
+	INCBIN	baserom.gba_0x54f04_0x54f08.extracted
+	LSL      r0, r0, #0
+	LDRB     r0, [r0, #0x1f]
+	LSL      r0, r0, #0
+	LDRB     r0, [r7, #0x1f]
+	BX       pc
+	LSL      r0, r0, #0
+

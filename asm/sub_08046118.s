@@ -1,6 +1,5 @@
 	CODE16
 	EXPORT |sub_08046118|
-	EXPORT |sub_08046A7A|
 	EXPORT |loc_08046AA0|
 	EXPORT |Thunk_JumpRegister1|
 	EXPORT |sub_08046AA8|
@@ -23,3 +22,25 @@
 |unk_080462AC|
 ; cited by 0x080462B0 (a pc-relative load targets 0x08046A64)
 	INCBIN	baserom.gba_0x462ac_0x46a7a.extracted
+	CODE16
+|dat_08046A7A|
+	DCW      0x0000
+	DCW      0xf996
+	DCW      0x0000
+	DCW      0x500a
+	DCW      0x0000
+	DCW      0x01ee
+	DCW      0x9966
+	DCW      0x5002
+	DCW      0x0000
+	DCW      0x01ee
+	DCW      0x0000
+	DCW      0x5003
+	DCW      0x0000
+	DCW      0x0200
+	DCW      0x0400
+	DCW      0x500b
+	DCW      0x0000
+	DCW      0x5083
+	DCW      0x0000
+

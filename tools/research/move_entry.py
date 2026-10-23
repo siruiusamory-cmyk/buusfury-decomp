@@ -491,6 +491,279 @@ def pairs_from_allow(root=ROOT):
             for row in rows if row["reason"] == "prefix"]
 
 
+RETIRED_CLASSES = ("data", "split")
+POINTERS = ((0x08000000, 0x08800000), (0x03000000, 0x03008000))
+
+
+def word_at(rom, address):
+    offset = address - ROM_BASE
+    if offset < 0 or offset + 4 > len(rom):
+        return None
+    return int.from_bytes(rom[offset:offset + 4], "little")
+
+
+def pointer_here(rom, address):
+    if address % 4:
+        return None
+    word = word_at(rom, address)
+    if word is None or not any(low <= word < high for low, high in POINTERS):
+        return None
+    return word
+
+
+def body_lines(lines, symbol, replacement=None):
+    out = []
+    for line in lines:
+        state = line.strip()
+        if state == "|%s|" % symbol:
+            if replacement is not None:
+                out.append("|%s|" % replacement)
+            continue
+        found = EXPORT_LINE.match(line)
+        if found is not None and found.group(2) == symbol:
+            continue
+        out.append(line)
+    return out
+
+
+def lone_halfword(line):
+    found = re.match(r"^\s*DCW\s+0x([0-9a-fA-F]{1,4})$", line)
+    return int(found.group(1), 16) if found is not None else None
+
+
+def last_statement(lines):
+    hits = [number for number, line in enumerate(lines) if line.split(";")[0].strip()]
+    return hits[-1] if hits else None
+
+
+def first_statement(lines):
+    for number, line in enumerate(lines):
+        if line.split(";")[0].strip():
+            return number
+    return None
+
+
+def predecessor(root, leaf):
+    site = include_site(root, leaf)
+    if site is None:
+        raise SystemExit("%s is in no include list" % leaf)
+    parent, number = site
+    lines = read(inside(root, "asm/" + parent)).split("\n")
+    for line in reversed(lines[:number - 1]):
+        if not line.strip():
+            continue
+        found = INCLUDE.match(line)
+        if found is None:
+            raise SystemExit("%s follows inline bytes of %s, so its bytes do not follow a file"
+                             % (leaf, parent))
+        child = os.path.basename(found.group(2))
+        if child.endswith(".inc"):
+            continue
+        return child
+    raise SystemExit("%s is the first file %s includes" % (leaf, parent))
+
+
+def ledger_index(rows, offset):
+    return [number for number, row in enumerate(rows) if row[0] == offset]
+
+
+def call_sources(rom, rows):
+    sites = {}
+    for offset, length, mode in rows:
+        at = offset
+        while at < offset + length:
+            if mode != "thumb":
+                word = word_at(rom, ROM_BASE + at)
+                if word is not None and word >> 28 == 0x0B:
+                    target = at + 8 + export_inputs.signed(word & 0xFFFFFF, 24) * 4
+                    sites.setdefault(target, []).append(at)
+                at += 4
+                continue
+            size = export_inputs.thumb_size(rom, at)
+            if size is None:
+                at += 2
+                continue
+            if size == 4:
+                sites.setdefault(export_inputs.thumb_call(rom, at), []).append(at)
+            at += size
+    return sites
+
+
+def doomed_calls(rom, rows, starts, address, stop):
+    sites = call_sources(rom, rows)
+    lost = []
+    for target, places in sites.items():
+        if starts.get(ROM_BASE + target) != ["call"]:
+            continue
+        if all(address - ROM_BASE <= at < stop - ROM_BASE for at in places):
+            lost.append(ROM_BASE + target)
+    return sorted(lost)
+
+
+def cut_span(lines, rom, address, stop):
+    return cut(lines, rom, address, stop, function_bounds.lints.label_addresses())
+
+
+def retire_one(root, rom, address, reason, starts):
+    rows = index_rows(root)
+    found = [row for row in rows if int(row["address"], 16) == address]
+    if len(found) != 1:
+        raise SystemExit("%s carries no single row for 0x%08X" % (ASM_INDEX, address))
+    row = found[0]
+    symbol, path = row["symbol"], row["file"]
+    leaf = os.path.basename(path)
+    if symbol and referenced(root, symbol):
+        raise SystemExit("%s names 0x%08X from src/ or include/" % (symbol, address))
+    ledger = [list(item) for item in gate.ledger_rows(inside(root, LEDGER))]
+    hit = ledger_index(ledger, address - ROM_BASE)
+    if len(hit) != 1:
+        raise SystemExit("%s carries no single row at 0x%08X" % (LEDGER, address))
+    hit = hit[0]
+    head = ledger[hit]
+    stop = address + head[1]
+    later = sorted(start for start in starts if address < start < stop)
+    cut_at = later[0] if later else stop
+    lost = doomed_calls(rom, export_inputs.code_rows(root), starts, address, stop)
+    if lost:
+        raise SystemExit("0x%08X is a start only through a call inside these bytes" % lost[0])
+    traced = sorted(entry for entry in proven_entries(root) if address <= entry < stop)
+    if traced:
+        raise SystemExit("0x%08X is a recorded runtime entry inside these bytes" % traced[0])
+    actions = []
+    lines = read(inside(root, path)).split("\n")
+    found_cut = cut_span(lines, rom, address, cut_at)
+    if found_cut is None:
+        raise SystemExit("%s carries no statement at 0x%08X" % (path, address))
+    label, start, end, inner, slices = found_cut
+    held = [lines[number].strip() for number in range(label, start)
+            if LINE_LABEL.match(lines[number].strip())] if label is not None else []
+    held = [line for line in held if LINE_LABEL.match(line).group(1) != symbol]
+    body = data_lines(rom, address, cut_at, inner, held + ["|dat_%08X|" % address], slices)
+    above = lines[:label] if label is not None else lines[:start]
+    body = above + body + lines[end:]
+    if symbol:
+        for other in leaves(root):
+            if other == leaf or not os.path.exists(inside(root, "asm/" + other)):
+                continue
+            for line in read(inside(root, "asm/" + other)).split("\n"):
+                if "|%s|" % symbol in line and EXPORT_LINE.match(line) is None:
+                    raise SystemExit("%s names 0x%08X outside the file it starts"
+                                     % (other, address))
+        if section_start(root, leaf):
+            raise SystemExit("%s begins a section, so its bytes cannot join another file" % leaf)
+        before = predecessor(root, leaf)
+        before_lines = read(inside(root, "asm/" + before)).split("\n")
+        last = last_statement(before_lines)
+        low = lone_halfword(before_lines[last]) if last is not None else None
+        word = pointer_here(rom, address - 2) if address % 4 == 2 else None
+        high_index = next((number for number, line in enumerate(body)
+                           if lone_halfword(line) is not None), None)
+        high = lone_halfword(body[high_index]) if high_index is not None else None
+        if word is not None and low == word & 0xFFFF and high == word >> 16:
+            before_lines[last] = "\tDCD      0x%08X" % word
+            write(inside(root, "asm/" + before), "\n".join(before_lines) + "\n")
+            del body[high_index]
+            actions.append("the halves rejoin the word at 0x%08X" % (address - 2))
+        text = read(inside(root, "asm/" + before))
+        write(inside(root, "asm/" + before), text.rstrip("\n") + "\n" + "\n".join(body) + "\n")
+        for other in rows:
+            if other["file"] == path:
+                other["file"] = "asm/" + before
+        remove_include(root, leaf)
+        os.remove(inside(root, path))
+        removed_from_index(root, [path])
+        drop_exports(root, symbol)
+        actions.append("bytes join %s" % before)
+    else:
+        write(inside(root, path), "\n".join(body))
+        actions.append("bytes stay in %s" % leaf)
+    rows.remove(row)
+    write(inside(root, ASM_INDEX), index_text(rows))
+    previous = [number for number, item in enumerate(ledger)
+                if number != hit and item[0] + item[1] == address - ROM_BASE]
+    if later:
+        tail = [cut_at - ROM_BASE, stop - cut_at, head[2], head[3], head[4], head[5], head[6],
+                max(0, head[7] - (cut_at - address))]
+        ledger.insert(hit + 1, tail)
+        actions.append("0x%08X..0x%08X stays a code row" % (cut_at, stop))
+        head[1] = cut_at - address
+    if len(previous) == 1:
+        item = ledger[previous[0]]
+        item[1] += head[1]
+        del ledger[hit]
+        actions.append("its ledger row joins the one that ends there")
+    else:
+        head[2] = "data"
+        head[7] = 0
+        actions.append("its ledger row is classed data")
+    gate.write_ledger([tuple(item) for item in ledger], inside(root, LEDGER))
+    drop_retired(root, address)
+    return "%s: %s" % (reason, "; ".join(actions))
+
+
+def drop_retired(root, address):
+    path = inside(root, RETIRED)
+    if not os.path.exists(path):
+        return
+    rows = list(csv.DictReader(io.StringIO(read(path))))
+    keep = [row for row in rows if int(row["address"], 16) != address]
+    if len(keep) == len(rows):
+        return
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(keep)
+    write(path, buffer.getvalue())
+
+
+def drop_exports(root, symbol):
+    for leaf in leaves(root):
+        path = inside(root, "asm/" + leaf)
+        if not os.path.exists(path):
+            continue
+        lines = read(path).split("\n")
+        keep = [line for line in lines
+                if not (EXPORT_LINE.match(line) and EXPORT_LINE.match(line).group(2) == symbol)]
+        if len(keep) != len(lines):
+            write(path, "\n".join(keep))
+
+
+def remove_include(root, leaf):
+    site = include_site(root, leaf)
+    if site is None:
+        raise SystemExit("%s is in no include list" % leaf)
+    parent, number = site
+    lines = read(inside(root, "asm/" + parent)).split("\n")
+    del lines[number - 1]
+    write(inside(root, "asm/" + parent), "\n".join(lines))
+
+
+def retired_pairs(root=ROOT):
+    rows = list(csv.DictReader(io.StringIO(read(inside(root, function_bounds.ALLOW)))))
+    return [(int(row["address"], 16), row["reason"]) for row in rows if row["reason"] in RETIRED_CLASSES]
+
+
+def retire(root, rom, addresses=None):
+    wanted = [(address, reason) for address, reason in retired_pairs(root)
+              if addresses is None or address in addresses]
+    census = function_bounds.census(rom, root)
+    derived = {(address, reason) for address, _kind, _limb, _flags, _entry, reason
+               in function_bounds.flag_rows(rom, census)}
+    starts = census["starts"]
+    done, kept = [], []
+    for address, reason in sorted(wanted):
+        if (address, reason) not in derived:
+            kept.append((address, reason, "the image gives another class"))
+            continue
+        try:
+            action = retire_one(root, rom, address, reason, starts)
+        except SystemExit as exc:
+            kept.append((address, reason, str(exc)))
+            continue
+        done.append((address, reason, action))
+    return done, kept
+
+
 def proven_entries(root=ROOT):
     if not os.path.exists(inside(root, export_inputs.RUNTIME)):
         return set()
@@ -631,11 +904,26 @@ def main(argv=None):
                         help="an address:entry pair to move instead of the permitted prefixes")
     parser.add_argument("--reclaim", action="append", default=[],
                         help="a start:entry pair whose row begins after the runtime-proven entry")
+    parser.add_argument("--retire", action="append", default=[],
+                        help="a flagged data or split start to retire, or every one the allow-list "
+                             "carries when no address is given")
     args = parser.parse_args(argv)
     if not os.path.exists(args.rom):
         print("the move needs the retail image at %s" % args.rom)
         return 1
     rom = romfile.read_rom(args.rom, function_bounds.ROM_SHA256)
+    if args.retire:
+        every = "all" in args.retire
+        addresses = None if every else {int(item, 16) for item in args.retire}
+        done, kept = retire(ROOT, rom, addresses)
+        tally, flagged, live, total, retired = regenerate(rom)
+        print("retired=%d kept=%d starts=%d flagged=%d live=%d total=%d retired=%d"
+              % (len(done), len(kept), tally["starts"], flagged, live, total, retired))
+        for address, reason, action in done:
+            print("0x%08X %s %s" % (address, reason, action))
+        for address, reason, why in kept:
+            print("kept 0x%08X %s: %s" % (address, reason, why))
+        return 0
     reclaimed = [tuple(int(part, 16) for part in item.split(":")) for item in args.reclaim]
     if reclaimed:
         done = reclaim(ROOT, rom, reclaimed)

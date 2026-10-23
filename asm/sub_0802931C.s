@@ -47,3 +47,30 @@
 		POP {r4, r5, r6, pc}
 		MOV r0, #0
 		BX       lr
+	CODE16
+|dat_08029376|
+	DCW      0x0000
+	DCW      0xf04c
+	DCW      0x0874
+	DCW      0x9488
+	DCW      0x0831
+	DCW      0x05c4
+	DCW      0x0000
+|loc_08029384|
+	DCW      0xb5ff
+	DCW      0xb081
+	DCW      0x1c1f
+	DCW      0x1c0d
+	DCW      0x1c04
+	DCW      0x2800
+	DCW      0x9e0a
+	DCW      0xd107
+	DCW      0x2058
+	DCW      0xf014
+	DCW      0xf90f
+	DCW      0x1c04
+	DCW      0xd102
+	DCW      0x1c20
+	DCW      0xb005
+	DCW      0xbdf0
+

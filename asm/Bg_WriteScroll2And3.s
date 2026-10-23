@@ -107,3 +107,57 @@
 |sub_08025DF0|
 |unk_08025DF0|
 	INCBIN	baserom.gba_0x25df0_0x25df2.extracted
+	CODE16
+|dat_08025DF2|
+	DCW      0x0000
+	DCW      0xf000
+	DCW      0x0600
+	DCW      0x200c
+	DCW      0x0000
+	DCW      0x204c
+	DCW      0x0000
+	DCW      0x0018
+	DCW      0x0400
+	DCW      0x2360
+	DCW      0x0873
+	DCW      0x802c
+	DCW      0x0000
+	DCW      0x2101
+	DCW      0x03c9
+	DCW      0x1840
+	DCW      0x6ac0
+	DCW      0x1040
+	DCW      0x4770
+	DCW      0x2101
+	DCW      0x03c9
+	DCW      0x1840
+	DCW      0x6b00
+	DCW      0x1040
+	DCW      0x4770
+	DCW      0xb508
+	DCW      0x2000
+	DCW      0xf000
+	DCW      0xf9d4
+	DCW      0xbd08
+	DCW      0xb510
+	DCW      0x200c
+	DCW      0xf017
+	DCW      0xfbc1
+	DCW      0x1c04
+	DCW      0xd101
+	DCW      0x1c20
+	DCW      0xbd10
+|loc_08025E3E|
+	DCW      0x1c20
+	DCW      0xf7fe
+	DCW      0xfe1c
+	DCW      0x4801
+	DCW      0x6020
+	DCW      0x1c20
+	DCW      0xbd10
+|sub_08025E4C|
+|unk_08025E4C|
+	INCBIN	baserom.gba_0x25e4c_0x25e4e.extracted
+|sub_08025E4E|
+	DCW      0x0804
+

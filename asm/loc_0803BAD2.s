@@ -158,3 +158,16 @@
 |sub_0803BC18|
 |unk_0803BC18|
 	INCBIN	baserom.gba_0x3bc18_0x3bc1a.extracted
+	CODE16
+|dat_0803BC1A|
+	DCW      0x0300
+	DCW      0x32e5
+	DCW      0x0300
+	DCW      0x05c4
+	DCW      0x0000
+|unk_0803BC24|
+	INCBIN	baserom.gba_0x3bc24_0x3bc26.extracted
+|dat_0803BC26|
+	DCW      0x0877
+	DCW      0x92a8
+	DCW      0x0831

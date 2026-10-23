@@ -16,4 +16,3 @@ address,retired,reason
 0x08042188,Timer_Write2Reload2,"the quoted sites 0x080421F8, 0x080421FC lie past this address return at 0x080421AE and no exported function start contains them"
 0x08042D72,Irq_ReadAndWriteMaster,"the quoted sites 0x08042E60, 0x08042E62, 0x08042E66, 0x08042EB6 lie past this address return at 0x08042D84 and no exported function start contains them"
 0x0804EC22,Blend_WriteAlpha5,"the quoted sites 0x0804EC3C, 0x0804EC40, 0x0804EC42, 0x0804EC6C, 0x0804EC70, 0x0804EC72 lie past this address return at 0x0804EC2A and no exported function start contains them"
-0x080084A6,Dma_Start3Third,"the quoted sites 0x080084F4, 0x080084F8, 0x080084FC, 0x08008500, 0x08008506, 0x0800853C, 0x08008540, 0x08008542, 0x08008546, 0x0800854C lie inside the body of the exported start 0x08008306, and 0x080084A6 begins with lsrs r4, r0, #0x20 and reaches its frame without a save"

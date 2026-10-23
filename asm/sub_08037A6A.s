@@ -98,3 +98,18 @@
 		ADD r0, r4, #0
 		B        |inc_0x351c0_0x3d4d0| + 0x28a6
 	INCBIN  baserom.gba_0x37b2e_0x37b32.extracted
+	CODE16
+|dat_08037B32|
+	DCW      0x0000
+	DCW      0x1c34
+	DCW      0x0300
+	DCW      0x9acc
+	DCW      0x0804
+	DCW      0xae70
+	DCW      0x0804
+|unk_08037B40|
+	INCBIN	baserom.gba_0x37b40_0x37b42.extracted
+|dat_08037B42|
+	DCW      0x0876
+	DCW      0x3288
+	DCW      0x0300

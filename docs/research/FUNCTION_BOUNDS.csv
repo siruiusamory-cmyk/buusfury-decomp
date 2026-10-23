@@ -509,7 +509,6 @@ address,kind,limb,parent
 0x0800683e,block,,0x080067f4
 0x08006856,block,,0x080067f4
 0x0800685e,block,,0x080067f4
-0x0800686e,unreferenced,,
 0x08006880,start,call+prologue,
 0x08006898,block,,0x08006880
 0x080068b4,block,,0x08006880
@@ -684,13 +683,6 @@ address,kind,limb,parent
 0x08008306,unreferenced,,
 0x08008308,block,,0x08008306
 0x08008468,block,,0x08008306
-0x080084a6,unreferenced,,
-0x080084f8,block,,0x080084a6
-0x08008516,block,,0x080084a6
-0x08008540,block,,0x080084a6
-0x08008558,block,,0x080084a6
-0x08008582,block,,0x080084a6
-0x08008594,block,,0x080084a6
 0x08008598,start,call+prologue,
 0x080085bc,unreferenced,,
 0x080085c2,unreferenced,,
@@ -915,9 +907,6 @@ address,kind,limb,parent
 0x0800a17c,block,,0x0800a134
 0x0800a1c2,block,,0x0800a134
 0x0800a1e8,block,,0x0800a134
-0x0800a20a,unreferenced,,
-0x0800a20e,unreferenced,,
-0x0800a212,unreferenced,,
 0x0800a216,unreferenced,,
 0x0800a248,block,,0x0800a216
 0x0800a260,block,,0x0800a216
@@ -1114,7 +1103,6 @@ address,kind,limb,parent
 0x0800c06c,start,prologue,
 0x0800c092,block,,0x0800c06c
 0x0800c0a2,unreferenced,,
-0x0800c0a6,unreferenced,,
 0x0800c0c8,start,call+prologue,
 0x0800c0dc,block,,0x0800c0c8
 0x0800c104,block,,0x0800c0c8
@@ -2499,10 +2487,8 @@ address,kind,limb,parent
 0x0801d95a,unreferenced,,
 0x0801dc20,unreferenced,,
 0x0801dd72,unreferenced,,
-0x0801df82,unreferenced,,
 0x0801dfa2,unreferenced,,
 0x0801dfce,unreferenced,,
-0x0801dfd2,unreferenced,,
 0x0801dffc,unreferenced,,
 0x0801e0a6,unreferenced,,
 0x0801e12e,unreferenced,,
@@ -2604,8 +2590,6 @@ address,kind,limb,parent
 0x08021452,start,call+prologue,
 0x080215b0,unreferenced,,
 0x080216e6,unreferenced,,
-0x0802172a,unreferenced,,
-0x08021732,unreferenced,,
 0x08021740,start,call+prologue,
 0x080217a6,unreferenced,,
 0x080217ac,unreferenced,,
@@ -2634,7 +2618,6 @@ address,kind,limb,parent
 0x080222f8,unreferenced,,
 0x08022368,start,call,
 0x0802262c,start,prologue,
-0x08022672,unreferenced,,
 0x08022676,unreferenced,,
 0x08022720,unreferenced,,
 0x08022820,unreferenced,,
@@ -2655,7 +2638,6 @@ address,kind,limb,parent
 0x0802372e,unreferenced,,
 0x08023768,unreferenced,,
 0x08023774,start,prologue,
-0x080237be,unreferenced,,
 0x080237c6,unreferenced,,
 0x0802383a,unreferenced,,
 0x08023842,unreferenced,,
@@ -2732,7 +2714,6 @@ address,kind,limb,parent
 0x08025c14,unreferenced,,
 0x08025c66,unreferenced,,
 0x08025d2e,unreferenced,,
-0x08025df2,unreferenced,,
 0x08025e50,start,call+prologue,
 0x08025e6e,unreferenced,,
 0x08025ef0,start,prologue,
@@ -2813,7 +2794,6 @@ address,kind,limb,parent
 0x08027f6c,unreferenced,,
 0x08027f74,start,table+prologue,
 0x08028082,unreferenced,,
-0x0802810a,unreferenced,,
 0x0802815c,unreferenced,,
 0x0802821a,start,prologue,
 0x08028236,unreferenced,,
@@ -2843,14 +2823,12 @@ address,kind,limb,parent
 0x08029014,start,prologue,
 0x08029272,unreferenced,,
 0x0802931c,unreferenced,,
-0x08029376,unreferenced,,
 0x080293a4,unreferenced,,
 0x080293e4,start,call+prologue,
 0x08029472,unreferenced,,
 0x08029526,start,prologue,
 0x0802953c,unreferenced,,
 0x08029584,start,prologue,
-0x080295be,unreferenced,,
 0x080296b2,unreferenced,,
 0x080296e8,unreferenced,,
 0x080297e6,unreferenced,,
@@ -2905,7 +2883,6 @@ address,kind,limb,parent
 0x0802aac0,unreferenced,,
 0x0802aad0,start,table+prologue,
 0x0802ab02,unreferenced,,
-0x0802ab06,unreferenced,,
 0x0802ab0a,unreferenced,,
 0x0802ab3a,unreferenced,,
 0x0802ab4c,unreferenced,,
@@ -2947,7 +2924,6 @@ address,kind,limb,parent
 0x0802bd6a,unreferenced,,
 0x0802bd90,start,prologue,
 0x0802bdaa,unreferenced,,
-0x0802bdc2,unreferenced,,
 0x0802bdc6,unreferenced,,
 0x0802bde6,block,,0x0802bdc6
 0x0802be8a,block,,0x0802bdc6
@@ -3313,8 +3289,7 @@ address,kind,limb,parent
 0x080353d0,start,table+prologue,
 0x080353e0,block,,0x080353d0
 0x080353fc,unreferenced,,
-0x080355c2,unreferenced,,
-0x080355e4,block,,0x080355c2
+0x080355e4,block,,0x080353fc
 0x080355ec,start,call+prologue,
 0x0803560a,unreferenced,,
 0x080356b2,start,prologue,
@@ -3494,7 +3469,6 @@ address,kind,limb,parent
 0x08037a26,unreferenced,,
 0x08037a3a,block,,0x08037a26
 0x08037a6a,unreferenced,,
-0x08037b32,unreferenced,,
 0x08037b48,start,prologue,
 0x08037b92,unreferenced,,
 0x08037b96,start,table+prologue,
@@ -3620,15 +3594,8 @@ address,kind,limb,parent
 0x0803946e,block,,0x08039448
 0x08039480,start,prologue,
 0x080394e6,block,,0x08039480
-0x08039566,unreferenced,,
-0x0803968a,block,,0x08039566
 0x0803972e,unreferenced,,
 0x0803973a,block,,0x0803972e
-0x0803974a,unreferenced,,
-0x080397ca,block,,0x0803974a
-0x0803983a,block,,0x0803974a
-0x0803983e,unreferenced,,
-0x08039874,block,,0x0803983e
 0x08039896,unreferenced,,
 0x080398a4,start,prologue,
 0x080398c0,unreferenced,,
@@ -3637,7 +3604,6 @@ address,kind,limb,parent
 0x08039976,block,,0x0803991e
 0x08039980,block,,0x0803991e
 0x08039992,block,,0x0803991e
-0x08039996,unreferenced,,
 0x080399a2,start,prologue,
 0x080399ee,block,,0x080399a2
 0x08039b04,unreferenced,,
@@ -3713,7 +3679,6 @@ address,kind,limb,parent
 0x0803a7cc,start,prologue,
 0x0803a7d8,block,,0x0803a7cc
 0x0803a7ea,unreferenced,,
-0x0803a7f2,unreferenced,,
 0x0803a7f6,unreferenced,,
 0x0803a7fc,start,call,
 0x0803a808,block,,0x0803a7fc
@@ -3841,7 +3806,6 @@ address,kind,limb,parent
 0x0803bbfe,block,,0x0803bad2
 0x0803bc08,block,,0x0803bad2
 0x0803bc14,block,,0x0803bad2
-0x0803bc1a,unreferenced,,
 0x0803bc2c,start,prologue,
 0x0803bc48,block,,0x0803bc2c
 0x0803bcf4,unreferenced,,
@@ -4034,13 +3998,6 @@ address,kind,limb,parent
 0x0803dfde,unreferenced,,
 0x0803dfe0,unreferenced,,
 0x0803e012,block,,0x0803dfe0
-0x0803e016,unreferenced,,
-0x0803e024,block,,0x0803e016
-0x0803e04c,block,,0x0803e016
-0x0803e054,block,,0x0803e016
-0x0803e064,block,,0x0803e016
-0x0803e074,block,,0x0803e016
-0x0803e084,block,,0x0803e016
 0x0803e0b6,start,call,
 0x0803e0f2,unreferenced,,
 0x0803e0f6,unreferenced,,
@@ -4572,7 +4529,6 @@ address,kind,limb,parent
 0x08046118,unreferenced,,
 0x08046124,start,call+prologue,
 0x080461f8,start,call+prologue,
-0x08046a7a,unreferenced,,
 0x08046aa0,start,call,
 0x08046aa4,start,call,
 0x08046aae,start,call,
@@ -4626,13 +4582,11 @@ address,kind,limb,parent
 0x08047010,block,,0x08046ff4
 0x08047028,block,,0x08046ff4
 0x0804703a,block,,0x08046ff4
-0x08047648,unreferenced,,
 0x08047654,unreferenced,,
 0x08047686,unreferenced,,
 0x080476a8,unreferenced,,
 0x080476ac,start,call+prologue,
 0x0804776c,unreferenced,,
-0x08047a00,unreferenced,,
 0x08047a08,start,call+prologue,
 0x08047a0a,unreferenced,,
 0x08047a1c,unreferenced,,
@@ -4720,14 +4674,11 @@ address,kind,limb,parent
 0x080487ca,unreferenced,,
 0x080487d4,block,,0x080487ca
 0x080487ea,unreferenced,,
-0x080487f6,unreferenced,,
 0x080487fa,unreferenced,,
-0x08048806,unreferenced,,
 0x0804880a,unreferenced,,
 0x0804882a,unreferenced,,
 0x08048834,block,,0x0804882a
 0x0804883a,block,,0x0804882a
-0x08048846,unreferenced,,
 0x0804884a,unreferenced,,
 0x08048860,block,,0x0804884a
 0x08048866,unreferenced,,
@@ -4768,7 +4719,6 @@ address,kind,limb,parent
 0x08048a9a,unreferenced,,
 0x08048aa4,block,,0x08048a9a
 0x08048aaa,block,,0x08048a9a
-0x08048ab6,unreferenced,,
 0x08048aba,unreferenced,,
 0x08048ac0,block,,0x08048aba
 0x08048ac6,unreferenced,,
@@ -4787,7 +4737,6 @@ address,kind,limb,parent
 0x08048ba8,block,,0x08048b7a
 0x08048bae,block,,0x08048b7a
 0x08048bc2,unreferenced,,
-0x08048bd6,unreferenced,,
 0x08048bda,unreferenced,,
 0x08048be6,unreferenced,,
 0x08048bec,start,table,
@@ -4853,19 +4802,12 @@ address,kind,limb,parent
 0x080491c0,start,call,
 0x080494d8,unreferenced,,
 0x08049b44,unreferenced,,
-0x08049db0,unreferenced,,
 0x08049dba,unreferenced,,
-0x0804a1fc,unreferenced,,
-0x0804a202,unreferenced,,
 0x0804a21a,unreferenced,,
 0x0804a246,unreferenced,,
 0x0804a59c,unreferenced,,
 0x0804a678,unreferenced,,
-0x0804aa82,unreferenced,,
-0x0804aa8e,unreferenced,,
-0x0804aa92,unreferenced,,
 0x0804aa9c,unreferenced,,
-0x0804aabe,unreferenced,,
 0x0804aace,unreferenced,,
 0x0804aae2,unreferenced,,
 0x0804ba78,unreferenced,,
@@ -5165,7 +5107,6 @@ address,kind,limb,parent
 0x08050682,block,,0x080505b0
 0x08050690,start,call+prologue,
 0x080506ac,unreferenced,,
-0x08050704,unreferenced,,
 0x08050714,start,call+prologue,
 0x0805072c,unreferenced,,
 0x08050750,start,table+prologue,
@@ -5824,7 +5765,6 @@ address,kind,limb,parent
 0x08053140,unreferenced,,
 0x0805315c,start,call,
 0x08053160,unreferenced,,
-0x0805317a,unreferenced,,
 0x08053184,unreferenced,,
 0x080531a4,start,call+prologue,
 0x080531ce,block,,0x080531a4
@@ -5854,7 +5794,6 @@ address,kind,limb,parent
 0x08053698,start,call+prologue,
 0x080536dc,unreferenced,,
 0x080536e0,start,call+prologue,
-0x0805393c,unreferenced,,
 0x08053954,unreferenced,,
 0x08053994,unreferenced,,
 0x08053998,unreferenced,,
@@ -5879,10 +5818,8 @@ address,kind,limb,parent
 0x080540dc,start,call,
 0x08054158,unreferenced,,
 0x08054160,start,call+prologue,
-0x0805440c,unreferenced,,
 0x08054412,unreferenced,,
 0x08054420,start,call+prologue,
-0x0805460c,unreferenced,,
 0x08054612,unreferenced,,
 0x08054618,unreferenced,,
 0x08054710,unreferenced,,
@@ -5913,7 +5850,6 @@ address,kind,limb,parent
 0x08054df0,unreferenced,,
 0x08054e74,unreferenced,,
 0x08054e78,unreferenced,,
-0x08054ef8,unreferenced,,
 0x08054f08,unreferenced,,
 0x08054f14,start,prologue,
 0x08054f38,unreferenced,,

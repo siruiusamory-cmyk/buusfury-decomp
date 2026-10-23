@@ -37,3 +37,20 @@
 |sub_08021728|
 |unk_08021728|
 	INCBIN	baserom.gba_0x21728_0x2172a.extracted
+	CODE16
+|dat_0802172A|
+	DCW      0x0872
+	DCW      0x9680
+	DCW      0x0804
+|unk_08021730|
+	INCBIN	baserom.gba_0x21730_0x21732.extracted
+|dat_08021732|
+	DCW      0x0804
+	DCW      0x0000
+	DCW      0x0601
+	DCW      0xca80
+	DCW      0x0804
+|unk_0802173C|
+	INCBIN	baserom.gba_0x2173c_0x2173e.extracted
+|dat_0802173E|
+	DCW      0x0804

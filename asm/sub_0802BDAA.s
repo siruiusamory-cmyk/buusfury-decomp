@@ -14,7 +14,8 @@
 |sub_0802BDBE|
 |unk_0802BDBE|
 	INCBIN	baserom.gba_0x2bdbe_0x2bdc2.extracted
-	LSL      r0, r0, #0
+|dat_0802BDC2|
+	DCW      0x0000
 |unk_0802BDC4|
 	INCBIN	baserom.gba_0x2bdc4_0x2bdc6.extracted
 	LSR      r4, r0, #0x20

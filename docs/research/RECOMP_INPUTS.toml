@@ -1,7 +1,7 @@
 [counts]
-functions = 2814
-code_bytes = 295718
-entries = 4798
+functions = 2771
+code_bytes = 293928
+entries = 4763
 jump_tables = 2
 code_copies = 1
 iwram_bytes = 32768
@@ -734,10 +734,10 @@ size = 144
 name = "sub_080067DC"
 
 [[code]]
-addr = 0x0800686e
+addr = 0x08006880
 mode = "thumb"
-size = 202
-name = "sub_0800686E"
+size = 184
+name = "Object_Construct2"
 
 [[code]]
 addr = 0x08006938
@@ -1286,10 +1286,9 @@ size = 384
 name = "Dma_Start3Second"
 
 [[code]]
-addr = 0x080084a6
+addr = 0x08008598
 mode = "thumb"
-size = 278
-name = "sub_080084A6"
+size = 36
 
 [[code]]
 addr = 0x080085bc
@@ -1547,22 +1546,6 @@ addr = 0x0800a134
 mode = "thumb"
 size = 212
 name = "sub_0800A134"
-
-[[code]]
-addr = 0x0800a20a
-mode = "thumb"
-size = 2
-name = "sub_0800A20A"
-
-[[code]]
-addr = 0x0800a20e
-mode = "thumb"
-size = 2
-
-[[code]]
-addr = 0x0800a212
-mode = "thumb"
-size = 2
 
 [[code]]
 addr = 0x0800a216
@@ -2099,14 +2082,14 @@ name = "sub_0800C06C"
 [[code]]
 addr = 0x0800c0a2
 mode = "thumb"
-size = 4
+size = 38
 name = "sub_0800C0A2"
 
 [[code]]
-addr = 0x0800c0a6
+addr = 0x0800c0c8
 mode = "thumb"
-size = 278
-name = "sub_0800C0A6"
+size = 244
+name = "Object_Construct5"
 
 [[code]]
 addr = 0x0800c1d2
@@ -5475,11 +5458,6 @@ mode = "thumb"
 size = 48
 
 [[code]]
-addr = 0x0801df82
-mode = "thumb"
-size = 30
-
-[[code]]
 addr = 0x0801dfa2
 mode = "thumb"
 size = 44
@@ -5487,12 +5465,7 @@ size = 44
 [[code]]
 addr = 0x0801dfce
 mode = "thumb"
-size = 4
-
-[[code]]
-addr = 0x0801dfd2
-mode = "thumb"
-size = 42
+size = 46
 
 [[code]]
 addr = 0x0801dffc
@@ -6007,16 +5980,6 @@ mode = "thumb"
 size = 66
 
 [[code]]
-addr = 0x0802172a
-mode = "thumb"
-size = 6
-
-[[code]]
-addr = 0x08021732
-mode = "thumb"
-size = 10
-
-[[code]]
 addr = 0x08021740
 mode = "thumb"
 size = 102
@@ -6159,11 +6122,6 @@ size = 66
 name = "sub_0802262C"
 
 [[code]]
-addr = 0x08022672
-mode = "thumb"
-size = 2
-
-[[code]]
 addr = 0x08022676
 mode = "thumb"
 size = 74
@@ -6263,11 +6221,6 @@ addr = 0x08023774
 mode = "thumb"
 size = 72
 name = "sub_08023774"
-
-[[code]]
-addr = 0x080237be
-mode = "thumb"
-size = 6
 
 [[code]]
 addr = 0x080237c6
@@ -6651,11 +6604,6 @@ size = 200
 addr = 0x08025d2e
 mode = "thumb"
 size = 194
-
-[[code]]
-addr = 0x08025df2
-mode = "thumb"
-size = 90
 
 [[code]]
 addr = 0x08025e50
@@ -7059,12 +7007,7 @@ size = 270
 [[code]]
 addr = 0x08028082
 mode = "thumb"
-size = 136
-
-[[code]]
-addr = 0x0802810a
-mode = "thumb"
-size = 82
+size = 218
 
 [[code]]
 addr = 0x0802815c
@@ -7215,11 +7158,6 @@ mode = "thumb"
 size = 82
 
 [[code]]
-addr = 0x08029376
-mode = "thumb"
-size = 46
-
-[[code]]
 addr = 0x080293a4
 mode = "thumb"
 size = 64
@@ -7248,11 +7186,6 @@ size = 72
 addr = 0x08029584
 mode = "thumb"
 size = 56
-
-[[code]]
-addr = 0x080295be
-mode = "thumb"
-size = 240
 
 [[code]]
 addr = 0x080296b2
@@ -7529,12 +7462,7 @@ name = "sub_0802AAD0"
 [[code]]
 addr = 0x0802ab02
 mode = "thumb"
-size = 4
-
-[[code]]
-addr = 0x0802ab06
-mode = "thumb"
-size = 2
+size = 6
 
 [[code]]
 addr = 0x0802ab0a
@@ -7728,11 +7656,6 @@ addr = 0x0802bdaa
 mode = "thumb"
 size = 18
 name = "sub_0802BDAA"
-
-[[code]]
-addr = 0x0802bdc2
-mode = "thumb"
-size = 2
 
 [[code]]
 addr = 0x0802bdc6
@@ -9125,14 +9048,8 @@ name = "sub_080353D0"
 [[code]]
 addr = 0x080353fc
 mode = "thumb"
-size = 454
+size = 490
 name = "sub_080353FC"
-
-[[code]]
-addr = 0x080355c2
-mode = "thumb"
-size = 36
-name = "sub_080355C2"
 
 [[code]]
 addr = 0x080355ec
@@ -9665,12 +9582,6 @@ size = 196
 name = "sub_08037A6A"
 
 [[code]]
-addr = 0x08037b32
-mode = "thumb"
-size = 14
-name = "sub_08037B32"
-
-[[code]]
 addr = 0x08037b48
 mode = "thumb"
 size = 74
@@ -10060,28 +9971,10 @@ size = 226
 name = "sub_08039480"
 
 [[code]]
-addr = 0x08039566
-mode = "thumb"
-size = 456
-name = "sub_08039566"
-
-[[code]]
 addr = 0x0803972e
 mode = "thumb"
 size = 16
 name = "sub_0803972E"
-
-[[code]]
-addr = 0x0803974a
-mode = "thumb"
-size = 242
-name = "sub_0803974A"
-
-[[code]]
-addr = 0x0803983e
-mode = "thumb"
-size = 88
-name = "sub_0803983E"
 
 [[code]]
 addr = 0x08039896
@@ -10112,12 +10005,6 @@ addr = 0x0803991e
 mode = "thumb"
 size = 118
 name = "sub_0803991E"
-
-[[code]]
-addr = 0x08039996
-mode = "thumb"
-size = 2
-name = "sub_08039996"
 
 [[code]]
 addr = 0x080399a2
@@ -10327,12 +10214,6 @@ addr = 0x0803a7ea
 mode = "thumb"
 size = 4
 name = "sub_0803A7EA"
-
-[[code]]
-addr = 0x0803a7f2
-mode = "thumb"
-size = 2
-name = "sub_0803A7F2"
 
 [[code]]
 addr = 0x0803a7f6
@@ -10646,12 +10527,6 @@ name = "sub_0803BABE"
 addr = 0x0803bad2
 mode = "thumb"
 size = 326
-
-[[code]]
-addr = 0x0803bc1a
-mode = "thumb"
-size = 10
-name = "sub_0803BC1A"
 
 [[code]]
 addr = 0x0803bc2c
@@ -11225,10 +11100,9 @@ size = 52
 name = "sub_0803DFE0"
 
 [[code]]
-addr = 0x0803e016
+addr = 0x0803e0b6
 mode = "thumb"
-size = 220
-name = "sub_0803E016"
+size = 60
 
 [[code]]
 addr = 0x0803e0f2
@@ -12215,10 +12089,9 @@ mode = "thumb"
 size = 180
 
 [[code]]
-addr = 0x08046a7a
+addr = 0x08046aa0
 mode = "thumb"
-size = 46
-name = "sub_08046A7A"
+size = 8
 
 [[code]]
 addr = 0x08046aae
@@ -12433,12 +12306,6 @@ size = 76
 name = "__vecmap1c__FPvT1iPFPv_v"
 
 [[code]]
-addr = 0x08047648
-mode = "thumb"
-size = 10
-name = "sub_08047648"
-
-[[code]]
 addr = 0x08047654
 mode = "thumb"
 size = 48
@@ -12464,11 +12331,6 @@ addr = 0x0804776c
 mode = "thumb"
 size = 2
 name = "sub_0804776C"
-
-[[code]]
-addr = 0x08047a00
-mode = "thumb"
-size = 2
 
 [[code]]
 addr = 0x08047a08
@@ -12802,21 +12664,9 @@ mode = "thumb"
 size = 10
 
 [[code]]
-addr = 0x080487f6
-mode = "thumb"
-size = 2
-name = "sub_080487F6"
-
-[[code]]
 addr = 0x080487fa
 mode = "thumb"
 size = 10
-
-[[code]]
-addr = 0x08048806
-mode = "thumb"
-size = 2
-name = "sub_08048806"
 
 [[code]]
 addr = 0x0804880a
@@ -12827,12 +12677,6 @@ size = 30
 addr = 0x0804882a
 mode = "thumb"
 size = 26
-
-[[code]]
-addr = 0x08048846
-mode = "thumb"
-size = 2
-name = "sub_08048846"
 
 [[code]]
 addr = 0x0804884a
@@ -12953,12 +12797,6 @@ size = 26
 name = "sub_08048A9A"
 
 [[code]]
-addr = 0x08048ab6
-mode = "thumb"
-size = 2
-name = "sub_08048AB6"
-
-[[code]]
 addr = 0x08048aba
 mode = "thumb"
 size = 10
@@ -13015,12 +12853,6 @@ addr = 0x08048bc2
 mode = "thumb"
 size = 18
 name = "sub_08048BC2"
-
-[[code]]
-addr = 0x08048bd6
-mode = "thumb"
-size = 2
-name = "sub_08048BD6"
 
 [[code]]
 addr = 0x08048bda
@@ -13279,26 +13111,9 @@ size = 6
 name = "sub_08049B44"
 
 [[code]]
-addr = 0x08049db0
-mode = "thumb"
-size = 8
-name = "sub_08049DB0"
-
-[[code]]
 addr = 0x08049dba
 mode = "thumb"
 size = 14
-
-[[code]]
-addr = 0x0804a1fc
-mode = "thumb"
-size = 2
-name = "sub_0804A1FC"
-
-[[code]]
-addr = 0x0804a202
-mode = "thumb"
-size = 22
 
 [[code]]
 addr = 0x0804a21a
@@ -13323,28 +13138,7 @@ size = 4
 name = "sub_0804A678"
 
 [[code]]
-addr = 0x0804aa82
-mode = "thumb"
-size = 8
-name = "sub_0804AA82"
-
-[[code]]
-addr = 0x0804aa8e
-mode = "thumb"
-size = 2
-
-[[code]]
-addr = 0x0804aa92
-mode = "thumb"
-size = 2
-
-[[code]]
 addr = 0x0804aa9c
-mode = "thumb"
-size = 4
-
-[[code]]
-addr = 0x0804aabe
 mode = "thumb"
 size = 4
 
@@ -14439,14 +14233,8 @@ name = "sub_08050690"
 [[code]]
 addr = 0x080506ac
 mode = "thumb"
-size = 88
+size = 96
 name = "sub_080506AC"
-
-[[code]]
-addr = 0x08050704
-mode = "thumb"
-size = 8
-name = "sub_08050704"
 
 [[code]]
 addr = 0x08050714
@@ -15429,12 +15217,6 @@ mode = "arm"
 size = 24
 
 [[code]]
-addr = 0x0805317a
-mode = "thumb"
-size = 10
-name = "sub_0805317A"
-
-[[code]]
 addr = 0x08053184
 mode = "arm"
 size = 32
@@ -15510,13 +15292,7 @@ name = "sub_080536DC"
 [[code]]
 addr = 0x080536e0
 mode = "arm"
-size = 604
-
-[[code]]
-addr = 0x0805393c
-mode = "thumb"
-size = 24
-name = "sub_0805393C"
+size = 628
 
 [[code]]
 addr = 0x08053954
@@ -15648,13 +15424,7 @@ name = "sub_08054158"
 [[code]]
 addr = 0x08054160
 mode = "arm"
-size = 684
-
-[[code]]
-addr = 0x0805440c
-mode = "thumb"
-size = 2
-name = "sub_0805440C"
+size = 686
 
 [[code]]
 addr = 0x08054412
@@ -15664,13 +15434,7 @@ size = 14
 [[code]]
 addr = 0x08054420
 mode = "arm"
-size = 492
-
-[[code]]
-addr = 0x0805460c
-mode = "thumb"
-size = 2
-name = "sub_0805460C"
+size = 494
 
 [[code]]
 addr = 0x08054612
@@ -15835,13 +15599,7 @@ name = "sub_08054E74"
 [[code]]
 addr = 0x08054e78
 mode = "arm"
-size = 128
-
-[[code]]
-addr = 0x08054ef8
-mode = "thumb"
-size = 12
-name = "sub_08054EF8"
+size = 140
 
 [[code]]
 addr = 0x08054f08
@@ -19034,10 +18792,6 @@ addr = 0x0800685e
 mode = "thumb"
 
 [[entry]]
-addr = 0x08006880
-mode = "thumb"
-
-[[entry]]
 addr = 0x08006898
 mode = "thumb"
 
@@ -19577,10 +19331,6 @@ addr = 0x08008192
 mode = "thumb"
 
 [[entry]]
-addr = 0x080081a0
-mode = "thumb"
-
-[[entry]]
 addr = 0x080081f6
 mode = "thumb"
 
@@ -19614,38 +19364,6 @@ mode = "thumb"
 
 [[entry]]
 addr = 0x08008468
-mode = "thumb"
-
-[[entry]]
-addr = 0x080084f8
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008516
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008540
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008546
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008558
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008582
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008594
-mode = "thumb"
-
-[[entry]]
-addr = 0x08008598
 mode = "thumb"
 
 [[entry]]
@@ -20989,10 +20707,6 @@ mode = "thumb"
 
 [[entry]]
 addr = 0x0800c094
-mode = "thumb"
-
-[[entry]]
-addr = 0x0800c0c8
 mode = "thumb"
 
 [[entry]]
@@ -25955,14 +25669,6 @@ addr = 0x08025cda
 mode = "thumb"
 
 [[entry]]
-addr = 0x08025e24
-mode = "thumb"
-
-[[entry]]
-addr = 0x08025e2e
-mode = "thumb"
-
-[[entry]]
 addr = 0x08025f16
 mode = "thumb"
 
@@ -26221,23 +25927,7 @@ addr = 0x08029138
 mode = "thumb"
 
 [[entry]]
-addr = 0x08029384
-mode = "thumb"
-
-[[entry]]
 addr = 0x0802941e
-mode = "thumb"
-
-[[entry]]
-addr = 0x08029600
-mode = "thumb"
-
-[[entry]]
-addr = 0x08029660
-mode = "thumb"
-
-[[entry]]
-addr = 0x0802968c
 mode = "thumb"
 
 [[entry]]
@@ -27923,47 +27613,7 @@ addr = 0x080394e8
 mode = "thumb"
 
 [[entry]]
-addr = 0x0803966c
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803968a
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803968c
-mode = "thumb"
-
-[[entry]]
 addr = 0x0803973a
-mode = "thumb"
-
-[[entry]]
-addr = 0x080397ac
-mode = "thumb"
-
-[[entry]]
-addr = 0x080397ca
-mode = "thumb"
-
-[[entry]]
-addr = 0x080397cc
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803983a
-mode = "thumb"
-
-[[entry]]
-addr = 0x08039854
-mode = "thumb"
-
-[[entry]]
-addr = 0x08039874
-mode = "thumb"
-
-[[entry]]
-addr = 0x08039876
 mode = "thumb"
 
 [[entry]]
@@ -29036,34 +28686,6 @@ mode = "thumb"
 
 [[entry]]
 addr = 0x0803e012
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e024
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e04c
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e054
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e064
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e074
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e084
-mode = "thumb"
-
-[[entry]]
-addr = 0x0803e0b6
 mode = "thumb"
 
 [[entry]]
@@ -30874,10 +30496,6 @@ mode = "thumb"
 
 [[entry]]
 addr = 0x08045e54
-mode = "thumb"
-
-[[entry]]
-addr = 0x08046aa0
 mode = "thumb"
 
 [[entry]]

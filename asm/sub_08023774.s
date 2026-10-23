@@ -40,9 +40,10 @@
 	LSL      r0, r0, #0
 |unk_080237BC|
 	INCBIN	baserom.gba_0x237bc_0x237be.extracted
-	LSR      r4, r0, #0x20
-	STR      r4, [sp, #0x140]
-	LSR      r4, r0, #0x20
+|dat_080237BE|
+	DCW      0x0804
+	DCW      0x9450
+	DCW      0x0804
 |unk_080237C4|
 	INCBIN	baserom.gba_0x237c4_0x237c6.extracted
 	LSR      r2, r6, #1

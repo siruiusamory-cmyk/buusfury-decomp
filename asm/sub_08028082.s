@@ -66,3 +66,49 @@
 		LDR r0, [r4, #0x20]
 		STR r0, [r4, #0x1c]
 		B        |loc_0802807E|
+	CODE16
+|dat_0802810A|
+	DCW      0x0000
+	DCW      0x0000
+	DCW      0x0601
+	DCW      0xea60
+	DCW      0x0874
+	DCW      0x7eb1
+	DCW      0x0802
+	DCW      0x1758
+	DCW      0x0807
+	DCW      0xbce8
+	DCW      0x0806
+	DCW      0x7eef
+	DCW      0x0802
+	DCW      0x7f75
+	DCW      0x0802
+	DCW      0x7fb9
+	DCW      0x0802
+	DCW      0x6941
+	DCW      0x3101
+	DCW      0x6141
+	DCW      0x2908
+	DCW      0xdb05
+	DCW      0x498c
+	DCW      0x6301
+	DCW      0x2100
+	DCW      0x6181
+	DCW      0x2101
+	DCW      0x61c1
+|loc_08028142|
+	DCW      0x4770
+|loc_08028144|
+	DCW      0xb5f8
+	DCW      0x1c0f
+	DCW      0x1c04
+	DCW      0x2800
+	DCW      0xd106
+	DCW      0x209c
+	DCW      0xf015
+	DCW      0xfa32
+	DCW      0x1c04
+	DCW      0xd101
+	DCW      0x1c20
+	DCW      0xbdf8
+

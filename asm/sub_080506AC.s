@@ -42,3 +42,15 @@
 		BL       |Thunk_VramCopy|
 		ADD r0, r4, #0
 		B        |inc_0x049120_0x055620| + 0x7588
+	CODE16
+|dat_08050704|
+	DCW      0x9680
+	DCW      0x0804
+	DCW      0x4fbc
+	DCW      0x0805
+|unk_0805070C|
+	INCBIN	baserom.gba_0x5070c_0x5070e.extracted
+|dat_0805070E|
+	DCW      0x0804
+	DCW      0x0000
+	DCW      0x0601

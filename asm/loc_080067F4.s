@@ -65,3 +65,15 @@
 |sub_0800686C|
 |unk_0800686C|
 	INCBIN	baserom.gba_0x686c_0x686e.extracted
+	CODE16
+|dat_0800686E|
+	DCW      0x0804
+	DCW      0x91f0
+	DCW      0x0804
+	DCW      0x0158
+	DCW      0x0807
+	DCW      0xf5a5
+	DCW      0x0803
+	DCW      0xbce8
+	DCW      0x0806
+

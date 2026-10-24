@@ -10440,7 +10440,7 @@ end = 0x0800e9d8
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800E9D8"
+name = "Battle_ComputeDamage"
 address = 0x0800e9d8
 end = 0x0800ea10
 mode = "thumb"
@@ -10859,7 +10859,7 @@ address = 0x0800f67e
 mode = "thumb"
 
 [[functions]]
-name = "loc_0800F68C"
+name = "Battle_CreateEnemy"
 address = 0x0800f68c
 mode = "thumb"
 

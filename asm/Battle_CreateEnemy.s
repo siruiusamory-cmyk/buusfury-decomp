@@ -1,5 +1,5 @@
 	CODE16
-|loc_0800F68C|
+|Battle_CreateEnemy|
 	PUSH     {r4, r5, r6, r7, lr}
 	ADD      r7, r2, #0
 	ADD      r6, r3, #0

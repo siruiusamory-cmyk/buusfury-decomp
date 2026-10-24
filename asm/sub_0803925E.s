@@ -65,7 +65,7 @@
 		MVN r3, r3
 		ADD r1, r6, #0
 		MOV r0, #0
-		BL       |loc_0800F68C|
+		BL       |Battle_CreateEnemy|
 		ADD r5, r0, #0
 		ADD r1, r0, #0
 		LDR r0, [pc, #0x68]

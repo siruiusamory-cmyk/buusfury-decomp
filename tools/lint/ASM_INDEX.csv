@@ -553,7 +553,7 @@ address,kind,symbol,file
 0x0800E960,unreferenced,sub_0800E960,asm/sub_0800E960.s
 0x0800E97E,start,loc_0800E97E,asm/loc_0800E97E.s
 0x0800E9C6,unreferenced,sub_0800E9C6,asm/sub_0800E9C6.s
-0x0800E9D8,start,sub_0800E9D8,asm/sub_0800E9D8.s
+0x0800E9D8,start,Battle_ComputeDamage,asm/Battle_ComputeDamage.s
 0x0800EA10,unreferenced,sub_0800EA10,asm/sub_0800EA10.s
 0x0800EA2C,unreferenced,sub_0800EA2C,asm/sub_0800EA2C.s
 0x0800EB36,unreferenced,sub_0800EB36,asm/sub_0800EB36.s
@@ -584,7 +584,7 @@ address,kind,symbol,file
 0x0800F58C,start,sub_0800F58C,asm/sub_0800F58C.s
 0x0800F61E,unreferenced,sub_0800F61E,asm/sub_0800F61E.s
 0x0800F668,unreferenced,sub_0800F668,asm/sub_0800F668.s
-0x0800F68C,start,loc_0800F68C,asm/loc_0800F68C.s
+0x0800F68C,start,Battle_CreateEnemy,asm/Battle_CreateEnemy.s
 0x0800F6AE,unreferenced,sub_0800F6AE,asm/sub_0800F6AE.s
 0x0800F740,start,sub_0800F740,asm/sub_0800F740.s
 0x0800F812,start,sub_0800F812,asm/sub_0800F812.s

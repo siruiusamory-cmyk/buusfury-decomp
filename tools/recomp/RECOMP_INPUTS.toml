@@ -2927,7 +2927,7 @@ name = "sub_0800E9C6"
 addr = 0x0800e9d8
 mode = "thumb"
 size = 56
-name = "sub_0800E9D8"
+name = "Battle_ComputeDamage"
 
 [[code]]
 addr = 0x0800ea10

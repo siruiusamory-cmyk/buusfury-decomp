@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format follows
   labels, index rows, ledger rows and recompiler label export move with them. The empty label-only
   file at `0x08013914` leaves the tree, so the start and its body file no longer name the same
   address twice.
+- Two transcribed starts in the battle slice carry the names their bytes prove: the damage
+  calculator that reads the attacker's strength word and stores the result at the damage record's
+  +0x18, and the enemy constructor that copies the stat record's max HP into the actor and starts
+  its behaviour row. Their assembly files, labels, index rows, ledger rows and recompiler label
+  cells move with them.
 - `docs/` is a reader's guide now. [docs/README.md](docs/README.md) says what the game's code is
   organised into, how to build it, how names are chosen and where to look next; the pages that were
   records of investigation rounds, censuses and play sessions have left the tree. The repository's

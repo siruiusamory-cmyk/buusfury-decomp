@@ -74,7 +74,7 @@
 		ADD r5, #0xc
 		ADD r1, r5, #0
 		ADD r0, r4, #0
-		BL       |sub_0800E9D8|
+		BL       |Battle_ComputeDamage|
 		LDR r1, [r4]
 		ADD r0, r4, #0
 		LDR r2, [r1, #0x58]

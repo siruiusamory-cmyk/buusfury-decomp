@@ -569,7 +569,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0800E960.s
 	INCLUDE loc_0800E97E.s
 	INCLUDE sub_0800E9C6.s
-	INCLUDE sub_0800E9D8.s
+	INCLUDE Battle_ComputeDamage.s
 	INCLUDE sub_0800EA10.s
 	INCLUDE sub_0800EA2C.s
 	INCLUDE sub_0800EB36.s
@@ -600,7 +600,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0800F58C.s
 	INCLUDE sub_0800F61E.s
 	INCLUDE sub_0800F668.s
-	INCLUDE loc_0800F68C.s
+	INCLUDE Battle_CreateEnemy.s
 	INCLUDE sub_0800F6AE.s
 	INCLUDE sub_0800F740.s
 	INCLUDE sub_0800F812.s
@@ -13077,7 +13077,7 @@ unk_03003124 EQU     0x03003124
         	MVN r3, r3
         	ADD r1, r5, #0
         	MOV r0, #0
-        	BL       |loc_0800F68C|
+        	BL       |Battle_CreateEnemy|
         	ADD r5, r0, #0
         	ADD r1, r0, #0
         	LDR r0, [r6]
@@ -18003,7 +18003,7 @@ unk_03003124 EQU     0x03003124
         	ADD r1, r4, #0
         	MVN r3, r3
         	MOV r0, #0
-        	BL       |loc_0800F68C|
+        	BL       |Battle_CreateEnemy|
         	ADD r4, r0, #0
         	ADD r1, r0, #0
         	LDR r0, [pc, #0x20]

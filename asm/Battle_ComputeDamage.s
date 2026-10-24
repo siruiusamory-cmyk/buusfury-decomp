@@ -1,5 +1,5 @@
 	CODE16
-|sub_0800E9D8|
+|Battle_ComputeDamage|
 	PUSH     {r4, r5, r6, r7, lr}
 	ADD      r6, r0, #0
 	ADD      r4, r1, #0

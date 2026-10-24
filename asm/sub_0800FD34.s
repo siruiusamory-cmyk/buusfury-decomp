@@ -24,7 +24,7 @@
 	ADD      r3, r1, #0
 	ADD      r1, r0, #0
 	MOV      r0, #0
-	BL       |loc_0800F68C|
+	BL       |Battle_CreateEnemy|
 	POP      {r3, pc}
 	LSL      r0, r0, #0
 	ASR      r4, r6, #9

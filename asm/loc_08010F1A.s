@@ -39,7 +39,7 @@
 		BEQ      |loc_08010F96|
 		ADD r1, r6, #0
 		ADD r0, r4, #0
-		BL       |sub_0800E9D8|
+		BL       |Battle_ComputeDamage|
 		LDR r1, [r4]
 		ADD r0, r4, #0
 		LDR r2, [r1, #0x58]
@@ -87,7 +87,7 @@
 		BEQ      |loc_08010FF0|
 		ADD r1, r6, #0
 		ADD r0, r4, #0
-		BL       |sub_0800E9D8|
+		BL       |Battle_ComputeDamage|
 		LDR r1, [r4]
 		ADD r0, r4, #0
 		LDR r2, [r1, #0x58]

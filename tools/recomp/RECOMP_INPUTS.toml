@@ -1,7 +1,7 @@
 [counts]
-functions = 3370
+functions = 3371
 code_bytes = 303178
-entries = 4766
+entries = 4764
 jump_tables = 2
 code_copies = 1
 iwram_bytes = 32768
@@ -3120,14 +3120,14 @@ name = "sub_0800FA12"
 [[code]]
 addr = 0x0800fa16
 mode = "thumb"
-size = 44
+size = 20
 name = "Object_WriteTablePointer1"
 
 [[code]]
-addr = 0x0800fa42
+addr = 0x0800fa2a
 mode = "thumb"
-size = 62
-name = "sub_0800FA42"
+size = 86
+name = "Battle_ApplyDamage"
 
 [[code]]
 addr = 0x0800fa80
@@ -5463,7 +5463,12 @@ size = 4
 [[code]]
 addr = 0x0801a664
 mode = "thumb"
-size = 268
+size = 104
+
+[[code]]
+addr = 0x0801a6cc
+mode = "thumb"
+size = 164
 
 [[code]]
 addr = 0x0801a770
@@ -24899,10 +24904,6 @@ addr = 0x0800fa0e
 mode = "thumb"
 
 [[entry]]
-addr = 0x0800fa2a
-mode = "thumb"
-
-[[entry]]
 addr = 0x0800fab4
 mode = "thumb"
 
@@ -27933,10 +27934,6 @@ mode = "thumb"
 
 [[entry]]
 addr = 0x0801a6ba
-mode = "thumb"
-
-[[entry]]
-addr = 0x0801a6cc
 mode = "thumb"
 
 [[entry]]

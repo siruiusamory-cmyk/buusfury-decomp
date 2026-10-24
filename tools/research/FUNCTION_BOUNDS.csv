@@ -1457,7 +1457,7 @@ address,kind,limb,parent
 0x0800fa0e,block,,0x0800f9f4
 0x0800fa12,unreferenced,,
 0x0800fa16,start,call,
-0x0800fa42,unreferenced,,
+0x0800fa2a,start,prologue,
 0x0800fa80,start,prologue,
 0x0800fab4,block,,0x0800fa80
 0x0800fae2,unreferenced,,
@@ -2404,6 +2404,7 @@ address,kind,limb,parent
 0x0801a576,unreferenced,,
 0x0801a590,unreferenced,,
 0x0801a664,start,prologue,
+0x0801a6cc,start,prologue,
 0x0801a770,unreferenced,,
 0x0801a7c0,start,prologue,
 0x0801a83e,start,prologue,

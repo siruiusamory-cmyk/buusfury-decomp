@@ -1511,7 +1511,7 @@
 	EXPORT |loc_0800FA0E|
 	EXPORT |sub_0800FA12|
 	EXPORT |Object_WriteTablePointer1|
-	EXPORT |sub_0800FA42|
+	EXPORT |Battle_ApplyDamage|
 	EXPORT |sub_0800FA80|
 	EXPORT |loc_0800FAB4|
 	EXPORT |sub_0800FAE2|

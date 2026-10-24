@@ -47,6 +47,7 @@ register, call, string or format it proves, never the story around it:
 | a retail string it alone references | the string's address, its index in the string table, and the fact that no other transcribed function loads it | `tools/text/strings_layout.json` |
 | a data format a generator in `tools/` already decodes | the pointer or header the function reads into a region one of the generators emits | the generator's own record table |
 | a behaviour test | a tracked test that runs the function from a private image copy on crafted registers and memory and asserts the stores it makes, the registers it returns and the calls it takes; the ledger row cites the test as `tools/…/test_*.py::test_*`, and `tools\lint\lints.py` (`NAMING-behaviour-test`) refuses a row whose cited file is absent or defines no such test | `tools/behaviour/` |
+| a class-table slot | the `table#slot` the row's start is dispatched from, the installer site that stores that table at `[object+0]`, and the slot's row in `tools/research/CLASS_TABLES.csv`; `python tools\research\class_tables.py --check` reprints the table from your own image | `tools/research/` |
 
 A `behaviour-test` row claims only what its test asserts. The harness in `tools/behaviour/harness.py`
 starts the function at its census start with the registers and memory the test crafts, steps it to

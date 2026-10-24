@@ -595,7 +595,7 @@ address,kind,symbol,file
 0x0800F9F4,start,sub_0800F9F4,asm/sub_0800F9F4.s
 0x0800FA12,unreferenced,sub_0800FA12,asm/sub_0800FA12.s
 0x0800FA16,start,Object_WriteTablePointer1,asm/Object_WriteTablePointer1.s
-0x0800FA42,unreferenced,sub_0800FA42,asm/sub_0800FA42.s
+0x0800FA2A,start,Battle_ApplyDamage,asm/Battle_ApplyDamage.s
 0x0800FA80,start,sub_0800FA80,asm/sub_0800FA80.s
 0x0800FAE2,unreferenced,sub_0800FAE2,asm/sub_0800FAE2.s
 0x0800FAE6,start,sub_0800FAE6,asm/sub_0800FAE6.s
@@ -1034,6 +1034,7 @@ address,kind,symbol,file
 0x0801A576,unreferenced,loc_0801A576,asm/buu.s
 0x0801A590,unreferenced,,asm/sub_0801A3A0.s
 0x0801A664,start,sub_0801A664,asm/buu.s
+0x0801A6CC,start,sub_0801A6CC,asm/buu.s
 0x0801A770,unreferenced,dat_0801A770,asm/buu.s
 0x0801A7C0,start,sub_0801A7C0,asm/buu.s
 0x0801A83E,start,sub_0801A83E,asm/buu.s

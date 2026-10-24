@@ -61,6 +61,13 @@ All notable changes to this project are documented here. The format follows
 - `tools/research/name_evidence.py` decodes the four-byte Thumb `bl` pair from both of its halfwords,
   so a call is one instruction with a signed offset from `pc+4`, and its evidence audit can cite a
   call. The hardware-access walk no longer reads a call's second halfword as an instruction.
+- Two transcribed starts split out of their carriers, so the census carries them: the damage applier at
+  `0x0800FA2A`, slot 22 of the class table the enemy constructor installs, which subtracts the damage
+  record's `+0x18` word from the holder's `+0x28C` word, and the vital writer at `0x0801A6CC`. The
+  applier carries the name `Battle_ApplyDamage`, and `0x0800FA42` is an interior block of that body
+  rather than a start, because it reads the registers the entry sets and both of its branches return
+  through the entry's epilogue. Its assembly file, label, index row, ledger row and recompiler label
+  move with it.
 
 ### Removed
 
@@ -74,6 +81,11 @@ All notable changes to this project are documented here. The format follows
 - `docs/README.md`, the entry point to the reader pages.
 - `tools/lint/lints.py` reports a `tools/lint/ASM_INDEX.csv` address that carries two rows, because a
   reader needs one.
+- `tools/research/class_tables.py` writes and checks `tools/research/CLASS_TABLES.csv`: one header row
+  per class table the image stores at `[object+0]`, with its slot count, the next stored table and the
+  rows that install it, then one row per slot with its offset and target. The naming audit accepts a
+  `class-slot` row that quotes a `table#slot` whose target is the row's own start and an installer site
+  that stores that table.
 
 ### Building
 

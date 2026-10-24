@@ -85,6 +85,22 @@ def test_a_row_that_names_an_address_its_body_neither_calls_nor_loads_fails(tmp_
     assert result[0]["outside"] == [0x0800BA7A]
 
 
+def test_a_row_that_quotes_its_class_slot_and_installer_passes(tmp_path):
+    root = crafted(tmp_path, '0x0800FA2A,sub_0800FA2A,Battle_ApplyDamage,class-slot,'
+                             '"0x0804C484#22 resolves to 0x0800FA2A, and 0x0800F6CC stores '
+                             '0x0804C484"')
+    result = name_evidence.audit(image(), root)
+    assert result[0]["outside"] == []
+    assert result[0]["verdict"] == "PASS"
+
+
+def test_a_row_whose_class_slot_names_another_start_fails(tmp_path):
+    root = crafted(tmp_path, '0x0800FA2A,sub_0800FA2A,Battle_ApplyDamage,class-slot,'
+                             '"0x0804DE7C#2 resolves to 0x0800FA2A, and 0x08019D5C stores '
+                             '0x0804DE7C"')
+    assert name_evidence.audit(image(), root)[0]["verdict"] == "FAIL"
+
+
 def thumb_bl(offset, delta):
     high = 0xF000 | (((delta >> 22) & 1) << 10) | ((delta >> 12) & 0x3FF)
     low = 0xF800 | ((delta >> 1) & 0x7FF)

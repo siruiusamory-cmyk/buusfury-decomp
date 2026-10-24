@@ -26,8 +26,10 @@ LIMM = re.compile(r"\[\s*(\w+)\s*(?:,\s*#(0x[0-9a-f]+|\d+))?\s*\]$")
 REGISTER = re.compile(r"^(r\d+|sb|sl|fp|ip|sp|lr|pc|r12)$")
 TARGET = re.compile(r"^#?(0x[0-9a-f]+|\d+)$")
 SITE = re.compile(r"0x(08[0-9A-Fa-f]{6})")
+SLOT = re.compile(r"0x(08[0-9A-Fa-f]{6})#(\d+)")
 LEDGER = os.path.join("tools", "lint", "NAMING_LEDGER.csv")
 BOUNDS = os.path.join("tools", "research", "FUNCTION_BOUNDS.csv")
+TABLES = os.path.join("tools", "research", "CLASS_TABLES.csv")
 POOL_IMMEDIATE = re.compile(r"\[pc,\s*#(0x[0-9a-f]+|\d+)\]")
 THUMB_LDR_LITERAL = 0xF800
 THUMB_LDR_BASE = 0x4800
@@ -262,6 +264,31 @@ def named_addresses(rom, body, mode):
     return named
 
 
+def class_slots():
+    path = os.path.join(ROOT, *TABLES.split("/"))
+    slots, installers = {}, {}
+    with open(path, newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            table = int(row["table"], 16)
+            if row["slot"]:
+                slots[(table, int(row["slot"]))] = int(row["target"], 16)
+            else:
+                installers[table] = {int(part.rsplit("@", 1)[1], 16)
+                                     for part in row["installed_by"].split(";") if part}
+    return slots, installers
+
+
+def slot_claim(text, address):
+    slots, installers = class_slots()
+    found = SLOT.search(text)
+    if found is None:
+        return False
+    table, slot = int(found.group(1), 16), int(found.group(2))
+    if slots.get((table, slot)) != address:
+        return False
+    return any(site in installers.get(table, set()) for site in sites(text))
+
+
 def audit(rom, root=ROOT):
     rows = code_rows()
     starts, parents = census()
@@ -288,6 +315,8 @@ def audit(rom, root=ROOT):
             quoted = [site for site in sites(entry["evidence"]) if site != address]
             if entry["evidence_class"] == "caller-role":
                 outside = [site for site in quoted if not call_to(rom, site, address)]
+            elif entry["evidence_class"] == "class-slot":
+                outside = [] if slot_claim(entry["evidence"], address) else [address]
             else:
                 named = named_addresses(rom, body, row[2])
                 outside = [site for site in quoted if site not in body and site not in named]

@@ -11025,17 +11025,12 @@ mode = "thumb"
 [[functions]]
 name = "Object_WriteTablePointer1"
 address = 0x0800fa16
-end = 0x0800fa42
+end = 0x0800fa2a
 mode = "thumb"
 
 [[functions]]
-name = "sub_0800FA2A"
+name = "Battle_ApplyDamage"
 address = 0x0800fa2a
-mode = "thumb"
-
-[[functions]]
-name = "sub_0800FA42"
-address = 0x0800fa42
 end = 0x0800fa80
 mode = "thumb"
 
@@ -17607,6 +17602,7 @@ mode = "thumb"
 [[functions]]
 name = "sub_0801A6CC"
 address = 0x0801a6cc
+end = 0x0801a770
 mode = "thumb"
 
 [[functions]]

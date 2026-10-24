@@ -125,6 +125,8 @@ the gate, as the census check.
 | `loader_access_trace.py` | what the code does with a pointer into a range: field offsets, stride and index use | `rawlabeled.py` |
 | `unknown_consumer_search.py` | the widened consumer search for a range the census still calls unproven | `loader_access_trace.py` |
 | `name_evidence.py` | the hardware accesses and literals of one function, used as naming evidence | `function_bounds.py` |
+| `class_tables.py` | the class tables the image stores at `[object+0]`: each table's slots, its next stored table and the rows that install it, written and checked from the image | you, and the naming audit |
+| `CLASS_TABLES.csv` | one header row per class table and one row per slot, with the target each slot reaches | `class_tables.py`, `name_evidence.py` |
 | `bios_block_scan.py` | self-delimiting blocks and uniform fill runs in an image | `generate_jcalg1.py` |
 | `jcalg1.py` | the JCALG1 body decoder | `generate_jcalg1.py` |
 | `rawlabeled_3bbe70_bounds.txt` | the ten-byte record boundaries the carrier split cites | cited by `incbin_census.py` |

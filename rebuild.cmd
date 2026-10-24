@@ -475,6 +475,9 @@ call tools\incbin.bat baserom.gba 0x37259c 0x3725c0
 call tools\incbin.bat baserom.gba 0x42118 0x4212c
 call tools\incbin.bat baserom.gba 0x42168 0x42170
 :slices_done
+echo === compressor ===
+if not exist "%ROOT%\tools\compress\compress.exe" call "%ROOT%\tools\compress\build.cmd"
+if errorlevel 1 exit /b 1
 echo === compiling source files ===
 python "%ROOT%\tools\assets\generate_assets.py" build --rom "%ROOT%\baserom.gba"
 if errorlevel 1 exit /b 1

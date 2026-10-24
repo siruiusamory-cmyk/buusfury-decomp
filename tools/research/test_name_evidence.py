@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 import name_evidence
 
 ROM = os.path.join(ROOT, "baserom.gba")
-LEDGER = os.path.join(ROOT, "docs", "NAMING_LEDGER.csv")
-RETIRED = os.path.join(ROOT, "docs", "NAMING_RETIRED.csv")
+LEDGER = os.path.join(ROOT, "tools", "lint", "NAMING_LEDGER.csv")
+RETIRED = os.path.join(ROOT, "tools", "lint", "NAMING_RETIRED.csv")
 
 
 def image():
@@ -27,9 +27,9 @@ def image():
 
 
 def crafted(tmp_path, row):
-    docs = tmp_path / "docs"
-    docs.mkdir(parents=True)
-    (docs / "NAMING_LEDGER.csv").write_text(
+    store = tmp_path / "tools" / "lint"
+    store.mkdir(parents=True)
+    (store / "NAMING_LEDGER.csv").write_text(
         "address,old,new,evidence_class,evidence\n" + row + "\n", encoding="utf-8")
     return str(tmp_path)
 
@@ -80,9 +80,9 @@ def test_a_pool_word_and_the_next_start_bound_the_body():
 
 
 def test_an_unreferenced_census_row_starts_a_body(tmp_path):
-    docs = tmp_path / "docs" / "research"
-    docs.mkdir(parents=True)
-    (docs / "FUNCTION_BOUNDS.csv").write_text(
+    store = tmp_path / "tools" / "research"
+    store.mkdir(parents=True)
+    (store / "FUNCTION_BOUNDS.csv").write_text(
         "address,kind,limb,parent\n0x08000100,unreferenced,,\n", encoding="utf-8")
     starts, parents = name_evidence.census(str(tmp_path))
     assert starts == {0x08000100}
@@ -96,7 +96,7 @@ def test_every_ledger_row_passes_the_audit():
 
 def test_the_moved_name_is_recorded_by_the_ledger_not_by_a_retirement():
     if not os.path.exists(RETIRED):
-        pytest.skip("docs/NAMING_RETIRED.csv is absent, so no name has been retired yet")
+        pytest.skip("tools/lint/NAMING_RETIRED.csv is absent, so no name has been retired yet")
     retired = {row["address"] for row in csv.DictReader(open(RETIRED, encoding="utf-8"))}
     assert "0x0803FAF6" not in retired
     ledger = {row["address"]: row for row in csv.DictReader(open(LEDGER, encoding="utf-8"))}

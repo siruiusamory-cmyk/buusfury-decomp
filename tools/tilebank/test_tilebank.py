@@ -169,6 +169,8 @@ def test_no_rom_derived_sheet_is_tracked():
 
 
 def test_the_187_tile_banks_round_trip_byte_for_byte():
+    if not os.path.exists(ROM):
+        pytest.skip("%s is absent, so the tile banks cannot be decoded" % ROM)
     rom = open(ROM, "rb").read()
     assert hashlib.sha256(rom).hexdigest() == generator.ROM_SHA256
     banks = generator.read_banks(rom, generator.bank_table(rom))

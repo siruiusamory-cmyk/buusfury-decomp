@@ -139,7 +139,7 @@ def test_a_promoted_name_is_a_label_at_the_address_the_ledger_gives_it(tmp_path)
            "\tEXPORT |KeyInput_Read|\n"
            "\tEXPORT |Unknown_Thing|\n")
     a_root(str(tmp_path), ledger=ledger, asm=asm)
-    path = os.path.join(str(tmp_path), "docs", "NAMING_LEDGER.csv")
+    path = os.path.join(str(tmp_path), "tools", "lint", "NAMING_LEDGER.csv")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("address,old,new,evidence_class,evidence\n"

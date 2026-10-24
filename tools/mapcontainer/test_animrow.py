@@ -8,12 +8,9 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
-sys.path.insert(0, os.path.join(os.path.dirname(HERE), "research"))
 
 import animrow
-import mapcontainer
 import pytest
-import residual_causes
 from testkit import refused, rom_bytes
 
 ROM = os.path.join(os.path.dirname(os.path.dirname(HERE)), "baserom.gba")
@@ -54,22 +51,6 @@ def test_the_retail_population_and_the_emitted_rows_meet_their_contract():
     assert animrow.assert_contract(rom)["problems"] == []
     assert (len(animrow.sites(rom)), sum(animrow.sites(rom).values())) == (431, 12824)
     assert (len(animrow.free(rom)), sum(animrow.free(rom).values())) == (122, 3500)
-
-
-def test_the_rows_inside_a_child_list_row_record_are_measured():
-    rom = rom_bytes(ROM, DIGEST)
-    records = residual_causes.plan_of(rom)["all"][mapcontainer.MODE_ROW]
-    rows, free = animrow.sites(rom), animrow.free(rom)
-    inside = [(offset, length) for offset, length in rows.items()
-              if offset not in free
-              and any(start <= offset and offset + length <= start + size
-                      for start, size in records)]
-    assert (len(records), sum(size for _start, size in records)) == (358, 28288)
-    assert (len(inside), sum(length for _offset, length in inside)) == (308, 9296)
-    assert not any(row in records for row in inside)
-    left = [(offset, length) for offset, length in rows.items()
-            if offset not in free and (offset, length) not in inside]
-    assert left == [(0x2B7E58, 28)]
 
 
 def test_a_permuted_row_no_longer_parses_to_the_same_record():

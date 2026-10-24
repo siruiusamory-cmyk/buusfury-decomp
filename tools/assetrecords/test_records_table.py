@@ -9,6 +9,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 
 import records_table as codec
+from testkit import rom_bytes
 
 COUNT = 3
 STRIDE = 52
@@ -71,7 +72,7 @@ def music_layout():
 
 
 def music_rom():
-    return open(ROM, "rb").read()
+    return rom_bytes(ROM)
 
 
 def test_the_music_layout_is_53_records_of_20_bytes_over_its_row():

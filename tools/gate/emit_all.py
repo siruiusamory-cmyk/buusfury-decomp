@@ -72,7 +72,7 @@ STEPS = (
       "--payloads", os.path.join(ROOT, "assets", "assetdir3"),
       "--out-dir", os.path.join(ROOT, "build", "assetdir3"))),
     ("jcalg1_gen",
-     (os.path.join(ROOT, "tools", "research", "generate_jcalg1.py"),
+     (os.path.join(ROOT, "tools", "build", "generate_jcalg1.py"),
       "--rom", os.path.join(ROOT, "baserom.gba"),
       "--payloads", os.path.join(ROOT, "assets", "jcalg1"),
       "--out-dir", os.path.join(ROOT, "build", "jcalg1"))),
@@ -90,7 +90,7 @@ STEPS = (
       "--rom", os.path.join(ROOT, "baserom.gba"),
       "--out", os.path.join(ROOT, "build", "strings.cpp"))),
     ("opcode_stream_gen",
-     (os.path.join(ROOT, "tools", "research", "opcode_stream.py"), "build",
+     (os.path.join(ROOT, "tools", "build", "opcode_stream.py"), "build",
       "--rom", os.path.join(ROOT, "baserom.gba"),
       "--out-dir", os.path.join(ROOT, "build", "opcode"))),
 )

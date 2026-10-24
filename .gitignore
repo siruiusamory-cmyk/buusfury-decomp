@@ -1,7 +1,9 @@
 baserom.gba
 baserom.gba*
 image.gba
-build/
+/build/
+/tools/compress/build/
+tools/compress/compress.exe
 assets/tilebank/
 assets/generated/
 assets/mapcontainer/

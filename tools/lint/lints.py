@@ -45,14 +45,7 @@ DUP_MINIMUM = 8
 DUP_PYTHON_ROOT = "tools/"
 DUP_C_ROOTS = ("src/", "include/")
 DUP_IMPORT_LINE = re.compile(r"^(?:from|import|#include)\b")
-DUP_ALLOWLIST = (
-    ("tools/gate/gate.py", 454, "tools/match/compare_rows.py", 24,
-     "11 identical lines: gate.diff_runs and compare_rows.differing_runs are the same loop, and "
-     "tools/match belongs to a separate unit, which this ticket forbids editing; compare_rows imports "
-     "gate, so gate cannot import it back. Reported for the other ticket. The "
-     "line moved 522 -> 567 -> 446 -> 444 -> 440 -> 454 as guards and identity ranges left the file above "
-     "diff_runs (P-646)."),
-)
+DUP_ALLOWLIST = ()
 README_PERCENT = re.compile(r"([\d.]+)\s*%")
 README_BYTES = re.compile(r"([\d,]+)\s+of\s+([\d,]+)\s+bytes")
 README_ROWS = re.compile(r"([\d,]+)\s+ledger rows")
@@ -70,12 +63,12 @@ ASM_SUFFIX = ".s"
 ASM_ROOT = "asm/"
 BEHAVIOUR_CLASS = "behaviour-test"
 TEST_REFERENCE = re.compile(r"((?:[\w.-]+/)*test_[A-Za-z0-9_]+\.py)::(test_[A-Za-z0-9_]+)")
-BASELINE = "docs/NAMING_BASELINE.txt"
-LEDGER_NAMES = "docs/NAMING_LEDGER.csv"
-RETIRED_NAMES = "docs/NAMING_RETIRED.csv"
-LABELS = "docs/research/BF_LABELS.toml"
-CENSUS = "docs/research/FUNCTION_BOUNDS.csv"
-ENTRY_ALLOW = "docs/research/FUNCTION_ENTRY_ALLOW.csv"
+BASELINE = "tools/lint/NAMING_BASELINE.txt"
+LEDGER_NAMES = "tools/lint/NAMING_LEDGER.csv"
+RETIRED_NAMES = "tools/lint/NAMING_RETIRED.csv"
+LABELS = "tools/lint/BF_LABELS.toml"
+CENSUS = "tools/research/FUNCTION_BOUNDS.csv"
+ENTRY_ALLOW = "tools/research/FUNCTION_ENTRY_ALLOW.csv"
 ENTRY_FLAGS = ("data", "undecodable", "clobber")
 ENTRY_REASONS = ("prefix", "entry", "split", "data")
 ADDRESS_HEX = re.compile(r"^0x[0-9A-Fa-f]{8}$")
@@ -524,7 +517,7 @@ def uncomma(text):
 
 
 def identified_share():
-    path = os.path.join(ROOT, "docs", "research", "RESIDUAL_LEDGER.csv")
+    path = os.path.join(ROOT, "tools", "lint", "RESIDUAL_LEDGER.csv")
     if not os.path.exists(path):
         return None
     with open(path, newline="", encoding="utf-8") as handle:
@@ -828,9 +821,9 @@ RAM_BANDS = ((0x02000000, 0x0203FFFF), (0x03000000, 0x03007FFF))
 ADDRESS_LABEL = re.compile(r"^\|((?:sub|loc|dat|unk|g)_[0-9A-Fa-f]{8})\|\s*$")
 FUNCTION_FILE = re.compile(r"^asm/(?:sub|loc|dat|unk|g)_([0-9A-Fa-f]{8})\.s$")
 SLICE_FILE = re.compile(r"^asm/slice_[0-9A-Fa-f]+\.s$")
-HARDWARE_BASELINE = "docs/HARDWARE_BASELINE.txt"
-RAM_BASELINE = "docs/RAM_BASELINE.txt"
-ASM_INDEX = "docs/ASM_INDEX.csv"
+HARDWARE_BASELINE = "tools/lint/HARDWARE_BASELINE.txt"
+RAM_BASELINE = "tools/lint/RAM_BASELINE.txt"
+ASM_INDEX = "tools/lint/ASM_INDEX.csv"
 NEWCOMER = "docs/NEWCOMER.md"
 NEWCOMER_STEPS = (("clone", "git clone"), ("extract", "extract.cmd"),
                   ("build", "rebuild.cmd"), ("gate", "python tools\\gate\\gate.py"),

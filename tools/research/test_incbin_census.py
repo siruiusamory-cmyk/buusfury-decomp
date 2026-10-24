@@ -1,16 +1,24 @@
 import hashlib
 import os
+import pytest
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools", "gate"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "build"))
 
 import incbin_census  # noqa: E402
 
 
+def require_rom():
+    if not os.path.exists(os.path.join(incbin_census.gate.ROOT, "baserom.gba")):
+        pytest.skip("baserom.gba is absent, so the census cannot run")
+
+
 def test_rows_sum_to_the_gate_incbin_total():
+    require_rom()
     text, rows, total, _ = incbin_census.render()
     assert sum(size for _, size, _, _, _ in rows) == total
     assert incbin_census.gate.incbin_ranges() and total > 0
@@ -18,6 +26,7 @@ def test_rows_sum_to_the_gate_incbin_total():
 
 
 def test_every_byte_has_one_status():
+    require_rom()
     _, rows, total, _ = incbin_census.render()
     assert len(rows) == len(incbin_census.gate.incbin_ranges())
     for start, size, status, name, _ in rows:
@@ -26,6 +35,7 @@ def test_every_byte_has_one_status():
 
 
 def test_the_three_classes_account_for_every_byte():
+    require_rom()
     text, rows, total, _ = incbin_census.render()
     cited = sum(size for _, size, status, _, _ in rows if status == "raw-labeled")
     unreferenced = sum(size for _, size, status, _, _ in rows if status == "unreferenced")
@@ -45,12 +55,14 @@ def test_the_recon_reconciliation_sums_to_the_ticket_numbers():
 
 
 def test_the_text_is_a_pure_function_of_the_tree():
+    require_rom()
     first = incbin_census.render()[0]
     second = incbin_census.render()[0]
     assert hashlib.sha256(first.encode()).hexdigest() == hashlib.sha256(second.encode()).hexdigest()
 
 
 def test_the_promoted_families_are_not_still_incbin():
+    require_rom()
     mask = incbin_census.inbin_mask(incbin_census.gate.incbin_ranges())
     band = next(region.ranges for region in incbin_census.REGIONS
                 if region.name == "first-MiB code band")
@@ -62,6 +74,7 @@ def test_the_promoted_families_are_not_still_incbin():
 
 
 def test_the_raw_labeled_runs_are_carried_as_cited_slices():
+    require_rom()
     import rawlabeled
 
     _, rows, _, _ = incbin_census.render()

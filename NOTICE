@@ -1,12 +1,12 @@
-Upstream sources this tree derives from, cited rather than vendored.
+Upstream sources this tree derives from.
 
 - https://github.com/2genkidev/buusfury, a disassembly of Dragon Ball Z: Buu's
   Fury. The revision cc53d0cd2d1c167e749419187e2d92017ac07468 is the base of
   asm/, assets/, build.bat, scatter.ld, src/ and tools/incbin.bat.
-- jcalg1 by Jeremy Collake, https://github.com/jeremycollake/jcalg1. Upstream
-  carries it as a git submodule; this tree carries only the compiled
-  tools/compress/compress.exe built from it, which an in-process compressor is
-  scheduled to replace.
+- jcalg1 by Jeremy Collake, https://github.com/jeremycollake/jcalg1, MIT (see
+  tools/compress/jcalg1/LICENSE). The compressor's MASM source is vendored
+  under tools/compress/jcalg1/ and built by tools/compress/build.cmd; no
+  compiled copy of it is distributed here.
 - grit by Dylan Graham, https://github.com/DylanGraham/grit, used by build.bat
   and not distributed here.
 - tools/webfoot/webfoot_lz.py is this project's Webfoot container codec, carried

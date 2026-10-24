@@ -1,6 +1,3 @@
-<!-- TODO banner: add docs/banner.png, then put it above the title as a centered 900 px image. -->
-<!-- TODO demo GIF: a short capture of extract.cmd, rebuild.cmd and the gate printing GATE PASS, saved as docs/demo.gif. -->
-<!-- TODO social preview: set a repository social image in Settings once the banner exists. -->
 # Dragon Ball Z: Buu's Fury disassembly
 
 **A byte-exact disassembly of Dragon Ball Z: Buu's Fury (GBA, USA) that rebuilds the original ROM from tracked source.**
@@ -21,27 +18,25 @@
 ## What this is
 
 The program code is ARM and Thumb assembly in `asm/`. ARM Developer Suite 1.2 assembles and links
-it back into the retail ROM, and the build checks the result against the retail sha256. The
-game's graphics, audio, text and record tables are rebuilt at build time by generators that decode
-them from your own copy of the game and re-encode them byte for byte.
+it back into the retail ROM, and the build checks the result against the retail sha256. The game's
+graphics, audio, text and record tables are rebuilt at build time by generators that decode them
+from your own copy of the game and re-encode them byte for byte.
 
 It builds one ROM:
 
 * Dragon Ball Z: Buu's Fury (USA), sha1 `f1c4b07554d2a3b1ad2f325307051e775ce68087`
 
-The same work is planned for Dragon Ball Z: The Legacy of Goku and The Legacy of Goku II.
-
 ## What this is not
 
-This is not a decompilation yet. Almost all of the game's code is still assembly, and only a
-handful of small C files exist in `src/`. Most functions are still named by their address
-(`sub_08000158`, `loc_0800016A`): 2,880 of the 3,024 functions the census classifies. Naming them
-is the next readability step, and `tools/lint/lints.py` holds the count to a measured baseline
-(`docs/NAMING_BASELINE.txt`) with `docs/NAMING_LEDGER.csv` as the record of every promotion. No
-part of the code is claimed to match the original compiler's C output.
+This is not a decompilation. Almost all of the game's code is still assembly, and only a handful of
+small C files exist in `src/`. Most functions are still named by their address (`sub_08000158`,
+`loc_0800016A`): 2,880 of the 3,024 functions the census classifies. Naming them is the next
+readability step, and `tools/lint/lints.py` holds the count to a measured baseline with
+`tools/lint/NAMING_LEDGER.csv` as the record of every promotion. No part of the code is claimed to
+match the original compiler's C output.
 
-The progress figure below measures how much of the ROM the build produces from tracked source.
-It does not measure how much of the code has been turned into C.
+The progress figure below measures how much of the ROM the build produces from tracked source. It
+does not measure how much of the code has been turned into C.
 
 ## Progress
 
@@ -51,14 +46,13 @@ into the build as raw slices of the original image. `python tools\gate\gate.py` 
 and [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md) says what counts as source.
 
 Of what remains, 3.9214 % is identified binary (328,954 B): bytes whose purpose is known but which
-still have no reader that rebuilds them. `python tools\research\raw_remainder.py` writes the full
-list to `docs/research/RESIDUAL_LEDGER.csv`.
+still have no reader that rebuilds them.
 
 ## Building
 
-You need ARM Developer Suite 1.2, Python 3.12 and your own copy of the game saved as `baserom.gba`.
-[INSTALL.md](INSTALL.md) has the details, and [docs/NEWCOMER.md](docs/NEWCOMER.md) walks the whole
-path from a clone to a changed function, one command per step.
+You need ARM Developer Suite 1.2, Python 3.12, grit, Visual Studio or Build Tools 2022 with the C++
+workload, and your own copy of the game saved as `baserom.gba`. [INSTALL.md](INSTALL.md) has the
+details, and [docs/README.md](docs/README.md) is the guide to the code once it builds.
 
 ```
 extract.cmd
@@ -66,8 +60,8 @@ rebuild.cmd
 python tools\gate\gate.py
 ```
 
-The gate rebuilds from scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the
-retail ROM.
+`rebuild.cmd` builds the compressor from its own source on the first run. The gate rebuilds from
+scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the retail ROM.
 
 ## Repository layout
 
@@ -76,8 +70,8 @@ retail ROM.
 | `asm/` | the game's code and data as assembly |
 | `src/` | the few parts already written in C |
 | `include/` | shared assembler and C declarations |
-| `tools/` | extraction, generators, the gate and research scripts |
-| `docs/` | how source is counted, naming rules and research notes |
+| `tools/` | what builds the ROM and what checks it; [tools/README.md](tools/README.md) lists every entry |
+| `docs/` | a reader's guide to the code and the game's data |
 | `work/` | the byte ledger the gate reads |
 
 ## Credits and license

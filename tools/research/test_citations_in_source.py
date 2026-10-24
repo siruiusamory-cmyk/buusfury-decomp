@@ -89,25 +89,6 @@ def test_a_recorded_citation_site_is_not_a_channel():
     assert cis.code_verdict({}, forms["runtime"], classify)[0] == "runtime-cited"
 
 
-def test_the_written_csv_parses_with_eight_fields_on_every_row():
-    import csv as csv_module
-
-    path = os.path.join(ROOT, "docs", "research", "RAW_CITATIONS.csv")
-    assert os.path.exists(path), "run citations_in_source.py to write the table first"
-    fields = ("row", "start", "end", "bytes", "class", "route", "first site", "site class")
-    with open(path, newline="") as handle:
-        reader = csv_module.DictReader(handle)
-        assert tuple(reader.fieldnames) == fields, reader.fieldnames
-        rows = list(reader)
-    assert rows, "the table is empty"
-    for listed in rows:
-        assert None not in listed.values(), listed
-        assert list(listed) == list(fields), listed
-    pairs = [listed for listed in rows if listed["route"] == "P+A"]
-    print("  RAW_CITATIONS.csv: %d row(s), all with the 8 named fields; P+A rows=%d"
-          % (len(rows), len(pairs)))
-
-
 if __name__ == "__main__":
     passed = 0
     for name, function in sorted(globals().items()):

@@ -1,6 +1,6 @@
 # Definition of done
 
-One target for every ticket: the full image, as `python tools\gate\gate.py` measures it.
+One target for every change: the full image, as `python tools\gate\gate.py` measures it.
 
 ## What counts as source
 
@@ -18,18 +18,22 @@ One target for every ticket: the full image, as `python tools\gate\gate.py` meas
 - 100 % of the 8,388,608 B image. A byte that cannot be reached is named irreducible, with its
   reason.
 
+## The gate's accounting
+
+```
+source=<B> of 8388608 (<%>)                     code and data built from tracked source or a byte-exact generator
+raw-data=<B> (<%) cited <B> / runtime-cited <B> /
+                   unreferenced <B>             bytes the assembler still embeds from extracted slices
+identity copies=<B> (<%) extract <B> / generator identity <B>
+accounted=<B> of 8388608 (<%>)                  source plus raw-data; 100 % when every byte is in one
+```
+
+`source` is the image size minus the bytes `asm/*.s` INCBINs, so it cannot drift from what the
+assembler reads.
+
 ## Timing
 
 - Judged on a quiet host only. A TIMING-only failure on a loaded host does not block.
 
-## Current gate output
-
-```
-source=7893334 of 8388608 (94.0959 %)
-raw-data=494250 (5.8919 %) cited 291487 / runtime-cited 28800 / unreferenced 173963
-identity copies=1024 (0.0122 %) extract 1024 / generator identity 0
-accounted=8388608 of 8388608 (100.0000 %)
-```
-
-README.md carries the same figures; the README-numbers lint (`tools/lint/lints.py`) checks them
+README.md carries the live figures; the README-numbers lint (`tools/lint/lints.py`) checks them
 against `gate.source_bytes()` and reads README.md only, so this file is not linted for numbers.

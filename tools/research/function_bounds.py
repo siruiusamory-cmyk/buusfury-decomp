@@ -22,8 +22,8 @@ import romfile
 
 ROM_BASE = 0x08000000
 ROM_SHA256 = name_evidence.ROM_SHA256
-BOUNDS = os.path.join(ROOT, "docs", "research", "FUNCTION_BOUNDS.csv")
-ALLOW = os.path.join(ROOT, "docs", "research", "FUNCTION_ENTRY_ALLOW.csv")
+BOUNDS = os.path.join(ROOT, "tools", "research", "FUNCTION_BOUNDS.csv")
+ALLOW = os.path.join(ROOT, "tools", "research", "FUNCTION_ENTRY_ALLOW.csv")
 HEADER = "address,kind,limb,parent"
 FLAG_HEADER = "address,kind,limb,flags,entry,reason"
 LIMBS = ("call", "vector", "table", "prologue", "unreferenced")
@@ -463,7 +463,7 @@ def save(rom, root=ROOT):
     text = rows_text(found)
     flags = flags_text(flag_rows(rom, found))
     for name, body in (("FUNCTION_BOUNDS.csv", text), ("FUNCTION_ENTRY_ALLOW.csv", flags)):
-        path = os.path.join(root, "docs", "research", name)
+        path = os.path.join(root, "tools", "research", name)
         with open(path, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(body)
     return found, len(flags.splitlines()) - 1

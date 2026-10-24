@@ -11,13 +11,13 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
 - `asm/` exports follow the same two forms, and `tools\lint\lints.py` enforces them
   (`NAMING-asm-symbol`): every export is `Module_Verb` or `sub_`/`loc_`/`dat_`/`unk_`/`g_` and eight
   hex digits equal to the symbol's own address. A `loc_` on a function start and a `sub_` on an
-  interior block are both wrong: `docs/research/FUNCTION_BOUNDS.csv` carries the kind of every
+  interior block are both wrong: `tools/research/FUNCTION_BOUNDS.csv` carries the kind of every
   exported code address, and the same check reads it. `inc_0x<file start>_0x<file end>` is the one
   other admitted form: it names a raw slice by its extent, and nothing renames it. The third form is
   the library's own symbol text (`strlen`, `__rt_udiv`), admitted only for a name that a
   `toolchain-library` row of the ledger carries.
-- The count of address-named functions is held in `docs/NAMING_BASELINE.txt` as a ratchet
-  (`NAMING-address-ratchet`): the population is every start `docs/research/FUNCTION_BOUNDS.csv`
+- The count of address-named functions is held in `tools/lint/NAMING_BASELINE.txt` as a ratchet
+  (`NAMING-address-ratchet`): the population is every start `tools/research/FUNCTION_BOUNDS.csv`
   carries, and a start is address-named unless the ledger or a label at its address gives it a
   `Module_Verb` or a library name, so a block, a data address and an address no name reaches are
   outside the named count. The census carries every exported address and every transcribed
@@ -25,7 +25,7 @@ Authored for this tree from its own bytes. PROVEN = measured at the retail bytes
   vector or prologue rule reaches is carried with kind `unreferenced` rather than dropped, so an
   unexported transcribed start takes its place in the population and a name on it obeys the same
   rules. It may exceed the baseline only by exactly one address-named function
-  per retired name (`docs/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference
+  per retired name (`tools/lint/NAMING_RETIRED.csv`, `address,retired,reason`), and any other difference
   fails until the baseline is set to the measured figure in the same tree; a commit that adds
   census starts records the figure those starts give. A name is retired
   when its quoted evidence lies outside the function it was bound to: the export returns to its
@@ -42,8 +42,8 @@ register, call, string or format it proves, never the story around it:
 | class | what the evidence is | where to look |
 |---|---|---|
 | a hardware register or BIOS call it drives | the instruction that writes or reads the register, or the `svc` number, quoted with its address; `python tools\research\name_evidence.py --mode function --function 0x…` prints every hardware access in the function and the literal it resolved from | GBATEK for the register or SWI name |
-| a byte-exact runtime-library member | the library file, its member, the member's exported symbol, the matched length and the masked byte count; `python tools\research\library_match.py --lib <armlib> --detail 0x…` reprints them | `armlib/` of the ARM Developer Suite 1.2 install |
-| a proven caller/callee role | the call sites and the registers they pass, or a tracked page that measured the role and quotes the bytes | `docs/research/`, the ledger's evidence cell |
+| a byte-exact runtime-library member | the library file, its member, the member's exported symbol, the matched length and the masked byte count; the armlib member, its symbol and the two lengths are the record | `armlib/` of the ARM Developer Suite 1.2 install |
+| a proven caller/callee role | the call sites and the registers they pass, or a tracked page that measured the role and quotes the bytes | the ledger's evidence cell |
 | a retail string it alone references | the string's address, its index in the string table, and the fact that no other transcribed function loads it | `tools/text/strings_layout.json` |
 | a data format a generator in `tools/` already decodes | the pointer or header the function reads into a region one of the generators emits | the generator's own record table |
 | a behaviour test | a tracked test that runs the function from a private image copy on crafted registers and memory and asserts the stores it makes, the registers it returns and the calls it takes; the ledger row cites the test as `tools/…/test_*.py::test_*`, and `tools\lint\lints.py` (`NAMING-behaviour-test`) refuses a row whose cited file is absent or defines no such test | `tools/behaviour/` |
@@ -57,7 +57,7 @@ another proves only what its own body runs, and a Thumb body is what the harness
 needs the image skips when `baserom.gba` is absent, so the class costs nothing in CI and the tree
 still holds no ROM byte.
 
-Every promotion adds one row to `docs/NAMING_LEDGER.csv` (`address,old,new,evidence_class,evidence`)
+Every promotion adds one row to `tools/lint/NAMING_LEDGER.csv` (`address,old,new,evidence_class,evidence`)
 in the same commit as the rename, and the row's evidence cell must be checkable by itself: the
 address, the instruction or page, and the command or file that reprints it. The label at that
 address carries the row's name, in a file named after it (`asm/Blend_WriteControl1.s`), so a reader

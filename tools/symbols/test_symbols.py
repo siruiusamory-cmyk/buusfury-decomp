@@ -14,8 +14,13 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools", "gate"))
 
 import gate
+import pytest
 
 import generate_symbols
+
+pytestmark = pytest.mark.skipif(
+    not os.path.exists(os.path.join(ROOT, "baserom.gba")),
+    reason="baserom.gba is absent, so the symbol proofs cannot run")
 
 TOOLCHAIN = "ARM Linker, ADS1.2 [Build 805]"
 COMMIT = "2026-10-15T00:00:00-07:00"

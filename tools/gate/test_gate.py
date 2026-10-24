@@ -437,6 +437,8 @@ def test_the_accounted_class_totals_are_the_image_and_a_perturbed_one_fails():
     assert total == gate.ROM_SIZE + 2 and problem is not None, problem
 
 
+@pytest.mark.skipif(not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")),
+                    reason="baserom.gba is absent, so the gate cannot read the census")
 def test_the_transcribed_line_carries_the_ledger_walks_total(monkeypatch, tmp_path):
     image = tmp_path / "image.gba"
     image.write_bytes(bytes(gate.ROM_SIZE))
@@ -465,6 +467,8 @@ def test_the_transcribed_line_carries_the_ledger_walks_total(monkeypatch, tmp_pa
     assert lines == ["transcribed by ledger=1234567 of which instruction bytes=11 data bytes=22"]
 
 
+@pytest.mark.skipif(not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")),
+                    reason="baserom.gba is absent, so the tracked text cannot be checked")
 def test_no_tracked_file_carries_game_text():
     sys.path.insert(0, os.path.join(gate.ROOT, "tools", "text"))
     import strings_table

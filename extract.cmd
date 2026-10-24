@@ -19,11 +19,11 @@ python "%ROOT%tools\mapcontainer\generate_mapcontainer.py" extract --block asset
 if errorlevel 1 exit /b 1
 python "%ROOT%tools\structured\generate_structured.py" extract --rom "%ROOT%baserom.gba" --payloads "%ROOT%assets\structured"
 if errorlevel 1 exit /b 1
-python "%ROOT%tools\research\opcode_stream.py" build --rom "%ROOT%baserom.gba" --out-dir "%ROOT%build\opcode"
+python "%ROOT%tools\build\opcode_stream.py" build --rom "%ROOT%baserom.gba" --out-dir "%ROOT%build\opcode"
 if errorlevel 1 exit /b 1
-python "%ROOT%tools\research\generate_jcalg1.py" --rom "%ROOT%baserom.gba" --payloads "%ROOT%assets\jcalg1" --out-dir "%ROOT%build\jcalg1"
+python "%ROOT%tools\build\generate_jcalg1.py" --rom "%ROOT%baserom.gba" --payloads "%ROOT%assets\jcalg1" --out-dir "%ROOT%build\jcalg1"
 if errorlevel 1 exit /b 1
 python "%ROOT%tools\mapcontainer\generate_assetdir3.py" extract --rom "%ROOT%baserom.gba" --payloads "%ROOT%assets\assetdir3"
-python "%ROOT%tools\research\rawlabeled.py" --extract --rom "%ROOT%baserom.gba"
+python "%ROOT%tools\build\rawlabeled.py" --extract --rom "%ROOT%baserom.gba"
 if errorlevel 1 exit /b 1
 echo extract done

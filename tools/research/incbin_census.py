@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "mapcontainer"))
 import gate  # noqa: E402
 
 ROM = os.path.join(ROOT, "baserom.gba")
-DOC = os.path.join(ROOT, "docs", "research", "INCBIN_CENSUS.md")
+DOC = os.path.join(ROOT, "build", "incbin_census.md")
 ROM_SHA256 = "940ad5f01db4465b8877dfe739510cbf34f4ea3d390f3df13519808bc36f059e"
 
 STATUSES = ("raw-labeled", "unreferenced")
@@ -185,7 +185,7 @@ REGIONS = (
         "CCF19E3469778F3DA12B68A94EC4BCB9F96A819BCE9A574C4A5892CA9E0FC6CF). The observed pc IS "
         "the citation (Amendment B of RUNTIME-CONSUMER-002) and no cited site reads a "
         "count or a terminator out of a row, so no extent follows; promoted as LABELED RAW DATA, one "
-        "symbol per row at its start, by tools/research/rawlabeled.py --citations into "
+        "symbol per row at its start, by tools/build/rawlabeled.py --citations into "
         "asm/rawlabeled_<start>.s. 113 of the 114 rows (354,080 B) sit inside ranges this census had "
         "called either `identified-no-consumer` or `unknown-proven` (315,980 B in asset directory "
         "3's payload, 16,532 B and 16,516 B in PATH-100-006's two unknown-proven buckets, 4,072 B in "
@@ -259,7 +259,7 @@ REGIONS = (
         "sites (0x080008BC, 0x080041BA, 0x080053F8, 0x08008C86; literal words at file 0x0008F8, "
         "0x004210, 0x00545C, 0x008D10), each computing base + 20*index, and the 83-record array "
         "base 0x083BD2F8 at sixteen more; carried whole as LABELED RAW DATA by "
-        "tools/research/rawlabeled.py into asm/rawlabeled_3bb78c.s (the 1,060 B table, 1 symbol) "
+        "tools/build/rawlabeled.py into asm/rawlabeled_3bb78c.s (the 1,060 B table, 1 symbol) "
         "and asm/rawlabeled_3bbe70.s (the 9,572 B past the chain, 46 symbols), whose split is the "
         "run's cited bases plus the data-stated boundaries in "
         "tools/research/rawlabeled_3bbe70_bounds.txt: 53 x 20 B records (53 = the occurrences of "
@@ -470,7 +470,7 @@ REGIONS = (
         "(0x086B7080, 0x086B7084, 0x086B72E0, 0x086B7400, 0x086B748C, 0x086B7590, 0x086B759C, "
         "0x086B77A4) over the ledger's 114 code rows / 322,386 B, and the tail's own block emits .bin "
         "sections and no symbol, so the range was promoted as LABELED RAW DATA, 8 symbols, by "
-        "tools/research/rawlabeled.py into asm/rawlabeled_6b7080.s",
+        "tools/build/rawlabeled.py into asm/rawlabeled_6b7080.s",
         [(0x6B7080, 0x6B7E8C)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -480,7 +480,7 @@ REGIONS = (
         "R-RAW-001 (PATH-100-003): the structured block's 495 retail gaps, 42,756 B, named by the "
         "MapEntry +0x30 field (167 of the table's 452 entries, 132 distinct bases) which 008CEE "
         "ldr r1,[r0,#0x30] hands to the opcode interpreter 0x08004038; promoted as LABELED RAW DATA, "
-        "574 symbols, by tools/research/rawlabeled.py --structured into asm/rawlabeled_71c90.s",
+        "574 symbols, by tools/build/rawlabeled.py --structured into asm/rawlabeled_71c90.s",
         [(0x071C90, 0x0945C0)],
         "the region's 98,860 B of generated families stay generated and are INCBINed between the "
         "labeled gaps; no extent is claimed and 0 B of the region is INCBIN"
@@ -492,7 +492,7 @@ REGIONS = (
         "raw-labeled run 0x76CCE4..0x77AE68",
         "raw-labeled",
         "R-RAW-001: 40 cited loader sites on 22 literals, no "
-        "code-derived extent; promoted as LABELED RAW DATA, 15 symbols, by tools/research/rawlabeled.py "
+        "code-derived extent; promoted as LABELED RAW DATA, 15 symbols, by tools/build/rawlabeled.py "
         "into asm/rawlabeled_76cce4.s",
         [(0x76CCE4, 0x77AE68)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
@@ -501,7 +501,7 @@ REGIONS = (
         "raw-labeled run 0x71E274..0x72C378",
         "raw-labeled",
         "R-RAW-001: 182 cited loader sites on 61 literals, no "
-        "code-derived extent; promoted as LABELED RAW DATA, 43 symbols, by tools/research/rawlabeled.py "
+        "code-derived extent; promoted as LABELED RAW DATA, 43 symbols, by tools/build/rawlabeled.py "
         "into asm/rawlabeled_71e274.s",
         [(0x71E274, 0x72C378)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
@@ -510,8 +510,8 @@ REGIONS = (
         "raw-labeled row 0x6FC260..0x6FDA00",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 33 cited loader sites on 16 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 4 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_6fc260.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 4 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_6fc260.s",
         [(0x6FC260, 0x6FDA00)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -519,8 +519,8 @@ REGIONS = (
         "raw-labeled row 0x7122F8..0x71E258",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 175 cited loader sites on 66 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 41 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_7122f8.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 41 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_7122f8.s",
         [(0x7122F8, 0x71E258)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -528,8 +528,8 @@ REGIONS = (
         "raw-labeled row 0x72C388..0x7315E8",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 25 cited loader sites on 11 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 8 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_72c388.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 8 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_72c388.s",
         [(0x72C388, 0x7315E8)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -537,8 +537,8 @@ REGIONS = (
         "raw-labeled row 0x75029C..0x752D4C",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 9 cited loader sites on 5 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 5 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_75029c.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 5 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_75029c.s",
         [(0x75029C, 0x752D4C)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -546,8 +546,8 @@ REGIONS = (
         "raw-labeled row 0x752EF0..0x754910",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 20 cited loader sites on 9 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 8 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_752ef0.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 8 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_752ef0.s",
         [(0x752EF0, 0x754910)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -555,8 +555,8 @@ REGIONS = (
         "raw-labeled row 0x754978..0x756A4C",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 13 cited loader sites on 5 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 5 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_754978.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 5 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_754978.s",
         [(0x754978, 0x756A4C)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -564,8 +564,8 @@ REGIONS = (
         "raw-labeled row 0x77B200..0x77C47C",
         "raw-labeled",
         "R-RAW-001 (PATH-100-005): 14 cited loader sites on 6 literals, no code-derived extent; "
-        "promoted as LABELED RAW DATA, 6 symbols, by tools/research/rawlabeled.py into "
-        "asm/rawlabeled_77b200.s (docs/research/UNKNOWN_PROVEN_R5.md)",
+        "promoted as LABELED RAW DATA, 6 symbols, by tools/build/rawlabeled.py into "
+        "asm/rawlabeled_77b200.s",
         [(0x77B200, 0x77C47C)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -575,7 +575,7 @@ REGIONS = (
         "R-RAW-001 (PATH-100-002 STEP 3, 2026-10-16): this row's own channel measurement is 79 cited "
         "loader sites on 35 literals, and PATH-100-002 STEP 2 decoded them to six field maps with no "
         "extent, so nothing is derivable and the run is promoted as LABELED RAW DATA, 17 symbols, by "
-        "tools/research/rawlabeled.py into asm/rawlabeled_75a738.s",
+        "tools/build/rawlabeled.py into asm/rawlabeled_75a738.s",
         [(0x75A738, 0x76CCD4)],
         "no structure and no extent is claimed; the bytes are source now, so 0 B of this range is INCBIN",
     ),
@@ -612,7 +612,7 @@ REGIONS = (
     Region(
         "first-MiB code band",
         "identified-with-consumer",
-        "docs/research/C_CONVERSION_ORDER.md (12 slices, 308,352 B, byte-proven); the consumer of code "
+        "12 slices, 308,352 B, byte-proven; the consumer of code "
         "is a caller, and promotion here is transcription, not an emitter (FIRST-MIB-CODE-001)",
         [(0x000158, 0x143F2), (0x0153F2, 0x1A3F2), (0x01C3F2, 0x2AB4C), (0x02BB4C, 0x2D1C0),
          (0x0301C0, 0x311C0), (0x0331C0, 0x341C0), (0x0351C0, 0x3D4D0), (0x03D784, 0x41118),
@@ -621,7 +621,7 @@ REGIONS = (
         "rest of each slice is transcribed source. PATH-100-016 classified every DCB/DCW/DCD run these "
         "twelve slices carry and moved the plain data tables to build-time extracted INCBIN slices "
         "(134,968 B of the 162,075 B converted, in 2,005 rows), leaving the literal pools and pointer "
-        "tables as text (docs/research/TRANSCRIBED_DATA_RUNS.csv).",
+        "tables as text.",
     ),
 
     Region(
@@ -629,8 +629,8 @@ REGIONS = (
         "raw-labeled",
         "R-RAW-001, PATH-100-006: each row is named by a literal loaded by more than one "
         "instruction (P-418) or its loader count is above every one of 12 same-size control "
-        "windows; promoted as LABELED RAW DATA by tools/research/rawlabeled.py, one "
-        "asm/rawlabeled_<start>.s per row, NO EXTENT claimed (docs/research/UNMAPPED_ROWS.md)",
+        "windows; promoted as LABELED RAW DATA by tools/build/rawlabeled.py, one "
+        "asm/rawlabeled_<start>.s per row, NO EXTENT claimed",
         UNMAPPED_RAW_LABELED,
         "the bytes are source now, so 0 B of these ranges is INCBIN",
     ),
@@ -660,7 +660,7 @@ REGIONS = (
         "R-RAW-001, PATH-100-009: each row is named by a Thumb ldr-literal above its own 12-window "
         "control null and carries at least one cited base inside the row, so rawlabeled.py splits it "
         "at every cited base; promoted as LABELED RAW DATA, one asm/rawlabeled_<start>.s per row, NO "
-        "EXTENT claimed (docs/research/SLICE_RESIDUE_ROWS.md)",
+        "EXTENT claimed",
         SLICE_RESIDUE_RAW_LABELED,
         "the bytes are source now, so 0 B of these ranges is INCBIN",
     ),
@@ -848,8 +848,8 @@ def render():
     add("")
     add("Every byte of the image is source or raw-data. The census splits the raw-data bytes by its own")
     add("two statuses above; the gate prints a FOUR-way split of the same bytes, measured by")
-    add("`tools/research/citations_in_source.py` (`docs/research/RAW_CITATIONS.csv` carries the")
-    add("per-row evidence) and QUOTED here from `gate.raw_classes()` rather than re-derived:")
+    add("`tools/research/citations_in_source.py`, and QUOTED here from `gate.raw_classes()` rather")
+    add("than re-derived:")
     add("")
     add("| class | bytes | share |")
     add("|---|---|---|")
@@ -897,7 +897,7 @@ def render():
     add("## The raw-labeled runs (R-RAW-001)")
     add("")
     add("A region with a cited code consumer but no code-derived extent is carried as LABELED RAW")
-    add("DATA: `tools/research/rawlabeled.py` writes a fragment per run - one `unk_<ROMADDR>` symbol")
+    add("DATA: `tools/build/rawlabeled.py` writes a fragment per run - one `unk_<ROMADDR>` symbol")
     add("per cited base, with its loader citation, stride and shape - and every symbol's bytes are ONE")
     add("`INCBIN` of a build-time extracted slice of `baserom.gba` (PATH-100-015), so no retail byte")
     add("payload is tracked and `gate.incbin_ranges()` counts every one of those bytes as `raw-data`.")
@@ -974,7 +974,7 @@ def render():
     add("## What this census does not do")
     add("")
     add("- It promotes nothing itself. Promotion is the emitter's job, one family at a time, inside the")
-    add("  end-of-ROM block; the raw-labeled ranges are carried by `tools/research/rawlabeled.py`, which")
+    add("  end-of-ROM block; the raw-labeled ranges are carried by `tools/build/rawlabeled.py`, which")
     add("  parses nothing and claims no extent beyond the cited addresses.")
     add("- It says nothing about runtime behaviour: every status is static evidence.")
     add("")

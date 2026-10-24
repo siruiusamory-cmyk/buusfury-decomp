@@ -3,8 +3,8 @@
 mkdir build
 
 echo ::: Building tools :::
-cmake -B tools/compress/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS="/SAFESEH:NO" -A Win32 tools/compress
-cmake --build tools/compress/build
+call tools\compress\build.cmd
+if errorlevel 1 exit /b 1
 
 echo ::: Decoding and re-encoding images :::
 python tools\assets\generate_assets.py extract --rom baserom.gba

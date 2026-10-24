@@ -11,10 +11,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "mapcontainer"))
 
 import spritefamily as sf
 import def50
+import testkit
 
 
 def rom_bytes():
-    return open(os.path.join(ROOT, "baserom.gba"), "rb").read()
+    return testkit.rom_bytes(os.path.join(ROOT, "baserom.gba"))
 
 
 def test_the_family_is_the_measured_population_and_sum():

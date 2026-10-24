@@ -17,7 +17,7 @@ import emitted  # noqa: E402
 import gate  # noqa: E402
 
 ROM = os.path.join(ROOT, "baserom.gba")
-CSV_OUT = os.path.join(ROOT, "docs", "research", "RAW_CITATIONS.csv")
+CSV_OUT = os.path.join(ROOT, "build", "raw_citations.csv")
 ROM_BASE = 0x08000000
 CLASSES = ("cited", "runtime-cited", "unreferenced")
 
@@ -227,6 +227,7 @@ def main(argv):
         print("print only: nothing written")
         return 0
     text = csv_text(rows)
+    os.makedirs(os.path.dirname(CSV_OUT), exist_ok=True)
     with open(CSV_OUT, "w", encoding="utf-8", newline="\n") as handle:
         handle.write(text)
     print("wrote %s (%d B)" % (os.path.relpath(CSV_OUT, ROOT), len(text)))

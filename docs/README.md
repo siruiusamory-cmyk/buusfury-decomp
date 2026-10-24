@@ -57,7 +57,7 @@ file find each other.
 
 | page | says |
 | --- | --- |
-| [NEWCOMER.md](NEWCOMER.md) | the six steps from a clone to a changed function |
+| [NEWCOMER.md](NEWCOMER.md) | the seven steps from a clone to a changed function |
 | [ASM_INDEX.md](ASM_INDEX.md) | one file per function start, and how to find the file for a name |
 | [NAMING.md](NAMING.md) | function, data and unit names, and the evidence each one needs |
 | [READABILITY.md](READABILITY.md) | the rules a change has to keep readable |

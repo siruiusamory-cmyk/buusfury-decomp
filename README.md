@@ -1,10 +1,13 @@
+<!-- TODO banner: add docs/banner.png, then put it above the title as a centred 900 px wide image. -->
+<!-- TODO demo GIF: a short capture of extract.cmd, rebuild.cmd and the gate printing GATE PASS, saved as docs/demo.gif. -->
+<!-- TODO social preview: set a repository social image in Settings once the banner exists. -->
 # Dragon Ball Z: Buu's Fury disassembly
 
 **A byte-exact disassembly of Dragon Ball Z: Buu's Fury (GBA, USA) that rebuilds the original ROM from tracked source.**
 
 ![License](https://img.shields.io/badge/license-MPL--2.0-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Game%20Boy%20Advance-lightgrey.svg)
-![Build](https://img.shields.io/badge/build-byte--exact-brightgreen.svg)
+![Functions](https://img.shields.io/badge/functions-3,025-lightgrey.svg)
 
 ## Contents
 
@@ -12,6 +15,7 @@
 - [What this is not](#what-this-is-not)
 - [Progress](#progress)
 - [Building](#building)
+- [Tests](#tests)
 - [Repository layout](#repository-layout)
 - [Credits and license](#credits-and-license)
 
@@ -51,9 +55,10 @@ still have no reader that rebuilds them.
 
 ## Building
 
-You need ARM Developer Suite 1.2, Python 3.12, grit, Visual Studio or Build Tools 2022 with the C++
-workload, and your own copy of the game saved as `baserom.gba`. [INSTALL.md](INSTALL.md) has the
-details, and [docs/README.md](docs/README.md) is the guide to the code once it builds.
+The build runs on Windows. You need ARM Developer Suite 1.2, Python 3.12 with `pytest` and
+`capstone`, grit, Visual Studio or Build Tools 2022 with the C++ workload, and your own copy of the
+game saved as `baserom.gba`. [INSTALL.md](INSTALL.md) has the details, and
+[docs/README.md](docs/README.md) is the guide to the code once it builds.
 
 ```
 extract.cmd
@@ -63,13 +68,17 @@ python tools\gate\gate.py
 
 `extract.cmd` builds the compressor from its own source when it is absent, and `rebuild.cmd` builds
 it on the first run, so the three commands need no manual step before them. The gate rebuilds from
-scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the retail ROM.
+scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the retail ROM. Every step
+writes only ignored files.
 
 ## Tests
 
-`python -m pytest -q tools` runs every test file in the tree, and the GitHub Actions workflow runs
-that same command on `ubuntu-latest` without the game. A test that needs your ROM, ARM Developer
-Suite 1.2 or `cmd.exe` skips itself and names the one that is absent.
+`python -m pytest -q tools` runs every test file in the tree, and a test that needs your ROM, ARM
+Developer Suite 1.2 or `cmd.exe` skips itself and names the one that is absent.
+
+The GitHub Actions workflow runs the same command on `ubuntu-latest` without the game. It deselects
+two data-refusal tests whose expected message no longer matches the refusal the harness raises;
+those two fail when your ROM is present and are deselected in CI.
 
 ## Repository layout
 
@@ -79,8 +88,9 @@ Suite 1.2 or `cmd.exe` skips itself and names the one that is absent.
 | `src/` | the few parts already written in C |
 | `include/` | shared assembler and C declarations |
 | `tools/` | what builds the ROM and what checks it; [tools/README.md](tools/README.md) lists every entry |
-| `docs/` | a reader's guide to the code and the game's data |
+| `docs/` | a reader's guide to the code and the game's data; [docs/NEWCOMER.md](docs/NEWCOMER.md) walks from a clone to a changed function |
 | `work/` | the byte ledger the gate reads |
+| `assets/`, `build/` | what `extract.cmd` and `rebuild.cmd` write from your own ROM; never tracked |
 
 ## Credits and license
 

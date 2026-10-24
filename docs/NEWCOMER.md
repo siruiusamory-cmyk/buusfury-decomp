@@ -1,6 +1,6 @@
 # From a clone to a change
 
-Six steps, each a command that prints what the next one needs.
+Seven steps, each a command that prints what the next one needs.
 
 ## 1. Clone
 
@@ -54,7 +54,7 @@ procedure against an isolated encode cache.
 `tools\lint\ASM_INDEX.csv` has one row per function start: `address,kind,symbol,file`.
 
 ```
-findstr /c:"sub_0800536A" tools\lint\ASM_INDEX.csv
+findstr /c:"0x0800536A" tools\lint\ASM_INDEX.csv
 ```
 
 answers with the file that holds it. `docs\ASM_INDEX.md` explains the layout and the data carriers.

@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The README leads with a tagline, a licence, platform and function-count badge row, and a Contents
+  list that carries every section, including Tests. It states that the build runs on Windows and
+  names `pytest` and `capstone` as Python prerequisites, and it says that two data-refusal tests
+  fail when the ROM is present because their expected message no longer matches the refusal the
+  harness raises. Placeholders mark where a banner, a demo GIF and a social preview image go.
+- `docs/NEWCOMER.md` finds a function by its address rather than by its symbol, because the symbol
+  its example named has since been promoted to a measured name, and the page and `docs/README.md`
+  count the seven steps they carry.
+- `INSTALL.md` names the packages the checks import, the Windows host the batch build needs, and the
+  `ADS` directory a non-default installation has to point at.
 - The asset step of `extract.cmd` builds the compressor from its own MASM source when
   `tools/compress/compress.exe` is absent, so a fresh clone reaches the cold gate's pass with no
   manual build, and a failed build is reported as one message naming `tools/compress/build.cmd`.

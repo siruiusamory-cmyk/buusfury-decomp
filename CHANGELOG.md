@@ -100,6 +100,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `docs/banner.png`, shown centred at the top of the README.
 - `tools/README.md`, the one page that says what every remaining tool does and what runs it.
 - `docs/README.md`, the entry point to the reader pages.
 - `tools/lint/lints.py` reports a `tools/lint/ASM_INDEX.csv` address that carries two rows, because a

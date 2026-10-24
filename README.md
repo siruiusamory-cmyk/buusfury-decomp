@@ -1,6 +1,7 @@
-<!-- TODO banner: add docs/banner.png, then put it above the title as a centred 900 px wide image. -->
 <!-- TODO demo GIF: a short capture of extract.cmd, rebuild.cmd and the gate printing GATE PASS, saved as docs/demo.gif. -->
 <!-- TODO social preview: set a repository social image in Settings once the banner exists. -->
+<p align="center"><img src="docs/banner.png" alt="Dragon Ball Z: Buu's Fury" width="900"></p>
+
 # Dragon Ball Z: Buu's Fury disassembly
 
 **A byte-exact disassembly of Dragon Ball Z: Buu's Fury (GBA, USA) that rebuilds the original ROM from tracked source.**

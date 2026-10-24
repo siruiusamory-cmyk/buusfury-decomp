@@ -98,7 +98,7 @@
 	ADD      r2, r0, #0
 	ADD      r1, r5, #0
 	ADD      r0, r4, #0
-	BL       |loc_0800B99C|
+	BL       |Gfx_BuildVitalBars|
 	MOV      r0, #0
 	POP      {r3, r4, r5, pc}
 |sub_0800BE70|

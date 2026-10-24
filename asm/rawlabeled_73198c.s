@@ -10,7 +10,7 @@
 ; cited by 0x08024F6A ldr r6 +0x8 INDEXED base + register (r5, r5, r7), 0x080250AE INDEXED base + register (r0, sp, r0), 0x08025240 ldr r5 +0xc INDEXED base + register (r0, sp, r0)
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_03001068|
 	DCD	|unk_03001C4C|

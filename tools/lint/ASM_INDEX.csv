@@ -413,7 +413,7 @@ address,kind,symbol,file
 0x0800B8FC,start,loc_0800B8FC,asm/loc_0800B8FC.s
 0x0800B91A,unreferenced,sub_0800B91A,asm/sub_0800B91A.s
 0x0800B928,start,Math_Divide1,asm/Math_Divide1.s
-0x0800B99C,start,loc_0800B99C,asm/loc_0800B99C.s
+0x0800B99C,start,Gfx_BuildVitalBars,asm/Gfx_BuildVitalBars.s
 0x0800BAFC,unreferenced,sub_0800BAFC,asm/sub_0800BAFC.s
 0x0800BAFE,unreferenced,sub_0800BAFE,asm/sub_0800BAFE.s
 0x0800BC20,unreferenced,sub_0800BC20,asm/sub_0800BC20.s

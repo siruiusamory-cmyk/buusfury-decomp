@@ -1,6 +1,7 @@
 INT_MAX                     EQU     0x7FFFFFFF
 g_HeapStart                 EQU     0x02000800
 g_FreeListTail              EQU     0x03003488
+g_KeyState                  EQU     0x03003300
 g_SramPresentFlag           EQU     0x03001004
 g_EepromCachePresent        EQU     0x03004A68
 g_EepromDescriptorPointer   EQU     0x030052F8

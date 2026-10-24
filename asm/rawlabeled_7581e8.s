@@ -9,7 +9,7 @@
 |unk_087581EC|
 ; cited by 0x0805271E ldr r0 +0x4
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|
 	EXPORT	|unk_087581F4|
 |unk_087581F4|
@@ -31,7 +31,7 @@
 ; cited by 0x08030F62 ldr r0 +0xc, 0x08030F86 ldr r0 +0xc
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|
 	DCD	|unk_03001068|
 	DCD	|unk_030019A4|

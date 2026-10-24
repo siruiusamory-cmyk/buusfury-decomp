@@ -30,7 +30,7 @@ It builds one ROM:
 
 This is not a decompilation. Almost all of the game's code is still assembly, and only a handful of
 small C files exist in `src/`. Most functions are still named by their address (`sub_08000158`,
-`loc_0800016A`): 2,871 of the 3,024 functions the census classifies. Naming them is the next
+`loc_0800016A`): 2,870 of the 3,024 functions the census classifies. Naming them is the next
 readability step, and `tools/lint/lints.py` holds the count to a measured baseline with
 `tools/lint/NAMING_LEDGER.csv` as the record of every promotion. No part of the code is claimed to
 match the original compiler's C output.

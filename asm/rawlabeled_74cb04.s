@@ -25,5 +25,5 @@
 ; cited by 0x08052912 ldr r0 +0x4
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|

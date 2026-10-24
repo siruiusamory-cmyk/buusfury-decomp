@@ -1,7 +1,7 @@
 unk_087b5b64
         ; 2 ldr-literal site(s) load 0x087B5B64 (0x08012242, 0x080122C8): thumb
 	INCBIN	baserom.gba_0x7b5b64_0x7b5b80.extracted
-unk_087b5b80
+g_FrameState
         ; 3 ldr-literal site(s) load 0x087B5B80 (0x0803D784, 0x0803D7BE, 0x0803D7FE): thumb
 	INCBIN	baserom.gba_0x7b5b80_0x7b5b94.extracted
 unk_087b5b94

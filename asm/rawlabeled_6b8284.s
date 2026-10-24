@@ -5,7 +5,7 @@
 ; cited by 0x080164E4 ldr r4 +0xc, 0x080165A4 ldr r6 +0x8
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_0807012C|
 	DCD	|unk_03001068|

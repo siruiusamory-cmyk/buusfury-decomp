@@ -65,6 +65,44 @@ def test_a_caller_role_row_must_quote_a_call_to_it(tmp_path):
     assert name_evidence.audit(image(), bad)[0]["verdict"] == "FAIL"
 
 
+def thumb_bl(offset, delta):
+    high = 0xF000 | (((delta >> 22) & 1) << 10) | ((delta >> 12) & 0x3FF)
+    low = 0xF800 | ((delta >> 1) & 0x7FF)
+    data = bytearray(offset + 4)
+    struct.pack_into("<HH", data, offset, high, low)
+    return bytes(data)
+
+
+def test_a_thumb_bl_pair_decodes_to_its_target_from_pc_plus_four():
+    rom = thumb_bl(0x100, 0x2F8)
+    site = name_evidence.ROM_BASE + 0x100
+    found = name_evidence.instruction(rom, site, "thumb")
+    assert found is not None
+    assert found.size == 4
+    assert found.mnemonic == "bl"
+    assert name_evidence.call_target(rom, site) == site + 4 + 0x2F8
+
+
+def test_a_backward_thumb_bl_offset_is_sign_extended():
+    rom = thumb_bl(0x200, -0x102)
+    site = name_evidence.ROM_BASE + 0x200
+    assert name_evidence.call_target(rom, site) == site + 4 - 0x102
+
+
+def test_the_walk_reads_a_thumb_bl_as_one_instruction():
+    rom = thumb_bl(0x100, 0x2F8)
+    walked = [found.address for found in name_evidence.steps(rom, (0x100, 4), "thumb")]
+    assert walked == [name_evidence.ROM_BASE + 0x100]
+
+
+def test_a_caller_role_row_cites_a_thumb_bl_site(tmp_path):
+    root = crafted(tmp_path, '0x08049144,sub_08049144,Thunk_PaletteCopy,caller-role,'
+                             '"0x0800657A calls it"')
+    rom = image()
+    assert name_evidence.call_target(rom, 0x0800657A) == 0x08049144
+    assert name_evidence.audit(rom, root)[0]["verdict"] == "PASS"
+
+
 def test_a_pool_word_and_the_next_start_bound_the_body():
     data = bytearray(0x140)
     struct.pack_into("<8H", data, 0x100, 0x4801, 0x4770, 0x46C0, 0x46C0,

@@ -41,7 +41,7 @@
 	MOVNE    r0, #1
 	BX       lr
 |arm_08054FBC|
-	DCD     0x03003300
+	DCD     g_KeyState
 |arm_08054FC0|
 	DCD     0x03003898
 |arm_08054FC4|
@@ -773,5 +773,5 @@
 |arm_08055618|
 	DCD     0x03001068
 |arm_0805561C|
-	DCD     0x03003300
+	DCD     g_KeyState
 	CODE16

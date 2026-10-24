@@ -14,7 +14,7 @@
 |unk_0875930C|
 ; cited by 0x0803363A ldr r0 +0xc, 0x08033674 ldr r0 +0x8, 0x08033786 ldr r5 +0x0 ldr r5 +0x4 INDEXED base + register (r0, r0, r7)
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_0806EE6C|
 	DCD	|unk_0806E050|

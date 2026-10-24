@@ -41,7 +41,7 @@
 ; cited by 0x08024D98 ldr r0 +0xc INDEXED ldr [r6 + reg], 0x08024E44 ldr r0 +0x8 INDEXED base + register (r0, r0, r1)
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|
 	DCD	|unk_03001068|
 	DCD	|unk_0806E050|

@@ -31,6 +31,8 @@ BOUNDS = os.path.join("tools", "research", "FUNCTION_BOUNDS.csv")
 POOL_IMMEDIATE = re.compile(r"\[pc,\s*#(0x[0-9a-f]+|\d+)\]")
 THUMB_LDR_LITERAL = 0xF800
 THUMB_LDR_BASE = 0x4800
+THUMB_CALL_HIGH = 0xF000
+THUMB_CALL_LOW = 0xF800
 THUMB_SWI = 0xDF00
 SWI = (0x0F, 0x00)
 
@@ -44,6 +46,19 @@ def code_rows():
                   if row[2] in ("thumb", "arm"))
 
 
+def call_target(rom, address):
+    offset = address - ROM_BASE
+    if offset < 0 or offset + 4 > len(rom):
+        return None
+    high, low = struct.unpack_from("<HH", rom, offset)
+    if high & 0xF800 != THUMB_CALL_HIGH or low & 0xF800 != THUMB_CALL_LOW:
+        return None
+    delta = ((high & 0x3FF) << 12) | ((low & 0x7FF) << 1)
+    if high & 0x400:
+        delta -= 0x400000
+    return address + 4 + delta
+
+
 def instruction(rom, address, mode):
     offset = address - ROM_BASE
     if mode == "arm" and address % 4:
@@ -51,6 +66,8 @@ def instruction(rom, address, mode):
     found = next(iter(ENGINES[mode].disasm(rom[offset:offset + 4], address, count=1)), None)
     if found is None:
         return None
+    if mode == "thumb" and found.mnemonic == "bl" and call_target(rom, address) is not None:
+        return found
     if found.size != (2 if mode == "thumb" else 4):
         return None
     return found
@@ -209,11 +226,13 @@ def walk(rom, inside=False, root=ROOT):
 
 
 def call_to(rom, site, address):
-    for mode in ("thumb", "arm"):
-        found = decode_one(rom, site, mode)
-        if found is not None and found.mnemonic in ("bl", "blx") \
-                and found.op_str.startswith("#"):
-            return int(found.op_str[1:], 0) == address
+    target = call_target(rom, site)
+    if target is not None:
+        return target == address
+    found = decode_one(rom, site, "arm")
+    if found is not None and found.mnemonic in ("bl", "blx") \
+            and found.op_str.startswith("#"):
+        return int(found.op_str[1:], 0) == address
     return False
 
 

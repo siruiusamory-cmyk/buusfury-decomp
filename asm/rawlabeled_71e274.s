@@ -55,10 +55,10 @@
 |unk_087207EC|
 ; cited by 0x0801E234 ldr r6 +0x8, 0x0801E380 ldr r0 +0x8 INDEXED ldr [r1 + reg], 0x0801E3EC ldr r1 +0x4 INDEXED base + register (r0, r1, r0), 0x0801E440 ldr r0 +0x0 ldr r0 +0x4 INDEXED base + register (r0, r0, r7)
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_0807012C|
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_0806E050|
 	DCD	|unk_03002BD4|
@@ -83,13 +83,13 @@
 |unk_08720834|
 ; cited by 0x0801ED6A ldr r6 +0x4, 0x0801EF90 ldr r2 +0x0, 0x0801EFF8 ldr r2 +0x0
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_0807012C|
 	EXPORT	|unk_0872083C|
 |unk_0872083C|
 ; cited by 0x0801FE9A ldr r3 +0x4 INDEXED base + register (r7, r6, r1) ldr r3 +0x0
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03003898|
 	DCD	|unk_0807012C|
 	DCD	|unk_03001068|
@@ -207,7 +207,7 @@
 |unk_0872BF94|
 ; cited by 0x08052E86 ldr r0 +0x4
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|
 	DCD	|unk_030019A4|
 	EXPORT	|unk_0872BFA0|

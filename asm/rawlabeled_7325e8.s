@@ -10,6 +10,6 @@
 ; cited by 0x080261FA ldr r0 +0x4, 0x08026246 ldr r0 +0x4, 0x08026260 ldr r0 +0x4, 0x08026360 ldr r1 +0x0
 
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_03001C4C|
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|

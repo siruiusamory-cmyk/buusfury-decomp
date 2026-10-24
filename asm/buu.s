@@ -437,7 +437,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE loc_0800B8FC.s
 	INCLUDE sub_0800B91A.s
 	INCLUDE Math_Divide1.s
-	INCLUDE loc_0800B99C.s
+	INCLUDE Gfx_BuildVitalBars.s
 	INCLUDE sub_0800BAFC.s
 	INCLUDE sub_0800BAFE.s
 	INCLUDE sub_0800BC20.s
@@ -30142,7 +30142,7 @@ unk_03003124 EQU     0x03003124
 ; cited by 0x00005204 (a pool word names 0x080561CC)
 		INCBIN	baserom.gba_0x561cc_0x561dc.extracted
 |PTR_DAT_080561dc|
-		DCD			0x03003300
+		DCD			g_KeyState
 |PTR_DAT_080561e0|
 |unk_080561E0|
 		INCBIN	baserom.gba_0x561e0_0x561e4.extracted

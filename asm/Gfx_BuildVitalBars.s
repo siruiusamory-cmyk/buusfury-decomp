@@ -1,5 +1,5 @@
 	CODE16
-|loc_0800B99C|
+|Gfx_BuildVitalBars|
 	PUSH     {r4, r5, r6, r7, lr}
 	SUB      sp, #0x1fc
 	ADD      r5, r2, #0

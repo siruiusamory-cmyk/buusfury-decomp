@@ -14,7 +14,7 @@
 |unk_0877AF44|
 ; cited by 0x080397F2 ldr r0 +0x4, 0x0803982C ldr r0 +0x0
 
-	DCD	|unk_03003300|
+	DCD	|g_KeyState|
 	DCD	|unk_0807012C|
 	EXPORT	|unk_0877AF4C|
 |unk_0877AF4C|

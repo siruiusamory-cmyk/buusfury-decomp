@@ -122,7 +122,7 @@
 	ADD      r2, r0, r1
 	LDR      r1, [sp, #8]
 	ADD      r0, r5, #0
-	BL       |loc_0800B99C|
+	BL       |Gfx_BuildVitalBars|
 	MOV      r0, #0
 	ADD      sp, #0xc
 	POP      {r4, r5, r6, r7, pc}

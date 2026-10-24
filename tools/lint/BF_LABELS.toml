@@ -8363,7 +8363,7 @@ address = 0x0800b994
 mode = "thumb"
 
 [[functions]]
-name = "loc_0800B99C"
+name = "Gfx_BuildVitalBars"
 address = 0x0800b99c
 mode = "thumb"
 

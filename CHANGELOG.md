@@ -41,6 +41,14 @@ All notable changes to this project are documented here. The format follows
   that runs after it in the same process reads the repository again instead of that tree.
 - The cold gate counts a cache entry the target already carries as skipped and leaves it in place,
   instead of renaming over it, so a promotion keeps what the target already holds on every platform.
+- The HUD vital-bar builder carries the name its bytes prove: it appends three 8-byte display entries
+  and sets each bar width as `value*41/max` through the BIOS divide. Its assembly file, label,
+  export, index row, ledger row and recompiler label move with it. The frame descriptor at
+  `0x087B5B80` and the key state at `0x03003300` carry names too, and the key-state constant moves
+  from the transcribed area into `asm/ram.inc`.
+- `tools/research/name_evidence.py` decodes the four-byte Thumb `bl` pair from both of its halfwords,
+  so a call is one instruction with a signed offset from `pc+4`, and its evidence audit can cite a
+  call. The hardware-access walk no longer reads a call's second halfword as an instruction.
 
 ### Removed
 

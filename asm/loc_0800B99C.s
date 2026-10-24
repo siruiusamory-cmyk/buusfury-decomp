@@ -154,7 +154,7 @@
 	STRB     r0, [r3, #3]
 	MOV      r1, #0x48
 	ADD      r0, r5, #0
-	BL       |loc_0801363E|
+	BL       |Stats_GetXpProgress|
 	MOV      r3, #5
 	LSL      r3, r3, #8
 	ADD      r3, sp

@@ -3947,13 +3947,13 @@ size = 12
 addr = 0x08013914
 mode = "thumb"
 size = 16
-name = "sub_08013914"
+name = "Stats_AwardXpIfAlive"
 
 [[code]]
 addr = 0x08013924
 mode = "thumb"
 size = 364
-name = "sub_08013924"
+name = "Stats_AwardXp"
 
 [[code]]
 addr = 0x08013a90

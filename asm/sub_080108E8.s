@@ -16,7 +16,7 @@
 	ADD      r0, r4, #0
 	ADD      r1, r2, r1
 	BL       |inc_0x046118_0x049114| + 0x98a
-	BL       |loc_080135D2|
+	BL       |Stats_GetLevel|
 	STR      r0, [sp, #0x6c]
 	MOV      r0, #0
 	MVN      r0, r0

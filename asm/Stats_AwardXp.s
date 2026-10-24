@@ -1,5 +1,5 @@
 	CODE16
-|sub_08013924|
+|Stats_AwardXp|
 |unk_08013924|
 		LDRB r0, [r4, #0x14]
 		LDR r1, [pc, #0x274]
@@ -31,7 +31,7 @@
 		ADD r0, r0, r7
 		MOV r6, #0
 		ADD r1, r5, #0
-		BL       |loc_08013914|
+		BL       |Stats_AwardXpIfAlive|
 		ORR r6, r0
 		LDR r0, [pc, #0x238]
 		MOV r3, #0x68
@@ -43,7 +43,7 @@
 		ADD r0, r1, r0
 		ADD r0, r0, r7
 		ADD r1, r5, #0
-		BL       |loc_08013914|
+		BL       |Stats_AwardXpIfAlive|
 		ORR r0, r6
 		ADD r5, r0, #0
 		BEQ      |loc_080139E8|
@@ -67,7 +67,7 @@
 		ADD r1, r0, r1
 		ADD r3, r6, #0
 		ADD r0, r4, #0
-		BL       |loc_0801375E|
+		BL       |Stats_FuseRecord|
 		LDRH r1, [r4, #0x18]
 		LDR r6, [pc, #0x1f0]
 		STRH r1, [r4, #0x16]
@@ -99,7 +99,7 @@
 		B        |inc_0x0158_0x143f2| + 0x137ca
 |loc_080139EC|
 		ADD r0, r4, #0
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		ADD r6, r0, #0
 		LDR r0, [r4, #0x24]
 		ADD r0, r0, r5
@@ -127,11 +127,11 @@
 		B        |inc_0x0158_0x143f2| + 0x137ca
 |loc_08013A20|
 		ADD r0, r4, #0
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		ADD r2, r0, #0
 		ADD r1, r6, #0
 		ADD r0, r4, #0
-		BL       |loc_08013678|
+		BL       |Stats_ApplyLevelUp|
 		LDR r6, [pc, #0x170]
 		MOV r5, #0
 		LDR r0, [r6]

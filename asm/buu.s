@@ -94,7 +94,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08004380.s
 	INCLUDE loc_08004396.s
 	INCLUDE loc_080043C2.s
-	INCLUDE loc_080043D8.s
+	INCLUDE Stats_AwardXpToActive.s
 	INCLUDE loc_0800441E.s
 	INCLUDE Object_AppendEntry1.s
 	INCLUDE sub_0800446C.s
@@ -763,7 +763,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08013078.s
 	INCLUDE sub_08013210.s
 	INCLUDE sub_0801332A.s
-	INCLUDE loc_0801339C.s
+	INCLUDE Stats_LoadRecord.s
 	INCLUDE sub_0801341C.s
 	INCLUDE sub_0801342C.s
 	INCLUDE sub_080134DE.s
@@ -775,16 +775,15 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_08013536.s
 	INCLUDE sub_08013598.s
 	INCLUDE loc_080135A2.s
-	INCLUDE loc_080135BC.s
-	INCLUDE loc_080135D2.s
+	INCLUDE Stats_SetLevel.s
+	INCLUDE Stats_GetLevel.s
 	INCLUDE sub_0801360A.s
 	INCLUDE sub_0801360E.s
-	INCLUDE loc_0801363E.s
-	INCLUDE loc_08013678.s
-	INCLUDE loc_0801375E.s
-	INCLUDE sub_08013914.s
-	INCLUDE loc_08013914.s
-	INCLUDE sub_08013924.s
+	INCLUDE Stats_GetXpProgress.s
+	INCLUDE Stats_ApplyLevelUp.s
+	INCLUDE Stats_FuseRecord.s
+	INCLUDE Stats_AwardXpIfAlive.s
+	INCLUDE Stats_AwardXp.s
 	INCLUDE List_AppendByte1.s
 	INCLUDE loc_08013ABA.s
 	INCLUDE loc_08013B12.s
@@ -2349,7 +2348,7 @@ unk_03003124 EQU     0x03003124
         	MOV r0, #0x37
         	STR r0, [r4, #8]
         	ADD r0, r5, #0
-        	BL       |loc_080135D2|
+        	BL       |Stats_GetLevel|
         	ADD r7, r0, #0
         	LDRB r0, [r5, #0x14]
         	LDR r1, [pc, #0x310]
@@ -15776,7 +15775,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [r3, #0x24]
         	MOV r1, #0x7e
         	STR r1, [r3, #0x28]
-        	BL       |loc_080135D2|
+        	BL       |Stats_GetLevel|
         	LDRB r2, [r5, #0x15]
         	CMP r0, r2
         	BLT      |loc_08031B84|
@@ -16952,7 +16951,7 @@ unk_03003124 EQU     0x03003124
         	STR r1, [r3, #0x28]
         	MOV r1, #0x7e
         	STR r1, [r3, #0x2c]
-        	BL       |loc_080135D2|
+        	BL       |Stats_GetLevel|
         	LDRB r2, [r7, #0x15]
         	CMP r0, r2
         	BLT      |loc_080324F2|

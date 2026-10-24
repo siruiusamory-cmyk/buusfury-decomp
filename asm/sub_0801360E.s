@@ -9,7 +9,7 @@
 	LSR      r1, r6, #1
 	PUSH     {r4, lr}
 	ADD      r4, r0, #0
-	BL       |loc_080135D2|
+	BL       |Stats_GetLevel|
 	CMP      r0, #0xc8
 	BLT      |loc_0801362C|
 	MOV      r0, #0

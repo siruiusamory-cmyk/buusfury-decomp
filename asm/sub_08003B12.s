@@ -53,16 +53,16 @@
 	LSL      r1, r1, #3
 	ADD      r5, r0, r1
 	ADD      r0, r5, #0
-	BL       |loc_080135D2|
+	BL       |Stats_GetLevel|
 	CMP      r0, r4
 	BGE      |loc_08003B92|
 	ADD      r2, r4, #0
 	ADD      r1, r0, #0
 	ADD      r0, r5, #0
-	BL       |loc_08013678|
+	BL       |Stats_ApplyLevelUp|
 	ADD      r1, r4, #0
 	ADD      r0, r5, #0
-	BL       |loc_080135BC|
+	BL       |Stats_SetLevel|
 |loc_08003B92|
 	POP      {r3, r4, r5, pc}
 	PUSH     {r4, lr}

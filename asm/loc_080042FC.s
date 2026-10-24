@@ -18,7 +18,7 @@
 	MUL      r0, r4
 	ADD      r0, r0, r5
 	ADD      r0, r0, r6
-	BL       |loc_0801339C|
+	BL       |Stats_LoadRecord|
 	ADD      r4, #1
 	CMP      r4, #9
 	BLT      |loc_08004310|

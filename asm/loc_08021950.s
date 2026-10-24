@@ -23,10 +23,10 @@
 		BL       |sub_0804912C|
 		ADD r0, sp, #0x80
 		LDR r1, [r7, #0x24]
-		BL       |loc_0801339C|
+		BL       |Stats_LoadRecord|
 		ADD r0, sp, #0x18
 		LDR r1, [r7, #0x28]
-		BL       |loc_0801339C|
+		BL       |Stats_LoadRecord|
 		LDR r0, [r7, #0x28]
 		LDR r0, [r0, #0x14]
 		BL       |inc_0x0158_0x143f2|

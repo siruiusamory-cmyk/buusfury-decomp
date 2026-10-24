@@ -365,7 +365,7 @@
 	ADD      r5, r2, #0
 	ADD      r3, r7, #0
 	ADD      r0, r4, #0
-	BL       |loc_0801375E|
+	BL       |Stats_FuseRecord|
 	LDRB     r0, [r4]
 	MOV      r1, #1
 	ORR      r0, r1

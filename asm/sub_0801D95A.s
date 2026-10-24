@@ -208,7 +208,7 @@
 		MOV r0, #0x58
 		STR r0, [sp, #0x124]
 		LDR r0, [sp, #0x118]
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		LDRB r2, [r6, #0x15]
 		CMP r0, r2
 		BLT      |loc_0801DAF6|
@@ -272,7 +272,7 @@
 		ADD r0, sp, #0x11c
 		BL       |loc_0803DD66|
 		LDR r0, [sp, #0x118]
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		LDRB r1, [r5, #0x15]
 		CMP r0, r1
 		BLT      |loc_0801DB72|
@@ -286,7 +286,7 @@
 		B        |loc_0801DB90|
 |loc_0801DB7A|
 		LDR r0, [sp, #0x118]
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		LDRB r1, [r5, #0x15]
 		CMP r0, r1
 		BLT      |loc_0801DB8A|

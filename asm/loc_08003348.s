@@ -76,7 +76,7 @@
 	LDR      r1, [r0, #4]
 	LDR      r0, [pc, #0x64]
 	LDR      r0, [r0, #0x14]
-	BL       |loc_080043D8|
+	BL       |Stats_AwardXpToActive|
 	POP      {r3, pc}
 	LDR      r1, [pc, #0x5c]
 	MOV      r3, #0x68

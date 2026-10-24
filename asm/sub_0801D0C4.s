@@ -35,7 +35,7 @@
 		MUL r0, r7
 		ADD r7, r0, r1
 		ADD r0, r6, #0
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		LDRB r1, [r7, #0x15]
 		CMP r0, r1
 		BLT      |loc_0801D12A|

@@ -1,5 +1,5 @@
 	CODE16
-|loc_080135D2|
+|Stats_GetLevel|
 	PUSH     {r4, r5}
 	LDR      r3, [r0, #0x24]
 	MOV      r1, #0

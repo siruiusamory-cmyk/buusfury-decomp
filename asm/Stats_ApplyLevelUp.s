@@ -1,5 +1,5 @@
 	CODE16
-|loc_08013678|
+|Stats_ApplyLevelUp|
 	PUSH     {r0, r1, r2, r4, r5, r6, r7, lr}
 	ADD      r4, r0, #0
 	LDRB     r0, [r0, #0x14]

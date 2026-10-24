@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Nine transcribed starts in the character-stats slice carry the names their bytes prove: the XP
+  award body, the guard that gates it on the HP halfword, the award-to-active entry, the level getter,
+  setter and level-up apply, the record loader, fusion and the progress meter. Their assembly files,
+  labels, index rows, ledger rows and recompiler label export move with them. The empty label-only
+  file at `0x08013914` leaves the tree, so the start and its body file no longer name the same
+  address twice.
 - `docs/` is a reader's guide now. [docs/README.md](docs/README.md) says what the game's code is
   organised into, how to build it, how names are chosen and where to look next; the pages that were
   records of investigation rounds, censuses and play sessions have left the tree. The repository's

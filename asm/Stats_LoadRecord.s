@@ -1,5 +1,5 @@
 	CODE16
-|loc_0801339C|
+|Stats_LoadRecord|
 	PUSH     {r4, r5}
 	LDRH     r2, [r1, #2]
 	LSL      r2, r2, #0x10

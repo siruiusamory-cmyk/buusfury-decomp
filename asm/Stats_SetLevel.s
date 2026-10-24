@@ -1,5 +1,5 @@
 	CODE16
-|loc_080135BC|
+|Stats_SetLevel|
 	LDR      r2, [pc, #0x50]
 	LSL      r1, r1, #2
 	ADD      r1, r1, r2

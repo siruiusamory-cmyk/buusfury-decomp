@@ -1,5 +1,5 @@
 	CODE16
-|loc_0801375E|
+|Stats_FuseRecord|
 	PUSH     {r3, r4, r5, r6, r7}
 	LDRB     r4, [r1, #0x14]
 	ADD      r6, r3, #0

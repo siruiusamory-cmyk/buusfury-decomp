@@ -3256,7 +3256,7 @@ address = 0x080043c2
 mode = "thumb"
 
 [[functions]]
-name = "loc_080043D8"
+name = "Stats_AwardXpToActive"
 address = 0x080043d8
 mode = "thumb"
 
@@ -13307,7 +13307,7 @@ address = 0x08013390
 mode = "thumb"
 
 [[functions]]
-name = "loc_0801339C"
+name = "Stats_LoadRecord"
 address = 0x0801339c
 mode = "thumb"
 
@@ -13482,7 +13482,7 @@ address = 0x080135ae
 mode = "thumb"
 
 [[functions]]
-name = "loc_080135BC"
+name = "Stats_SetLevel"
 address = 0x080135bc
 mode = "thumb"
 
@@ -13492,7 +13492,7 @@ address = 0x080135c8
 mode = "thumb"
 
 [[functions]]
-name = "loc_080135D2"
+name = "Stats_GetLevel"
 address = 0x080135d2
 mode = "thumb"
 
@@ -13539,7 +13539,7 @@ address = 0x0801362c
 mode = "thumb"
 
 [[functions]]
-name = "loc_0801363E"
+name = "Stats_GetXpProgress"
 address = 0x0801363e
 mode = "thumb"
 
@@ -13549,7 +13549,7 @@ address = 0x08013658
 mode = "thumb"
 
 [[functions]]
-name = "loc_08013678"
+name = "Stats_ApplyLevelUp"
 address = 0x08013678
 mode = "thumb"
 
@@ -13589,7 +13589,7 @@ address = 0x08013752
 mode = "thumb"
 
 [[functions]]
-name = "loc_0801375E"
+name = "Stats_FuseRecord"
 address = 0x0801375e
 mode = "thumb"
 
@@ -13655,13 +13655,13 @@ end = 0x08013914
 mode = "thumb"
 
 [[functions]]
-name = "loc_08013914"
+name = "Stats_AwardXpIfAlive"
 address = 0x08013914
 end = 0x08013924
 mode = "thumb"
 
 [[functions]]
-name = "sub_08013924"
+name = "Stats_AwardXp"
 address = 0x08013924
 end = 0x08013a90
 mode = "thumb"

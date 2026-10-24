@@ -132,3 +132,12 @@ address,old,new,evidence_class,evidence
 0x0804F944,sub_0804F944,Object_ReadPosition1,behaviour-test,"tools/behaviour/test_table.py::test_object_read_position1_shifts_the_two_fixed_point_words_right_by_eight runs it on a crafted object: asm/Object_ReadPosition1.s:5-6 add 0x1A0 to r1, :7-8 load the two dwords there, :10-11 shift each right by eight and :16 store both at r0; 0x00012300 and 0x000456FF store 0x123 and 0x456"
 0x08050544,loc_08050544,Object_Create1,behaviour-test,tools/behaviour/test_table.py::test_object_create1_stores_the_table_and_the_argument_and_clears_the_two_fields
 0x08050D30,loc_08050D30,Object_InstallHandlerTable1,behaviour-test,tools/behaviour/test_table.py::test_object_install_handler_table1_stores_the_handler_table_word_at_0_and_reaches_the_handler_the_object_at_4_names runs it on a crafted object at 0x02000000 and asserts the one store it makes and the one call target; stores the handler-table word 0x08049ACC at +0 and reaches the handler the object at +4 names
+0x080043D8,loc_080043D8,Stats_AwardXpToActive,caller-role,"0x080033E4 and 0x0804F834 call it; the body multiplies the active index by 0x68, adds 0x4F8 to reach the record, then calls the award"
+0x0801339C,loc_0801339C,Stats_LoadRecord,callee-role,"0x080133A6 writes the HP halfword from [r1,#2] and 0x080133C4 the EP halfword from [r1,#4]; five call sites loop 9 records with stride 0x68"
+0x080135BC,loc_080135BC,Stats_SetLevel,callee-role,0x080135C8 stores the curve value indexed by level-50 into +0x24
+0x080135D2,loc_080135D2,Stats_GetLevel,callee-role,0x080135D4 reads +0x24 before the binary search over the curve
+0x0801363E,loc_0801363E,Stats_GetXpProgress,callee-role,0x08013646 saturates at the last curve entry and 0x0801365A calls the level getter
+0x08013678,loc_08013678,Stats_ApplyLevelUp,callee-role,0x080136F4 grows the HP maximum at +0x18 and 0x08013732 the EP maximum at +0x1C
+0x0801375E,loc_0801375E,Stats_FuseRecord,callee-role,0x080137C6 averages the two HP maxima into +0x18 and 0x0801384C the two XP values into +0x24
+0x08013914,loc_08013914,Stats_AwardXpIfAlive,caller-role,0x080043E8 calls it from the award-to-active wrapper; when the HP halfword at +0x16 is not zero its 16 bytes branch to Stats_AwardXp at the next start, which awards the XP, and the fall-through returns
+0x08013924,sub_08013924,Stats_AwardXp,callee-role,0x080139F4 stores the awarded XP at +0x24, 0x08013A08 reads the curve for the new level, 0x08013A2C calls the level-up apply, and 0x080139AA calls the fusion routine before the healed record returns

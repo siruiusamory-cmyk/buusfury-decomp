@@ -71,7 +71,7 @@
 		MOV r1, #0x9f
 		LSL r1, r1, #3
 		ADD r0, r0, r1
-		BL       |loc_080135D2|
+		BL       |Stats_GetLevel|
 		LDR r1, [r5]
 		CMP r0, r1
 		BLE      |loc_0801587E|

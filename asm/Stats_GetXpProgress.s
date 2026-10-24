@@ -1,5 +1,5 @@
 	CODE16
-|loc_0801363E|
+|Stats_GetXpProgress|
 	PUSH     {r4, r5, r6, lr}
 	ADD      r4, r0, #0
 	LDR      r0, [r0, #0x24]
@@ -15,7 +15,7 @@
 	POP      {r4, r5, r6, pc}
 |loc_08013658|
 	ADD      r0, r4, #0
-	BL       |loc_080135D2|
+	BL       |Stats_GetLevel|
 	LDR      r1, [r4, #0x24]
 	LSL      r0, r0, #2
 	ADD      r2, r0, r6

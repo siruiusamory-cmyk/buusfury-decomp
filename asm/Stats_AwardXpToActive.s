@@ -1,5 +1,5 @@
 	CODE16
-|loc_080043D8|
+|Stats_AwardXpToActive|
 	PUSH     {r3, lr}
 	LDRB     r2, [r0]
 	MOV      r3, #0x68
@@ -8,7 +8,7 @@
 	MOV      r2, #0x9f
 	LSL      r2, r2, #3
 	ADD      r0, r0, r2
-	BL       |loc_08013914|
+	BL       |Stats_AwardXpIfAlive|
 	POP      {r3, pc}
 	PUSH     {r4, r5, r6}
 	ADD      r3, r0, #0

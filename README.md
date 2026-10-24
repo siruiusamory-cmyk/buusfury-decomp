@@ -63,6 +63,12 @@ python tools\gate\gate.py
 `rebuild.cmd` builds the compressor from its own source on the first run. The gate rebuilds from
 scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the retail ROM.
 
+## Tests
+
+`python -m pytest -q tools` runs every test file in the tree, and the GitHub Actions workflow runs
+that same command on `ubuntu-latest` without the game. A test that needs your ROM, ARM Developer
+Suite 1.2 or `cmd.exe` skips itself and names the one that is absent.
+
 ## Repository layout
 
 | Path | Contents |

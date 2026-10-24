@@ -6,12 +6,19 @@ import os
 import re
 import shutil
 import sys
+
+import pytest
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools", "gate"))
+
+pytestmark = pytest.mark.skipif(
+    not os.path.exists(os.path.join(os.path.dirname(os.path.dirname(HERE)),
+                                    "baserom.gba")),
+    reason="baserom.gba is absent, so no symbol table can be derived")
 
 import gate
 import pytest

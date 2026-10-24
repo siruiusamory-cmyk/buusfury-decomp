@@ -1,6 +1,7 @@
 import pytest
 
 from tools import encode_cache
+from tools import testkit
 from tools.build import generate_jcalg1 as G
 
 SOURCE = """\tCODE16
@@ -95,6 +96,7 @@ def test_the_jcalg1_store_directory_is_ignored_by_git():
 
 def test_the_generator_store_is_not_the_store_the_emitters_are_measured_through(
         tmp_path, monkeypatch):
+    testkit.require(G.COMPRESS, "compress.exe is absent, so the encoder store cannot be opened")
     monkeypatch.setenv(encode_cache.CACHE_ENV, str(tmp_path))
     monkeypatch.delenv(encode_cache.STAMP_ENV, raising=False)
     compress, _stats, close = G.open_encode_store(lambda payload: b"\x02" + payload)

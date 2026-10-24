@@ -18,6 +18,13 @@ All notable changes to this project are documented here. The format follows
 - The compressor is compiled from its own source. The jcalg1 MASM source (MIT) is vendored under
   `tools/compress/jcalg1/`, `tools/compress/build.cmd` builds it with the Visual Studio toolchain,
   and `rebuild.cmd` calls that when the binary is absent.
+- The GitHub Actions workflow runs every test file in `tools/` instead of one of them, so a test that
+  regresses anywhere in the tree fails the build; the tests that need your ROM, ARM Developer Suite
+  1.2 or `cmd.exe` skip themselves and name what is absent.
+- `tools/lint/BF_LABELS.toml` carries the name each start carries in the tree (`loc_…`, `dat_…`,
+  `unk_…`) instead of a `sub_…` name derived from the census kind.
+- `tools/lint/ASM_INDEX.csv` carries one row per address: the alias stub a start also has no longer
+  takes a second row.
 
 ### Removed
 
@@ -29,6 +36,8 @@ All notable changes to this project are documented here. The format follows
 
 - `tools/README.md`, the one page that says what every remaining tool does and what runs it.
 - `docs/README.md`, the entry point to the reader pages.
+- `tools/lint/lints.py` reports a `tools/lint/ASM_INDEX.csv` address that carries two rows, because a
+  reader needs one.
 
 ### Building
 

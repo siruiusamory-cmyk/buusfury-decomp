@@ -538,6 +538,18 @@ def test_a_slice_file_and_a_misnamed_function_file_are_caught():
                for finding in misnamed)
 
 
+def test_an_index_address_with_two_rows_is_caught():
+    census = "address,kind,limb,parent\n0x08000158,start,,\n"
+    index = ("address,kind,symbol,file\n"
+             "0x08000158,start,sub_08000158,asm/sub_08000158.s\n"
+             "0x08000158,start,loc_08000158,asm/loc_08000158.s\n")
+    documents = [("asm/sub_08000158.s", "|sub_08000158|\n\tBX lr\n"),
+                 ("asm/loc_08000158.s", "|loc_08000158|\n")]
+    findings = lints.layout_findings(documents, census, index)
+    assert [finding[0] for finding in findings] == ["ASM-layout"]
+    assert "carries 0x08000158 twice" in findings[0][1]
+
+
 def test_a_ledger_row_without_its_label_at_its_address_is_caught():
     ledger = ("address,old,new,evidence_class,evidence\n"
               "0x0800536A,sub_0800536A,Blend_WriteControl1,hardware-register,cited\n")

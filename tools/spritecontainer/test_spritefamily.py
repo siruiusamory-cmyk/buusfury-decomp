@@ -9,6 +9,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "tools", "mapcontainer"))
 
+import testkit
+
 import spritefamily as sf
 import def50
 import testkit

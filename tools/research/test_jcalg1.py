@@ -142,6 +142,8 @@ def test_an_output_explosion_is_refused_not_allocated():
 
 
 def test_the_known_intro_stream_decodes_and_re_compresses_byte_for_byte(tmp_path):
+    if sys.platform != "win32":
+        pytest.skip("compress.exe is a Windows program, so the re-encode cannot run")
     if not os.path.exists(ROM):
         pytest.skip("baserom.gba is not on disk")
     if not os.path.exists(COMPRESS):

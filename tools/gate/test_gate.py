@@ -174,6 +174,9 @@ def test_the_stage_rule_cases():
 
 
 def test_cold_start_isolates_the_cache_purges_and_runs_the_extract_step():
+    if sys.platform != "win32":
+        pytest.skip("cmd.exe is absent, so the extract step cannot run")
+
     def check(root):
         made(root, "baserom.gba_0x158_0x143f2.extracted")
         made(root, "build/endrom/emitted.json")
@@ -280,6 +283,8 @@ def test_a_cold_run_is_measured_once_and_not_retried():
 
 
 def test_a_failed_tools_lowercase_error_line_reaches_the_gate_summary():
+    if sys.platform != "win32":
+        pytest.skip("cmd.exe is absent, so the build step cannot run")
     text = "@echo off\r\necho Fatal error: L6031U: Could not open scatter description file\r\n" \
            "exit /b 1\r\n"
 
@@ -440,6 +445,8 @@ def test_the_accounted_class_totals_are_the_image_and_a_perturbed_one_fails():
 @pytest.mark.skipif(not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")),
                     reason="baserom.gba is absent, so the gate cannot read the census")
 def test_the_transcribed_line_carries_the_ledger_walks_total(monkeypatch, tmp_path):
+    if not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")):
+        pytest.skip("baserom.gba is absent, so the gate has no retail image to read")
     image = tmp_path / "image.gba"
     image.write_bytes(bytes(gate.ROM_SIZE))
     monkeypatch.setattr(gate, "IMAGE", str(image))
@@ -470,6 +477,8 @@ def test_the_transcribed_line_carries_the_ledger_walks_total(monkeypatch, tmp_pa
 @pytest.mark.skipif(not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")),
                     reason="baserom.gba is absent, so the tracked text cannot be checked")
 def test_no_tracked_file_carries_game_text():
+    if not os.path.exists(os.path.join(gate.ROOT, "baserom.gba")):
+        pytest.skip("baserom.gba is absent, so the game text cannot be told from the image")
     sys.path.insert(0, os.path.join(gate.ROOT, "tools", "text"))
     import strings_table
     assert strings_table.tracked_text_hits(gate.ROOT) == []

@@ -227,7 +227,6 @@ address,kind,symbol,file
 0x08007A60,start,sub_08007A60,asm/sub_08007A60.s
 0x08007A7A,unreferenced,sub_08007A7A,asm/sub_08007A7A.s
 0x08007AB4,start,sub_08007AB4,asm/sub_08007AB4.s
-0x08007B78,start,sub_08007B78,asm/sub_08007B78.s
 0x08007B78,start,loc_08007B78,asm/loc_08007B78.s
 0x08007B92,unreferenced,sub_08007B92,asm/sub_08007B92.s
 0x08007C12,start,sub_08007C12,asm/sub_08007C12.s
@@ -312,7 +311,6 @@ address,kind,symbol,file
 0x080097EA,start,loc_080097EA,asm/loc_080097EA.s
 0x08009816,start,loc_08009816,asm/loc_08009816.s
 0x08009856,unreferenced,sub_08009856,asm/sub_08009856.s
-0x08009904,start,sub_08009904,asm/sub_08009904.s
 0x08009904,start,loc_08009904,asm/loc_08009904.s
 0x08009930,start,loc_08009930,asm/loc_08009930.s
 0x080099B6,start,loc_080099B6,asm/loc_080099B6.s
@@ -368,7 +366,6 @@ address,kind,symbol,file
 0x0800A9D0,start,List_ReleaseAll1,asm/List_ReleaseAll1.s
 0x0800A9FE,start,loc_0800A9FE,asm/loc_0800A9FE.s
 0x0800AB0C,start,loc_0800AB0C,asm/loc_0800AB0C.s
-0x0800AB54,start,sub_0800AB54,asm/sub_0800AB54.s
 0x0800AB54,start,loc_0800AB54,asm/loc_0800AB54.s
 0x0800ABE6,unreferenced,sub_0800ABE6,asm/sub_0800ABE6.s
 0x0800AC40,start,sub_0800AC40,asm/sub_0800AC40.s
@@ -478,7 +475,6 @@ address,kind,symbol,file
 0x0800CE32,unreferenced,sub_0800CE32,asm/sub_0800CE32.s
 0x0800CE5A,start,Object_Destroy3,asm/Object_Destroy3.s
 0x0800CEDE,unreferenced,sub_0800CEDE,asm/sub_0800CEDE.s
-0x0800CEF4,start,sub_0800CEF4,asm/sub_0800CEF4.s
 0x0800CEF4,start,loc_0800CEF4,asm/loc_0800CEF4.s
 0x0800CF76,unreferenced,sub_0800CF76,asm/sub_0800CF76.s
 0x0800CF7A,unreferenced,sub_0800CF7A,asm/sub_0800CF7A.s
@@ -735,7 +731,6 @@ address,kind,symbol,file
 0x080126D4,start,loc_080126D4,asm/loc_080126D4.s
 0x080127BE,unreferenced,sub_080127BE,asm/sub_080127BE.s
 0x08012846,start,sub_08012846,asm/sub_08012846.s
-0x08012900,start,sub_08012900,asm/sub_08012900.s
 0x08012900,start,loc_08012900,asm/loc_08012900.s
 0x0801299E,unreferenced,sub_0801299E,asm/sub_0801299E.s
 0x08012A24,start,sub_08012A24,asm/sub_08012A24.s
@@ -777,7 +772,6 @@ address,kind,symbol,file
 0x0801363E,start,loc_0801363E,asm/loc_0801363E.s
 0x08013678,start,loc_08013678,asm/loc_08013678.s
 0x0801375E,start,loc_0801375E,asm/loc_0801375E.s
-0x08013914,start,sub_08013914,asm/sub_08013914.s
 0x08013914,start,loc_08013914,asm/loc_08013914.s
 0x08013924,unreferenced,sub_08013924,asm/sub_08013924.s
 0x08013A90,start,List_AppendByte1,asm/List_AppendByte1.s
@@ -800,7 +794,6 @@ address,kind,symbol,file
 0x08013E22,unreferenced,sub_08013E22,asm/sub_08013E22.s
 0x08013E38,start,loc_08013E38,asm/loc_08013E38.s
 0x08013E54,unreferenced,sub_08013E54,asm/sub_08013E54.s
-0x08013E64,start,sub_08013E64,asm/sub_08013E64.s
 0x08013E64,start,loc_08013E64,asm/loc_08013E64.s
 0x08013E82,unreferenced,sub_08013E82,asm/sub_08013E82.s
 0x08013EEC,start,Object_Destroy7,asm/Object_Destroy7.s
@@ -858,11 +851,9 @@ address,kind,symbol,file
 0x08016096,unreferenced,sub_08016096,asm/sub_08016096.s
 0x0801611C,unreferenced,sub_0801611C,asm/sub_0801611C.s
 0x08016198,unreferenced,sub_08016198,asm/sub_08016198.s
-0x08016208,start,sub_08016208,asm/sub_08016208.s
 0x08016208,start,loc_08016208,asm/loc_08016208.s
 0x08016220,unreferenced,sub_08016220,asm/sub_08016220.s
 0x08016240,start,Object_Destroy8,asm/Object_Destroy8.s
-0x08016304,start,sub_08016304,asm/sub_08016304.s
 0x08016304,start,loc_08016304,asm/loc_08016304.s
 0x08016322,unreferenced,sub_08016322,asm/sub_08016322.s
 0x08016384,start,Object_Destroy9,asm/Object_Destroy9.s
@@ -1944,7 +1935,6 @@ address,kind,symbol,file
 0x080387AC,unreferenced,sub_080387AC,asm/sub_080387AC.s
 0x080387C6,unreferenced,sub_080387C6,asm/sub_080387C6.s
 0x080387CE,unreferenced,sub_080387CE,asm/sub_080387CE.s
-0x080387DC,start,sub_080387DC,asm/sub_080387DC.s
 0x080387DC,start,loc_080387DC,asm/loc_080387DC.s
 0x0803881A,unreferenced,sub_0803881A,asm/sub_0803881A.s
 0x08038886,start,sub_08038886,asm/sub_08038886.s
@@ -1958,7 +1948,6 @@ address,kind,symbol,file
 0x08038BDC,start,loc_08038BDC,asm/loc_08038BDC.s
 0x08038CC2,unreferenced,sub_08038CC2,asm/sub_08038CC2.s
 0x08038CDC,unreferenced,sub_08038CDC,asm/sub_08038CDC.s
-0x08038DEC,start,sub_08038DEC,asm/sub_08038DEC.s
 0x08038DEC,start,loc_08038DEC,asm/loc_08038DEC.s
 0x08038E8A,start,loc_08038E8A,asm/loc_08038E8A.s
 0x08038EE2,unreferenced,sub_08038EE2,asm/sub_08038EE2.s
@@ -2035,7 +2024,6 @@ address,kind,symbol,file
 0x0803A908,unreferenced,sub_0803A908,asm/sub_0803A908.s
 0x0803ACCC,unreferenced,sub_0803ACCC,asm/sub_0803ACCC.s
 0x0803AE64,start,sub_0803AE64,asm/sub_0803AE64.s
-0x0803AEA8,start,sub_0803AEA8,asm/sub_0803AEA8.s
 0x0803AEA8,start,loc_0803AEA8,asm/loc_0803AEA8.s
 0x0803AEC6,unreferenced,sub_0803AEC6,asm/sub_0803AEC6.s
 0x0803AF58,start,sub_0803AF58,asm/sub_0803AF58.s
@@ -2481,7 +2469,6 @@ address,kind,symbol,file
 0x08048054,start,__default_signal_handler,asm/__default_signal_handler.s
 0x08048076,unreferenced,sub_08048076,asm/sub_08048076.s
 0x080480AC,unreferenced,sub_080480AC,asm/sub_080480AC.s
-0x08048174,start,sub_08048174,asm/sub_08048174.s
 0x08048174,start,loc_08048174,asm/loc_08048174.s
 0x0804818A,unreferenced,sub_0804818A,asm/sub_0804818A.s
 0x08048198,start,sub_08048198,asm/sub_08048198.s
@@ -2608,7 +2595,6 @@ address,kind,symbol,file
 0x0804AACE,unreferenced,,asm/sub_0804A678.s
 0x0804AAE2,unreferenced,,asm/sub_0804A678.s
 0x0804BA78,unreferenced,sub_0804BA78,asm/sub_0804BA78.s
-0x0804E490,start,sub_0804E490,asm/sub_0804E490.s
 0x0804E490,start,Gfx_BeginTileLoad1,asm/Gfx_BeginTileLoad1.s
 0x0804E50C,start,sub_0804E50C,asm/sub_0804E50C.s
 0x0804E528,start,sub_0804E528,asm/sub_0804E528.s
@@ -2835,7 +2821,6 @@ address,kind,symbol,file
 0x08050CDC,start,sub_08050CDC,asm/sub_08050CDC.s
 0x08050D08,start,sub_08050D08,asm/sub_08050D08.s
 0x08050D1C,start,sub_08050D1C,asm/sub_08050D1C.s
-0x08050D30,start,sub_08050D30,asm/sub_08050D30.s
 0x08050D30,start,Object_InstallHandlerTable1,asm/Object_InstallHandlerTable1.s
 0x08050D5C,start,sub_08050D5C,asm/sub_08050D5C.s
 0x08050D6E,unreferenced,sub_08050D6E,asm/sub_08050D6E.s

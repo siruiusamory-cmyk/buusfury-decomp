@@ -10,10 +10,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(HERE), "structured"))
 import opcode_stream
 import pytest
 
-if not os.path.exists(os.path.join(opcode_stream.ROOT, "baserom.gba")):
-    pytest.skip("baserom.gba is absent, so the opcode census cannot run",
-                allow_module_level=True)
-ROM = opcode_stream.read_rom(os.path.join(opcode_stream.ROOT, "baserom.gba"))
+try:
+    ROM = opcode_stream.read_rom(os.path.join(opcode_stream.ROOT, "baserom.gba"))
+except FileNotFoundError as absent:
+    if "baserom.gba" not in str(absent):
+        raise
+    ROM = None
+
+pytestmark = pytest.mark.skipif(ROM is None,
+                                reason="baserom.gba is absent, so the opcode census cannot run")
 CARRIER = os.path.join(opcode_stream.ROOT, "asm", "rawlabeled_71c90.s")
 
 

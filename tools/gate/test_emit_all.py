@@ -56,20 +56,24 @@ def with_encoder(root):
 def test_the_batch_overlaps_and_prints_each_block_at_its_turn():
 
     def check(root):
-        slow = step("slow_gen", """
-            import os, sys, time
-            open(os.path.join(sys.argv[1], "slow-start"), "w").write("")
-            time.sleep(1.2)
-            print("fast started while slow ran"
-                  if os.path.exists(os.path.join(sys.argv[1], "fast-start"))
-                  else "fast started after slow ended")
-        """, root)
-        fast = step("fast_gen", """
-            import os, sys
-            open(os.path.join(sys.argv[1], "fast-start"), "w").write("")
-            print("fast block")
-        """, root)
-        return captured((slow, fast), root)
+        cache, encoder, previous = with_encoder(root)
+        try:
+            slow = step("slow_gen", """
+                import os, sys, time
+                open(os.path.join(sys.argv[1], "slow-start"), "w").write("")
+                time.sleep(1.2)
+                print("fast started while slow ran"
+                      if os.path.exists(os.path.join(sys.argv[1], "fast-start"))
+                      else "fast started after slow ended")
+            """, root)
+            fast = step("fast_gen", """
+                import os, sys
+                open(os.path.join(sys.argv[1], "fast-start"), "w").write("")
+                print("fast block")
+            """, root)
+            return captured((slow, fast), root)
+        finally:
+            emit_all.ENCODER = previous
 
     code, printed = in_scratch(check)
     assert code == 0

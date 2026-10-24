@@ -16,10 +16,15 @@ import encode_cache
 import pngsheet
 import pytest
 
-if not os.path.exists(os.path.join(animframe.ROOT, "baserom.gba")):
-    pytest.skip("baserom.gba is absent, so the animation rows cannot be measured",
-                allow_module_level=True)
-ROM = animframe.read_rom(os.path.join(animframe.ROOT, "baserom.gba"))
+try:
+    ROM = animframe.read_rom(os.path.join(animframe.ROOT, "baserom.gba"))
+except FileNotFoundError as absent:
+    if "baserom.gba" not in str(absent):
+        raise
+    ROM = None
+
+pytestmark = pytest.mark.skipif(ROM is None,
+                                reason="baserom.gba is absent, so the animation rows cannot be measured")
 
 
 def test_the_consumer_instructions_are_the_retail_halfwords():

@@ -924,9 +924,14 @@ def layout_findings(documents, census_text, index_text):
             findings.append(("ASM-layout", "%s: carries %d function starts, and one file carries one"
                              % (name, len(labels))))
     indexed = {}
-    for row in csv.DictReader(io.StringIO(index_text)):
-        if row.get("address"):
-            indexed[int(row["address"], 16)] = row.get("file") or ""
+    for number, row in enumerate(csv.DictReader(io.StringIO(index_text)), 2):
+        if not row.get("address"):
+            continue
+        address = int(row["address"], 16)
+        if address in indexed:
+            findings.append(("ASM-layout", "%s:%d carries 0x%08X twice, and a reader needs one row"
+                             % (ASM_INDEX, number, address)))
+        indexed[address] = row.get("file") or ""
     names = {name for name, _text in documents}
     for address in sorted(starts - set(indexed)):
         findings.append(("ASM-layout", "%s: no row for 0x%08X, so a reader cannot find it"

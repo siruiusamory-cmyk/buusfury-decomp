@@ -61,7 +61,8 @@ rebuild.cmd
 python tools\gate\gate.py
 ```
 
-`rebuild.cmd` builds the compressor from its own source on the first run. The gate rebuilds from
+`extract.cmd` builds the compressor from its own source when it is absent, and `rebuild.cmd` builds
+it on the first run, so the three commands need no manual step before them. The gate rebuilds from
 scratch and prints `DIGEST MATCH` and `GATE PASS` when the output equals the retail ROM.
 
 ## Tests

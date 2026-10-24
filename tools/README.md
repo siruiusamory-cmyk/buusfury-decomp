@@ -27,7 +27,7 @@ image, and `python tools\gate\gate.py` proves the result against the retail sha2
 | --- | --- | --- |
 | `main.cpp` | the compressor driver: reads a payload, writes the kind-1 container the assembly expects | `rebuild.cmd`, `gate/emit_all.py` |
 | `CMakeLists.txt` | builds `compress.exe` from `main.cpp` and the jcalg1 MASM source | `build.cmd` |
-| `build.cmd` | finds the Visual Studio cmake, builds the compressor and copies it beside the driver | `rebuild.cmd`, `build.bat` |
+| `build.cmd` | finds the Visual Studio cmake, builds the compressor and copies it beside the driver | `extract.cmd`, `rebuild.cmd`, `build.bat` |
 | `jcalg1/` | the jcalg1 r5.32 compressor and the `JCALG1_GetUncompressedSizeOfCompressedBlock` helper, MASM source plus the MIT licence | `CMakeLists.txt` |
 
 ## extract/ and assets/

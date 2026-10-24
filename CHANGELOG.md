@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The asset step of `extract.cmd` builds the compressor from its own MASM source when
+  `tools/compress/compress.exe` is absent, so a fresh clone reaches the cold gate's pass with no
+  manual build, and a failed build is reported as one message naming `tools/compress/build.cmd`.
 - Two transcribed starts in the battle slice carry the names their bytes prove: the spawner that
   allocates the 8-byte damage object, stores its class word and type, attaches it through slot 3 and
   accumulates the damage word into it at most once per eight frames, and the geometry getter that

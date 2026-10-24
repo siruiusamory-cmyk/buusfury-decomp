@@ -112,6 +112,15 @@ def build(rom, payloads, build_dir):
             name, len(got), start, end, "grit+compress" if container else "grit"))
 
 
+def compressor():
+    if os.path.exists(COMPRESS):
+        return COMPRESS
+    script = os.path.join(ROOT, "tools", "compress", "build.cmd")
+    if subprocess.call(["cmd.exe", "/c", script]) != 0 or not os.path.exists(COMPRESS):
+        raise SystemExit("compress.exe is absent: run %s" % script)
+    return COMPRESS
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("extract", "build"))
@@ -119,8 +128,7 @@ def main():
     parser.add_argument("--payloads", default=PAYLOADS)
     parser.add_argument("--build", default=os.path.join(ROOT, "build"))
     args = parser.parse_args()
-    if not os.path.exists(COMPRESS):
-        raise SystemExit("no compressor at %s" % COMPRESS)
+    compressor()
     rom = read_rom(args.rom)
     if args.mode == "extract":
         extract(rom, args.payloads)

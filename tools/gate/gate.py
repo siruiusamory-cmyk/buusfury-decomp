@@ -252,6 +252,9 @@ def cold_promote(target):
         if name != encode_cache.EXE_STAMP and not name.endswith(".bin"):
             continue
         destination = os.path.join(target, name)
+        if name != encode_cache.EXE_STAMP and os.path.exists(destination):
+            skipped += 1
+            continue
         temporary = "%s.promote-%d" % (destination, os.getpid())
         try:
             shutil.copyfile(os.path.join(source, name), temporary)

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+
 import build_cache
+import gate
 
 
 def test_the_key_follows_an_included_file(tmp_path):
@@ -72,7 +79,8 @@ def test_a_cold_build_assembles_again(tmp_path, monkeypatch):
     assert calls and calls[0][0][0] == "armasm"
 
 
-def test_a_missing_slice_is_reported_and_one_present_is_not(tmp_path):
+def test_a_missing_slice_is_reported_and_one_present_is_not(tmp_path, monkeypatch):
+    monkeypatch.setattr(gate, "ROOT", gate.ROOT)
     asm = tmp_path / "asm"
     asm.mkdir()
     (asm / "sub_08000000.s").write_text("\tINCBIN a.extracted\n", encoding="ascii")

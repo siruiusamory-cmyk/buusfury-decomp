@@ -25,6 +25,10 @@ All notable changes to this project are documented here. The format follows
   `unk_…`) instead of a `sub_…` name derived from the census kind.
 - `tools/lint/ASM_INDEX.csv` carries one row per address: the alias stub a start also has no longer
   takes a second row.
+- The gate's build-cache test restores the module root it repoints at its scratch tree, so a test
+  that runs after it in the same process reads the repository again instead of that tree.
+- The cold gate counts a cache entry the target already carries as skipped and leaves it in place,
+  instead of renaming over it, so a promotion keeps what the target already holds on every platform.
 
 ### Removed
 

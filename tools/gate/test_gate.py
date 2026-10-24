@@ -76,21 +76,31 @@ def test_an_oracle_emitter_is_full_by_spawns_plus_hits_not_by_misses_over_total(
     assert gate.cold_shortfall(COLD) is None
 
 
+def promotion_scenario(root):
+    shared = os.path.join(root, "shared")
+    os.makedirs(shared)
+    made(root, "build/cold-cache/%s.bin" % ("a" * 64), b"isolated")
+    made(root, "build/cold-cache/%s.bin" % ("c" * 64), b"fresh")
+    made(root, "build/cold-cache/encoder.sha256", b"stamp")
+    made(root, "shared/%s.bin" % ("a" * 64), b"existing")
+    made(root, "shared/encoder.sha256", b"stale")
+    copied, skipped = gate.cold_promote(shared)
+    read = lambda name: open(os.path.join(shared, name), "rb").read()  # noqa: E731
+    return (copied, skipped, read("a" * 64 + ".bin"), read("c" * 64 + ".bin"),
+            read("encoder.sha256"), [n for n in os.listdir(shared) if ".promote-" in n],
+            gate.cold_promote(gate.cold_cache_dir()))
+
+
 def test_cold_promotion_copies_an_absent_entry_and_never_overwrites_one():
-    def check(root):
-        shared = os.path.join(root, "shared")
-        os.makedirs(shared)
-        made(root, "build/cold-cache/%s.bin" % ("a" * 64), b"isolated")
-        made(root, "build/cold-cache/%s.bin" % ("c" * 64), b"fresh")
-        made(root, "build/cold-cache/encoder.sha256", b"stamp")
-        made(root, "shared/%s.bin" % ("a" * 64), b"existing")
-        made(root, "shared/encoder.sha256", b"stale")
-        copied, skipped = gate.cold_promote(shared)
-        read = lambda name: open(os.path.join(shared, name), "rb").read()  # noqa: E731
-        return (copied, skipped, read("a" * 64 + ".bin"), read("c" * 64 + ".bin"),
-                read("encoder.sha256"), [n for n in os.listdir(shared) if ".promote-" in n],
-                gate.cold_promote(gate.cold_cache_dir()))
-    copied, skipped, kept, promoted, stamp, leftovers, self_target = in_scratch(check)
+    copied, skipped, kept, promoted, stamp, leftovers, self_target = in_scratch(promotion_scenario)
+    assert (copied, skipped) == (2, 1)
+    assert kept == b"existing" and promoted == b"fresh" and stamp == b"stamp"
+    assert leftovers == [] and self_target == (0, 0)
+
+
+def test_an_existing_entry_is_skipped_when_a_rename_replaces_it(monkeypatch):
+    monkeypatch.setattr(gate.os, "rename", os.replace)
+    copied, skipped, kept, promoted, stamp, leftovers, self_target = in_scratch(promotion_scenario)
     assert (copied, skipped) == (2, 1)
     assert kept == b"existing" and promoted == b"fresh" and stamp == b"stamp"
     assert leftovers == [] and self_target == (0, 0)

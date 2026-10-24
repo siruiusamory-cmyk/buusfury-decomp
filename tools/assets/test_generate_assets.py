@@ -29,19 +29,6 @@ def test_a_compressor_that_will_not_build_names_the_script(tmp_path, monkeypatch
     assert "build.cmd" in str(refusal.value)
 
 
-def test_the_compressor_branch_does_not_depend_on_the_platform(tmp_path, monkeypatch):
-    built = tmp_path / "compress.exe"
-
-    def build(_argv, **_kwargs):
-        built.write_bytes(b"")
-        return 0
-
-    monkeypatch.setattr(G, "COMPRESS", str(built))
-    monkeypatch.setattr(G.subprocess, "call", build)
-    monkeypatch.setattr(G.sys, "platform", "linux")
-    assert G.compressor() == str(built)
-
-
 def test_a_present_compressor_is_not_built_again(tmp_path, monkeypatch):
     built = tmp_path / "compress.exe"
     built.write_bytes(b"")

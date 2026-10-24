@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- `python tools/lint/test_lint.py` runs the file's tests through pytest instead of a hand-kept list,
+  which had drifted past a test the file no longer carried.
+- `tools/build/generate_jcalg1.py` and `tools/build/rawlabeled.py` carry only the modes a build or a
+  check runs. The compressor generator's census sweep and source splicing, and the raw fragment
+  writer's promotion, conversion, row naming, record splice, verification and report modes, leave the
+  tree with their tests.
 - Nine transcribed starts in the character-stats slice carry the names their bytes prove: the XP
   award body, the guard that gates it on the HP halfword, the award-to-active entry, the level getter,
   setter and level-up apply, the record loader, fusion and the progress meter. Their assembly files,

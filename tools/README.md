@@ -64,7 +64,7 @@ image, and `python tools\gate\gate.py` proves the result against the retail sha2
 | --- | --- | --- |
 | `generate_jcalg1.py` | emits the packed containers the assembly still carries, from a stored payload and the tree's own compressor | `extract.cmd`, `gate/emit_all.py` |
 | `opcode_stream.py` | decodes the opcode streams the map entries name and emits the runs byte-exactly | `extract.cmd`, `gate/emit_all.py` |
-| `rawlabeled.py` | writes a promoted run as labeled raw data, one label per cited base | `extract.cmd` |
+| `rawlabeled.py` | writes the extracted slice every tracked raw fragment names | `extract.cmd` |
 
 ## mapcontainer/ and spritecontainer/
 

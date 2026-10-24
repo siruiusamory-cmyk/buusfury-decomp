@@ -16,20 +16,14 @@ contiguous run of containers, and a spliced token list in `asm\\`.
   extract  read the generated runs' own container list out of the source, keep every container that
            re-encodes byte-exactly, store its decoded payload;
   build    re-encode every stored payload, refuse if a byte differs from the image, write one
-           section file per run, and byte-check every section from disk;
-  --sweep  promote containers the source does NOT name yet: walk the INCBIN slices the census classes
-           with `--sweep-class`, keep the ones whose container re-encodes to the image's bytes, and
-           splice `build\\jcalg1\\gen_<start>_<end>.bin` tokens plus the retail gaps around them;
-  --apply  splice the source and extend `rebuild.cmd` with the new retail gaps.
+           section file per run, and byte-check every section from disk.
 
 A run's extent is the token's own name, never the bytes (P-473). A `gen_<start>.bin` token (the
 PATH-100-011 shape) takes its end from the next token's own address; a `gen_<start>_<end>.bin` token
-carries its end itself, which is the shape `tools/build/rawlabeled.py:gen_name` already uses for
-the structured block's runs.
+carries its end itself.
 """
 
 import argparse
-import csv
 import os
 import re
 import sys
@@ -51,7 +45,6 @@ GEN = re.compile(r"build\\%s\\gen_([0-9a-f]+)(?:_([0-9a-f]+))?\.bin$" % BLOCK, r
 SECTION = "build\\%s\\" % BLOCK
 GAP = re.compile(r"baserom\.gba_0x([0-9a-f]+)_0x([0-9a-f]+)\.extracted$")
 SUFFIX = re.compile(r"_([0-9a-fA-F]{2,8})(?:_[0-9a-fA-F]{4,8})?\.(?:bin|s)$")
-CENSUS = ""
 
 
 class PromoteError(ValueError):
@@ -159,10 +152,6 @@ def encoded(image, payloads, compress, extents):
     return runs
 
 
-def run_name(start, end):
-    return "build\\%s\\gen_%x_%x.bin" % (BLOCK, start, end)
-
-
 def emit(runs, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     written, skipped = [], 0
@@ -183,128 +172,6 @@ def emit(runs, out_dir):
     return written, skipped
 
 
-def slices_of(runs, spans):
-    slices = B.merge(spans)
-    by_span = {}
-    for run_start, run_end, _name, _blob in runs:
-        covering = [s for s in slices if s[0] <= run_start and run_end <= s[1]]
-        if len(covering) != 1:
-            raise PromoteError("run 0x%X..0x%X is in %d slices, expected exactly one"
-                               % (run_start, run_end, len(covering)))
-        by_span.setdefault(covering[0], []).append((run_start, run_end))
-    return by_span
-
-
-def pieces(span, runs):
-    start, end = span
-    out = []
-    cursor = start
-    for run_start, run_end in sorted(runs):
-        if run_start < cursor or run_end > end:
-            raise PromoteError("run 0x%X..0x%X is not inside 0x%X..0x%X in order"
-                               % (run_start, run_end, start, end))
-        if run_start > cursor:
-            out.append((cursor, run_start, "INCBIN  %s" % B.gap_name(cursor, run_start)))
-        out.append((run_start, run_end, "INCBIN  %s" % run_name(run_start, run_end)))
-        cursor = run_end
-    if cursor < end:
-        out.append((cursor, end, "INCBIN  %s" % B.gap_name(cursor, end)))
-    return out
-
-
-def carriers(asm_dir):
-    return B.slice_carriers(asm_dir)
-
-
-def carrier_of(texts, span):
-    try:
-        return B.carrier_of(texts, span)
-    except ValueError as refusal:
-        raise PromoteError(str(refusal)) from refusal
-
-
-def apply_sources(texts, by_span):
-    gaps = []
-    spliced = []
-    touched = []
-    for span in sorted(by_span):
-        path = carrier_of(texts, span)
-        span_pieces = pieces(span, by_span[span])
-        try:
-            texts[path] = B.replace_slice(texts[path], span, span_pieces)
-        except ValueError as refusal:
-            raise PromoteError(str(refusal)) from refusal
-        gaps += [(a, b) for a, b, line in span_pieces if line.startswith("INCBIN  baserom")]
-        spliced.append(span)
-        if path not in touched:
-            touched.append(path)
-    return gaps, spliced, touched
-
-
-def write_rebuild(path, removed, added):
-    lines = open(path, newline="").read().split("\n")
-    want = {"call tools\\incbin.bat baserom.gba 0x%x 0x%x" % span for span in removed}
-    kept = [line for line in lines if line.strip() not in want]
-    dropped = len(lines) - len(kept)
-    last = max(index for index, line in enumerate(kept) if "incbin.bat" in line)
-    kept[last + 1:last + 1] = ["call tools\\incbin.bat baserom.gba 0x%x 0x%x" % gap
-                               for gap in added]
-    with open(path, "w", newline="") as handle:
-        handle.write("\n".join(kept))
-    return added, dropped
-
-
-def census_rows(path, klass, census=CENSUS):
-    with open(census if path is None else path, newline="") as handle:
-        rows = [(int(row["start"], 16), int(row["end"], 16))
-                for row in csv.DictReader(handle) if row["class"] == klass]
-    return sorted(rows)
-
-
-def swept(image, span, compress):
-    start, end = span
-    runs = []
-    offset = start
-    while offset + B.JCALG1_HEADER <= end:
-        hit = B.jcalg1_container(image, offset, end, compress)
-        if hit is None or not hit.get("byte_exact"):
-            break
-        if runs and runs[-1][1] == offset:
-            runs[-1][1] = offset + hit["compressed"]
-        else:
-            runs.append([offset, offset + hit["compressed"]])
-        offset += hit["compressed"]
-    return [tuple(run) for run in runs]
-
-
-def sweep_plan(image, spans, texts, compress):
-    promoted, left = [], []
-    for span in spans:
-        try:
-            carrier_of(texts, span)
-        except PromoteError as absent:
-            left.append((span, str(absent)))
-            continue
-        runs = swept(image, span, compress)
-        if runs:
-            promoted.append((span, runs))
-        else:
-            left.append((span, "no byte-exact container at 0x%X" % span[0]))
-    return promoted, left
-
-
-def write_sources(texts, by_span, rebuild):
-    gaps, spliced, touched = apply_sources(texts, by_span)
-    for path in touched:
-        with open(path, "w", newline="") as handle:
-            handle.write(texts[path])
-    added, dropped = write_rebuild(rebuild, spliced, gaps)
-    print("spliced %d slice(s) into %s, %d retired call(s) dropped, %d new retail gap(s)"
-          % (len(spliced), ", ".join(os.path.relpath(path, ROOT) for path in touched),
-             dropped, added))
-    return spliced
-
-
 def finish(cache, cache_close, code):
     cache_close()
     print("jcalg1 encode store misses=%d trusted=%d total=%d"
@@ -322,37 +189,11 @@ def main(argv=None):
     parser.add_argument("--rom", default=os.path.join(ROOT, "baserom.gba"))
     parser.add_argument("--payloads", default=os.path.join(ROOT, "assets", BLOCK))
     parser.add_argument("--out-dir", default=os.path.join(ROOT, "build", BLOCK))
-    parser.add_argument("--asm-dir", default=os.path.join(ROOT, "asm"))
-    parser.add_argument("--rebuild", default=os.path.join(ROOT, "rebuild.cmd"))
-    parser.add_argument("--sweep-class", help="a RAW_REMAINDER.csv class whose rows --apply walks")
-    parser.add_argument("--census", default=CENSUS, help="the census --sweep-class reads (required with it)")
-    parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
-    if args.sweep_class and not args.census:
-        parser.error("--sweep-class needs --census")
 
     image = open(args.rom, "rb").read()
-    texts = carriers(args.asm_dir)
+    texts = B.slice_carriers(os.path.join(ROOT, "asm"))
     compress, cache, cache_close = open_encode_store(B.oracle(COMPRESS))
-    if args.sweep_class:
-        spans = census_rows(args.census, args.sweep_class)
-        promoted, left = sweep_plan(image, spans, texts, compress)
-        moved = sum(end - start for _span, runs in promoted for start, end in runs)
-        print("sweep %s: rows=%d promoted=%d rows=%d bytes left=%d"
-              % (args.sweep_class, len(spans), len(promoted), moved, len(left)))
-        for span, runs in promoted:
-            print("  promote 0x%06X..0x%06X %6d B in %d container(s) -> %s"
-                  % (span[0], span[1], sum(e - s for s, e in runs), len(runs),
-                     ", ".join(run_name(s, e) for s, e in runs)))
-        for span, why in left[:10]:
-            print("  leave   0x%06X..0x%06X  %s" % (span[0], span[1], why))
-        if len(left) > 10:
-            print("  ... %d further row(s) left" % (len(left) - 10))
-        if not args.apply:
-            return finish(cache, cache_close, 0)
-        write_sources(texts, {span: runs for span, runs in promoted}, args.rebuild)
-        return finish(cache, cache_close, 0)
-
     extents = run_extents(texts.values())
     store = payload_store.path(args.payloads)
     if os.path.exists(store):
@@ -373,8 +214,6 @@ def main(argv=None):
     for run_start, run_end, path in written:
         print("  %s  0x%06X..0x%06X %6d B"
               % (os.path.relpath(path, ROOT), run_start, run_end, run_end - run_start))
-    if args.apply:
-        write_sources(texts, slices_of(runs, B.incbin_spans()), args.rebuild)
     return finish(cache, cache_close, 0)
 
 

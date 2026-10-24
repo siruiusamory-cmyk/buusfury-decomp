@@ -548,7 +548,7 @@ address,kind,symbol,file
 0x0800E7F6,start,sub_0800E7F6,asm/sub_0800E7F6.s
 0x0800E814,unreferenced,sub_0800E814,asm/sub_0800E814.s
 0x0800E85E,start,Object_Destroy6,asm/Object_Destroy6.s
-0x0800E8E6,start,loc_0800E8E6,asm/loc_0800E8E6.s
+0x0800E8E6,start,Battle_SpawnDamageObject,asm/Battle_SpawnDamageObject.s
 0x0800E94C,unreferenced,sub_0800E94C,asm/sub_0800E94C.s
 0x0800E960,unreferenced,sub_0800E960,asm/sub_0800E960.s
 0x0800E97E,start,loc_0800E97E,asm/loc_0800E97E.s
@@ -606,7 +606,7 @@ address,kind,symbol,file
 0x0800FD34,start,sub_0800FD34,asm/sub_0800FD34.s
 0x0800FD96,unreferenced,sub_0800FD96,asm/sub_0800FD96.s
 0x0800FDFA,start,Object_WriteBounds1,asm/Object_WriteBounds1.s
-0x0800FE78,start,loc_0800FE78,asm/loc_0800FE78.s
+0x0800FE78,start,Object_GetPoints,asm/Object_GetPoints.s
 0x0800FEE2,start,loc_0800FEE2,asm/loc_0800FEE2.s
 0x0800FF32,unreferenced,sub_0800FF32,asm/sub_0800FF32.s
 0x0800FF44,start,sub_0800FF44,asm/sub_0800FF44.s

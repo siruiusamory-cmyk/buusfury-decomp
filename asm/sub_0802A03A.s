@@ -86,10 +86,10 @@
 		BEQ      |loc_0802A1B8|
 		ADD r1, r5, #0
 		ADD r0, sp, #0x5c
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x4c
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #0x4c]
 		LDR r1, [sp, #0x54]
 		LDR r2, [sp, #0x58]

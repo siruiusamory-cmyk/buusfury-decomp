@@ -2,10 +2,10 @@
 |sub_0803D388|
 |unk_0803D388|
 		ADD r0, sp, #0x2c
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x1c
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #0x1c]
 		LDR r1, [sp, #0x24]
 		LDR r2, [sp, #0x28]

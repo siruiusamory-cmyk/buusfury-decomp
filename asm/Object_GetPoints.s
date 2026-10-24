@@ -1,5 +1,5 @@
 	CODE16
-|loc_0800FE78|
+|Object_GetPoints|
 	PUSH     {r4, r5}
 	LDRB     r3, [r1, #0x10]
 	ADD      r2, r0, #0

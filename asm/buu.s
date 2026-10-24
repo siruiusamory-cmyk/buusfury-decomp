@@ -564,7 +564,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0800E7F6.s
 	INCLUDE sub_0800E814.s
 	INCLUDE Object_Destroy6.s
-	INCLUDE loc_0800E8E6.s
+	INCLUDE Battle_SpawnDamageObject.s
 	INCLUDE sub_0800E94C.s
 	INCLUDE sub_0800E960.s
 	INCLUDE loc_0800E97E.s
@@ -622,7 +622,7 @@ unk_03003124 EQU     0x03003124
 	INCLUDE sub_0800FD34.s
 	INCLUDE sub_0800FD96.s
 	INCLUDE Object_WriteBounds1.s
-	INCLUDE loc_0800FE78.s
+	INCLUDE Object_GetPoints.s
 	INCLUDE loc_0800FEE2.s
 	INCLUDE sub_0800FF32.s
 	INCLUDE sub_0800FF44.s
@@ -9446,7 +9446,7 @@ unk_03003124 EQU     0x03003124
         	MOV r0, #0
         	STRB r0, [r3]
         	ADD r0, r6, #4
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDR r1, [r5]
         	ADD r0, r5, #0
         	LDR r2, [r1, #0x24]
@@ -9629,7 +9629,7 @@ unk_03003124 EQU     0x03003124
         	STRB r7, [r3]
         	ADD r0, sp, #4
         	ADD r1, r4, #0
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDR r1, [r6]
         	ADD r0, r6, #0
         	LDR r2, [r1, #0x24]
@@ -9969,7 +9969,7 @@ unk_03003124 EQU     0x03003124
         	ADD r5, r0, #0
         	MOV r0, sp
         	LDR r1, [r1]
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDR r0, [sp, #0x14]
         	LDR r1, [sp, #8]
         	CMP r0, r1
@@ -13406,10 +13406,10 @@ unk_03003124 EQU     0x03003124
         	BL       |inc_0x03d784_0x041118| + 0xbf4
         	ADD r1, r5, #0
         	ADD r0, sp, #0x60
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	ADD r1, r4, #0
         	ADD r0, sp, #0x50
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDR r0, [sp, #0x50]
         	LDR r1, [sp, #0x58]
         	LDR r2, [sp, #0x5c]
@@ -14445,10 +14445,10 @@ unk_03003124 EQU     0x03003124
 |loc_080300BE|
         	ADD r1, r4, #0
         	ADD r0, sp, #0x14
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	ADD r1, r5, #0
         	ADD r0, sp, #4
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDRB r0, [r4, #0x10]
         	CMP r0, #0
         	BEQ      |loc_08030116|
@@ -19105,10 +19105,10 @@ unk_03003124 EQU     0x03003124
 |dat_08034592|
 |unk_08034592|
         	ADD r0, sp, #0x28
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	ADD r1, r4, #0
         	ADD r0, sp, #0x18
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	LDR r0, [sp, #0x18]
         	LDR r1, [sp, #0x20]
         	LDR r2, [sp, #0x24]
@@ -20192,7 +20192,7 @@ unk_03003124 EQU     0x03003124
         	STR r0, [sp, #0x1c]
         	ADD r1, r4, #0
         	ADD r0, r5, #4
-        	BL       |loc_0800FE78|
+        	BL       |Object_GetPoints|
         	ADD r3, sp, #0
         	STRB r6, [r3, #4]
         	LDR r0, [pc, #0xb4]

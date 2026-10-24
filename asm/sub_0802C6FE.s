@@ -50,7 +50,7 @@
 		MOV r0, #0
 		STRB r0, [r3]
 		ADD r0, r6, #4
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r1, [r5]
 		ADD r0, r5, #0
 		LDR r2, [r1, #0x24]

@@ -10387,7 +10387,7 @@ address = 0x0800e8e4
 mode = "thumb"
 
 [[functions]]
-name = "loc_0800E8E6"
+name = "Battle_SpawnDamageObject"
 address = 0x0800e8e6
 mode = "thumb"
 
@@ -11135,7 +11135,7 @@ end = 0x0800ff32
 mode = "thumb"
 
 [[functions]]
-name = "loc_0800FE78"
+name = "Object_GetPoints"
 address = 0x0800fe78
 mode = "thumb"
 

@@ -11,7 +11,7 @@
 		ADD r6, r5, #4
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [r6]
 		LDR r1, [sp, #8]
 		CMP r0, r1

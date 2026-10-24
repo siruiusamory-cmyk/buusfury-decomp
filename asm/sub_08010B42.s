@@ -88,7 +88,7 @@
 	PUSH     {r3, r4, r5, r6, r7, lr}
 	ADD      r4, r0, #0
 	ADD      r5, r1, #0
-	BL       |loc_0800E8E6|
+	BL       |Battle_SpawnDamageObject|
 	LDR      r0, [pc, #0x32c]
 	LDR      r0, [r0, #4]
 	CMP      r0, #0

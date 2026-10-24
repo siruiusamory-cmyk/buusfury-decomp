@@ -15,7 +15,7 @@
 |loc_0800FA42|
 	ADD      r1, r6, #0
 	ADD      r0, r4, #0
-	BL       |loc_0800E8E6|
+	BL       |Battle_SpawnDamageObject|
 	LDR      r1, [r5]
 	LDR      r0, [r6, #0x18]
 	SUB      r0, r1, r0

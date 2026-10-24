@@ -11,46 +11,46 @@
 		LDMIA r5!, {r6, r7}
 		SUB r5, #8
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp]
 		CMP r0, r6
 		BLE      |loc_08010E42|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r6, [sp]
 |loc_08010E42|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #8]
 		CMP r0, r6
 		BGE      |loc_08010E5A|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r6, [sp, #8]
 |loc_08010E5A|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #4]
 		CMP r0, r7
 		BLE      |loc_08010E72|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r7, [sp, #4]
 |loc_08010E72|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #0xc]
 		CMP r0, r7
 		BGE      |loc_08010E8A|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r7, [sp, #0xc]
 |loc_08010E8A|
 		LDR r0, [r5]

@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Two transcribed starts in the battle slice carry the names their bytes prove: the spawner that
+  allocates the 8-byte damage object, stores its class word and type, attaches it through slot 3 and
+  accumulates the damage word into it at most once per eight frames, and the geometry getter that
+  indexes the object's current frame record, adds the object's position to its two offsets and
+  returns two x,y points to the caller. Their assembly files, labels, index rows, ledger rows and
+  class-table cells move with them.
 - `tools/research/name_evidence.py --mode audit` accepts the three ways a naming row's evidence cell
   names an address in the retail image: an instruction of the row's own body, a call that body makes,
   or a word that body loads. Every row of `tools/lint/NAMING_LEDGER.csv` now passes the audit with the

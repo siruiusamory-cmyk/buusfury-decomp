@@ -9,10 +9,10 @@
 		DCW     0xE7F7
 |loc_08029B78|
 		ADD r0, sp, #0x10
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r4, #0
 		MOV r0, sp
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp]
 		LDR r1, [sp, #4]
 		LDR r2, [sp, #8]

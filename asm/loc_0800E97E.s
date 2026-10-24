@@ -6,7 +6,7 @@
 	ADD      r1, r0, #0
 	SUB      sp, #0x1c
 	ADD      r0, sp, #0xc
-	BL       |loc_0800FE78|
+	BL       |Object_GetPoints|
 	LDR      r0, [sp, #0xc]
 	LDR      r1, [sp, #0x14]
 	ADD      r4, #0xff

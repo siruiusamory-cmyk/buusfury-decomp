@@ -1,5 +1,5 @@
 	CODE16
-|loc_0800E8E6|
+|Battle_SpawnDamageObject|
 	PUSH     {r4, r5, r6, lr}
 	ADD      r6, r1, #0
 	ADD      r5, r1, #0
@@ -20,7 +20,7 @@
 	BL       |loc_0800ED80|
 	ADD      r1, r4, #0
 	ADD      r0, sp, #8
-	BL       |loc_0800FE78|
+	BL       |Object_GetPoints|
 	LDR      r0, [sp, #8]
 	LDR      r1, [sp, #0x10]
 	ADD      r4, #0xff

@@ -3,10 +3,10 @@
 |unk_080361CE|
 		ADD r1, r5, #0
 		ADD r0, sp, #0x64
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x54
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #0x54]
 		LDR r1, [sp, #0x5c]
 		LDR r2, [sp, #0x60]

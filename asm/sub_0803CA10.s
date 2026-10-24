@@ -37,10 +37,10 @@
 		CMP r0, #0
 		BEQ      |inc_0x351c0_0x3d4d0| + 0x793a
 		ADD r0, sp, #0x28
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x18
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDR r0, [sp, #0x18]
 		LDR r1, [sp, #0x20]
 		LDR r2, [sp, #0x24]

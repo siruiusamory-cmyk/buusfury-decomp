@@ -22,10 +22,10 @@
 |loc_08029A98|
 		ADD r1, r4, #0
 		ADD r0, sp, #0x14
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		ADD r1, r5, #0
 		ADD r0, sp, #4
-		BL       |loc_0800FE78|
+		BL       |Object_GetPoints|
 		LDRB r0, [r4, #0x10]
 		CMP r0, #0
 		BEQ      |loc_08029AF0|

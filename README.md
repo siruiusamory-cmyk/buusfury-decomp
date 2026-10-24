@@ -74,11 +74,8 @@ writes only ignored files.
 ## Tests
 
 `python -m pytest -q tools` runs every test file in the tree, and a test that needs your ROM, ARM
-Developer Suite 1.2 or `cmd.exe` skips itself and names the one that is absent.
-
-The GitHub Actions workflow runs the same command on `ubuntu-latest` without the game. It deselects
-two data-refusal tests whose expected message no longer matches the refusal the harness raises;
-those two fail when your ROM is present and are deselected in CI.
+Developer Suite 1.2 or `cmd.exe` skips itself and names the one that is absent. The GitHub Actions
+workflow runs the same command on `ubuntu-latest` without the game.
 
 ## Repository layout
 

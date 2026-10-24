@@ -18,8 +18,4 @@ jobs:
       - run: python -m pip install pytest capstone==5.0.7
       - run: python tools/check_links.py
       - run: python tools/lint/lints.py
-      - name: Run every test file, apart from the two data-refusal tests whose census rows were retired
-        run: >-
-          python -m pytest -q tools
-          --deselect tools/behaviour/test_harness.py::test_a_flagged_start_is_refused_and_names_the_flag_it_carries
-          --deselect tools/behaviour/test_harness.py::test_the_refusal_comes_before_the_body_is_walked
+      - run: python -m pytest -q tools

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import struct
 import sys
 
@@ -200,16 +201,27 @@ def test_the_body_of_a_retail_start_is_reachable_code_inside_its_own_row():
 
 
 def test_a_flagged_start_is_refused_and_names_the_flag_it_carries():
-    with pytest.raises(ValueError, match="0x080335B6 is a flagged start \\(data\\+clobber\\)"):
-        harness.refuse(0x080335B6)
+    flagged = harness.flagged()
+    assert flagged, "the entry allow list carries no flagged start"
+    start, flags = sorted(flagged.items())[0]
+    message = re.escape("0x%08X is a flagged start (%s)" % (start, flags))
+    with pytest.raises(ValueError, match=message):
+        harness.refuse(start)
 
 
 def test_a_start_the_allow_list_does_not_carry_is_not_refused():
     assert harness.refuse(0x0801191A) is None
 
 
-def test_the_refusal_comes_before_the_body_is_walked():
-    image = testkit.rom_bytes(os.path.join(harness.ROOT, "baserom.gba"),
-                              digest=harness.ROM_SHA256, size=0x800000)
-    with pytest.raises(ValueError, match="entered at data"):
-        harness.body(image, 0x0801906E)
+def test_the_refusal_comes_before_the_body_is_walked(monkeypatch):
+    flagged = harness.flagged()
+    assert flagged, "the entry allow list carries no flagged start"
+    start, flags = sorted(flagged.items())[0]
+
+    def walked(*args, **kwargs):
+        raise AssertionError("the harness walked the body of a flagged start")
+
+    monkeypatch.setattr(harness, "code_rows", walked)
+    message = re.escape("0x%08X is a flagged start (%s)" % (start, flags))
+    with pytest.raises(ValueError, match=message):
+        harness.body(None, start)

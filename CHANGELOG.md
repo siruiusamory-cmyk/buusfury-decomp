@@ -7,11 +7,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The two data-refusal tests in `tools/behaviour/test_harness.py` assert the refusal the harness
+  actually raises: they read the flagged start from `tools/research/FUNCTION_ENTRY_ALLOW.csv` instead
+  of naming an address the census no longer carries, and the second one proves the refusal comes
+  before the body walk instead of inferring it from a row that is gone. Both pass with the ROM
+  present, so the CI workflow no longer deselects them and the README no longer explains a failure.
 - The README leads with a tagline, a licence, platform and function-count badge row, and a Contents
   list that carries every section, including Tests. It states that the build runs on Windows and
-  names `pytest` and `capstone` as Python prerequisites, and it says that two data-refusal tests
-  fail when the ROM is present because their expected message no longer matches the refusal the
-  harness raises. Placeholders mark where a banner, a demo GIF and a social preview image go.
+  names `pytest` and `capstone` as Python prerequisites. Placeholders mark where a banner, a demo GIF
+  and a social preview image go.
 - `docs/NEWCOMER.md` finds a function by its address rather than by its symbol, because the symbol
   its example named has since been promoted to a measured name, and the page and `docs/README.md`
   count the seven steps they carry.

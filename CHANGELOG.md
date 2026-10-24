@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- `tools/research/name_evidence.py --mode audit` accepts the three ways a naming row's evidence cell
+  names an address in the retail image: an instruction of the row's own body, a call that body makes,
+  or a word that body loads. Every row of `tools/lint/NAMING_LEDGER.csv` now passes the audit with the
+  image present. The cells that still quoted a stale, mistyped or computed address were corrected at
+  the root: two rows whose `old` column named an address below their own now name their own, the
+  divide row cites the signed-divide call it makes instead of a BIOS call in a neighbouring body, and
+  a nine-digit address is written as the eight it is.
 - `python tools/lint/test_lint.py` runs the file's tests through pytest instead of a hand-kept list,
   which had drifted past a test the file no longer carried.
 - `tools/build/generate_jcalg1.py` and `tools/build/rawlabeled.py` carry only the modes a build or a

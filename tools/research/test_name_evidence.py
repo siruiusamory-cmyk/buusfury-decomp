@@ -65,6 +65,26 @@ def test_a_caller_role_row_must_quote_a_call_to_it(tmp_path):
     assert name_evidence.audit(image(), bad)[0]["verdict"] == "FAIL"
 
 
+def test_a_row_that_cites_the_call_its_body_makes_passes(tmp_path):
+    root = crafted(tmp_path, '0x08009196,sub_08009196,Ram_CopyFiveWords1,behaviour-test,'
+                             '"0x080091AC calls 0x080099B6"')
+    assert name_evidence.audit(image(), root)[0]["verdict"] == "PASS"
+
+
+def test_a_row_that_cites_the_word_its_body_loads_passes(tmp_path):
+    root = crafted(tmp_path, '0x08006880,sub_08006880,Object_Construct2,behaviour-test,'
+                             '"asm/Object_Construct2.s:19 stores 0x0804BF3C at +0"')
+    assert name_evidence.audit(image(), root)[0]["verdict"] == "PASS"
+
+
+def test_a_row_that_names_an_address_its_body_neither_calls_nor_loads_fails(tmp_path):
+    root = crafted(tmp_path, '0x08009196,sub_08009196,Ram_CopyFiveWords1,behaviour-test,'
+                             '"0x0800BA7A is the BIOS Div call site"')
+    result = name_evidence.audit(image(), root)
+    assert result[0]["verdict"] == "FAIL"
+    assert result[0]["outside"] == [0x0800BA7A]
+
+
 def thumb_bl(offset, delta):
     high = 0xF000 | (((delta >> 22) & 1) << 10) | ((delta >> 12) & 0x3FF)
     low = 0xF800 | ((delta >> 1) & 0x7FF)

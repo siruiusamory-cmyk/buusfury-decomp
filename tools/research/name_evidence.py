@@ -236,6 +236,32 @@ def call_to(rom, site, address):
     return False
 
 
+def call_at(rom, address, mode):
+    if mode == "thumb":
+        return call_target(rom, address)
+    found = decode_one(rom, address, "arm")
+    if found is not None and found.mnemonic in ("bl", "blx") and found.op_str.startswith("#"):
+        return int(found.op_str[1:], 0)
+    return None
+
+
+def named_addresses(rom, body, mode):
+    named = set()
+    for at in body:
+        found = decode_one(rom, at, mode)
+        if found is None:
+            continue
+        if found.mnemonic in ("bl", "blx"):
+            target = call_at(rom, at, mode)
+            if target is not None:
+                named.add(target)
+        elif found.mnemonic == "ldr" and "[pc" in found.op_str:
+            pool = pool_address(found, mode)
+            if pool is not None and ROM_BASE <= pool <= ROM_BASE + len(rom) - 4:
+                named.add(struct.unpack_from("<I", rom, pool - ROM_BASE)[0])
+    return named
+
+
 def audit(rom, root=ROOT):
     rows = code_rows()
     starts, parents = census()
@@ -263,7 +289,8 @@ def audit(rom, root=ROOT):
             if entry["evidence_class"] == "caller-role":
                 outside = [site for site in quoted if not call_to(rom, site, address)]
             else:
-                outside = [site for site in quoted if site not in body]
+                named = named_addresses(rom, body, row[2])
+                outside = [site for site in quoted if site not in body and site not in named]
             out.append({"address": entry["address"], "name": entry["new"],
                         "class": entry["evidence_class"], "end": end, "sites": quoted,
                         "outside": outside, "verdict": "FAIL" if outside else "PASS"})

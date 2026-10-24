@@ -32,8 +32,9 @@ This is not a decompilation. Almost all of the game's code is still assembly, an
 small C files exist in `src/`. Most functions are still named by their address (`sub_08000158`,
 `loc_0800016A`): 2,868 of the 3,024 functions the census classifies. Naming them is the next
 readability step, and `tools/lint/lints.py` holds the count to a measured baseline with
-`tools/lint/NAMING_LEDGER.csv` as the record of every promotion. No part of the code is claimed to
-match the original compiler's C output.
+`tools/lint/NAMING_LEDGER.csv` as the record of every promotion; `tools/research/name_evidence.py
+--mode audit` checks every row's evidence against your own copy of the image. No part of the code is
+claimed to match the original compiler's C output.
 
 The progress figure below measures how much of the ROM the build produces from tracked source. It
 does not measure how much of the code has been turned into C.
